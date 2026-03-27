@@ -6,7 +6,6 @@ import type {
   GeneratorTreeState,
   SetGeneratorTree,
 } from "../types/generator";
-import { logCinenerdleDebug } from "../generators/cinenerdle2/debug";
 import "../styles/abstract_generator.css";
 
 export type AbstractGeneratorProps<T> = GeneratorController<T> & {
@@ -81,12 +80,6 @@ export function AbstractGenerator<T>({
           activeLifecycleRef.current !== lifecycleId ||
           activeSelectionRef.current !== selectionId
         ) {
-          logCinenerdleDebug("abstractGenerator.setTree.ignored", {
-            lifecycleId,
-            activeLifecycleId: activeLifecycleRef.current,
-            selectionId,
-            activeSelectionId: activeSelectionRef.current,
-          });
           return;
         }
 
@@ -160,23 +153,9 @@ export function AbstractGenerator<T>({
       const renderedTreeWithPlaceholder = [...normalizedTree, placeholderRow];
       setRenderTreeOverride(renderedTreeWithPlaceholder);
       setPlaceholderRowIndex(row + 1);
-      logCinenerdleDebug("abstractGenerator.handleCardSelect.renderPlaceholderRow", {
-        row,
-        col,
-        selectionId: nextSelectionId,
-        originalRows: tree.length,
-        renderedRows: renderedTreeWithPlaceholder.length,
-        placeholderRowIndex: row + 1,
-      });
     } else {
       setRenderTreeOverride(null);
       setPlaceholderRowIndex(null);
-      logCinenerdleDebug("abstractGenerator.handleCardSelect.renderSelectionOnly", {
-        row,
-        col,
-        selectionId: nextSelectionId,
-        rows: normalizedTree.length,
-      });
     }
 
     const guardedSetTree = createGuardedSetTree(

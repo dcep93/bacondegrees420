@@ -17,9 +17,7 @@ import {
   serializePathNodes,
 } from "./generators/cinenerdle2/hash";
 import {
-  clearCinenerdleDebugLog,
   copyCinenerdleDebugLogToClipboard,
-  logCinenerdleDebug,
 } from "./generators/cinenerdle2/debug";
 import {
   buildConnectionGraph,
@@ -232,11 +230,6 @@ export default function AppX() {
   const highestGenerationSelectedLabel = getHighestGenerationSelectedLabel(hashValue);
 
   useEffect(() => {
-    clearCinenerdleDebugLog();
-    logCinenerdleDebug("app.init", {
-      hash: window.location.hash,
-    });
-
     function handleHashChange() {
       const nextHash = window.location.hash;
       const normalizedNextHash = normalizeHashValue(nextHash);
@@ -244,29 +237,10 @@ export default function AppX() {
       const matchedPendingHashWrite =
         pendingHashWrite !== null && pendingHashWrite.hash === normalizedNextHash;
 
-      logCinenerdleDebug("app.hashchange", {
-        nextHash,
-        normalizedNextHash,
-        pendingHash: pendingHashWrite?.hash ?? null,
-        pendingMode: pendingHashWrite?.mode ?? null,
-        matchedPendingHashWrite,
-      });
-
       setHashValue(nextHash);
 
       if (!matchedPendingHashWrite || pendingHashWrite.mode !== "selection") {
         setNavigationVersion((version) => version + 1);
-        logCinenerdleDebug("app.hashchange.bumpNavigationVersion", {
-          reason: matchedPendingHashWrite
-            ? `internal-${pendingHashWrite.mode}`
-            : "external",
-          nextHash: normalizedNextHash,
-        });
-      } else {
-        logCinenerdleDebug("app.hashchange.skipNavigationVersion", {
-          reason: "internal-selection",
-          nextHash: normalizedNextHash,
-        });
       }
 
       if (matchedPendingHashWrite) {
@@ -356,114 +330,13 @@ export default function AppX() {
           })
           .slice(0, 12);
 
-        logCinenerdleDebug("app.connectionAutocomplete.results", {
-          query,
-          personMatchCount: personSuggestions.length,
-          movieMatchCount: movieSuggestions.length,
-          suggestionCount: nextSuggestions.length,
-          preview: nextSuggestions.slice(0, 5).map((suggestion) => ({
-            kind: suggestion.kind,
-            label: suggestion.label,
-            sortScore: suggestion.sortScore,
-            popularity: suggestion.popularity,
-            connectionCount: suggestion.connectionCount,
-            hasCachedTmdbSource: suggestion.hasCachedTmdbSource,
-          })),
-        });
-
         setConnectionSuggestions(nextSuggestions);
         setSelectedSuggestionIndex(nextSuggestions.length > 0 ? 0 : -1);
       },
     );
   }, [connectionQuery]);
 
-  useEffect(() => {
-    if (connectionSuggestions.length === 0) {
-      return;
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      const dropdownElement = connectionDropdownRef.current;
-      const inputWrapElement = connectionInputWrapRef.current;
-      const connectionBarElement = connectionBarRef.current;
-
-      if (!dropdownElement || !inputWrapElement || !connectionBarElement) {
-        logCinenerdleDebug("app.connectionDropdown.layout.missingElement", {
-          hasDropdown: Boolean(dropdownElement),
-          hasInputWrap: Boolean(inputWrapElement),
-          hasConnectionBar: Boolean(connectionBarElement),
-          suggestionCount: connectionSuggestions.length,
-        });
-        return;
-      }
-
-      const dropdownRect = dropdownElement.getBoundingClientRect();
-      const inputWrapRect = inputWrapElement.getBoundingClientRect();
-      const connectionBarRect = connectionBarElement.getBoundingClientRect();
-      const dropdownStyle = window.getComputedStyle(dropdownElement);
-      const centerX = Math.max(
-        dropdownRect.left + Math.min(dropdownRect.width / 2, Math.max(dropdownRect.width - 1, 0)),
-        0,
-      );
-      const centerY = Math.max(
-        dropdownRect.top + Math.min(dropdownRect.height / 2, Math.max(dropdownRect.height - 1, 0)),
-        0,
-      );
-      const topElement = document.elementFromPoint(centerX, centerY);
-
-      logCinenerdleDebug("app.connectionDropdown.layout", {
-        query: connectionQuery.trim(),
-        suggestionCount: connectionSuggestions.length,
-        selectedSuggestionIndex,
-        dropdownRect: {
-          top: dropdownRect.top,
-          left: dropdownRect.left,
-          width: dropdownRect.width,
-          height: dropdownRect.height,
-          bottom: dropdownRect.bottom,
-        },
-        inputWrapRect: {
-          top: inputWrapRect.top,
-          left: inputWrapRect.left,
-          width: inputWrapRect.width,
-          height: inputWrapRect.height,
-          bottom: inputWrapRect.bottom,
-        },
-        connectionBarRect: {
-          top: connectionBarRect.top,
-          left: connectionBarRect.left,
-          width: connectionBarRect.width,
-          height: connectionBarRect.height,
-          bottom: connectionBarRect.bottom,
-        },
-        dropdownStyle: {
-          display: dropdownStyle.display,
-          visibility: dropdownStyle.visibility,
-          opacity: dropdownStyle.opacity,
-          zIndex: dropdownStyle.zIndex,
-          overflowY: dropdownStyle.overflowY,
-          position: dropdownStyle.position,
-        },
-        elementAtDropdownCenter: topElement
-          ? {
-              tagName: topElement.tagName,
-              className:
-                typeof topElement.className === "string" ? topElement.className : null,
-              text: topElement.textContent?.trim().slice(0, 120) ?? "",
-            }
-          : null,
-      });
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [connectionQuery, connectionSuggestions, selectedSuggestionIndex]);
-
   function handleReset() {
-    logCinenerdleDebug("app.reset", {
-      hashBeforeReset: window.location.hash,
-    });
     clearHash();
     setHashValue("");
     setConnectionSession(null);
@@ -478,39 +351,23 @@ export default function AppX() {
       );
 
       if (!confirmed) {
-        logCinenerdleDebug("app.clearDatabase.cancelled", {
-          estimatedBytes: bytes,
-        });
         return;
       }
 
       return clearIndexedDb().then(() => {
-        logCinenerdleDebug("app.clearDatabase.confirmed", {
-          estimatedBytes: bytes,
-        });
         handleReset();
       });
     });
   }
 
   function handleCopyLogs() {
-    logCinenerdleDebug("app.copyLogs.requested", {
-      hash: window.location.hash,
-      documentTitle: document.title,
-    });
-
     void copyCinenerdleDebugLogToClipboard()
       .then((count) => {
         setCopyStatus(`${count} logs copied`);
-        logCinenerdleDebug("app.copyLogs.success", {
-          count,
-        });
       })
       .catch((error) => {
         setCopyStatus("Copy failed");
-        logCinenerdleDebug("app.copyLogs.error", {
-          message: error instanceof Error ? error.message : String(error),
-        });
+        void error;
       });
   }
 
@@ -521,12 +378,6 @@ export default function AppX() {
         hash: normalizedHash,
         mode,
       };
-      logCinenerdleDebug("app.hashWrite.requested", {
-        nextHash,
-        normalizedHash,
-        mode,
-        currentHash: normalizeHashValue(window.location.hash),
-      });
     },
     [],
   );
@@ -560,15 +411,6 @@ export default function AppX() {
       excludedNodeKeys: string[];
       excludedEdgeKeys: string[];
     }) => {
-      logCinenerdleDebug("app.connectionRows.search.start", {
-        sessionId: params.sessionId,
-        rowId: params.rowId,
-        left: params.left.label,
-        right: params.right.label,
-        excludedNodeKeys: params.excludedNodeKeys,
-        excludedEdgeKeys: params.excludedEdgeKeys,
-      });
-
       const [personRecords, filmRecords] = await Promise.all([
         getAllPersonRecords(),
         getAllFilmRecords(),
@@ -581,34 +423,10 @@ export default function AppX() {
         graph.entitiesByKey.get(params.right.key) ??
         createFallbackConnectionEntity(params.right);
 
-      logCinenerdleDebug("app.connectionRows.search.graphSnapshot", {
-        sessionId: params.sessionId,
-        rowId: params.rowId,
-        requestedLeftKey: params.left.key,
-        requestedRightKey: params.right.key,
-        resolvedLeftKey: leftEntity.key,
-        resolvedRightKey: rightEntity.key,
-        resolvedLeftKind: leftEntity.kind,
-        resolvedRightKind: rightEntity.kind,
-        personRecordCount: personRecords.length,
-        filmRecordCount: filmRecords.length,
-        starterFilmCount: filmRecords.filter((filmRecord) => Boolean(filmRecord.rawCinenerdleDailyStarter)).length,
-        entityCount: graph.entitiesByKey.size,
-        adjacencyCount: graph.adjacencyByKey.size,
-      });
-
       const result = findConnectionPathBidirectional(graph, leftEntity.key, rightEntity.key, {
         excludedNodeKeys: new Set(params.excludedNodeKeys),
         excludedEdgeKeys: new Set(params.excludedEdgeKeys),
         timeoutMs: 5000,
-      });
-
-      logCinenerdleDebug("app.connectionRows.search.complete", {
-        sessionId: params.sessionId,
-        rowId: params.rowId,
-        status: result.status,
-        elapsedMs: result.elapsedMs,
-        path: result.path.map((entity) => entity.label),
       });
 
       setConnectionSession((currentSession) => {
@@ -645,18 +463,6 @@ export default function AppX() {
       connectionSessionIdRef.current += 1;
       const rowId = `connection-row-${connectionRowIdRef.current + 1}`;
       connectionRowIdRef.current += 1;
-
-      logCinenerdleDebug("app.connectionRows.open", {
-        sessionId,
-        hashValue,
-        selectedTarget,
-        left: entity.label,
-        leftKind: entity.kind,
-        leftKey: entity.key,
-        right: counterpart.label,
-        rightKind: counterpart.kind,
-        rightKey: counterpart.key,
-      });
 
       setConnectionSession({
         id: sessionId,
@@ -752,13 +558,6 @@ export default function AppX() {
           excludedEdgeKeys,
         };
 
-        logCinenerdleDebug("app.connectionRows.spawnAlternative", {
-          sessionId: currentSession.id,
-          parentRowId,
-          rowId,
-          exclusion,
-        });
-
         return {
           ...currentSession,
           rows: [
@@ -811,31 +610,17 @@ export default function AppX() {
       }
 
       setIsResolvingConnection(true);
-      logCinenerdleDebug("app.connectionSubmit.start", {
-        query,
-      });
 
       try {
         const target = await resolveConnectionQuery(query);
-        logCinenerdleDebug("app.connectionSubmit.resolved", {
-          query,
-          target,
-        });
-
         if (!target) {
-          logCinenerdleDebug("app.connectionSubmit.noMatch", {
-            query,
-          });
           return;
         }
 
         await openConnectionRowsForEntity(createFallbackConnectionEntity(target));
         setConnectionQuery("");
       } catch (error) {
-        logCinenerdleDebug("app.connectionSubmit.error", {
-          query,
-          message: error instanceof Error ? error.message : String(error),
-        });
+        void error;
       } finally {
         setIsResolvingConnection(false);
       }

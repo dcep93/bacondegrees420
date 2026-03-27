@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { AbstractGenerator } from "../../components/abstract_generator";
 import { useCinenerdleController } from "./controller";
-import { logCinenerdleDebug } from "./debug";
 import { normalizeHashValue } from "./hash";
 import { primeTmdbApiKeyOnInit } from "./tmdb";
 import "../../styles/cinenerdle2.css";
@@ -52,18 +51,7 @@ export default function Cinenerdle2({
       const normalizedNextHash = normalizeHashValue(nextHash);
       const currentHash = normalizeHashValue(window.location.hash);
 
-      logCinenerdleDebug("cinenerdle.writeHash", {
-        nextHash,
-        normalizedNextHash,
-        currentHash,
-        mode,
-      });
-
       if (normalizedNextHash === currentHash) {
-        logCinenerdleDebug("cinenerdle.writeHash.noop", {
-          normalizedNextHash,
-          mode,
-        });
         return;
       }
 

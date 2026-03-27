@@ -4,24 +4,9 @@ import {
   INDEXED_DB_VERSION,
   PEOPLE_STORE_NAME,
 } from "./constants";
-import { logCinenerdleDebug } from "./debug";
 import { chooseBestFilmRecord } from "./records";
 import type { FilmRecord, PersonRecord } from "./types";
 import { normalizeName, normalizeTitle } from "./utils";
-
-function summarizeFilmRecord(record: FilmRecord | null) {
-  return {
-    id: record?.id ?? null,
-    tmdbId: record?.tmdbId ?? null,
-    title: record?.title ?? "",
-    year: record?.year ?? "",
-    popularity: record?.popularity ?? null,
-    hasRawTmdbMovie: Boolean(record?.rawTmdbMovie),
-    castCount: record?.rawTmdbMovieCreditsResponse?.cast?.length ?? 0,
-    crewCount: record?.rawTmdbMovieCreditsResponse?.crew?.length ?? 0,
-    personConnectionKeys: record?.personConnectionKeys.length ?? 0,
-  };
-}
 
 function indexedDbRequestToPromise<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -176,12 +161,6 @@ export async function getFilmRecordById(
       store.get(id),
     );
 
-    logCinenerdleDebug("indexedDb.getFilmRecordById", {
-      id,
-      found: Boolean(record),
-      record: summarizeFilmRecord(record ?? null),
-    });
-
     return record ?? null;
   });
 }
@@ -201,14 +180,7 @@ export async function getFilmRecordByTitleAndYear(
   year = "",
 ): Promise<FilmRecord | null> {
   const records = await getFilmRecordsByTitle(title);
-  const chosenRecord = chooseBestFilmRecord(records, title, year);
-  logCinenerdleDebug("indexedDb.getFilmRecordByTitleAndYear", {
-    title,
-    year,
-    candidateCount: records.length,
-    chosenRecord: summarizeFilmRecord(chosenRecord),
-  });
-  return chosenRecord;
+  return chooseBestFilmRecord(records, title, year);
 }
 
 export async function getFilmRecordsByIds(
@@ -247,11 +219,6 @@ export async function getFilmRecordsByPersonConnectionKey(
     const records = await indexedDbRequestToPromise<FilmRecord[]>(
       store.index("personConnectionKeys").getAll(normalizeName(personName)),
     );
-
-    logCinenerdleDebug("indexedDb.getFilmRecordsByPersonConnectionKey", {
-      personName,
-      count: records?.length ?? 0,
-    });
 
     return records ?? [];
   });
@@ -306,14 +273,8 @@ export async function getCachedStarterFilms(): Promise<FilmRecord[]> {
 }
 
 export async function saveFilmRecord(filmRecord: FilmRecord): Promise<void> {
-  logCinenerdleDebug("indexedDb.saveFilmRecord.start", {
-    filmRecord: summarizeFilmRecord(filmRecord),
-  });
   await withStore(FILMS_STORE_NAME, "readwrite", async (store) => {
     await indexedDbRequestToPromise(store.put(filmRecord));
-  });
-  logCinenerdleDebug("indexedDb.saveFilmRecord.complete", {
-    filmRecord: summarizeFilmRecord(filmRecord),
   });
 }
 

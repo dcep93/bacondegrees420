@@ -29,7 +29,6 @@ import {
   prepareSelectedPerson,
 } from "./tmdb";
 import { TMDB_ICON_URL } from "./constants";
-import { logCinenerdleDebug } from "./debug";
 import {
   getAssociatedPeopleFromMovieCredits,
   getMovieKeyFromCredit,
@@ -64,35 +63,6 @@ type CinenerdleControllerOptions = {
   readHash: () => string;
   writeHash: (nextHash: string, mode?: "selection" | "navigation") => void;
 };
-
-function summarizeMovieRecord(card: Extract<CinenerdleCard, { kind: "movie" }>) {
-  return {
-    key: card.key,
-    name: card.name,
-    year: card.year,
-    popularity: card.popularity,
-    hasImageUrl: Boolean(card.imageUrl),
-    recordId: card.record?.id ?? null,
-    recordTmdbId: card.record?.tmdbId ?? null,
-    hasRawTmdbMovie: Boolean(card.record?.rawTmdbMovie),
-    hasCachedTmdbSource: hasCachedTmdbSource(card),
-    sourceLabels: card.sources.map((source) => source.label),
-    castCount: card.record?.rawTmdbMovieCreditsResponse?.cast?.length ?? 0,
-    crewCount: card.record?.rawTmdbMovieCreditsResponse?.crew?.length ?? 0,
-  };
-}
-
-function summarizePersonCard(card: Extract<CinenerdleCard, { kind: "person" }>) {
-  return {
-    key: card.key,
-    name: card.name,
-    popularity: card.popularity,
-    hasImageUrl: Boolean(card.imageUrl),
-    connectionCount: card.connectionCount,
-    subtitle: card.subtitle,
-    subtitleDetail: card.subtitleDetail,
-  };
-}
 
 function createNode(data: CinenerdleCard, selected = false): GeneratorNode<CinenerdleCard> {
   return {
@@ -206,14 +176,6 @@ async function createDailyStarterRow() {
   }
 
   const cards = sortCardsByPopularity(hydratedStarterFilms.map(createDailyStarterMovieCard));
-  logCinenerdleDebug("controller.createDailyStarterRow.complete", {
-    starterFilmCount: hydratedStarterFilms.length,
-    preview: cards
-      .slice(0, 12)
-      .filter((card): card is Extract<CinenerdleCard, { kind: "movie" }> => card.kind === "movie")
-      .map((card) => summarizeMovieRecord(card)),
-  });
-
   return createRow(cards);
 }
 
@@ -233,10 +195,6 @@ async function hydrateDailyStartersAndRedraw(
   await hydrateCinenerdleDailyStarterMovies(starterFilms);
 
   const refreshedTree = await buildTreeFromHash(readHash());
-  logCinenerdleDebug("controller.hydrateDailyStartersAndRedraw.setTree", {
-    hash: readHash(),
-    rows: refreshedTree.length,
-  });
   setTree(refreshedTree);
 }
 
@@ -250,21 +208,8 @@ async function hydrateMissingSelectedPathItemsAndRedraw(
       pathNode.kind === "movie" || pathNode.kind === "person",
   );
 
-  logCinenerdleDebug("controller.hydrateMissingSelectedPathItemsAndRedraw.start", {
-    hash: initialHash,
-    selectedPathNodes: selectedPathNodes.map((pathNode) => ({
-      kind: pathNode.kind,
-      name: pathNode.name,
-      year: pathNode.kind === "movie" ? pathNode.year : "",
-    })),
-  });
-
   for (const pathNode of selectedPathNodes) {
     if (readHash() !== initialHash) {
-      logCinenerdleDebug("controller.hydrateMissingSelectedPathItemsAndRedraw.abortHashChanged", {
-        initialHash,
-        currentHash: readHash(),
-      });
       return;
     }
 
@@ -275,11 +220,6 @@ async function hydrateMissingSelectedPathItemsAndRedraw(
       }
 
       const fetchedPersonRecord = await prepareSelectedPerson(pathNode.name);
-      logCinenerdleDebug("controller.hydrateMissingSelectedPathItemsAndRedraw.personFetched", {
-        name: pathNode.name,
-        found: Boolean(fetchedPersonRecord),
-      });
-
       if (!fetchedPersonRecord) {
         continue;
       }
@@ -293,24 +233,12 @@ async function hydrateMissingSelectedPathItemsAndRedraw(
       }
 
       const fetchedMovieRecord = await prepareSelectedMovie(pathNode.name, pathNode.year);
-      logCinenerdleDebug("controller.hydrateMissingSelectedPathItemsAndRedraw.movieFetched", {
-        name: pathNode.name,
-        year: pathNode.year,
-        found: Boolean(fetchedMovieRecord),
-      });
-
       if (!fetchedMovieRecord) {
         continue;
       }
     }
 
     const refreshedTree = await buildTreeFromHash(readHash());
-    logCinenerdleDebug("controller.hydrateMissingSelectedPathItemsAndRedraw.setTree", {
-      hash: readHash(),
-      rows: refreshedTree.length,
-      selectedItem:
-        pathNode.kind === "movie" ? `${pathNode.name} (${pathNode.year})` : pathNode.name,
-    });
     setTree(refreshedTree);
   }
 }
@@ -318,14 +246,6 @@ async function hydrateMissingSelectedPathItemsAndRedraw(
 async function buildChildRowForCard(
   card: CinenerdleCard,
 ): Promise<GeneratorNode<CinenerdleCard>[] | null> {
-  logCinenerdleDebug("controller.buildChildRowForCard.start", {
-    kind: card.kind,
-    key: card.key,
-    name: card.name,
-    year: card.kind === "movie" ? card.year : "",
-    hasRecord: Boolean(card.record),
-  });
-
   if (card.kind === "cinenerdle") {
     return createDailyStarterRow();
   }
@@ -365,17 +285,6 @@ async function buildChildRowForCard(
       ),
     );
 
-    logCinenerdleDebug("controller.buildChildRowForCard.person.complete", {
-      sourcePerson: card.name,
-      movieCreditsCount: movieCredits.length,
-      renderedCards: row.length,
-      preview: row
-        .slice(0, 8)
-        .map((node) => node.data)
-        .filter((entry): entry is Extract<CinenerdleCard, { kind: "movie" }> => entry.kind === "movie")
-        .map((movieCard) => summarizeMovieRecord(movieCard)),
-    });
-
     return row;
   }
 
@@ -385,10 +294,6 @@ async function buildChildRowForCard(
 
   const movieRecord = card.record ?? (await getFilmRecordByTitleAndYear(card.name, card.year));
   if (!movieRecord) {
-    logCinenerdleDebug("controller.buildChildRowForCard.movie.missingRecord", {
-      name: card.name,
-      year: card.year,
-    });
     return null;
   }
 
@@ -437,31 +342,6 @@ async function buildChildRowForCard(
   });
 
   const row = createRow(sortCardsByPopularity(cards));
-  logCinenerdleDebug("controller.buildChildRowForCard.movie.complete", {
-    sourceMovie: {
-      title: movieRecord.title,
-      year: movieRecord.year,
-      id: movieRecord.id,
-      tmdbId: movieRecord.tmdbId,
-      popularity: movieRecord.popularity,
-      hasRawTmdbMovie: Boolean(movieRecord.rawTmdbMovie),
-      castCount: movieRecord.rawTmdbMovieCreditsResponse?.cast?.length ?? 0,
-      crewCount: movieRecord.rawTmdbMovieCreditsResponse?.crew?.length ?? 0,
-    },
-    tmdbCreditsCount: tmdbCredits.length,
-    snapshotPeopleCount:
-      snapshotPeople.cast.length +
-      snapshotPeople.directors.length +
-      snapshotPeople.writers.length +
-      snapshotPeople.composers.length,
-    renderedCards: row.length,
-    preview: row
-      .slice(0, 12)
-      .map((node) => node.data)
-      .filter((entry): entry is Extract<CinenerdleCard, { kind: "person" }> => entry.kind === "person")
-      .map((personCard) => summarizePersonCard(personCard)),
-  });
-
   return row;
 }
 
@@ -863,27 +743,12 @@ function renderDbInfoCard(viewModel: Extract<CinenerdleCardViewModel, { kind: "d
     event.stopPropagation();
 
     if (!navigator.clipboard?.writeText) {
-      logCinenerdleDebug("controller.dbInfoCard.copy.error", {
-        name: viewModel.subtitle,
-        message: "Clipboard API is unavailable.",
-      });
       return;
     }
 
     void navigator.clipboard
       .writeText(viewModel.body)
-      .then(() => {
-        logCinenerdleDebug("controller.dbInfoCard.copy.success", {
-          name: viewModel.subtitle,
-          recordKind: viewModel.recordKind,
-        });
-      })
-      .catch((error) => {
-        logCinenerdleDebug("controller.dbInfoCard.copy.error", {
-          name: viewModel.subtitle,
-          message: error instanceof Error ? error.message : String(error),
-        });
-      });
+      .catch(() => {});
   }
 
   return (
@@ -1013,53 +878,26 @@ export function useCinenerdleController({
       initTree(setTree) {
         void (async () => {
           try {
-            logCinenerdleDebug("controller.initTree.start", {
-              hash: readHash(),
-            });
             const nextTree = await buildTreeFromHash(readHash());
-            logCinenerdleDebug("controller.initTree.setTree", {
-              rows: nextTree.length,
-            });
             setTree(nextTree);
             void hydrateMissingSelectedPathItemsAndRedraw(setTree, readHash).catch((error) => {
               console.error("cinenerdle2.hydrateMissingSelectedPathItems", error);
-              logCinenerdleDebug("controller.hydrateMissingSelectedPathItemsAndRedraw.error", {
-                message: error instanceof Error ? error.message : String(error),
-              });
             });
             if (isCinenerdleRootTree(nextTree)) {
               void hydrateDailyStartersAndRedraw(setTree, readHash).catch((error) => {
                 console.error("cinenerdle2.hydrateDailyStarters", error);
-                logCinenerdleDebug("controller.hydrateDailyStartersAndRedraw.error", {
-                  message: error instanceof Error ? error.message : String(error),
-                });
               });
             }
           } catch (error) {
             console.error("cinenerdle2.initTree", error);
-            logCinenerdleDebug("controller.initTree.error", {
-              message: error instanceof Error ? error.message : String(error),
-            });
             const fallbackTree = await createCinenerdleRootTree();
             setTree(fallbackTree);
             void hydrateMissingSelectedPathItemsAndRedraw(setTree, readHash).catch((nestedError) => {
               console.error("cinenerdle2.hydrateMissingSelectedPathItems", nestedError);
-              logCinenerdleDebug("controller.hydrateMissingSelectedPathItemsAndRedraw.error", {
-                message:
-                  nestedError instanceof Error
-                    ? nestedError.message
-                    : String(nestedError),
-              });
             });
             if (isCinenerdleRootTree(fallbackTree)) {
               void hydrateDailyStartersAndRedraw(setTree, readHash).catch((nestedError) => {
                 console.error("cinenerdle2.hydrateDailyStarters", nestedError);
-                logCinenerdleDebug("controller.hydrateDailyStartersAndRedraw.error", {
-                  message:
-                    nestedError instanceof Error
-                      ? nestedError.message
-                      : String(nestedError),
-                });
               });
             }
           }
@@ -1073,26 +911,6 @@ export function useCinenerdleController({
               return;
             }
             const nextHash = serializePathNodes(getSelectedPathNodes(tree));
-
-            logCinenerdleDebug("controller.afterCardSelected.start", {
-              row,
-              col,
-              kind: selectedCard.kind,
-              key: selectedCard.key,
-              name: selectedCard.name,
-              year: selectedCard.kind === "movie" ? selectedCard.year : "",
-              treeRowsBefore: tree.length,
-              selectedCardSummary:
-                selectedCard.kind === "movie"
-                  ? summarizeMovieRecord(selectedCard)
-                  : selectedCard.kind === "person"
-                    ? summarizePersonCard(selectedCard)
-                    : {
-                        key: selectedCard.key,
-                        name: selectedCard.name,
-                        connectionCount: selectedCard.connectionCount,
-                      },
-            });
             if (!removedDescendantRows) {
               setTree(tree);
             }
@@ -1126,23 +944,6 @@ export function useCinenerdleController({
                   : Promise.resolve(selectedCard);
 
             const resolvedSelectedCard = await preparedCard;
-            logCinenerdleDebug("controller.afterCardSelected.prepared", {
-              kind: resolvedSelectedCard.kind,
-              key: resolvedSelectedCard.key,
-              name: resolvedSelectedCard.name,
-              year:
-                resolvedSelectedCard.kind === "movie" ? resolvedSelectedCard.year : "",
-              summary:
-                resolvedSelectedCard.kind === "movie"
-                  ? summarizeMovieRecord(resolvedSelectedCard)
-                  : resolvedSelectedCard.kind === "person"
-                    ? summarizePersonCard(resolvedSelectedCard)
-                    : {
-                        key: resolvedSelectedCard.key,
-                        name: resolvedSelectedCard.name,
-                      },
-              nextHash,
-            });
             const resolvedTree = tree.map((currentRow, currentRowIndex) =>
               currentRowIndex === row
                 ? currentRow.map((node, currentColIndex) =>
@@ -1158,30 +959,15 @@ export function useCinenerdleController({
 
             const childRow = await buildChildRowForCard(resolvedSelectedCard);
             if (!childRow || childRow.length === 0) {
-              logCinenerdleDebug("controller.afterCardSelected.setTreeWithoutChildRow", {
-                rows: resolvedTree.length,
-                selectedKey: resolvedSelectedCard.key,
-                nextHash,
-              });
               setTree(resolvedTree);
               writeHash(nextHash, "selection");
               return;
             }
 
-            logCinenerdleDebug("controller.afterCardSelected.setTreeWithChildRow", {
-              rowsBefore: resolvedTree.length,
-              childRowLength: childRow.length,
-              rowsAfter: resolvedTree.length + 1,
-              selectedKey: resolvedSelectedCard.key,
-              nextHash,
-            });
             setTree([...resolvedTree, childRow]);
             writeHash(nextHash, "selection");
           } catch (error) {
             console.error("cinenerdle2.afterCardSelected", error);
-            logCinenerdleDebug("controller.afterCardSelected.error", {
-              message: error instanceof Error ? error.message : String(error),
-            });
           }
         })();
       },
