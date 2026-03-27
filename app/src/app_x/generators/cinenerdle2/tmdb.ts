@@ -39,11 +39,13 @@ import {
 } from "./utils";
 
 let hasPrimedTmdbApiKey = false;
+let dailyStarterMoviesPromise: Promise<FilmRecord[]> | null = null;
 
 function logEntityEvent(
   kind: "person" | "movie",
   label: string,
   action: "database" | "fetch" | "prefetch",
+  dump: PersonRecord | FilmRecord | null,
 ) {
   const normalizedLabel =
     kind === "person" ? normalizeName(label) : normalizeTitle(label);
@@ -52,7 +54,7 @@ function logEntityEvent(
     return;
   }
 
-  console.log(`${kind} ${normalizedLabel} ${action}`);
+  console.log([kind, normalizedLabel, action, dump]);
 }
 
 function readEnvTmdbApiKey(): string {
@@ -126,19 +128,24 @@ async function fetchTmdbCredits<T>(pathname: string): Promise<T> {
 }
 
 export async function fetchCinenerdleDailyStarterMovies(): Promise<FilmRecord[]> {
-  const payload = await fetchJson<{ data?: import("./types").CinenerdleDailyStarter[] }>(
-    CINENERDLE_DAILY_STARTERS_URL,
-  );
+  if (!dailyStarterMoviesPromise) {
+    dailyStarterMoviesPromise = fetchJson<{
+      data?: import("./types").CinenerdleDailyStarter[];
+    }>(CINENERDLE_DAILY_STARTERS_URL)
+      .then((payload) => (payload.data ?? []).map(createDailyStarterFilmRecord))
+      .catch((error) => {
+        dailyStarterMoviesPromise = null;
+        throw error;
+      });
+  }
 
-  return (payload.data ?? []).map(createDailyStarterFilmRecord);
+  return dailyStarterMoviesPromise;
 }
 
 export async function fetchAndCachePerson(
   personName: string,
   reason: "fetch" | "prefetch" = "fetch",
 ): Promise<PersonRecord | null> {
-  logEntityEvent("person", personName, reason);
-
   const searchPayload = await fetchTmdbSearch<TmdbPersonSearchResult>(
     "search/person",
     personName,
@@ -161,6 +168,12 @@ export async function fetchAndCachePerson(
 
   const storedPersonRecord =
     (await getPersonRecordById(person.id)) ?? personRecord;
+  logEntityEvent(
+    "person",
+    storedPersonRecord.name || person.name || personName,
+    reason,
+    storedPersonRecord,
+  );
   if (reason === "fetch") {
     void prefetchBestMovieForPersonRecord(storedPersonRecord);
   }
@@ -206,8 +219,6 @@ export async function fetchAndCacheMovie(
   preferredYear = "",
   reason: "fetch" | "prefetch" = "fetch",
 ): Promise<FilmRecord | null> {
-  logEntityEvent("movie", movieName, reason);
-
   const searchPayload = await fetchTmdbSearch<TmdbMovieSearchResult>(
     "search/movie",
     movieName,
@@ -229,7 +240,17 @@ export async function fetchAndCacheMovie(
   await saveFilmRecord(filmRecord);
   const storedMovieRecord = (await getFilmRecordById(movie.id)) ?? filmRecord;
 
-  return fetchAndCacheMovieCredits(storedMovieRecord, reason);
+  const resolvedMovieRecord = await fetchAndCacheMovieCredits(
+    storedMovieRecord,
+    reason,
+  );
+  logEntityEvent(
+    "movie",
+    resolvedMovieRecord?.title || movie.title || movieName,
+    reason,
+    resolvedMovieRecord,
+  );
+  return resolvedMovieRecord;
 }
 
 export async function fetchAndCacheMovieCredits(
@@ -368,7 +389,12 @@ export async function prepareSelectedPerson(
 ): Promise<PersonRecord | null> {
   const localPersonRecord = await getLocalPersonRecordForCard(personName, personId);
   if (localPersonRecord) {
-    logEntityEvent("person", localPersonRecord.name || personName, "database");
+    logEntityEvent(
+      "person",
+      localPersonRecord.name || personName,
+      "database",
+      localPersonRecord,
+    );
     return localPersonRecord;
   }
 
@@ -386,13 +412,27 @@ export async function prepareSelectedMovie(
     movieId,
   );
   if (hasMovieCredits(localMovieRecord)) {
-    logEntityEvent("movie", localMovieRecord.title || movieName, "database");
+    logEntityEvent(
+      "movie",
+      localMovieRecord.title || movieName,
+      "database",
+      localMovieRecord,
+    );
     return localMovieRecord;
   }
 
   if (localMovieRecord) {
-    logEntityEvent("movie", localMovieRecord.title || movieName, "fetch");
-    return fetchAndCacheMovieCredits(localMovieRecord, "fetch");
+    const hydratedMovieRecord = await fetchAndCacheMovieCredits(
+      localMovieRecord,
+      "fetch",
+    );
+    logEntityEvent(
+      "movie",
+      hydratedMovieRecord?.title || localMovieRecord.title || movieName,
+      "fetch",
+      hydratedMovieRecord,
+    );
+    return hydratedMovieRecord;
   }
 
   return fetchAndCacheMovie(movieName, movieYear, "fetch");

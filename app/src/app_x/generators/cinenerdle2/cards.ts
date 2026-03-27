@@ -156,14 +156,39 @@ export function createMovieAssociationCard(
 ): CinenerdleCard {
   const title = filmRecord?.title ?? getMovieTitleFromCredit(credit);
   const year = filmRecord?.year ?? getMovieYearFromCredit(credit);
+  const resolvedFilmRecord =
+    filmRecord ??
+    (title
+      ? {
+          id: credit.id ?? getCinenerdleMovieId(title, year),
+          tmdbId: credit.id ?? null,
+          lookupKey: getCinenerdleMovieId(title, year),
+          title,
+          titleLower: normalizeTitle(title),
+          year,
+          titleYear: getCinenerdleMovieId(title, year),
+          popularity: credit.popularity ?? 0,
+          personConnectionKeys: [],
+          rawTmdbMovie: credit.id
+            ? {
+                id: credit.id,
+                title,
+                original_title: credit.original_title,
+                poster_path: credit.poster_path,
+                release_date: credit.release_date,
+                popularity: credit.popularity,
+              }
+            : undefined,
+        }
+      : null);
 
   return {
-    key: getMovieCardKey(title, year, filmRecord?.id ?? credit.id),
+    key: getMovieCardKey(title, year, resolvedFilmRecord?.id ?? credit.id),
     kind: "movie",
     name: title,
     year,
-    popularity: filmRecord?.popularity ?? credit.popularity ?? 0,
-    imageUrl: getMoviePosterUrl(filmRecord),
+    popularity: resolvedFilmRecord?.popularity ?? credit.popularity ?? 0,
+    imageUrl: getMoviePosterUrl(resolvedFilmRecord),
     subtitle: "Movie",
     subtitleDetail:
       credit.creditType === "cast"
@@ -171,31 +196,7 @@ export function createMovieAssociationCard(
         : credit.job?.trim() ?? "Crew",
     connectionCount,
     sources: [{ iconUrl: TMDB_ICON_URL, label: "TMDB" }],
-    record:
-      filmRecord ??
-      (title
-        ? {
-            id: credit.id ?? getCinenerdleMovieId(title, year),
-            tmdbId: credit.id ?? null,
-            lookupKey: getCinenerdleMovieId(title, year),
-            title,
-            titleLower: normalizeTitle(title),
-            year,
-            titleYear: getCinenerdleMovieId(title, year),
-            popularity: credit.popularity ?? 0,
-            personConnectionKeys: [],
-            rawTmdbMovie: credit.id
-              ? {
-                  id: credit.id,
-                  title,
-                  original_title: credit.original_title,
-                  poster_path: credit.poster_path,
-                  release_date: credit.release_date,
-                  popularity: credit.popularity,
-                }
-              : undefined,
-          }
-        : null),
+    record: resolvedFilmRecord,
   };
 }
 
@@ -205,36 +206,37 @@ export function createPersonAssociationCard(
   connectionCount: number,
 ): CinenerdleCard {
   const personName = personRecord?.name ?? credit.name ?? "";
+  const resolvedPersonRecord =
+    personRecord ??
+    (credit.id && personName
+      ? {
+          id: credit.id,
+          tmdbId: credit.id,
+          lookupKey: normalizeName(personName),
+          name: personName,
+          nameLower: normalizeName(personName),
+          movieConnectionKeys: [],
+          rawTmdbPerson: {
+            id: credit.id,
+            name: personName,
+            profile_path: credit.profile_path,
+            popularity: credit.popularity,
+          },
+        }
+      : null);
 
   return {
-    key: getPersonCardKey(personName, personRecord?.id ?? credit.id),
+    key: getPersonCardKey(personName, resolvedPersonRecord?.id ?? credit.id),
     kind: "person",
     name: personName,
     popularity:
-      personRecord?.rawTmdbPerson?.popularity ?? credit.popularity ?? 0,
-    imageUrl: getPersonProfileImageUrl(personRecord),
+      resolvedPersonRecord?.rawTmdbPerson?.popularity ?? credit.popularity ?? 0,
+    imageUrl: getPersonProfileImageUrl(resolvedPersonRecord),
     subtitle: credit.job?.trim() ?? "Person",
     subtitleDetail: credit.character?.trim() ?? "",
     connectionCount,
     sources: [{ iconUrl: TMDB_ICON_URL, label: "TMDB" }],
-    record:
-      personRecord ??
-      (credit.id && personName
-        ? {
-            id: credit.id,
-            tmdbId: credit.id,
-            lookupKey: normalizeName(personName),
-            name: personName,
-            nameLower: normalizeName(personName),
-            movieConnectionKeys: [],
-            rawTmdbPerson: {
-              id: credit.id,
-              name: personName,
-              profile_path: credit.profile_path,
-              popularity: credit.popularity,
-            },
-          }
-        : null),
+    record: resolvedPersonRecord,
   };
 }
 

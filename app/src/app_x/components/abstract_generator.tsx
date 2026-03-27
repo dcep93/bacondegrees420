@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 import type {
   GeneratorController,
   GeneratorTree,
@@ -10,6 +10,30 @@ import "../styles/abstract_generator.css";
 export type AbstractGeneratorProps<T> = GeneratorController<T> & {
   resetKey?: number | string;
 };
+
+function schedulePostSelectionWork(work: () => void) {
+  if (typeof window === "undefined") {
+    work();
+    return;
+  }
+
+  window.requestAnimationFrame(() => {
+    work();
+  });
+}
+
+function getDataKey<T>(data: T, fallbackIndex: number): string {
+  if (
+    typeof data === "object" &&
+    data !== null &&
+    "key" in data &&
+    (typeof data.key === "string" || typeof data.key === "number")
+  ) {
+    return String(data.key);
+  }
+
+  return String(fallbackIndex);
+}
 
 export function AbstractGenerator<T>({
   initTree,
@@ -41,15 +65,17 @@ export function AbstractGenerator<T>({
           return;
         }
 
-        setTree((prevTree) => {
-          if (
-            !mountedRef.current ||
-            activeLifecycleRef.current !== lifecycleId
-          ) {
-            return prevTree;
-          }
+        startTransition(() => {
+          setTree((prevTree) => {
+            if (
+              !mountedRef.current ||
+              activeLifecycleRef.current !== lifecycleId
+            ) {
+              return prevTree;
+            }
 
-          return typeof nextTree === "function" ? nextTree(prevTree) : nextTree;
+            return typeof nextTree === "function" ? nextTree(prevTree) : nextTree;
+          });
         });
       },
     [],
@@ -60,7 +86,6 @@ export function AbstractGenerator<T>({
     activeLifecycleRef.current = lifecycleId;
 
     const guardedSetTree = createGuardedSetTree(lifecycleId);
-    guardedSetTree(null);
     initTree(guardedSetTree);
   }, [createGuardedSetTree, initTree, resetKey]);
 
@@ -96,23 +121,30 @@ export function AbstractGenerator<T>({
     const guardedSetTree = createGuardedSetTree(activeLifecycleRef.current);
     guardedSetTree(normalizedTree);
 
-    afterCardSelected({
-      row,
-      col,
-      tree: normalizedTree,
-      setTree: guardedSetTree,
+    schedulePostSelectionWork(() => {
+      afterCardSelected({
+        row,
+        col,
+        tree: normalizedTree,
+        setTree: guardedSetTree,
+      });
     });
   }
 
   function handleScrollToSelected(generationIndex: number) {
-    const selectedCol =
-      resolvedTree[generationIndex]?.findIndex((node) => node.selected) ?? -1;
+    const selectedRow = resolvedTree[generationIndex];
+    const selectedNode = selectedRow?.find((node) => node.selected) ?? null;
 
-    if (selectedCol < 0) {
+    if (!selectedRow || !selectedNode) {
       return;
     }
 
-    const selectedCard = cardRefs.current[`${generationIndex}:${selectedCol}`];
+    const selectedCard = cardRefs.current[
+      `${generationIndex}:${getDataKey(
+        selectedNode.data,
+        selectedRow.indexOf(selectedNode),
+      )}`
+    ];
 
     if (selectedCard) {
       selectedCard.scrollIntoView({
@@ -157,18 +189,25 @@ export function AbstractGenerator<T>({
               }}
             >
               {row.map((node, col) => (
-                <button
-                  aria-pressed={node.selected}
-                  className="generator-card-button"
-                  key={`${generationIndex}:${col}`}
-                  onClick={() => handleCardSelect(generationIndex, col)}
-                  ref={(element) => {
-                    cardRefs.current[`${generationIndex}:${col}`] = element;
-                  }}
-                  type="button"
-                >
-                  {renderCard(generationIndex, col, resolvedTree)}
-                </button>
+                (() => {
+                  const dataKey = getDataKey(node.data, col);
+                  const refKey = `${generationIndex}:${dataKey}`;
+
+                  return (
+                    <button
+                      aria-pressed={node.selected}
+                      className="generator-card-button"
+                      key={refKey}
+                      onClick={() => handleCardSelect(generationIndex, col)}
+                      ref={(element) => {
+                        cardRefs.current[refKey] = element;
+                      }}
+                      type="button"
+                    >
+                      {renderCard(generationIndex, col, resolvedTree)}
+                    </button>
+                  );
+                })()
               ))}
             </div>
           </div>
