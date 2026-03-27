@@ -19,7 +19,7 @@ type NumberGenerator = {
 function createChildRow(value: number): GeneratorNode<number>[] {
   const children: GeneratorNode<number>[] = [];
 
-  for (let offset = -3; offset <= 3; offset += 1) {
+  for (let offset = -10; offset <= 10; offset += 1) {
     children.push({
       selected: false,
       data: value + offset,
