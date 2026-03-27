@@ -43,6 +43,8 @@ import {
   normalizeName,
 } from "./utils";
 
+let hasPrimedTmdbApiKey = false;
+
 function readEnvTmdbApiKey(): string {
   const envValue = import.meta.env.VITE_TMDB_API_KEY;
   return typeof envValue === "string" ? envValue.trim() : "";
@@ -67,6 +69,15 @@ export function getTmdbApiKey(): string | null {
 
   localStorage.setItem(TMDB_API_KEY_STORAGE_KEY, promptedApiKey);
   return promptedApiKey;
+}
+
+export function primeTmdbApiKeyOnInit(): void {
+  if (hasPrimedTmdbApiKey) {
+    return;
+  }
+
+  hasPrimedTmdbApiKey = true;
+  void getTmdbApiKey();
 }
 
 async function fetchJson<T>(input: string): Promise<T> {

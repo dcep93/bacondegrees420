@@ -1,7 +1,8 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { AbstractGenerator } from "../../components/abstract_generator";
 import { useCinenerdleController } from "./controller";
 import { normalizeHashValue } from "./hash";
+import { primeTmdbApiKeyOnInit } from "./tmdb";
 import "../../styles/cinenerdle2.css";
 
 type Cinenerdle2Props = {
@@ -30,6 +31,11 @@ export default function Cinenerdle2({
   resetVersion,
 }: Cinenerdle2Props) {
   const normalizedHash = normalizeHashValue(hashValue);
+
+  useEffect(() => {
+    primeTmdbApiKeyOnInit();
+  }, []);
+
   const readHash = useCallback(() => normalizedHash, [normalizedHash]);
   const writeHash = useCallback((nextHash: string) => {
     applyHash(nextHash);
