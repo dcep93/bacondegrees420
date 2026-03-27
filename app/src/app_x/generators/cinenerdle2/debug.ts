@@ -5,6 +5,7 @@ type DebugEntry = {
 };
 
 const debugEntries: DebugEntry[] = [];
+const MAX_DEBUG_ENTRIES = 500;
 
 function truncateText(value: string, limit = 4000): string {
   if (value.length <= limit) {
@@ -49,6 +50,16 @@ function safeSerialize(details: unknown): string {
 }
 
 export function logCinenerdleDebug(event: string, details?: unknown): void {
+  debugEntries.push({
+    timestamp: new Date().toISOString(),
+    event,
+    details,
+  });
+
+  if (debugEntries.length > MAX_DEBUG_ENTRIES) {
+    debugEntries.splice(0, debugEntries.length - MAX_DEBUG_ENTRIES);
+  }
+
   if (details === undefined) {
     console.log(`[cinenerdle2] ${event}`);
     return;

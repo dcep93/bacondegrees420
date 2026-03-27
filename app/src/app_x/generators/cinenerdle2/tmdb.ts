@@ -69,6 +69,23 @@ function summarizeFilmRecord(record: FilmRecord | null) {
   };
 }
 
+function mergeStarterDataIntoFilmRecord(
+  filmRecord: FilmRecord,
+  starterFilm: FilmRecord,
+): FilmRecord {
+  return withDerivedFilmFields({
+    ...filmRecord,
+    rawCinenerdleDailyStarter:
+      starterFilm.rawCinenerdleDailyStarter ?? filmRecord.rawCinenerdleDailyStarter,
+    starterPeopleByRole:
+      starterFilm.starterPeopleByRole ?? filmRecord.starterPeopleByRole,
+    personConnectionKeys: [
+      ...filmRecord.personConnectionKeys,
+      ...starterFilm.personConnectionKeys,
+    ],
+  });
+}
+
 function logEntityEvent(
   kind: "person" | "movie",
   label: string,
@@ -194,17 +211,35 @@ export async function hydrateCinenerdleDailyStarterMovies(
         starterFilm.year,
         starterFilm.id,
       );
+      const backfilledLocalMovieRecord = localMovieRecord
+        ? mergeStarterDataIntoFilmRecord(localMovieRecord, starterFilm)
+        : null;
 
-      if (hasMovieCredits(localMovieRecord)) {
+      if (backfilledLocalMovieRecord) {
+        await saveFilmRecord(backfilledLocalMovieRecord);
+      }
+
+      if (hasMovieCredits(backfilledLocalMovieRecord)) {
         return;
       }
 
-      if (localMovieRecord) {
-        await fetchAndCacheMovieCredits(localMovieRecord, "prefetch");
+      if (backfilledLocalMovieRecord) {
+        await fetchAndCacheMovieCredits(backfilledLocalMovieRecord, "prefetch");
         return;
       }
 
-      await fetchAndCacheMovie(starterFilm.title, starterFilm.year, "prefetch");
+      const fetchedStarterMovieRecord = await fetchAndCacheMovie(
+        starterFilm.title,
+        starterFilm.year,
+        "prefetch",
+      );
+      if (!fetchedStarterMovieRecord) {
+        return;
+      }
+
+      await saveFilmRecord(
+        mergeStarterDataIntoFilmRecord(fetchedStarterMovieRecord, starterFilm),
+      );
     }),
   );
 

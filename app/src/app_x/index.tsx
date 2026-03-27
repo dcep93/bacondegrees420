@@ -23,6 +23,7 @@ import {
 } from "./generators/cinenerdle2/debug";
 import {
   buildConnectionGraph,
+  createCinenerdleConnectionEntity,
   createConnectionEntityFromMovieRecord,
   createConnectionEntityFromPersonRecord,
   createFallbackConnectionEntity,
@@ -38,7 +39,7 @@ import {
   getAllPersonRecords,
 } from "./generators/cinenerdle2/indexed_db";
 import { resolveConnectionQuery } from "./generators/cinenerdle2/tmdb";
-import { TMDB_ICON_URL } from "./generators/cinenerdle2/constants";
+import { CINENERDLE_ICON_URL, TMDB_ICON_URL } from "./generators/cinenerdle2/constants";
 import {
   formatMoviePathLabel,
   normalizeWhitespace,
@@ -56,6 +57,11 @@ type PendingHashWrite = {
 };
 
 type SelectedPathTarget =
+  | {
+      kind: "cinenerdle";
+      name: "cinenerdle";
+      year: "";
+    }
   | {
       kind: "movie";
       name: string;
@@ -100,14 +106,24 @@ function getDocumentTitle(hashValue: string): string {
 }
 
 function getHighestGenerationSelectedTarget(hashValue: string): SelectedPathTarget {
-  const selectedPathNodes = buildPathNodesFromSegments(parseHashSegments(hashValue)).filter(
-    (pathNode): pathNode is Exclude<(typeof pathNode), { kind: "break" | "cinenerdle" }> =>
-      pathNode.kind === "movie" || pathNode.kind === "person",
+  const pathNodes = buildPathNodesFromSegments(parseHashSegments(hashValue)).filter(
+    (pathNode): pathNode is Exclude<(typeof pathNode), { kind: "break" }> =>
+      pathNode.kind === "cinenerdle" ||
+      pathNode.kind === "movie" ||
+      pathNode.kind === "person",
   );
-  const selectedPathNode = selectedPathNodes[selectedPathNodes.length - 1];
+  const selectedPathNode = pathNodes[pathNodes.length - 1];
 
   if (!selectedPathNode) {
-    return null;
+    return {
+      kind: "cinenerdle",
+      name: "cinenerdle",
+      year: "",
+    };
+  }
+
+  if (selectedPathNode.kind === "cinenerdle") {
+    return selectedPathNode;
   }
 
   if (selectedPathNode.kind === "movie") {
@@ -129,6 +145,10 @@ function getHighestGenerationSelectedLabel(hashValue: string): string {
   const selectedPathTarget = getHighestGenerationSelectedTarget(hashValue);
 
   if (!selectedPathTarget) {
+    return "cinenerdle";
+  }
+
+  if (selectedPathTarget.kind === "cinenerdle") {
     return "cinenerdle";
   }
 
@@ -172,7 +192,9 @@ function clearHash() {
 
 function serializeConnectionEntityHash(entity: ConnectionEntity): string {
   return serializePathNodes([
-    entity.kind === "movie"
+    entity.kind === "cinenerdle"
+      ? createPathNode("cinenerdle", "cinenerdle")
+      : entity.kind === "movie"
       ? createPathNode("movie", entity.name, entity.year)
       : createPathNode("person", entity.name),
   ]);
@@ -558,6 +580,23 @@ export default function AppX() {
       const rightEntity =
         graph.entitiesByKey.get(params.right.key) ??
         createFallbackConnectionEntity(params.right);
+
+      logCinenerdleDebug("app.connectionRows.search.graphSnapshot", {
+        sessionId: params.sessionId,
+        rowId: params.rowId,
+        requestedLeftKey: params.left.key,
+        requestedRightKey: params.right.key,
+        resolvedLeftKey: leftEntity.key,
+        resolvedRightKey: rightEntity.key,
+        resolvedLeftKind: leftEntity.kind,
+        resolvedRightKind: rightEntity.kind,
+        personRecordCount: personRecords.length,
+        filmRecordCount: filmRecords.length,
+        starterFilmCount: filmRecords.filter((filmRecord) => Boolean(filmRecord.rawCinenerdleDailyStarter)).length,
+        entityCount: graph.entitiesByKey.size,
+        adjacencyCount: graph.adjacencyByKey.size,
+      });
+
       const result = findConnectionPathBidirectional(graph, leftEntity.key, rightEntity.key, {
         excludedNodeKeys: new Set(params.excludedNodeKeys),
         excludedEdgeKeys: new Set(params.excludedEdgeKeys),
@@ -601,7 +640,7 @@ export default function AppX() {
       const selectedTarget = getHighestGenerationSelectedTarget(hashValue);
       const counterpart = selectedTarget
         ? createFallbackConnectionEntity(selectedTarget)
-        : entity;
+        : createCinenerdleConnectionEntity(1);
       const sessionId = `connection-session-${connectionSessionIdRef.current + 1}`;
       connectionSessionIdRef.current += 1;
       const rowId = `connection-row-${connectionRowIdRef.current + 1}`;
@@ -609,8 +648,14 @@ export default function AppX() {
 
       logCinenerdleDebug("app.connectionRows.open", {
         sessionId,
+        hashValue,
+        selectedTarget,
         left: entity.label,
+        leftKind: entity.kind,
+        leftKey: entity.key,
         right: counterpart.label,
+        rightKind: counterpart.kind,
+        rightKey: counterpart.key,
       });
 
       setConnectionSession({
@@ -784,12 +829,7 @@ export default function AppX() {
           return;
         }
 
-        const nextHash = serializePathNodes([
-          target.kind === "movie"
-            ? createPathNode("movie", target.name, target.year)
-            : createPathNode("person", target.name),
-        ]);
-        navigateToHash(nextHash, "navigation");
+        await openConnectionRowsForEntity(createFallbackConnectionEntity(target));
         setConnectionQuery("");
       } catch (error) {
         logCinenerdleDebug("app.connectionSubmit.error", {
@@ -804,7 +844,6 @@ export default function AppX() {
       connectionQuery,
       connectionSuggestions,
       isResolvingConnection,
-      navigateToHash,
       openConnectionRowsForEntity,
       selectedSuggestionIndex,
     ],
@@ -886,18 +925,18 @@ export default function AppX() {
             {entity.connectionCount} {entity.connectionCount === 1 ? "connection" : "connections"}
           </span>
           <img
-            alt="TMDb"
+            alt={entity.kind === "cinenerdle" ? "Cinenerdle" : "TMDb"}
             className="bacon-connection-node-source-icon"
-            src={TMDB_ICON_URL}
+            src={entity.kind === "cinenerdle" ? CINENERDLE_ICON_URL : TMDB_ICON_URL}
             style={
-              entity.hasCachedTmdbSource
+              entity.kind === "cinenerdle" || entity.hasCachedTmdbSource
                 ? undefined
                 : {
                     filter: "grayscale(1)",
                     opacity: 0.9,
                   }
             }
-            title="TMDb"
+            title={entity.kind === "cinenerdle" ? "Cinenerdle" : "TMDb"}
           />
         </div>
       </article>

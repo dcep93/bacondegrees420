@@ -8,7 +8,7 @@ import {
 
 export type ConnectionEntity = {
   key: string;
-  kind: "movie" | "person";
+  kind: "cinenerdle" | "movie" | "person";
   name: string;
   year: string;
   label: string;
@@ -33,6 +33,10 @@ export function getMovieConnectionEntityKey(title: string, year = ""): string {
 
 export function getPersonConnectionEntityKey(name: string): string {
   return `person:${normalizeName(name)}`;
+}
+
+export function getCinenerdleConnectionEntityKey(): string {
+  return "cinenerdle";
 }
 
 export function getConnectionEdgeKey(leftKey: string, rightKey: string): string {
@@ -76,6 +80,18 @@ export function createConnectionEntityFromPersonRecord(personRecord: PersonRecor
     label: personRecord.name,
     connectionCount: Math.max(personRecord.movieConnectionKeys.length, 1),
     hasCachedTmdbSource: hasCachedTmdbSourceForPersonRecord(personRecord),
+  };
+}
+
+export function createCinenerdleConnectionEntity(starterCount: number): ConnectionEntity {
+  return {
+    key: getCinenerdleConnectionEntityKey(),
+    kind: "cinenerdle",
+    name: "cinenerdle",
+    year: "",
+    label: "cinenerdle",
+    connectionCount: Math.max(starterCount, 1),
+    hasCachedTmdbSource: true,
   };
 }
 
@@ -165,6 +181,25 @@ export function buildConnectionGraph(
     });
   });
 
+  const starterMovieRecords = filmRecords.filter((filmRecord) =>
+    Boolean(filmRecord.rawCinenerdleDailyStarter),
+  );
+  if (starterMovieRecords.length > 0) {
+    const cinenerdleEntity = ensureEntity(
+      entitiesByKey,
+      createCinenerdleConnectionEntity(starterMovieRecords.length),
+    );
+
+    starterMovieRecords.forEach((filmRecord) => {
+      const movieEntity = ensureEntity(
+        entitiesByKey,
+        createConnectionEntityFromMovieRecord(filmRecord),
+      );
+      addAdjacency(adjacencyByKey, cinenerdleEntity.key, movieEntity.key);
+      addAdjacency(adjacencyByKey, movieEntity.key, cinenerdleEntity.key);
+    });
+  }
+
   const normalizedAdjacency = new Map<string, string[]>();
   adjacencyByKey.forEach((neighborKeys, key) => {
     normalizedAdjacency.set(key, Array.from(neighborKeys));
@@ -188,11 +223,15 @@ export function buildConnectionGraph(
 
 export function createFallbackConnectionEntity(
   item: {
-    kind: "movie" | "person";
+    kind: "cinenerdle" | "movie" | "person";
     name: string;
     year?: string;
   },
 ): ConnectionEntity {
+  if (item.kind === "cinenerdle") {
+    return createCinenerdleConnectionEntity(1);
+  }
+
   if (item.kind === "movie") {
     return {
       key: getMovieConnectionEntityKey(item.name, item.year ?? ""),

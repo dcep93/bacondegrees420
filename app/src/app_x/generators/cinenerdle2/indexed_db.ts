@@ -273,14 +273,6 @@ export async function estimateIndexedDbUsageBytes(): Promise<number> {
   return new Blob([JSON.stringify({ peopleRecords, filmRecords })]).size;
 }
 
-function stripCinenerdleFilmData(filmRecord: FilmRecord): FilmRecord {
-  const { rawCinenerdleDailyStarter, starterPeopleByRole, ...persistedFilmRecord } =
-    filmRecord;
-  void rawCinenerdleDailyStarter;
-  void starterPeopleByRole;
-  return persistedFilmRecord;
-}
-
 export async function clearIndexedDb(): Promise<void> {
   const database = await openIndexedDb();
 
@@ -318,7 +310,7 @@ export async function saveFilmRecord(filmRecord: FilmRecord): Promise<void> {
     filmRecord: summarizeFilmRecord(filmRecord),
   });
   await withStore(FILMS_STORE_NAME, "readwrite", async (store) => {
-    await indexedDbRequestToPromise(store.put(stripCinenerdleFilmData(filmRecord)));
+    await indexedDbRequestToPromise(store.put(filmRecord));
   });
   logCinenerdleDebug("indexedDb.saveFilmRecord.complete", {
     filmRecord: summarizeFilmRecord(filmRecord),
@@ -332,9 +324,7 @@ export async function saveFilmRecords(filmRecords: FilmRecord[]): Promise<void> 
 
   await withStore(FILMS_STORE_NAME, "readwrite", async (store) => {
     for (const filmRecord of filmRecords) {
-      await indexedDbRequestToPromise(
-        store.put(stripCinenerdleFilmData(filmRecord)),
-      );
+      await indexedDbRequestToPromise(store.put(filmRecord));
     }
   });
 }
