@@ -78,6 +78,8 @@
   font-weight: 700;
   letter-spacing: -0.06em;
   line-height: 0.95;
+  cursor: pointer;
+  user-select: none;
 }
 
 .bacon-title-actions {
@@ -85,6 +87,13 @@
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.bacon-copy-status {
+  color: var(--bacon-text-muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .bacon-title-action-button {

@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import Cinenerdle2 from "./generators/cinenerdle2";
 import {
+  clearCinenerdleDebugLog,
+  copyCinenerdleDebugLogToClipboard,
+  logCinenerdleDebug,
+} from "./generators/cinenerdle2/debug";
+import {
   clearIndexedDb,
   estimateIndexedDbUsageBytes,
 } from "./generators/cinenerdle2/indexed_db";
@@ -17,8 +22,14 @@ function clearHash() {
 export default function AppX() {
   const [hashValue, setHashValue] = useState(() => window.location.hash);
   const [resetVersion, setResetVersion] = useState(0);
+  const [copyStatus, setCopyStatus] = useState("");
 
   useEffect(() => {
+    clearCinenerdleDebugLog();
+    logCinenerdleDebug("app.init", {
+      hash: window.location.hash,
+    });
+
     function handleHashChange() {
       setHashValue(window.location.hash);
     }
@@ -30,6 +41,9 @@ export default function AppX() {
   }, []);
 
   function handleReset() {
+    logCinenerdleDebug("app.reset", {
+      hashBeforeReset: window.location.hash,
+    });
     clearHash();
     setHashValue("");
     setResetVersion((version) => version + 1);
@@ -43,13 +57,33 @@ export default function AppX() {
       );
 
       if (!confirmed) {
+        logCinenerdleDebug("app.clearDatabase.cancelled", {
+          estimatedBytes: bytes,
+        });
         return;
       }
 
       return clearIndexedDb().then(() => {
+        logCinenerdleDebug("app.clearDatabase.confirmed", {
+          estimatedBytes: bytes,
+        });
         handleReset();
       });
     });
+  }
+
+  function handleCopyLogs() {
+    void copyCinenerdleDebugLogToClipboard()
+      .then(() => {
+        setCopyStatus("Logs copied");
+        logCinenerdleDebug("app.copyLogs.success");
+      })
+      .catch((error) => {
+        setCopyStatus("Copy failed");
+        logCinenerdleDebug("app.copyLogs.error", {
+          message: error instanceof Error ? error.message : String(error),
+        });
+      });
   }
 
   return (
@@ -63,8 +97,15 @@ export default function AppX() {
         >
           <img alt="" className="bacon-title-icon" src="/favicon.svg" />
         </button>
-        <h1 className="bacon-title">bacondegrees420</h1>
+        <h1
+          className="bacon-title"
+          onClick={handleCopyLogs}
+          title="Click to copy Cinenerdle debug logs"
+        >
+          bacondegrees420
+        </h1>
         <div className="bacon-title-actions">
+          {copyStatus ? <span className="bacon-copy-status">{copyStatus}</span> : null}
           <button
             className="bacon-title-action-button"
             onClick={handleClearDatabase}

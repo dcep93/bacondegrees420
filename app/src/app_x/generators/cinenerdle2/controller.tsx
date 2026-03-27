@@ -27,6 +27,7 @@ import {
   prepareSelectedMovie,
   prepareSelectedPerson,
 } from "./tmdb";
+import { logCinenerdleDebug } from "./debug";
 import {
   formatMoviePathLabel,
   getAssociatedPeopleFromMovieCredits,
@@ -60,6 +61,33 @@ type CinenerdleControllerOptions = {
   readHash: () => string;
   writeHash: (nextHash: string) => void;
 };
+
+function summarizeMovieRecord(card: Extract<CinenerdleCard, { kind: "movie" }>) {
+  return {
+    key: card.key,
+    name: card.name,
+    year: card.year,
+    popularity: card.popularity,
+    hasImageUrl: Boolean(card.imageUrl),
+    recordId: card.record?.id ?? null,
+    recordTmdbId: card.record?.tmdbId ?? null,
+    hasRawTmdbMovie: Boolean(card.record?.rawTmdbMovie),
+    castCount: card.record?.rawTmdbMovieCreditsResponse?.cast?.length ?? 0,
+    crewCount: card.record?.rawTmdbMovieCreditsResponse?.crew?.length ?? 0,
+  };
+}
+
+function summarizePersonCard(card: Extract<CinenerdleCard, { kind: "person" }>) {
+  return {
+    key: card.key,
+    name: card.name,
+    popularity: card.popularity,
+    hasImageUrl: Boolean(card.imageUrl),
+    connectionCount: card.connectionCount,
+    subtitle: card.subtitle,
+    subtitleDetail: card.subtitleDetail,
+  };
+}
 
 function createNode(data: CinenerdleCard, selected = false): GeneratorNode<CinenerdleCard> {
   return {
@@ -154,6 +182,14 @@ async function createDailyStarterRow() {
 async function buildChildRowForCard(
   card: CinenerdleCard,
 ): Promise<GeneratorNode<CinenerdleCard>[] | null> {
+  logCinenerdleDebug("controller.buildChildRowForCard.start", {
+    kind: card.kind,
+    key: card.key,
+    name: card.name,
+    year: card.kind === "movie" ? card.year : "",
+    hasRecord: Boolean(card.record),
+  });
+
   if (card.kind === "cinenerdle") {
     return createDailyStarterRow();
   }
@@ -181,7 +217,7 @@ async function buildChildRowForCard(
       ),
     );
 
-    return createRow(
+    const row = createRow(
       sortCardsByPopularity(
         movieCredits.map((credit) =>
         createMovieAssociationCard(
@@ -192,10 +228,27 @@ async function buildChildRowForCard(
         ),
       ),
     );
+
+    logCinenerdleDebug("controller.buildChildRowForCard.person.complete", {
+      sourcePerson: card.name,
+      movieCreditsCount: movieCredits.length,
+      renderedCards: row.length,
+      preview: row
+        .slice(0, 8)
+        .map((node) => node.data)
+        .filter((entry): entry is Extract<CinenerdleCard, { kind: "movie" }> => entry.kind === "movie")
+        .map((movieCard) => summarizeMovieRecord(movieCard)),
+    });
+
+    return row;
   }
 
   const movieRecord = card.record ?? (await getFilmRecordByTitleAndYear(card.name, card.year));
   if (!movieRecord) {
+    logCinenerdleDebug("controller.buildChildRowForCard.movie.missingRecord", {
+      name: card.name,
+      year: card.year,
+    });
     return null;
   }
 
@@ -235,7 +288,33 @@ async function buildChildRowForCard(
     });
   });
 
-  return createRow(sortCardsByPopularity(cards));
+  const row = createRow(sortCardsByPopularity(cards));
+  logCinenerdleDebug("controller.buildChildRowForCard.movie.complete", {
+    sourceMovie: {
+      title: movieRecord.title,
+      year: movieRecord.year,
+      id: movieRecord.id,
+      tmdbId: movieRecord.tmdbId,
+      popularity: movieRecord.popularity,
+      hasRawTmdbMovie: Boolean(movieRecord.rawTmdbMovie),
+      castCount: movieRecord.rawTmdbMovieCreditsResponse?.cast?.length ?? 0,
+      crewCount: movieRecord.rawTmdbMovieCreditsResponse?.crew?.length ?? 0,
+    },
+    tmdbCreditsCount: tmdbCredits.length,
+    snapshotPeopleCount:
+      snapshotPeople.cast.length +
+      snapshotPeople.directors.length +
+      snapshotPeople.writers.length +
+      snapshotPeople.composers.length,
+    renderedCards: row.length,
+    preview: row
+      .slice(0, 12)
+      .map((node) => node.data)
+      .filter((entry): entry is Extract<CinenerdleCard, { kind: "person" }> => entry.kind === "person")
+      .map((personCard) => summarizePersonCard(personCard)),
+  });
+
+  return row;
 }
 
 async function createCinenerdleRootTree(): Promise<GeneratorTree<CinenerdleCard>> {
@@ -538,10 +617,19 @@ export function useCinenerdleController({
       initTree(setTree) {
         void (async () => {
           try {
+            logCinenerdleDebug("controller.initTree.start", {
+              hash: readHash(),
+            });
             const nextTree = await buildTreeFromHash(readHash());
+            logCinenerdleDebug("controller.initTree.setTree", {
+              rows: nextTree.length,
+            });
             setTree(nextTree);
           } catch (error) {
             console.error("cinenerdle2.initTree", error);
+            logCinenerdleDebug("controller.initTree.error", {
+              message: error instanceof Error ? error.message : String(error),
+            });
             setTree(await createCinenerdleRootTree());
           }
         })();
@@ -549,12 +637,31 @@ export function useCinenerdleController({
       afterCardSelected({ row, col, tree, setTree }) {
         void (async () => {
           try {
-            writeHash(serializePathNodes(getSelectedPathNodes(tree)));
-
             const selectedCard = tree[row]?.[col]?.data;
             if (!selectedCard) {
               return;
             }
+            const nextHash = serializePathNodes(getSelectedPathNodes(tree));
+
+            logCinenerdleDebug("controller.afterCardSelected.start", {
+              row,
+              col,
+              kind: selectedCard.kind,
+              key: selectedCard.key,
+              name: selectedCard.name,
+              year: selectedCard.kind === "movie" ? selectedCard.year : "",
+              treeRowsBefore: tree.length,
+              selectedCardSummary:
+                selectedCard.kind === "movie"
+                  ? summarizeMovieRecord(selectedCard)
+                  : selectedCard.kind === "person"
+                    ? summarizePersonCard(selectedCard)
+                    : {
+                        key: selectedCard.key,
+                        name: selectedCard.name,
+                        connectionCount: selectedCard.connectionCount,
+                      },
+            });
 
             const preparedCard =
               selectedCard.kind === "person"
@@ -585,6 +692,23 @@ export function useCinenerdleController({
                   : Promise.resolve(selectedCard);
 
             const resolvedSelectedCard = await preparedCard;
+            logCinenerdleDebug("controller.afterCardSelected.prepared", {
+              kind: resolvedSelectedCard.kind,
+              key: resolvedSelectedCard.key,
+              name: resolvedSelectedCard.name,
+              year:
+                resolvedSelectedCard.kind === "movie" ? resolvedSelectedCard.year : "",
+              summary:
+                resolvedSelectedCard.kind === "movie"
+                  ? summarizeMovieRecord(resolvedSelectedCard)
+                  : resolvedSelectedCard.kind === "person"
+                    ? summarizePersonCard(resolvedSelectedCard)
+                    : {
+                        key: resolvedSelectedCard.key,
+                        name: resolvedSelectedCard.name,
+                      },
+              nextHash,
+            });
             const resolvedTree = tree.map((currentRow, currentRowIndex) =>
               currentRowIndex === row
                 ? currentRow.map((node, currentColIndex) =>
@@ -600,13 +724,30 @@ export function useCinenerdleController({
 
             const childRow = await buildChildRowForCard(resolvedSelectedCard);
             if (!childRow || childRow.length === 0) {
+              logCinenerdleDebug("controller.afterCardSelected.setTreeWithoutChildRow", {
+                rows: resolvedTree.length,
+                selectedKey: resolvedSelectedCard.key,
+                nextHash,
+              });
               setTree(resolvedTree);
+              writeHash(nextHash);
               return;
             }
 
+            logCinenerdleDebug("controller.afterCardSelected.setTreeWithChildRow", {
+              rowsBefore: resolvedTree.length,
+              childRowLength: childRow.length,
+              rowsAfter: resolvedTree.length + 1,
+              selectedKey: resolvedSelectedCard.key,
+              nextHash,
+            });
             setTree([...resolvedTree, childRow]);
+            writeHash(nextHash);
           } catch (error) {
             console.error("cinenerdle2.afterCardSelected", error);
+            logCinenerdleDebug("controller.afterCardSelected.error", {
+              message: error instanceof Error ? error.message : String(error),
+            });
           }
         })();
       },
