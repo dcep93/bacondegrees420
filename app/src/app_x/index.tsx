@@ -54,6 +54,16 @@ type PendingHashWrite = {
   mode: "selection" | "navigation";
 };
 
+type ConnectionExclusion =
+  | {
+      kind: "node";
+      nodeKey: string;
+    }
+  | {
+      kind: "edge";
+      edgeKey: string;
+    };
+
 type SelectedPathTarget =
   | {
       kind: "cinenerdle";
@@ -78,6 +88,8 @@ type ConnectionSearchRow = {
   excludedEdgeKeys: string[];
   childDisallowedNodeKeys: string[];
   childDisallowedEdgeKeys: string[];
+  parentRowId: string | null;
+  sourceExclusion: ConnectionExclusion | null;
   status: ConnectionSearchResult["status"] | "searching";
   path: ConnectionEntity[];
 };
@@ -198,16 +210,60 @@ function serializeConnectionEntityHash(entity: ConnectionEntity): string {
   ]);
 }
 
-function createSearchingConnectionRow(id: string): ConnectionSearchRow {
+function createSearchingConnectionRow(
+  id: string,
+  options?: {
+    parentRowId?: string | null;
+    sourceExclusion?: ConnectionExclusion | null;
+  },
+): ConnectionSearchRow {
   return {
     id,
     excludedNodeKeys: [],
     excludedEdgeKeys: [],
     childDisallowedNodeKeys: [],
     childDisallowedEdgeKeys: [],
+    parentRowId: options?.parentRowId ?? null,
+    sourceExclusion: options?.sourceExclusion ?? null,
     status: "searching",
     path: [],
   };
+}
+
+function matchesConnectionExclusion(
+  left: ConnectionExclusion | null,
+  right: ConnectionExclusion | null,
+): boolean {
+  if (!left || !right || left.kind !== right.kind) {
+    return false;
+  }
+
+  return left.kind === "node"
+    ? left.nodeKey === right.nodeKey
+    : left.edgeKey === right.edgeKey;
+}
+
+function collectConnectionRowFamilyIds(
+  rows: ConnectionSearchRow[],
+  rootRowId: string,
+): Set<string> {
+  const familyIds = new Set<string>([rootRowId]);
+  let foundNewDescendant = true;
+
+  while (foundNewDescendant) {
+    foundNewDescendant = false;
+
+    rows.forEach((row) => {
+      if (!row.parentRowId || familyIds.has(row.id) || !familyIds.has(row.parentRowId)) {
+        return;
+      }
+
+      familyIds.add(row.id);
+      foundNewDescendant = true;
+    });
+  }
+
+  return familyIds;
 }
 
 export default function AppX() {
@@ -220,6 +276,7 @@ export default function AppX() {
   const [connectionSuggestions, setConnectionSuggestions] = useState<ConnectionSuggestion[]>([]);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
   const [connectionSession, setConnectionSession] = useState<ConnectionSession | null>(null);
+  const connectionSessionRef = useRef<ConnectionSession | null>(null);
   const pendingHashWriteRef = useRef<PendingHashWrite | null>(null);
   const autocompleteRequestIdRef = useRef(0);
   const connectionSessionIdRef = useRef(0);
@@ -228,6 +285,10 @@ export default function AppX() {
   const connectionInputWrapRef = useRef<HTMLDivElement | null>(null);
   const connectionDropdownRef = useRef<HTMLDivElement | null>(null);
   const highestGenerationSelectedLabel = getHighestGenerationSelectedLabel(hashValue);
+
+  useEffect(() => {
+    connectionSessionRef.current = connectionSession;
+  }, [connectionSession]);
 
   useEffect(() => {
     function handleHashChange() {
@@ -253,6 +314,11 @@ export default function AppX() {
       window.removeEventListener("hashchange", handleHashChange);
     };
   }, []);
+
+  useEffect(() => {
+    connectionSessionRef.current = null;
+    setConnectionSession(null);
+  }, [hashValue]);
 
   useEffect(() => {
     document.title = getDocumentTitle(hashValue);
@@ -489,105 +555,115 @@ export default function AppX() {
   const spawnAlternativeConnectionRow = useCallback(
     (
       parentRowId: string,
-      exclusion:
-        | {
-            kind: "node";
-            nodeKey: string;
-          }
-        | {
-            kind: "edge";
-            edgeKey: string;
-          },
+      exclusion: ConnectionExclusion,
     ) => {
-      let nextSearch:
-        | {
-            sessionId: string;
-            rowId: string;
-            left: ConnectionEntity;
-            right: ConnectionEntity;
-            excludedNodeKeys: string[];
-            excludedEdgeKeys: string[];
-          }
-        | null = null;
-
-      setConnectionSession((currentSession) => {
-        if (!currentSession) {
-          return currentSession;
-        }
-
-        const parentRow = currentSession.rows.find((row) => row.id === parentRowId);
-        if (!parentRow || parentRow.status !== "found") {
-          return currentSession;
-        }
-
-        if (
-          exclusion.kind === "node" &&
-          parentRow.childDisallowedNodeKeys.includes(exclusion.nodeKey)
-        ) {
-          return currentSession;
-        }
-
-        if (
-          exclusion.kind === "edge" &&
-          parentRow.childDisallowedEdgeKeys.includes(exclusion.edgeKey)
-        ) {
-          return currentSession;
-        }
-
-        const rowId = `connection-row-${connectionRowIdRef.current + 1}`;
-        connectionRowIdRef.current += 1;
-        const excludedNodeKeys = Array.from(
-          new Set([
-            ...parentRow.excludedNodeKeys,
-            ...(exclusion.kind === "node" ? [exclusion.nodeKey] : []),
-          ]),
-        );
-        const excludedEdgeKeys = Array.from(
-          new Set([
-            ...parentRow.excludedEdgeKeys,
-            ...(exclusion.kind === "edge" ? [exclusion.edgeKey] : []),
-          ]),
-        );
-
-        nextSearch = {
-          sessionId: currentSession.id,
-          rowId,
-          left: currentSession.left,
-          right: currentSession.right,
-          excludedNodeKeys,
-          excludedEdgeKeys,
-        };
-
-        return {
-          ...currentSession,
-          rows: [
-            ...currentSession.rows.map((row) =>
-              row.id === parentRowId
-                ? {
-                    ...row,
-                    childDisallowedNodeKeys:
-                      exclusion.kind === "node"
-                        ? [...row.childDisallowedNodeKeys, exclusion.nodeKey]
-                        : row.childDisallowedNodeKeys,
-                    childDisallowedEdgeKeys:
-                      exclusion.kind === "edge"
-                        ? [...row.childDisallowedEdgeKeys, exclusion.edgeKey]
-                        : row.childDisallowedEdgeKeys,
-                  }
-                : row,
-            ),
-            {
-              ...createSearchingConnectionRow(rowId),
-              excludedNodeKeys,
-              excludedEdgeKeys,
-            },
-          ],
-        };
-      });
-
-      if (nextSearch) {
-        void runConnectionRowSearch(nextSearch);
+      const currentSession = connectionSessionRef.current;
+      if (!currentSession) {
+        return;
       }
+
+      const parentRow = currentSession.rows.find((row) => row.id === parentRowId);
+      if (!parentRow || parentRow.status !== "found") {
+        return;
+      }
+
+      if (
+        exclusion.kind === "node" &&
+        parentRow.childDisallowedNodeKeys.includes(exclusion.nodeKey)
+      ) {
+        return;
+      }
+
+      if (exclusion.kind === "edge") {
+        const isAlreadyDisallowed = parentRow.childDisallowedEdgeKeys.includes(exclusion.edgeKey);
+        if (isAlreadyDisallowed) {
+          const toggledRow = currentSession.rows.find(
+            (row) =>
+              row.parentRowId === parentRowId &&
+              matchesConnectionExclusion(row.sourceExclusion, exclusion),
+          );
+
+          const rowsToRemove = toggledRow
+            ? collectConnectionRowFamilyIds(currentSession.rows, toggledRow.id)
+            : new Set<string>();
+          const nextSession: ConnectionSession = {
+            ...currentSession,
+            rows: currentSession.rows
+              .filter((row) => !rowsToRemove.has(row.id))
+              .map((row) =>
+                row.id === parentRowId
+                  ? {
+                      ...row,
+                      childDisallowedEdgeKeys: row.childDisallowedEdgeKeys.filter(
+                        (edgeKey) => edgeKey !== exclusion.edgeKey,
+                      ),
+                    }
+                  : row,
+              ),
+          };
+
+          connectionSessionRef.current = nextSession;
+          setConnectionSession(nextSession);
+          return;
+        }
+      }
+
+      const rowId = `connection-row-${connectionRowIdRef.current + 1}`;
+      connectionRowIdRef.current += 1;
+      const excludedNodeKeys = Array.from(
+        new Set([
+          ...parentRow.excludedNodeKeys,
+          ...(exclusion.kind === "node" ? [exclusion.nodeKey] : []),
+        ]),
+      );
+      const excludedEdgeKeys = Array.from(
+        new Set([
+          ...parentRow.excludedEdgeKeys,
+          ...(exclusion.kind === "edge" ? [exclusion.edgeKey] : []),
+        ]),
+      );
+
+      const nextSearch = {
+        sessionId: currentSession.id,
+        rowId,
+        left: currentSession.left,
+        right: currentSession.right,
+        excludedNodeKeys,
+        excludedEdgeKeys,
+      };
+
+      const nextSession: ConnectionSession = {
+        ...currentSession,
+        rows: [
+          ...currentSession.rows.map((row) =>
+            row.id === parentRowId
+              ? {
+                  ...row,
+                  childDisallowedNodeKeys:
+                    exclusion.kind === "node"
+                      ? [...row.childDisallowedNodeKeys, exclusion.nodeKey]
+                      : row.childDisallowedNodeKeys,
+                  childDisallowedEdgeKeys:
+                    exclusion.kind === "edge"
+                      ? [...row.childDisallowedEdgeKeys, exclusion.edgeKey]
+                      : row.childDisallowedEdgeKeys,
+                }
+              : row,
+          ),
+          {
+            ...createSearchingConnectionRow(rowId, {
+              parentRowId,
+              sourceExclusion: exclusion,
+            }),
+            excludedNodeKeys,
+            excludedEdgeKeys,
+          },
+        ],
+      };
+
+      connectionSessionRef.current = nextSession;
+      setConnectionSession(nextSession);
+      void runConnectionRowSearch(nextSearch);
     },
     [runConnectionRowSearch],
   );
@@ -865,19 +941,27 @@ export default function AppX() {
                             className={[
                               "bacon-connection-arrow",
                               "bacon-connection-arrow-button",
-                              isEdgeDimmed ? "bacon-connection-arrow-dimmed" : "",
+                              isEdgeDimmed
+                                ? "bacon-connection-arrow-disconnected"
+                                : "bacon-connection-arrow-connected",
                             ]
                               .filter(Boolean)
                               .join(" ")}
+                            aria-pressed={isEdgeDimmed}
                             onClick={() =>
                               spawnAlternativeConnectionRow(row.id, {
                                 kind: "edge",
                                 edgeKey,
                               })
                             }
+                            title={
+                              isEdgeDimmed
+                                ? "Reconnect this edge"
+                                : "Disconnect this edge"
+                            }
                             type="button"
                           >
-                            →
+                            {isEdgeDimmed ? "↛" : "→"}
                           </button>
                         ) : null}
                       </Fragment>
