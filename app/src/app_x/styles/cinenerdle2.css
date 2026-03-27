@@ -1,0 +1,146 @@
+.cinenerdle-card {
+  box-sizing: border-box;
+  width: min(340px, calc(100vw - 132px));
+  min-height: 168px;
+  padding: 14px;
+  border: 1px solid var(--bacon-border);
+  border-radius: 28px;
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  gap: 14px;
+  background:
+    radial-gradient(circle at top right, rgba(213, 163, 108, 0.12), transparent 34%),
+    linear-gradient(180deg, rgba(39, 28, 22, 0.92) 0%, rgba(17, 12, 10, 0.98) 100%);
+  box-shadow: var(--bacon-shadow);
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.generator-card-button:hover .cinenerdle-card {
+  transform: translateY(-2px);
+  border-color: rgba(228, 193, 150, 0.54);
+}
+
+.cinenerdle-card-selected {
+  border-color: var(--bacon-accent);
+  background:
+    radial-gradient(circle at top, rgba(213, 163, 108, 0.18), transparent 52%),
+    linear-gradient(180deg, rgba(54, 38, 28, 0.98) 0%, rgba(18, 12, 10, 1) 100%);
+}
+
+.cinenerdle-card-image-shell {
+  align-self: stretch;
+}
+
+.cinenerdle-card-image {
+  width: 100%;
+  height: 126px;
+  border-radius: 20px;
+  display: block;
+  object-fit: cover;
+  background: rgba(255, 247, 239, 0.08);
+}
+
+.cinenerdle-card-image-fallback {
+  border: 1px dashed rgba(255, 247, 239, 0.18);
+  display: grid;
+  place-items: center;
+  color: var(--bacon-text-muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+}
+
+.cinenerdle-card-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cinenerdle-card-title,
+.cinenerdle-card-subtitle,
+.cinenerdle-card-detail {
+  margin: 0;
+}
+
+.cinenerdle-card-title {
+  color: var(--bacon-text);
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.cinenerdle-card-subtitle {
+  color: var(--bacon-accent);
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cinenerdle-card-detail {
+  color: var(--bacon-text-muted);
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.cinenerdle-card-footer {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.cinenerdle-card-count {
+  color: var(--bacon-text);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cinenerdle-card-sources {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cinenerdle-card-source {
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 247, 239, 0.12);
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 247, 239, 0.04);
+  color: var(--bacon-text-muted);
+  font-size: 0.74rem;
+}
+
+.cinenerdle-card-source-icon {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  display: block;
+}
+
+@media (max-width: 720px) {
+  .cinenerdle-card {
+    width: min(280px, calc(100vw - 112px));
+    min-height: 154px;
+    grid-template-columns: 78px 1fr;
+    gap: 12px;
+    padding: 12px;
+    border-radius: 24px;
+  }
+
+  .cinenerdle-card-image {
+    height: 112px;
+    border-radius: 18px;
+  }
+}

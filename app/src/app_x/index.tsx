@@ -1,26 +1,35 @@
-import { useMemo } from "react";
-import { AbstractGenerator } from "./components/abstract_generator";
-import { createNumberGenerator } from "./generators/number_generator";
+import { useEffect, useState } from "react";
+import Cinenerdle2 from "./generators/cinenerdle2";
 import "./styles/app_shell.css";
 
-function parseGen0(search: string): number {
-  const value = new URLSearchParams(search).get("gen0");
-
-  if (value === null) {
-    return 0;
-  }
-
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function resetPage() {
-  window.location.href = `${window.location.pathname}${window.location.hash}`;
+function clearHash() {
+  window.history.replaceState(
+    null,
+    "",
+    `${window.location.pathname}${window.location.search}`,
+  );
 }
 
 export default function AppX() {
-  const seed = useMemo(() => parseGen0(window.location.search), []);
-  const generator = useMemo(() => createNumberGenerator(seed), [seed]);
+  const [hashValue, setHashValue] = useState(() => window.location.hash);
+  const [resetVersion, setResetVersion] = useState(0);
+
+  useEffect(() => {
+    function handleHashChange() {
+      setHashValue(window.location.hash);
+    }
+
+    window.addEventListener("hashchange", handleHashChange);
+    return () => {
+      window.removeEventListener("hashchange", handleHashChange);
+    };
+  }, []);
+
+  function handleReset() {
+    clearHash();
+    setHashValue("");
+    setResetVersion((version) => version + 1);
+  }
 
   return (
     <div className="bacon-app-shell">
@@ -28,7 +37,7 @@ export default function AppX() {
         <button
           aria-label="Reset generator"
           className="bacon-title-icon-button"
-          onClick={resetPage}
+          onClick={handleReset}
           type="button"
         >
           <img alt="" className="bacon-title-icon" src="/favicon.svg" />
@@ -37,11 +46,7 @@ export default function AppX() {
       </header>
 
       <main className="bacon-app-content">
-        <AbstractGenerator
-          afterCardSelected={generator.afterCardSelected}
-          initTree={generator.initTree}
-          renderCard={generator.renderCard}
-        />
+        <Cinenerdle2 hashValue={hashValue} resetVersion={resetVersion} />
       </main>
     </div>
   );

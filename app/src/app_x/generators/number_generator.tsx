@@ -1,20 +1,5 @@
-import type { ReactElement } from "react";
-import type { GeneratorNode } from "../types/generator";
+import type { GeneratorController, GeneratorNode } from "../types/generator";
 import "../styles/number_generator.css";
-
-type NumberGenerator = {
-  initTree: () => GeneratorNode<number>[][];
-  afterCardSelected: (
-    row: number,
-    col: number,
-    prevTree: GeneratorNode<number>[][],
-  ) => GeneratorNode<number>[][];
-  renderCard: (
-    row: number,
-    col: number,
-    tree: GeneratorNode<number>[][],
-  ) => ReactElement;
-};
 
 function createChildRow(value: number): GeneratorNode<number>[] {
   const children: GeneratorNode<number>[] = [];
@@ -29,28 +14,30 @@ function createChildRow(value: number): GeneratorNode<number>[] {
   return children;
 }
 
-export function createNumberGenerator(seed: number): NumberGenerator {
-  return {
-    initTree: () => [[{ selected: false, data: seed }]],
-    afterCardSelected: (row, col, prevTree) => {
-      const nextTree = prevTree
-        .slice(0, row + 1)
-        .map((generation, generationIndex) =>
-          generation.map((node, colIndex) => ({
-            ...node,
-            selected:
-              generationIndex === row ? colIndex === col : node.selected,
-          })),
-        );
+export function readNumberGeneratorSeedFromHash(hash: string): number {
+  const value = hash.replace(/^#/, "").trim();
 
-      const selectedValue = nextTree[row]?.[col]?.data;
+  if (!value) {
+    return 0;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function createNumberGenerator(seed: number): GeneratorController<number> {
+  return {
+    initTree: (setTree) => {
+      setTree([[{ selected: false, data: seed }]]);
+    },
+    afterCardSelected: ({ row, col, tree, setTree }) => {
+      const selectedValue = tree[row]?.[col]?.data;
 
       if (selectedValue === undefined) {
-        return nextTree;
+        return;
       }
 
-      nextTree.push(createChildRow(selectedValue));
-      return nextTree;
+      setTree([...tree, createChildRow(selectedValue)]);
     },
     renderCard: (row, col, tree) => {
       const node = tree[row][col];

@@ -1,0 +1,249 @@
+import { CINENERDLE_ICON_URL, TMDB_ICON_URL } from "./constants";
+import type {
+  CinenerdleCard,
+  CinenerdleDailyStarter,
+  FilmRecord,
+  PersonRecord,
+  TmdbMovieCredit,
+  TmdbPersonCredit,
+} from "./types";
+import {
+  buildPeopleByRoleFromStarter,
+  getCinenerdleMovieId,
+  getMovieCardKey,
+  getMoviePosterUrl,
+  getMovieTitleFromCredit,
+  getMovieYearFromCredit,
+  getPersonCardKey,
+  getPersonProfileImageUrl,
+  normalizeName,
+  normalizeTitle,
+} from "./utils";
+
+export function createCinenerdleRootCard(connectionCount: number | null): CinenerdleCard {
+  return {
+    key: "cinenerdle",
+    kind: "cinenerdle",
+    name: "cinenerdle",
+    imageUrl: CINENERDLE_ICON_URL,
+    subtitle: "Daily starters",
+    subtitleDetail: "Open today’s board",
+    connectionCount,
+    sources: [{ iconUrl: CINENERDLE_ICON_URL, label: "Cinenerdle" }],
+    record: null,
+  };
+}
+
+export function createDailyStarterFilmRecord(
+  starter: CinenerdleDailyStarter,
+): FilmRecord {
+  const titleAndYear = starter.title
+    ? (() => {
+        const match = starter.title.match(/^(.*) \((\d{4})\)$/);
+        if (!match) {
+          return {
+            title: starter.title ?? "",
+            year: "",
+          };
+        }
+
+        return {
+          title: match[1].trim(),
+          year: match[2],
+        };
+      })()
+    : { title: "", year: "" };
+
+  const title = titleAndYear.title;
+  const year = titleAndYear.year;
+
+  return {
+    id: starter.id ?? getCinenerdleMovieId(title, year),
+    tmdbId: null,
+    cinenerdleId: String(starter.id ?? getCinenerdleMovieId(title, year)),
+    title,
+    titleLower: normalizeTitle(title),
+    year,
+    titleYear: getCinenerdleMovieId(title, year),
+    popularity: 0,
+    rawCinenerdleDailyStarter: starter,
+    cinenerdleSnapshot: buildPeopleByRoleFromStarter(starter),
+    personConnectionKeys: Array.from(
+      new Set(
+        [
+          ...(starter.cast ?? []),
+          ...(starter.directors ?? []),
+          ...(starter.writers ?? []),
+          ...(starter.composers ?? []),
+        ]
+          .map((name) => normalizeName(name))
+          .filter(Boolean),
+      ),
+    ),
+  };
+}
+
+export function createDailyStarterMovieCard(filmRecord: FilmRecord): CinenerdleCard {
+  const starter = filmRecord.rawCinenerdleDailyStarter;
+
+  return {
+    key: getMovieCardKey(filmRecord.title, filmRecord.year, filmRecord.id),
+    kind: "movie",
+    name: filmRecord.title,
+    year: filmRecord.year,
+    imageUrl: getMoviePosterUrl(filmRecord),
+    subtitle: filmRecord.year || "Movie",
+    subtitleDetail: (starter?.genres ?? []).slice(0, 2).join(" • "),
+    connectionCount: Math.max(filmRecord.personConnectionKeys.length, 1),
+    sources: [
+      {
+        iconUrl: CINENERDLE_ICON_URL,
+        label: "Cinenerdle daily starter",
+      },
+    ],
+    record: filmRecord,
+  };
+}
+
+export function createPersonRootCard(
+  personRecord: PersonRecord,
+  requestedName: string,
+): CinenerdleCard {
+  const personName = personRecord.name || requestedName;
+
+  return {
+    key: getPersonCardKey(personName, personRecord.id),
+    kind: "person",
+    name: personName,
+    imageUrl: getPersonProfileImageUrl(personRecord),
+    subtitle: "Person",
+    subtitleDetail: "TMDB profile",
+    connectionCount: Math.max(personRecord.movieConnectionKeys.length, 1),
+    sources: [{ iconUrl: TMDB_ICON_URL, label: "TMDB" }],
+    record: personRecord,
+  };
+}
+
+export function createMovieRootCard(
+  movieRecord: FilmRecord,
+  requestedTitle: string,
+): CinenerdleCard {
+  const title = movieRecord.title || requestedTitle;
+  const year = movieRecord.year;
+
+  return {
+    key: getMovieCardKey(title, year, movieRecord.id),
+    kind: "movie",
+    name: title,
+    year,
+    imageUrl: getMoviePosterUrl(movieRecord),
+    subtitle: "Movie",
+    subtitleDetail: "TMDB film",
+    connectionCount: Math.max(movieRecord.personConnectionKeys.length, 1),
+    sources: [{ iconUrl: TMDB_ICON_URL, label: "TMDB" }],
+    record: movieRecord,
+  };
+}
+
+export function createMovieAssociationCard(
+  credit: TmdbMovieCredit,
+  filmRecord: FilmRecord | null,
+  connectionCount: number,
+): CinenerdleCard {
+  const title = filmRecord?.title ?? getMovieTitleFromCredit(credit);
+  const year = filmRecord?.year ?? getMovieYearFromCredit(credit);
+
+  return {
+    key: getMovieCardKey(title, year, filmRecord?.id ?? credit.id),
+    kind: "movie",
+    name: title,
+    year,
+    imageUrl: getMoviePosterUrl(filmRecord),
+    subtitle: "Movie",
+    subtitleDetail:
+      credit.creditType === "cast"
+        ? credit.character?.trim() ?? "Cast"
+        : credit.job?.trim() ?? "Crew",
+    connectionCount,
+    sources: [{ iconUrl: TMDB_ICON_URL, label: "TMDB" }],
+    record:
+      filmRecord ??
+      (title
+        ? {
+            id: credit.id ?? getCinenerdleMovieId(title, year),
+            tmdbId: credit.id ?? null,
+            cinenerdleId: getCinenerdleMovieId(title, year),
+            title,
+            titleLower: normalizeTitle(title),
+            year,
+            titleYear: getCinenerdleMovieId(title, year),
+            popularity: credit.popularity ?? 0,
+            personConnectionKeys: [],
+            rawTmdbMovie: credit.id
+              ? {
+                  id: credit.id,
+                  title,
+                  original_title: credit.original_title,
+                  poster_path: credit.poster_path,
+                  release_date: credit.release_date,
+                  popularity: credit.popularity,
+                }
+              : undefined,
+          }
+        : null),
+  };
+}
+
+export function createPersonAssociationCard(
+  credit: TmdbPersonCredit,
+  personRecord: PersonRecord | null,
+  connectionCount: number,
+): CinenerdleCard {
+  const personName = personRecord?.name ?? credit.name ?? "";
+
+  return {
+    key: getPersonCardKey(personName, personRecord?.id ?? credit.id),
+    kind: "person",
+    name: personName,
+    imageUrl: getPersonProfileImageUrl(personRecord),
+    subtitle: credit.job?.trim() ?? "Person",
+    subtitleDetail: credit.character?.trim() ?? "",
+    connectionCount,
+    sources: [{ iconUrl: TMDB_ICON_URL, label: "TMDB" }],
+    record:
+      personRecord ??
+      (credit.id && personName
+        ? {
+            id: credit.id,
+            tmdbId: credit.id,
+            cinenerdleId: normalizeName(personName),
+            name: personName,
+            nameLower: normalizeName(personName),
+            movieConnectionKeys: [],
+            rawTmdbPerson: {
+              id: credit.id,
+              name: personName,
+              profile_path: credit.profile_path,
+              popularity: credit.popularity,
+            },
+          }
+        : null),
+  };
+}
+
+export function createCinenerdleOnlyPersonCard(
+  personName: string,
+  role: string,
+): CinenerdleCard {
+  return {
+    key: getPersonCardKey(personName, `starter:${normalizeName(personName)}`),
+    kind: "person",
+    name: personName,
+    imageUrl: null,
+    subtitle: "Cinenerdle",
+    subtitleDetail: role,
+    connectionCount: 1,
+    sources: [{ iconUrl: CINENERDLE_ICON_URL, label: "Cinenerdle" }],
+    record: null,
+  };
+}

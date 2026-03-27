@@ -1,31 +1,70 @@
-import { type ReactElement, useRef, useState } from "react";
-import type { GeneratorNode } from "../types/generator";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type {
+  GeneratorController,
+  GeneratorTree,
+  GeneratorTreeState,
+  SetGeneratorTree,
+} from "../types/generator";
 import "../styles/abstract_generator.css";
 
-export type AbstractGeneratorProps<T> = {
-  initTree: () => GeneratorNode<T>[][];
-  afterCardSelected: (
-    row: number,
-    col: number,
-    prevTree: GeneratorNode<T>[][],
-  ) => GeneratorNode<T>[][];
-  renderCard: (
-    row: number,
-    col: number,
-    tree: GeneratorNode<T>[][],
-  ) => ReactElement;
+export type AbstractGeneratorProps<T> = GeneratorController<T> & {
+  resetKey?: number | string;
 };
 
 export function AbstractGenerator<T>({
   initTree,
   afterCardSelected,
   renderCard,
+  resetKey,
 }: AbstractGeneratorProps<T>) {
-  const [tree, setTree] = useState(() => initTree());
+  const [tree, setTree] = useState<GeneratorTreeState<T>>(null);
   const rowRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const cardRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const mountedRef = useRef(true);
+  const activeLifecycleRef = useRef(0);
 
-  const generations = tree.map((row, generationIndex) => ({
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const createGuardedSetTree = useCallback(
+    (lifecycleId: number): SetGeneratorTree<T> =>
+      (nextTree) => {
+        if (
+          !mountedRef.current ||
+          activeLifecycleRef.current !== lifecycleId
+        ) {
+          return;
+        }
+
+        setTree((prevTree) => {
+          if (
+            !mountedRef.current ||
+            activeLifecycleRef.current !== lifecycleId
+          ) {
+            return prevTree;
+          }
+
+          return typeof nextTree === "function" ? nextTree(prevTree) : nextTree;
+        });
+      },
+    [],
+  );
+
+  useEffect(() => {
+    const lifecycleId = activeLifecycleRef.current + 1;
+    activeLifecycleRef.current = lifecycleId;
+
+    const guardedSetTree = createGuardedSetTree(lifecycleId);
+    guardedSetTree(null);
+    initTree(guardedSetTree);
+  }, [createGuardedSetTree, initTree, resetKey]);
+
+  const resolvedTree: GeneratorTree<T> = tree ?? [];
+
+  const generations = resolvedTree.map((row, generationIndex) => ({
     row,
     generationIndex,
   }));
@@ -33,11 +72,39 @@ export function AbstractGenerator<T>({
   const renderedGenerations = [...generations].reverse();
 
   function handleCardSelect(row: number, col: number) {
-    setTree((prevTree) => afterCardSelected(row, col, prevTree));
+    if (tree === null) {
+      return;
+    }
+
+    const selectedRow = tree[row];
+    if (!selectedRow || !selectedRow[col]) {
+      return;
+    }
+
+    const normalizedTree = tree
+      .slice(0, row + 1)
+      .map((generation, generationIndex) =>
+        generation.map((node, colIndex) => ({
+          ...node,
+          selected:
+            generationIndex === row ? colIndex === col : node.selected,
+        })),
+      );
+
+    const guardedSetTree = createGuardedSetTree(activeLifecycleRef.current);
+    guardedSetTree(normalizedTree);
+
+    afterCardSelected({
+      row,
+      col,
+      tree: normalizedTree,
+      setTree: guardedSetTree,
+    });
   }
 
   function handleScrollToSelected(generationIndex: number) {
-    const selectedCol = tree[generationIndex]?.findIndex((node) => node.selected) ?? -1;
+    const selectedCol =
+      resolvedTree[generationIndex]?.findIndex((node) => node.selected) ?? -1;
 
     if (selectedCol < 0) {
       return;
@@ -61,7 +128,11 @@ export function AbstractGenerator<T>({
   }
 
   return (
-    <section className="abstract-generator" aria-label="Generator">
+    <section
+      aria-busy={tree === null}
+      aria-label="Generator"
+      className="abstract-generator"
+    >
       {renderedGenerations.map(({ row, generationIndex }) => {
         const selectedCol = row.findIndex((node) => node.selected);
         const hasSelection = selectedCol >= 0;
@@ -87,14 +158,14 @@ export function AbstractGenerator<T>({
                 <button
                   aria-pressed={node.selected}
                   className="generator-card-button"
-                  key={`${generationIndex}:${col}:${String(node.data)}`}
+                  key={`${generationIndex}:${col}`}
                   onClick={() => handleCardSelect(generationIndex, col)}
                   ref={(element) => {
                     cardRefs.current[`${generationIndex}:${col}`] = element;
                   }}
                   type="button"
                 >
-                  {renderCard(generationIndex, col, tree)}
+                  {renderCard(generationIndex, col, resolvedTree)}
                 </button>
               ))}
             </div>
