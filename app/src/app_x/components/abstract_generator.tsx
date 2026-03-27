@@ -24,6 +24,8 @@ export function AbstractGenerator<T>({
   const activeLifecycleRef = useRef(0);
 
   useEffect(() => {
+    mountedRef.current = true;
+
     return () => {
       mountedRef.current = false;
     };
