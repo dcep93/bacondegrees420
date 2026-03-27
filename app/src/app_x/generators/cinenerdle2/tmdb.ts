@@ -36,8 +36,21 @@ import {
   getValidTmdbEntityId,
   isAllowedBfsTmdbMovieCredit,
   normalizeName,
+  normalizeWhitespace,
   normalizeTitle,
+  parseMoviePathLabel,
 } from "./utils";
+
+export type ConnectionTarget =
+  | {
+      kind: "person";
+      name: string;
+    }
+  | {
+      kind: "movie";
+      name: string;
+      year: string;
+    };
 
 let hasPrimedTmdbApiKey = false;
 let dailyStarterMoviesPromise: Promise<FilmRecord[]> | null = null;
@@ -598,4 +611,164 @@ export async function prepareSelectedMovie(
     fetchedMovieRecord: summarizeFilmRecord(fetchedMovieRecord),
   });
   return fetchedMovieRecord;
+}
+
+function getPersonPopularity(record: PersonRecord | null): number {
+  return record?.rawTmdbPerson?.popularity ?? 0;
+}
+
+function isExactPersonMatch(record: PersonRecord | null, query: string): boolean {
+  return normalizeName(record?.name ?? "") === normalizeName(query);
+}
+
+function isExactMovieMatch(
+  record: FilmRecord | null,
+  movieName: string,
+  movieYear = "",
+): boolean {
+  return (
+    normalizeTitle(record?.title ?? "") === normalizeTitle(movieName) &&
+    (!movieYear || (record?.year ?? "") === movieYear)
+  );
+}
+
+function pickBestConnectionTarget(
+  query: string,
+  movieName: string,
+  movieYear: string,
+  personRecord: PersonRecord | null,
+  filmRecord: FilmRecord | null,
+): ConnectionTarget | null {
+  const exactPersonMatch = isExactPersonMatch(personRecord, query);
+  const exactMovieMatch = isExactMovieMatch(filmRecord, movieName, movieYear);
+
+  if (movieYear && exactMovieMatch && filmRecord) {
+    return {
+      kind: "movie",
+      name: filmRecord.title,
+      year: filmRecord.year,
+    };
+  }
+
+  if (exactPersonMatch && exactMovieMatch && personRecord && filmRecord) {
+    return getPersonPopularity(personRecord) > (filmRecord.popularity ?? 0)
+      ? {
+          kind: "person",
+          name: personRecord.name,
+        }
+      : {
+          kind: "movie",
+          name: filmRecord.title,
+          year: filmRecord.year,
+        };
+  }
+
+  if (exactMovieMatch && filmRecord) {
+    return {
+      kind: "movie",
+      name: filmRecord.title,
+      year: filmRecord.year,
+    };
+  }
+
+  if (exactPersonMatch && personRecord) {
+    return {
+      kind: "person",
+      name: personRecord.name,
+    };
+  }
+
+  if (personRecord && filmRecord) {
+    return getPersonPopularity(personRecord) > (filmRecord.popularity ?? 0)
+      ? {
+          kind: "person",
+          name: personRecord.name,
+        }
+      : {
+          kind: "movie",
+          name: filmRecord.title,
+          year: filmRecord.year,
+        };
+  }
+
+  if (filmRecord) {
+    return {
+      kind: "movie",
+      name: filmRecord.title,
+      year: filmRecord.year,
+    };
+  }
+
+  if (personRecord) {
+    return {
+      kind: "person",
+      name: personRecord.name,
+    };
+  }
+
+  return null;
+}
+
+export async function resolveConnectionQuery(
+  query: string,
+): Promise<ConnectionTarget | null> {
+  const normalizedQuery = normalizeWhitespace(query);
+  if (!normalizedQuery) {
+    return null;
+  }
+
+  const parsedMovie = parseMoviePathLabel(normalizedQuery);
+  logCinenerdleDebug("tmdb.resolveConnectionQuery.start", {
+    query,
+    normalizedQuery,
+    parsedMovie,
+  });
+
+  const [exactPersonRecord, exactFilmRecord] = await Promise.all([
+    getPersonRecordByName(normalizedQuery),
+    getFilmRecordByTitleAndYear(parsedMovie.name, parsedMovie.year),
+  ]);
+
+  const exactTarget = pickBestConnectionTarget(
+    normalizedQuery,
+    parsedMovie.name,
+    parsedMovie.year,
+    exactPersonRecord,
+    exactFilmRecord,
+  );
+
+  logCinenerdleDebug("tmdb.resolveConnectionQuery.exactLookup", {
+    query: normalizedQuery,
+    exactPersonName: exactPersonRecord?.name ?? null,
+    exactMovieTitle: exactFilmRecord?.title ?? null,
+    exactMovieYear: exactFilmRecord?.year ?? null,
+    exactTarget,
+  });
+
+  if (exactTarget) {
+    return exactTarget;
+  }
+
+  const [fetchedPersonRecord, fetchedFilmRecord] = await Promise.all([
+    fetchAndCachePerson(normalizedQuery, "fetch"),
+    fetchAndCacheMovie(parsedMovie.name, parsedMovie.year, "fetch"),
+  ]);
+
+  const fetchedTarget = pickBestConnectionTarget(
+    normalizedQuery,
+    parsedMovie.name,
+    parsedMovie.year,
+    fetchedPersonRecord,
+    fetchedFilmRecord,
+  );
+
+  logCinenerdleDebug("tmdb.resolveConnectionQuery.fallbackLookup", {
+    query: normalizedQuery,
+    fetchedPersonName: fetchedPersonRecord?.name ?? null,
+    fetchedMovieTitle: fetchedFilmRecord?.title ?? null,
+    fetchedMovieYear: fetchedFilmRecord?.year ?? null,
+    fetchedTarget,
+  });
+
+  return fetchedTarget;
 }

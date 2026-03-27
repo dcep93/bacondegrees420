@@ -1,12 +1,15 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { AbstractGenerator } from "../../components/abstract_generator";
 import { useCinenerdleController } from "./controller";
+import { logCinenerdleDebug } from "./debug";
 import { normalizeHashValue } from "./hash";
 import { primeTmdbApiKeyOnInit } from "./tmdb";
 import "../../styles/cinenerdle2.css";
 
 type Cinenerdle2Props = {
   hashValue: string;
+  navigationVersion: number;
+  onHashWrite: (nextHash: string, mode: "selection" | "navigation") => void;
   resetVersion: number;
 };
 
@@ -28,18 +31,44 @@ function applyHash(nextHash: string) {
 
 export default function Cinenerdle2({
   hashValue,
+  navigationVersion,
+  onHashWrite,
   resetVersion,
 }: Cinenerdle2Props) {
   const normalizedHash = normalizeHashValue(hashValue);
+  const hashRef = useRef(normalizedHash);
+  hashRef.current = normalizedHash;
 
   useEffect(() => {
     primeTmdbApiKeyOnInit();
   }, []);
 
-  const readHash = useCallback(() => normalizedHash, [normalizedHash]);
-  const writeHash = useCallback((nextHash: string) => {
-    applyHash(nextHash);
-  }, []);
+  const readHash = useCallback(() => hashRef.current, []);
+  const writeHash = useCallback(
+    (nextHash: string, mode: "selection" | "navigation" = "navigation") => {
+      const normalizedNextHash = normalizeHashValue(nextHash);
+      const currentHash = normalizeHashValue(window.location.hash);
+
+      logCinenerdleDebug("cinenerdle.writeHash", {
+        nextHash,
+        normalizedNextHash,
+        currentHash,
+        mode,
+      });
+
+      if (normalizedNextHash === currentHash) {
+        logCinenerdleDebug("cinenerdle.writeHash.noop", {
+          normalizedNextHash,
+          mode,
+        });
+        return;
+      }
+
+      onHashWrite(normalizedNextHash, mode);
+      applyHash(normalizedNextHash);
+    },
+    [onHashWrite],
+  );
 
   const controller = useCinenerdleController({
     readHash,
@@ -51,7 +80,7 @@ export default function Cinenerdle2({
       afterCardSelected={controller.afterCardSelected}
       initTree={controller.initTree}
       renderCard={controller.renderCard}
-      resetKey={`${resetVersion}:${normalizedHash}`}
+      resetKey={`${resetVersion}:${navigationVersion}`}
     />
   );
 }

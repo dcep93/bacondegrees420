@@ -52,7 +52,7 @@ function createUncachedMovieCard(name: string, year: string): Extract<Cinenerdle
     subtitle: "Movie",
     subtitleDetail: "Not cached yet",
     connectionCount: null,
-    sources: [],
+    sources: [{ iconUrl: TMDB_ICON_URL, label: "TMDb" }],
     status: null,
     voteAverage: null,
     voteCount: null,
@@ -62,7 +62,7 @@ function createUncachedMovieCard(name: string, year: string): Extract<Cinenerdle
 
 type CinenerdleControllerOptions = {
   readHash: () => string;
-  writeHash: (nextHash: string) => void;
+  writeHash: (nextHash: string, mode?: "selection" | "navigation") => void;
 };
 
 function summarizeMovieRecord(card: Extract<CinenerdleCard, { kind: "movie" }>) {
@@ -75,6 +75,8 @@ function summarizeMovieRecord(card: Extract<CinenerdleCard, { kind: "movie" }>) 
     recordId: card.record?.id ?? null,
     recordTmdbId: card.record?.tmdbId ?? null,
     hasRawTmdbMovie: Boolean(card.record?.rawTmdbMovie),
+    hasCachedTmdbSource: hasCachedTmdbSource(card),
+    sourceLabels: card.sources.map((source) => source.label),
     castCount: card.record?.rawTmdbMovieCreditsResponse?.cast?.length ?? 0,
     crewCount: card.record?.rawTmdbMovieCreditsResponse?.crew?.length ?? 0,
   };
@@ -132,9 +134,7 @@ function getSelectedCard(tree: GeneratorTree<CinenerdleCard>, rowIndex: number) 
 function hasCachedTmdbSource(card: CinenerdleCard) {
   if (card.kind === "movie") {
     return Boolean(
-      card.record?.tmdbSavedAt ||
       card.record?.tmdbCreditsSavedAt ||
-      card.record?.rawTmdbMovieSearchResponse ||
       card.record?.rawTmdbMovieCreditsResponse,
     );
   }
@@ -161,6 +161,10 @@ function getSelectedPathNodes(tree: GeneratorTree<CinenerdleCard>): CinenerdlePa
 function getPathNodeFromCard(card: CinenerdleCard): CinenerdlePathNode {
   if (card.kind === "cinenerdle") {
     return createPathNode("cinenerdle", "cinenerdle");
+  }
+
+  if (card.kind === "dbinfo") {
+    return createPathNode("break", "");
   }
 
   if (card.kind === "movie") {
@@ -201,9 +205,16 @@ async function createDailyStarterRow() {
     return null;
   }
 
-  return createRow(
-    sortCardsByPopularity(hydratedStarterFilms.map(createDailyStarterMovieCard)),
-  );
+  const cards = sortCardsByPopularity(hydratedStarterFilms.map(createDailyStarterMovieCard));
+  logCinenerdleDebug("controller.createDailyStarterRow.complete", {
+    starterFilmCount: hydratedStarterFilms.length,
+    preview: cards
+      .slice(0, 12)
+      .filter((card): card is Extract<CinenerdleCard, { kind: "movie" }> => card.kind === "movie")
+      .map((card) => summarizeMovieRecord(card)),
+  });
+
+  return createRow(cards);
 }
 
 function isCinenerdleRootTree(tree: GeneratorTree<CinenerdleCard>) {
@@ -366,6 +377,10 @@ async function buildChildRowForCard(
     });
 
     return row;
+  }
+
+  if (card.kind !== "movie") {
+    return null;
   }
 
   const movieRecord = card.record ?? (await getFilmRecordByTitleAndYear(card.name, card.year));
@@ -702,6 +717,16 @@ function createCardViewModel(
     hasCachedTmdbSource: hasCachedTmdbSource(card),
   };
 
+  if (card.kind === "dbinfo") {
+    return {
+      ...sharedFields,
+      kind: "dbinfo",
+      body: card.body,
+      recordKind: card.recordKind,
+      summaryItems: card.summaryItems,
+    };
+  }
+
   if (card.kind === "movie") {
     return {
       ...sharedFields,
@@ -756,6 +781,10 @@ function renderStatusChip(viewModel: CinenerdleCardViewModel) {
 }
 
 function renderFooter(viewModel: CinenerdleCardViewModel) {
+  if (viewModel.kind === "dbinfo") {
+    return null;
+  }
+
   const hasTopLeftContent =
     typeof viewModel.connectionCount === "number" || viewModel.sources.length > 0;
   const statusChip = renderStatusChip(viewModel);
@@ -813,7 +842,9 @@ function renderFooter(viewModel: CinenerdleCardViewModel) {
         ) : (
           <div className="cinenerdle-card-footer-spacer" />
         )}
-        {renderHeatChip("Popularity", viewModel.popularity, 100)}
+        {viewModel.kind === "cinenerdle"
+          ? null
+          : renderHeatChip("Popularity", viewModel.popularity, 100)}
       </div>
       {shouldRenderBottomRow ? (
         <div className="cinenerdle-card-footer-bottom">
@@ -826,11 +857,70 @@ function renderFooter(viewModel: CinenerdleCardViewModel) {
   );
 }
 
+function renderDbInfoCard(viewModel: Extract<CinenerdleCardViewModel, { kind: "dbinfo" }>) {
+  function handleCopy(event: MouseEvent<HTMLElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!navigator.clipboard?.writeText) {
+      logCinenerdleDebug("controller.dbInfoCard.copy.error", {
+        name: viewModel.subtitle,
+        message: "Clipboard API is unavailable.",
+      });
+      return;
+    }
+
+    void navigator.clipboard
+      .writeText(viewModel.body)
+      .then(() => {
+        logCinenerdleDebug("controller.dbInfoCard.copy.success", {
+          name: viewModel.subtitle,
+          recordKind: viewModel.recordKind,
+        });
+      })
+      .catch((error) => {
+        logCinenerdleDebug("controller.dbInfoCard.copy.error", {
+          name: viewModel.subtitle,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      });
+  }
+
+  return (
+    <article className="cinenerdle-card cinenerdle-db-card" onClick={handleCopy}>
+      <div className="cinenerdle-card-image-shell cinenerdle-db-card-image-shell">
+        <div className="cinenerdle-db-card-kicker">
+          {viewModel.recordKind === "movie" ? "Movie DB" : "Person DB"}
+        </div>
+      </div>
+
+      <div className="cinenerdle-card-copy cinenerdle-db-card-copy">
+        <p className="cinenerdle-card-title cinenerdle-db-card-title">{viewModel.name}</p>
+        <div className="cinenerdle-card-secondary cinenerdle-db-card-secondary">
+          <p className="cinenerdle-card-subtitle">{viewModel.subtitle}</p>
+          {viewModel.subtitleDetail ? (
+            <p className="cinenerdle-card-detail">{viewModel.subtitleDetail}</p>
+          ) : null}
+        </div>
+        <div className="cinenerdle-db-card-summary">
+          {viewModel.summaryItems.map((item) => (
+            <div className="cinenerdle-db-card-summary-item" key={item.label}>
+              <span className="cinenerdle-db-card-summary-label">{item.label}</span>
+              <span className="cinenerdle-db-card-summary-value">{item.value}</span>
+            </div>
+          ))}
+        </div>
+        <p className="cinenerdle-db-card-hint">Click card to copy JSON summary</p>
+      </div>
+    </article>
+  );
+}
+
 function renderCinenerdleCard(
   row: number,
   col: number,
   tree: GeneratorTree<CinenerdleCard>,
-  writeHash: (nextHash: string) => void,
+  writeHash: (nextHash: string, mode?: "selection" | "navigation") => void,
 ) {
   const card = tree[row][col].data;
   const viewModel = createCardViewModel(card, {
@@ -840,16 +930,39 @@ function renderCinenerdleCard(
       cardsMatch(card, ancestorCard),
     ),
   });
+
+  if (viewModel.kind === "dbinfo") {
+    return renderDbInfoCard(viewModel);
+  }
+
   const rootHash = serializePathNodes([getPathNodeFromCard(card)]);
+  const isCinenerdleLaunchCard = card.kind === "cinenerdle";
+
+  function handleCinenerdleCardClick(event: MouseEvent<HTMLElement>) {
+    if (!isCinenerdleLaunchCard) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    window.open("https://www.cinenerdle2.app/battle", "_blank", "noopener,noreferrer");
+  }
 
   function handleTitleClick(event: MouseEvent<HTMLParagraphElement>) {
     event.preventDefault();
     event.stopPropagation();
-    writeHash(rootHash);
+
+    if (isCinenerdleLaunchCard) {
+      window.open("https://www.cinenerdle2.app/battle", "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    writeHash(rootHash, "navigation");
   }
 
   return (
     <article
+      onClick={handleCinenerdleCardClick}
       className={[
         "cinenerdle-card",
         viewModel.isSelected ? "cinenerdle-card-selected" : "",
@@ -952,7 +1065,7 @@ export function useCinenerdleController({
           }
         })();
       },
-      afterCardSelected({ row, col, tree, setTree }) {
+      afterCardSelected({ row, col, removedDescendantRows, tree, setTree }) {
         void (async () => {
           try {
             const selectedCard = tree[row]?.[col]?.data;
@@ -980,6 +1093,9 @@ export function useCinenerdleController({
                         connectionCount: selectedCard.connectionCount,
                       },
             });
+            if (!removedDescendantRows) {
+              setTree(tree);
+            }
 
             const preparedCard =
               selectedCard.kind === "person"
@@ -1048,7 +1164,7 @@ export function useCinenerdleController({
                 nextHash,
               });
               setTree(resolvedTree);
-              writeHash(nextHash);
+              writeHash(nextHash, "selection");
               return;
             }
 
@@ -1060,7 +1176,7 @@ export function useCinenerdleController({
               nextHash,
             });
             setTree([...resolvedTree, childRow]);
-            writeHash(nextHash);
+            writeHash(nextHash, "selection");
           } catch (error) {
             console.error("cinenerdle2.afterCardSelected", error);
             logCinenerdleDebug("controller.afterCardSelected.error", {

@@ -13,6 +13,8 @@
 }
 
 .bacon-app-shell {
+  position: relative;
+  isolation: isolate;
   width: 100vw;
   min-height: 100svh;
   margin-left: calc(50% - 50vw);
@@ -28,6 +30,8 @@
 }
 
 .bacon-title-bar {
+  position: relative;
+  z-index: 10;
   box-sizing: border-box;
   width: 100%;
   min-height: 88px;
@@ -72,14 +76,24 @@
 
 .bacon-title {
   margin: 0;
-  color: var(--bacon-text);
-  font-family: "Trebuchet MS", "Avenir Next", sans-serif;
+  color: #ff6fb5;
+  font-family: "Comic Sans MS", "Comic Sans", cursive;
   font-size: clamp(1.8rem, 3vw, 2.8rem);
   font-weight: 700;
-  letter-spacing: -0.06em;
+  letter-spacing: -0.04em;
   line-height: 0.95;
   cursor: pointer;
   user-select: none;
+  -webkit-text-stroke: 2px #000000;
+  text-shadow:
+    -2px -2px 0 #000,
+    2px -2px 0 #000,
+    -2px 2px 0 #000,
+    2px 2px 0 #000,
+    0 2px 0 #000,
+    2px 0 0 #000,
+    0 -2px 0 #000,
+    -2px 0 0 #000;
 }
 
 .bacon-title-actions {
@@ -123,9 +137,117 @@
 }
 
 .bacon-app-content {
+  position: relative;
+  z-index: 1;
   flex: 1;
   min-height: 0;
   display: flex;
+}
+
+.bacon-connection-bar {
+  box-sizing: border-box;
+  width: 100vw;
+  overflow: visible;
+  padding: 14px 24px 10px;
+  position: relative;
+  z-index: 20;
+}
+
+.bacon-connection-form {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  width: 100%;
+}
+
+.bacon-connection-input-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  z-index: 21;
+}
+
+.bacon-connection-pill {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  max-width: min(40vw, 420px);
+  min-height: 48px;
+  padding: 11px 16px;
+  border: 3px solid #fbbf24;
+  border-radius: 999px;
+  box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.35);
+  background: rgba(17, 12, 10, 0.92);
+  color: var(--bacon-text);
+  font-size: 0.98rem;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.bacon-connection-pill::-webkit-scrollbar {
+  display: none;
+}
+
+.bacon-connection-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 12px 16px;
+  border: 1px solid var(--bacon-border-strong);
+  border-radius: 999px;
+  background: rgba(17, 12, 10, 0.92);
+  box-shadow: var(--bacon-shadow);
+  color: var(--bacon-text);
+  font-size: 0.98rem;
+  outline: none;
+}
+
+.bacon-connection-input::placeholder {
+  color: var(--bacon-text-muted);
+}
+
+.bacon-connection-input:focus {
+  border-color: rgba(228, 193, 150, 0.72);
+}
+
+.bacon-connection-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  max-height: 260px;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--bacon-border-strong);
+  border-radius: 16px;
+  background: rgba(17, 12, 10, 0.97);
+  box-shadow: var(--bacon-shadow);
+}
+
+.bacon-connection-option {
+  appearance: none;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 10px 12px;
+  border: 3px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--bacon-text);
+  text-align: left;
+  font-size: 0.94rem;
+  cursor: pointer;
+}
+
+.bacon-connection-option-selected {
+  border-color: #fbbf24;
+  box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.35);
+  background: rgba(43, 31, 25, 0.9);
 }
 
 @media (max-width: 720px) {
@@ -148,5 +270,29 @@
     min-height: 38px;
     padding: 8px 12px;
     font-size: 0.72rem;
+  }
+
+  .bacon-connection-bar {
+    padding: 12px 12px 8px;
+  }
+
+  .bacon-connection-input {
+    min-height: 44px;
+    font-size: 0.92rem;
+  }
+
+  .bacon-connection-form {
+    gap: 10px;
+  }
+
+  .bacon-connection-pill {
+    max-width: 52vw;
+    min-height: 44px;
+    padding: 9px 14px;
+    font-size: 0.92rem;
+  }
+
+  .bacon-connection-option {
+    font-size: 0.9rem;
   }
 }

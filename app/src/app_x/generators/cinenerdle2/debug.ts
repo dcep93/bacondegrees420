@@ -1,5 +1,3 @@
-const MAX_LOG_ENTRIES = 400;
-
 type DebugEntry = {
   timestamp: string;
   event: string;
@@ -51,17 +49,6 @@ function safeSerialize(details: unknown): string {
 }
 
 export function logCinenerdleDebug(event: string, details?: unknown): void {
-  const entry: DebugEntry = {
-    timestamp: new Date().toISOString(),
-    event,
-    details,
-  };
-
-  debugEntries.push(entry);
-  if (debugEntries.length > MAX_LOG_ENTRIES) {
-    debugEntries.splice(0, debugEntries.length - MAX_LOG_ENTRIES);
-  }
-
   if (details === undefined) {
     console.log(`[cinenerdle2] ${event}`);
     return;
@@ -74,23 +61,21 @@ export function clearCinenerdleDebugLog(): void {
   debugEntries.length = 0;
 }
 
-export function getCinenerdleDebugLogText(): string {
-  return debugEntries
-    .map((entry) => {
-      const serializedDetails = safeSerialize(entry.details);
-      return serializedDetails
-        ? `${entry.timestamp} ${entry.event}\n${serializedDetails}`
-        : `${entry.timestamp} ${entry.event}`;
-    })
-    .join("\n\n");
+export function getCinenerdleDebugEntryCount(): number {
+  return debugEntries.length;
 }
 
-export async function copyCinenerdleDebugLogToClipboard(): Promise<void> {
-  const logText = getCinenerdleDebugLogText();
+export function getCinenerdleDebugLogText(): string {
+  return safeSerialize(debugEntries) || "[]";
+}
+
+export async function copyCinenerdleDebugLogToClipboard(): Promise<number> {
+  const logText = getCinenerdleDebugLogText() || "[]";
 
   if (!navigator.clipboard?.writeText) {
     throw new Error("Clipboard API is unavailable.");
   }
 
-  await navigator.clipboard.writeText(logText || "No cinenerdle2 debug logs captured yet.");
+  await navigator.clipboard.writeText(logText);
+  return getCinenerdleDebugEntryCount();
 }

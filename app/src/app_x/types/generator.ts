@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 
 export type GeneratorNode<T> = {
   selected: boolean;
+  disabled?: boolean;
   data: T;
 };
 
@@ -18,6 +19,7 @@ export type SetGeneratorTree<T> = (
 export type GeneratorSelectionContext<T> = {
   row: number;
   col: number;
+  removedDescendantRows: boolean;
   tree: GeneratorTree<T>;
   setTree: SetGeneratorTree<T>;
 };

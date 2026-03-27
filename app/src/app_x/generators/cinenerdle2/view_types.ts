@@ -10,6 +10,11 @@ export type CardStatus = {
   tone: "info" | "success" | "danger";
 };
 
+export type DbInfoSummaryItem = {
+  label: string;
+  value: string;
+};
+
 export type CinenerdlePathNode =
   | {
       kind: "cinenerdle";
@@ -44,6 +49,14 @@ type BaseCard = {
   status: CardStatus | null;
 };
 
+export type DbInfoCard = BaseCard & {
+  kind: "dbinfo";
+  body: string;
+  recordKind: "movie" | "person";
+  summaryItems: DbInfoSummaryItem[];
+  record: FilmRecord | PersonRecord | null;
+};
+
 export type CinenerdleRootCard = BaseCard & {
   kind: "cinenerdle";
   record: null;
@@ -62,7 +75,7 @@ export type MovieCard = BaseCard & {
   record: FilmRecord | null;
 };
 
-export type CinenerdleCard = CinenerdleRootCard | PersonCard | MovieCard;
+export type CinenerdleCard = CinenerdleRootCard | PersonCard | MovieCard | DbInfoCard;
 
 type BaseCardViewModel = {
   kind: CinenerdleCard["kind"];
@@ -88,4 +101,10 @@ export type CinenerdleCardViewModel =
       kind: "movie";
       voteAverage: number | null;
       voteCount: number | null;
+    })
+  | (BaseCardViewModel & {
+      kind: "dbinfo";
+      body: string;
+      recordKind: "movie" | "person";
+      summaryItems: DbInfoSummaryItem[];
     });

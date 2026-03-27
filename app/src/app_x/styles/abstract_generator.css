@@ -47,7 +47,7 @@
   flex: 1;
   min-width: 0;
   display: flex;
-  align-items: flex-start;
+  align-items: stretch;
   gap: 13.3px;
   overflow-x: auto;
   overflow-y: visible;
@@ -58,13 +58,23 @@
 .generator-card-button {
   appearance: none;
   flex: 0 0 auto;
-  display: block;
+  display: flex;
+  align-self: stretch;
   padding: 0;
   border: 0;
   background: transparent;
   cursor: pointer;
   color: inherit;
   text-align: left;
+}
+
+.generator-card-button-disabled {
+  cursor: default;
+}
+
+.generator-card-button-placeholder {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .generator-card-button:focus-visible,
