@@ -15,11 +15,9 @@
 .bacon-app-shell {
   width: 100vw;
   min-height: 100svh;
-  max-height: 100svh;
   margin-left: calc(50% - 50vw);
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
   background:
     radial-gradient(circle at top left, rgba(213, 163, 108, 0.16), transparent 26%),
     radial-gradient(circle at top right, rgba(255, 179, 102, 0.1), transparent 28%),

@@ -241,10 +241,10 @@ export async function estimateIndexedDbUsageBytes(): Promise<number> {
 }
 
 function stripCinenerdleFilmData(filmRecord: FilmRecord): FilmRecord {
-  const { rawCinenerdleDailyStarter, cinenerdleSnapshot, ...persistedFilmRecord } =
+  const { rawCinenerdleDailyStarter, starterPeopleByRole, ...persistedFilmRecord } =
     filmRecord;
   void rawCinenerdleDailyStarter;
-  void cinenerdleSnapshot;
+  void starterPeopleByRole;
   return persistedFilmRecord;
 }
 

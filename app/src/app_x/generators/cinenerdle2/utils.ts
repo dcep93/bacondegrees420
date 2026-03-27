@@ -1,8 +1,8 @@
 import { TMDB_POSTER_BASE_URL } from "./constants";
 import type {
   CinenerdleDailyStarter,
-  CinenerdlePeopleByRole,
   FilmRecord,
+  PeopleByRole,
   PersonRecord,
   TmdbMovieCredit,
   TmdbMovieCreditsResponse,
@@ -203,7 +203,7 @@ export function getAssociatedPeopleFromMovieCredits(
     .sort((left, right) => (right.popularity ?? 0) - (left.popularity ?? 0));
 }
 
-export function createEmptyPeopleByRole(): CinenerdlePeopleByRole {
+export function createEmptyPeopleByRole(): PeopleByRole {
   return {
     cast: [],
     directors: [],
@@ -214,7 +214,7 @@ export function createEmptyPeopleByRole(): CinenerdlePeopleByRole {
 
 export function buildPeopleByRoleFromStarter(
   starter: CinenerdleDailyStarter | null | undefined,
-): CinenerdlePeopleByRole {
+): PeopleByRole {
   return {
     cast: starter?.cast?.filter(Boolean) ?? [],
     directors: starter?.directors?.filter(Boolean) ?? [],
@@ -225,8 +225,8 @@ export function buildPeopleByRoleFromStarter(
 
 export function getSnapshotPeopleByRole(
   filmRecord: FilmRecord | null,
-): CinenerdlePeopleByRole {
-  return filmRecord?.cinenerdleSnapshot ?? createEmptyPeopleByRole();
+): PeopleByRole {
+  return filmRecord?.starterPeopleByRole ?? createEmptyPeopleByRole();
 }
 
 export function getSnapshotConnectionLabels(filmRecord: FilmRecord | null): string[] {

@@ -354,6 +354,14 @@ async function getLocalMovieRecordForCard(
   );
 }
 
+function hasMovieCredits(
+  movieRecord: FilmRecord | null,
+): movieRecord is FilmRecord & {
+  rawTmdbMovieCreditsResponse: NonNullable<FilmRecord["rawTmdbMovieCreditsResponse"]>;
+} {
+  return Boolean(movieRecord?.rawTmdbMovieCreditsResponse);
+}
+
 export async function prepareSelectedPerson(
   personName: string,
   personId?: number | null,
@@ -377,9 +385,14 @@ export async function prepareSelectedMovie(
     movieYear,
     movieId,
   );
-  if (localMovieRecord) {
+  if (hasMovieCredits(localMovieRecord)) {
     logEntityEvent("movie", localMovieRecord.title || movieName, "database");
     return localMovieRecord;
+  }
+
+  if (localMovieRecord) {
+    logEntityEvent("movie", localMovieRecord.title || movieName, "fetch");
+    return fetchAndCacheMovieCredits(localMovieRecord, "fetch");
   }
 
   return fetchAndCacheMovie(movieName, movieYear, "fetch");

@@ -1,12 +1,12 @@
 import { CINENERDLE_ICON_URL, TMDB_ICON_URL } from "./constants";
 import type {
-  CinenerdleCard,
   CinenerdleDailyStarter,
   FilmRecord,
   PersonRecord,
   TmdbMovieCredit,
   TmdbPersonCredit,
 } from "./types";
+import type { CinenerdleCard } from "./view_types";
 import {
   buildPeopleByRoleFromStarter,
   getCinenerdleMovieId,
@@ -61,14 +61,14 @@ export function createDailyStarterFilmRecord(
   return {
     id: starter.id ?? getCinenerdleMovieId(title, year),
     tmdbId: null,
-    cinenerdleId: String(starter.id ?? getCinenerdleMovieId(title, year)),
+    lookupKey: String(starter.id ?? getCinenerdleMovieId(title, year)),
     title,
     titleLower: normalizeTitle(title),
     year,
     titleYear: getCinenerdleMovieId(title, year),
     popularity: 0,
     rawCinenerdleDailyStarter: starter,
-    cinenerdleSnapshot: buildPeopleByRoleFromStarter(starter),
+    starterPeopleByRole: buildPeopleByRoleFromStarter(starter),
     personConnectionKeys: Array.from(
       new Set(
         [
@@ -177,7 +177,7 @@ export function createMovieAssociationCard(
         ? {
             id: credit.id ?? getCinenerdleMovieId(title, year),
             tmdbId: credit.id ?? null,
-            cinenerdleId: getCinenerdleMovieId(title, year),
+            lookupKey: getCinenerdleMovieId(title, year),
             title,
             titleLower: normalizeTitle(title),
             year,
@@ -223,7 +223,7 @@ export function createPersonAssociationCard(
         ? {
             id: credit.id,
             tmdbId: credit.id,
-            cinenerdleId: normalizeName(personName),
+            lookupKey: normalizeName(personName),
             name: personName,
             nameLower: normalizeName(personName),
             movieConnectionKeys: [],

@@ -27,7 +27,7 @@ export function withDerivedPersonFields(personRecord: PersonRecord): PersonRecor
       personRecord.rawTmdbPerson?.id ??
       personRecord.tmdbId ??
       getValidTmdbEntityId(personRecord.id),
-    cinenerdleId: getCinenerdlePersonId(personRecord.name),
+    lookupKey: getCinenerdlePersonId(personRecord.name),
     nameLower: normalizeName(personRecord.name),
     movieConnectionKeys: Array.from(
       new Set([
@@ -51,7 +51,7 @@ export function withDerivedFilmFields(filmRecord: FilmRecord): FilmRecord {
       filmRecord.rawTmdbMovie?.id ??
       filmRecord.tmdbId ??
       getValidTmdbEntityId(filmRecord.id),
-    cinenerdleId: getCinenerdleMovieId(filmRecord.title, filmRecord.year),
+    lookupKey: getCinenerdleMovieId(filmRecord.title, filmRecord.year),
     titleLower: normalizeTitle(filmRecord.title),
     titleYear: getFilmKey(filmRecord.title, filmRecord.year),
     personConnectionKeys: Array.from(
@@ -77,7 +77,7 @@ export function buildFilmRecord(
     ...existingFilmRecord,
     id: tmdbFilm.id,
     tmdbId: tmdbFilm.id,
-    cinenerdleId: getCinenerdleMovieId(title, year),
+    lookupKey: getCinenerdleMovieId(title, year),
     title,
     titleLower: normalizeTitle(title),
     year,
@@ -86,7 +86,7 @@ export function buildFilmRecord(
     personConnectionKeys: existingFilmRecord?.personConnectionKeys ?? [],
     rawTmdbMovie: tmdbFilm,
     rawCinenerdleDailyStarter: existingFilmRecord?.rawCinenerdleDailyStarter,
-    cinenerdleSnapshot: existingFilmRecord?.cinenerdleSnapshot,
+    starterPeopleByRole: existingFilmRecord?.starterPeopleByRole,
     tmdbSavedAt: new Date().toISOString(),
     rawTmdbMovieCreditsResponse: existingFilmRecord?.rawTmdbMovieCreditsResponse,
     tmdbCreditsSavedAt: existingFilmRecord?.tmdbCreditsSavedAt,
@@ -156,7 +156,7 @@ export function buildPersonRecord(
   return withDerivedPersonFields({
     id: person.id,
     tmdbId: person.id,
-    cinenerdleId: getCinenerdlePersonId(person.name ?? ""),
+    lookupKey: getCinenerdlePersonId(person.name ?? ""),
     name: person.name ?? "",
     nameLower: normalizeName(person.name ?? ""),
     movieConnectionKeys: [],

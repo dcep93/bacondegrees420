@@ -1,12 +1,10 @@
 .abstract-generator {
   box-sizing: border-box;
   width: 100%;
-  height: calc(100svh - 88px);
   padding: 18px 18px 28px;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  overflow-y: auto;
 }
 
 .generator-row {
@@ -78,7 +76,6 @@
 
 @media (max-width: 720px) {
   .abstract-generator {
-    height: calc(100svh - 78px);
     padding: 14px 12px 20px;
     gap: 12px;
   }

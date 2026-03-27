@@ -27,7 +27,6 @@ import {
   prepareSelectedMovie,
   prepareSelectedPerson,
 } from "./tmdb";
-import type { CinenerdleCard, CinenerdlePathNode } from "./types";
 import {
   formatMoviePathLabel,
   getAssociatedPeopleFromMovieCredits,
@@ -39,6 +38,7 @@ import {
   normalizeTitle,
   parseMoviePathLabel,
 } from "./utils";
+import type { CinenerdleCard, CinenerdlePathNode } from "./view_types";
 
 function createUncachedMovieCard(name: string, year: string): Extract<CinenerdleCard, { kind: "movie" }> {
   return {

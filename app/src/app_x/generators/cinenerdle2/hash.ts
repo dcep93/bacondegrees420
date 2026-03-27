@@ -1,4 +1,4 @@
-import type { CinenerdlePathNode } from "./types";
+import type { CinenerdlePathNode } from "./view_types";
 import { formatMoviePathLabel, normalizeTitle, parseMoviePathLabel } from "./utils";
 
 export function createPathNode(

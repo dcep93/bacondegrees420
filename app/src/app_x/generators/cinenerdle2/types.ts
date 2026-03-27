@@ -1,8 +1,3 @@
-export type CardSource = {
-  iconUrl: string;
-  label: string;
-};
-
 export type CinenerdleDailyStarter = {
   id?: string | number | null;
   title?: string | null;
@@ -69,7 +64,7 @@ export type TmdbSearchResponse<T> = {
   total_results?: number;
 };
 
-export type CinenerdlePeopleByRole = {
+export type PeopleByRole = {
   cast: string[];
   directors: string[];
   writers: string[];
@@ -79,7 +74,7 @@ export type CinenerdlePeopleByRole = {
 export type PersonRecord = {
   id: number;
   tmdbId: number | null;
-  cinenerdleId: string;
+  lookupKey: string;
   name: string;
   nameLower: string;
   movieConnectionKeys: string[];
@@ -92,7 +87,7 @@ export type PersonRecord = {
 export type FilmRecord = {
   id: number | string;
   tmdbId: number | null;
-  cinenerdleId: string;
+  lookupKey: string;
   title: string;
   titleLower: string;
   year: string;
@@ -103,58 +98,7 @@ export type FilmRecord = {
   rawTmdbMovieSearchResponse?: TmdbSearchResponse<TmdbMovieSearchResult>;
   rawTmdbMovieCreditsResponse?: TmdbMovieCreditsResponse;
   rawCinenerdleDailyStarter?: CinenerdleDailyStarter;
-  cinenerdleSnapshot?: CinenerdlePeopleByRole;
+  starterPeopleByRole?: PeopleByRole;
   tmdbSavedAt?: string;
   tmdbCreditsSavedAt?: string;
 };
-
-export type CinenerdlePathNode =
-  | {
-      kind: "cinenerdle";
-      name: "cinenerdle";
-      year: "";
-    }
-  | {
-      kind: "person";
-      name: string;
-      year: "";
-    }
-  | {
-      kind: "movie";
-      name: string;
-      year: string;
-    }
-  | {
-      kind: "break";
-      name: "";
-      year: "";
-    };
-
-type BaseCard = {
-  key: string;
-  name: string;
-  popularity: number;
-  imageUrl: string | null;
-  subtitle: string;
-  subtitleDetail: string;
-  connectionCount: number | null;
-  sources: CardSource[];
-};
-
-export type CinenerdleRootCard = BaseCard & {
-  kind: "cinenerdle";
-  record: null;
-};
-
-export type PersonCard = BaseCard & {
-  kind: "person";
-  record: PersonRecord | null;
-};
-
-export type MovieCard = BaseCard & {
-  kind: "movie";
-  year: string;
-  record: FilmRecord | null;
-};
-
-export type CinenerdleCard = CinenerdleRootCard | PersonCard | MovieCard;
