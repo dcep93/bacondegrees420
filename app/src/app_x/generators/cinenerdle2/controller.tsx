@@ -24,6 +24,7 @@ import {
 } from "./indexed_db";
 import {
   fetchCinenerdleDailyStarterMovies,
+  hydrateCinenerdleDailyStarterMovies,
   prepareSelectedMovie,
   prepareSelectedPerson,
 } from "./tmdb";
@@ -180,6 +181,29 @@ async function createDailyStarterRow() {
   return createRow(
     sortCardsByPopularity(hydratedStarterFilms.map(createDailyStarterMovieCard)),
   );
+}
+
+function isCinenerdleRootTree(tree: GeneratorTree<CinenerdleCard>) {
+  return getSelectedCard(tree, 0)?.kind === "cinenerdle";
+}
+
+async function hydrateDailyStartersAndRedraw(
+  setTree: (nextTree: GeneratorTree<CinenerdleCard>) => void,
+  readHash: () => string,
+) {
+  const starterFilms = await fetchCinenerdleDailyStarterMovies();
+  if (starterFilms.length === 0) {
+    return;
+  }
+
+  await hydrateCinenerdleDailyStarterMovies(starterFilms);
+
+  const refreshedTree = await buildTreeFromHash(readHash());
+  logCinenerdleDebug("controller.hydrateDailyStartersAndRedraw.setTree", {
+    hash: readHash(),
+    rows: refreshedTree.length,
+  });
+  setTree(refreshedTree);
 }
 
 async function buildChildRowForCard(
@@ -830,12 +854,32 @@ export function useCinenerdleController({
               rows: nextTree.length,
             });
             setTree(nextTree);
+            if (isCinenerdleRootTree(nextTree)) {
+              void hydrateDailyStartersAndRedraw(setTree, readHash).catch((error) => {
+                console.error("cinenerdle2.hydrateDailyStarters", error);
+                logCinenerdleDebug("controller.hydrateDailyStartersAndRedraw.error", {
+                  message: error instanceof Error ? error.message : String(error),
+                });
+              });
+            }
           } catch (error) {
             console.error("cinenerdle2.initTree", error);
             logCinenerdleDebug("controller.initTree.error", {
               message: error instanceof Error ? error.message : String(error),
             });
-            setTree(await createCinenerdleRootTree());
+            const fallbackTree = await createCinenerdleRootTree();
+            setTree(fallbackTree);
+            if (isCinenerdleRootTree(fallbackTree)) {
+              void hydrateDailyStartersAndRedraw(setTree, readHash).catch((nestedError) => {
+                console.error("cinenerdle2.hydrateDailyStarters", nestedError);
+                logCinenerdleDebug("controller.hydrateDailyStartersAndRedraw.error", {
+                  message:
+                    nestedError instanceof Error
+                      ? nestedError.message
+                      : String(nestedError),
+                });
+              });
+            }
           }
         })();
       },

@@ -157,6 +157,56 @@ export async function fetchCinenerdleDailyStarterMovies(): Promise<FilmRecord[]>
   return dailyStarterMoviesPromise;
 }
 
+export async function hydrateCinenerdleDailyStarterMovies(
+  starterFilms: FilmRecord[],
+): Promise<void> {
+  logCinenerdleDebug("tmdb.hydrateCinenerdleDailyStarterMovies.start", {
+    starterCount: starterFilms.length,
+    starters: starterFilms.slice(0, 12).map((film) => ({
+      title: film.title,
+      year: film.year,
+      id: film.id,
+      tmdbId: film.tmdbId ?? null,
+    })),
+  });
+
+  const results = await Promise.allSettled(
+    starterFilms.map(async (starterFilm) => {
+      if (!starterFilm.title) {
+        return;
+      }
+
+      const localMovieRecord = await getLocalMovieRecordForCard(
+        starterFilm.title,
+        starterFilm.year,
+        starterFilm.id,
+      );
+
+      if (hasMovieCredits(localMovieRecord)) {
+        return;
+      }
+
+      if (localMovieRecord) {
+        await fetchAndCacheMovieCredits(localMovieRecord, "prefetch");
+        return;
+      }
+
+      await fetchAndCacheMovie(starterFilm.title, starterFilm.year, "prefetch");
+    }),
+  );
+
+  logCinenerdleDebug("tmdb.hydrateCinenerdleDailyStarterMovies.complete", {
+    starterCount: starterFilms.length,
+    fulfilledCount: results.filter((result) => result.status === "fulfilled").length,
+    rejectedCount: results.filter((result) => result.status === "rejected").length,
+    errors: results
+      .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+      .map((result) =>
+        result.reason instanceof Error ? result.reason.message : String(result.reason),
+      ),
+  });
+}
+
 export async function fetchAndCachePerson(
   personName: string,
   reason: "fetch" | "prefetch" = "fetch",

@@ -17,16 +17,16 @@
 .generator-row-bubble {
   appearance: none;
   align-self: center;
-  min-width: 88px;
-  padding: 12px 14px;
+  min-width: 44px;
+  padding: 6px 7px;
   border: 1px solid var(--bacon-border-strong);
   border-radius: 999px;
   background: var(--bacon-panel-strong);
   box-shadow: var(--bacon-shadow);
   color: var(--bacon-text);
-  font-size: 0.76rem;
+  font-size: 0.5rem;
   font-weight: 700;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.1em;
   cursor: pointer;
   transition:
     transform 160ms ease,
@@ -85,9 +85,9 @@
   }
 
   .generator-row-bubble {
-    min-width: 72px;
-    padding: 10px 12px;
-    font-size: 0.7rem;
+    min-width: 40px;
+    padding: 5px 6px;
+    font-size: 0.46rem;
   }
 
   .generator-row-track {
