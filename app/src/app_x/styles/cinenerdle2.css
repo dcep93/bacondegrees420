@@ -1,168 +1,199 @@
 .cinenerdle-card {
   box-sizing: border-box;
-  flex: 0 0 auto;
-  width: min(340px, calc(100vw - 132px));
-  min-height: 168px;
-  padding: 14px;
-  border: 1px solid var(--bacon-border);
-  border-radius: 28px;
-  display: grid;
-  grid-template-columns: 92px 1fr;
-  gap: 14px;
-  background:
-    radial-gradient(circle at top right, rgba(213, 163, 108, 0.12), transparent 34%),
-    linear-gradient(180deg, rgba(39, 28, 22, 0.92) 0%, rgba(17, 12, 10, 0.98) 100%);
-  box-shadow: var(--bacon-shadow);
+  position: relative;
+  flex: 0 0 184px;
+  width: 184px;
+  min-width: 184px;
+  max-width: 184px;
+  height: 100%;
+  padding: 0;
+  border: 1px solid #243041;
+  border-radius: 14px;
+  background: #111827;
+  overflow: hidden;
+  box-shadow: none;
   transition:
-    transform 160ms ease,
-    border-color 160ms ease,
-    background 160ms ease;
-}
-
-.generator-card-button:hover .cinenerdle-card {
-  transform: translateY(-2px);
-  border-color: rgba(228, 193, 150, 0.54);
+    box-shadow 120ms ease,
+    border-color 120ms ease;
 }
 
 .cinenerdle-card-selected {
-  border-color: var(--bacon-accent);
-  background:
-    radial-gradient(circle at top, rgba(213, 163, 108, 0.18), transparent 52%),
-    linear-gradient(180deg, rgba(54, 38, 28, 0.98) 0%, rgba(18, 12, 10, 1) 100%);
+  border: 3px solid #fbbf24;
+  box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.35);
+}
+
+.cinenerdle-card-locked.cinenerdle-card-selected {
+  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.5);
+}
+
+.cinenerdle-card-locked:not(.cinenerdle-card-selected) {
+  box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.35);
 }
 
 .cinenerdle-card-image-shell {
-  align-self: stretch;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  border-radius: 10px;
+  overflow: hidden;
+  background: linear-gradient(135deg, rgb(31, 41, 55), rgb(17, 24, 39));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.cinenerdle-card-ancestor-selected .cinenerdle-card-image-shell {
+  opacity: 0.25;
 }
 
 .cinenerdle-card-image {
   width: 100%;
-  height: 126px;
-  border-radius: 20px;
+  height: 100%;
   display: block;
-  object-fit: cover;
-  background: rgba(255, 247, 239, 0.08);
+  object-fit: contain;
 }
 
 .cinenerdle-card-image-fallback {
-  border: 1px dashed rgba(255, 247, 239, 0.18);
-  display: grid;
-  place-items: center;
-  color: var(--bacon-text-muted);
-  font-size: 0.76rem;
-  font-weight: 700;
-  letter-spacing: 0.2em;
+  padding: 12px;
+  text-align: center;
+  font-size: 13px;
+  color: #cbd5e1;
 }
 
 .cinenerdle-card-copy {
   min-width: 0;
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 6px;
+  padding: 10px;
 }
 
 .cinenerdle-card-title,
 .cinenerdle-card-subtitle,
 .cinenerdle-card-detail {
   margin: 0;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  scrollbar-width: none;
+}
+
+.cinenerdle-card-title::-webkit-scrollbar,
+.cinenerdle-card-subtitle::-webkit-scrollbar,
+.cinenerdle-card-detail::-webkit-scrollbar,
+.cinenerdle-card-footer-bottom::-webkit-scrollbar {
+  display: none;
 }
 
 .cinenerdle-card-title {
-  color: var(--bacon-text);
-  font-size: 1.05rem;
+  font-size: 13px;
   font-weight: 700;
-  line-height: 1.15;
+  line-height: 1.25;
+  color: #f8fafc;
+  cursor: pointer;
+  text-decoration-line: underline;
+  text-decoration-color: rgba(148, 163, 184, 0.45);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
 }
 
-.cinenerdle-card-subtitle {
-  color: var(--bacon-accent);
-  font-size: 0.84rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.cinenerdle-card-copy-spacer {
+  flex: 1;
 }
 
+.cinenerdle-card-secondary {
+  min-height: 2.7em;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cinenerdle-card-subtitle,
 .cinenerdle-card-detail {
-  color: var(--bacon-text-muted);
-  font-size: 0.84rem;
+  font-size: 10px;
   line-height: 1.35;
+  color: #94a3b8;
 }
 
 .cinenerdle-card-footer {
-  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cinenerdle-card-footer-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 32px;
 }
 
-.cinenerdle-card-meta {
+.cinenerdle-card-footer-left {
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+}
+
+.cinenerdle-card-footer-spacer {
+  flex: 1 1 auto;
 }
 
 .cinenerdle-card-count {
-  color: var(--bacon-text);
-  font-size: 0.8rem;
+  font-size: 9px;
   font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.cinenerdle-card-popularity {
-  padding: 6px 10px;
-  border: 1px solid rgba(255, 247, 239, 0.12);
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  background: rgba(255, 247, 239, 0.04);
-  color: var(--bacon-text-muted);
-  font-size: 0.74rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  color: #94a3b8;
+  white-space: nowrap;
 }
 
 .cinenerdle-card-sources {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.cinenerdle-card-source {
-  padding: 6px 10px;
-  border: 1px solid rgba(255, 247, 239, 0.12);
-  border-radius: 999px;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  background: rgba(255, 247, 239, 0.04);
-  color: var(--bacon-text-muted);
-  font-size: 0.74rem;
+  gap: 4px;
 }
 
 .cinenerdle-card-source-icon {
   width: 14px;
   height: 14px;
-  border-radius: 999px;
+  border-radius: 3px;
   display: block;
 }
 
-@media (max-width: 720px) {
-  .cinenerdle-card {
-    width: min(280px, calc(100vw - 112px));
-    min-height: 154px;
-    grid-template-columns: 78px 1fr;
-    gap: 12px;
-    padding: 12px;
-    border-radius: 24px;
-  }
+.cinenerdle-card-chip {
+  padding: 3px 6px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 600;
+  white-space: nowrap;
+}
 
-  .cinenerdle-card-image {
-    height: 112px;
-    border-radius: 18px;
-  }
+.cinenerdle-card-footer-bottom {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  scrollbar-width: none;
+}
+
+.cinenerdle-card-status-info {
+  background: #172033;
+  color: #bfdbfe;
+}
+
+.cinenerdle-card-status-success {
+  background: #163223;
+  color: #bbf7d0;
+}
+
+.cinenerdle-card-status-danger {
+  background: #3f1d1d;
+  color: #fecaca;
 }

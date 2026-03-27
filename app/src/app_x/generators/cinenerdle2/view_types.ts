@@ -5,6 +5,11 @@ export type CardSource = {
   label: string;
 };
 
+export type CardStatus = {
+  text: string;
+  tone: "info" | "success" | "danger";
+};
+
 export type CinenerdlePathNode =
   | {
       kind: "cinenerdle";
@@ -36,6 +41,7 @@ type BaseCard = {
   subtitleDetail: string;
   connectionCount: number | null;
   sources: CardSource[];
+  status: CardStatus | null;
 };
 
 export type CinenerdleRootCard = BaseCard & {
@@ -51,7 +57,34 @@ export type PersonCard = BaseCard & {
 export type MovieCard = BaseCard & {
   kind: "movie";
   year: string;
+  voteAverage: number | null;
+  voteCount: number | null;
   record: FilmRecord | null;
 };
 
 export type CinenerdleCard = CinenerdleRootCard | PersonCard | MovieCard;
+
+type BaseCardViewModel = {
+  kind: CinenerdleCard["kind"];
+  name: string;
+  imageUrl: string | null;
+  subtitle: string;
+  subtitleDetail: string;
+  popularity: number;
+  connectionCount: number | null;
+  sources: CardSource[];
+  status: CardStatus | null;
+  isSelected: boolean;
+  isLocked: boolean;
+  isAncestorSelected: boolean;
+};
+
+export type CinenerdleCardViewModel =
+  | (BaseCardViewModel & {
+      kind: "cinenerdle" | "person";
+    })
+  | (BaseCardViewModel & {
+      kind: "movie";
+      voteAverage: number | null;
+      voteCount: number | null;
+    });

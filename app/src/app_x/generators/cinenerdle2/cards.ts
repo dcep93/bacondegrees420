@@ -21,6 +21,24 @@ import {
   normalizeTitle,
 } from "./utils";
 
+function getFallbackPersonSubtitle(role: string): string {
+  switch (normalizeName(role)) {
+    case "cast":
+      return "Cast as";
+    case "directors":
+    case "director":
+      return "Director";
+    case "writers":
+    case "writer":
+      return "Writer";
+    case "composers":
+    case "composer":
+      return "Composer";
+    default:
+      return "Crew";
+  }
+}
+
 export function createCinenerdleRootCard(connectionCount: number | null): CinenerdleCard {
   return {
     key: "cinenerdle",
@@ -32,6 +50,7 @@ export function createCinenerdleRootCard(connectionCount: number | null): Cinene
     subtitleDetail: "Open today’s board",
     connectionCount,
     sources: [{ iconUrl: CINENERDLE_ICON_URL, label: "Cinenerdle" }],
+    status: null,
     record: null,
   };
 }
@@ -104,6 +123,9 @@ export function createDailyStarterMovieCard(filmRecord: FilmRecord): CinenerdleC
         label: "Cinenerdle daily starter",
       },
     ],
+    status: null,
+    voteAverage: filmRecord.rawTmdbMovie?.vote_average ?? null,
+    voteCount: filmRecord.rawTmdbMovie?.vote_count ?? null,
     record: filmRecord,
   };
 }
@@ -123,7 +145,8 @@ export function createPersonRootCard(
     subtitle: "Person",
     subtitleDetail: "TMDB profile",
     connectionCount: Math.max(personRecord.movieConnectionKeys.length, 1),
-    sources: [{ iconUrl: TMDB_ICON_URL, label: "TMDB" }],
+    sources: [{ iconUrl: TMDB_ICON_URL, label: "TMDb" }],
+    status: null,
     record: personRecord,
   };
 }
@@ -145,7 +168,10 @@ export function createMovieRootCard(
     subtitle: "Movie",
     subtitleDetail: "TMDB film",
     connectionCount: Math.max(movieRecord.personConnectionKeys.length, 1),
-    sources: [{ iconUrl: TMDB_ICON_URL, label: "TMDB" }],
+    sources: [{ iconUrl: TMDB_ICON_URL, label: "TMDb" }],
+    status: null,
+    voteAverage: movieRecord.rawTmdbMovie?.vote_average ?? null,
+    voteCount: movieRecord.rawTmdbMovie?.vote_count ?? null,
     record: movieRecord,
   };
 }
@@ -178,10 +204,18 @@ export function createMovieAssociationCard(
                 poster_path: credit.poster_path,
                 release_date: credit.release_date,
                 popularity: credit.popularity,
+                vote_average: credit.vote_average,
+                vote_count: credit.vote_count,
               }
             : undefined,
         }
       : null);
+
+  const subtitle =
+    credit.creditType === "cast"
+      ? `${year || "Movie"} • Cast as`
+      : `${year || "Movie"} • ${credit.job?.trim() || credit.department?.trim() || "Crew"}`;
+
   return {
     key: getMovieCardKey(title, year, resolvedFilmRecord?.id ?? credit.id),
     kind: "movie",
@@ -194,13 +228,19 @@ export function createMovieAssociationCard(
       0,
     imageUrl:
       getPosterUrl(credit.poster_path) ?? getMoviePosterUrl(resolvedFilmRecord),
-    subtitle: "Movie",
-    subtitleDetail:
-      credit.creditType === "cast"
-        ? credit.character?.trim() ?? "Cast"
-        : credit.job?.trim() ?? "Crew",
+    subtitle,
+    subtitleDetail: credit.creditType === "cast" ? credit.character?.trim() ?? "" : "",
     connectionCount,
-    sources: [{ iconUrl: TMDB_ICON_URL, label: "TMDB" }],
+    sources: [{ iconUrl: TMDB_ICON_URL, label: "TMDb" }],
+    status: null,
+    voteAverage:
+      credit.vote_average ??
+      resolvedFilmRecord?.rawTmdbMovie?.vote_average ??
+      null,
+    voteCount:
+      credit.vote_count ??
+      resolvedFilmRecord?.rawTmdbMovie?.vote_count ??
+      null,
     record: resolvedFilmRecord,
   };
 }
@@ -210,6 +250,10 @@ export function createPersonAssociationCard(
   connectionCount: number,
 ): CinenerdleCard {
   const personName = credit.name ?? "";
+  const isCastCredit = credit.creditType === "cast";
+  const subtitle = isCastCredit
+    ? "Cast as"
+    : credit.job?.trim() || credit.department?.trim() || "Crew";
 
   return {
     key: getPersonCardKey(personName, credit.id),
@@ -217,10 +261,11 @@ export function createPersonAssociationCard(
     name: personName,
     popularity: credit.popularity ?? 0,
     imageUrl: getPosterUrl(credit.profile_path, "w300_and_h450_face"),
-    subtitle: credit.job?.trim() ?? "Person",
-    subtitleDetail: credit.character?.trim() ?? "",
+    subtitle,
+    subtitleDetail: isCastCredit ? credit.character?.trim() ?? "" : "",
     connectionCount,
-    sources: [{ iconUrl: TMDB_ICON_URL, label: "TMDB" }],
+    sources: [{ iconUrl: TMDB_ICON_URL, label: "TMDb" }],
+    status: null,
     record: null,
   };
 }
@@ -235,10 +280,11 @@ export function createCinenerdleOnlyPersonCard(
     name: personName,
     popularity: 0,
     imageUrl: null,
-    subtitle: "Cinenerdle",
-    subtitleDetail: role,
+    subtitle: getFallbackPersonSubtitle(role),
+    subtitleDetail: "",
     connectionCount: 1,
     sources: [{ iconUrl: CINENERDLE_ICON_URL, label: "Cinenerdle" }],
+    status: null,
     record: null,
   };
 }

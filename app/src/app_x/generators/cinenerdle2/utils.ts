@@ -186,8 +186,16 @@ export function getAssociatedPeopleFromMovieCredits(
     movieRecord?.rawTmdbMovieCreditsResponse ?? {};
   const seenNames = new Set<string>();
   const candidates = [
-    ...(credits.cast ?? []),
-    ...(credits.crew ?? []).filter(isAllowedMoviePersonCredit),
+    ...(credits.cast ?? []).map((credit) => ({
+      ...credit,
+      creditType: "cast" as const,
+    })),
+    ...(credits.crew ?? [])
+      .filter(isAllowedMoviePersonCredit)
+      .map((credit) => ({
+        ...credit,
+        creditType: "crew" as const,
+      })),
   ];
 
   return candidates

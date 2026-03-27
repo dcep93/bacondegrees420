@@ -215,6 +215,8 @@ export async function saveFilmRecordsFromCredits(
       poster_path: credit.poster_path,
       release_date: credit.release_date,
       popularity: credit.popularity,
+      vote_average: credit.vote_average,
+      vote_count: credit.vote_count,
     };
     const filmRecord = buildFilmRecord(existingRecord, tmdbFilm);
 

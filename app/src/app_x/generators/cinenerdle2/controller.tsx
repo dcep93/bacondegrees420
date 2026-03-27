@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type CSSProperties } from "react";
 import type { GeneratorController, GeneratorNode, GeneratorTree } from "../../types/generator";
 import {
   createCinenerdleOnlyPersonCard,
@@ -27,9 +27,9 @@ import {
   prepareSelectedMovie,
   prepareSelectedPerson,
 } from "./tmdb";
+import { TMDB_ICON_URL } from "./constants";
 import { logCinenerdleDebug } from "./debug";
 import {
-  formatMoviePathLabel,
   getAssociatedPeopleFromMovieCredits,
   getMovieKeyFromCredit,
   getSnapshotPeopleByRole,
@@ -39,7 +39,7 @@ import {
   normalizeTitle,
   parseMoviePathLabel,
 } from "./utils";
-import type { CinenerdleCard, CinenerdlePathNode } from "./view_types";
+import type { CinenerdleCard, CinenerdleCardViewModel, CinenerdlePathNode } from "./view_types";
 
 function createUncachedMovieCard(name: string, year: string): Extract<CinenerdleCard, { kind: "movie" }> {
   return {
@@ -53,6 +53,9 @@ function createUncachedMovieCard(name: string, year: string): Extract<Cinenerdle
     subtitleDetail: "Not cached yet",
     connectionCount: null,
     sources: [],
+    status: null,
+    voteAverage: null,
+    voteCount: null,
     record: null,
   };
 }
@@ -552,58 +555,260 @@ async function buildTreeFromHash(
   return tree;
 }
 
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function formatHeatMetricValue(label: "Popularity" | "Votes" | "Rating", value: number) {
+  if (label === "Popularity" || label === "Rating") {
+    return Number(value.toFixed(2));
+  }
+
+  return value;
+}
+
+function createHeatChipStyle(value: number, maxValue: number): CSSProperties {
+  const normalizedValue = clampNumber(value / maxValue, 0, 1);
+  const hue = 210 - normalizedValue * 210;
+  const backgroundLightness = 20 + normalizedValue * 12;
+  const borderLightness = 34 + normalizedValue * 18;
+
+  return {
+    backgroundColor: `hsl(${hue} 55% ${backgroundLightness}%)`,
+    border: `1px solid hsl(${hue} 70% ${borderLightness}%)`,
+    color: "#eff6ff",
+  };
+}
+
+function getSelectedAncestorCards(
+  tree: GeneratorTree<CinenerdleCard>,
+  row: number,
+): CinenerdleCard[] {
+  return tree
+    .slice(0, row)
+    .map((ancestorRow) => ancestorRow.find((node) => node.selected)?.data ?? null)
+    .filter((card): card is CinenerdleCard => card !== null);
+}
+
+function cardsMatch(left: CinenerdleCard, right: CinenerdleCard) {
+  if (left.kind !== right.kind) {
+    return false;
+  }
+
+  if (left.kind === "cinenerdle" && right.kind === "cinenerdle") {
+    return true;
+  }
+
+  if (left.kind === "movie" && right.kind === "movie") {
+    return (
+      normalizeTitle(left.name) === normalizeTitle(right.name) &&
+      left.year === right.year
+    );
+  }
+
+  return normalizeName(left.name) === normalizeName(right.name);
+}
+
+function isTmdbSourceLabel(label: string) {
+  return label.trim().toLowerCase() === "tmdb";
+}
+
+function getRenderableSources(card: CinenerdleCard) {
+  return (card.sources ?? []).filter(
+    (source) => source.iconUrl === TMDB_ICON_URL || isTmdbSourceLabel(source.label),
+  );
+}
+
+function createCardViewModel(
+  card: CinenerdleCard,
+  options: {
+    isSelected: boolean;
+    isLocked?: boolean;
+    isAncestorSelected?: boolean;
+  },
+): CinenerdleCardViewModel {
+  const sharedFields = {
+    kind: card.kind,
+    name: card.name,
+    imageUrl: card.imageUrl,
+    subtitle: card.subtitle,
+    subtitleDetail: card.subtitleDetail,
+    popularity: card.popularity,
+    connectionCount: card.connectionCount,
+    sources: getRenderableSources(card),
+    status: card.status,
+    isSelected: options.isSelected,
+    isLocked: options.isLocked ?? false,
+    isAncestorSelected: options.isAncestorSelected ?? false,
+  };
+
+  if (card.kind === "movie") {
+    return {
+      ...sharedFields,
+      kind: "movie",
+      voteAverage: card.voteAverage,
+      voteCount: card.voteCount,
+    };
+  }
+
+  return {
+    ...sharedFields,
+    kind: card.kind,
+  };
+}
+
+function renderHeatChip(
+  label: "Popularity" | "Votes" | "Rating",
+  value: number | null | undefined,
+  maxValue: number,
+  className = "cinenerdle-card-chip",
+  style?: CSSProperties,
+) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+
+  return (
+    <span
+      className={className}
+      style={{
+        ...createHeatChipStyle(value, maxValue),
+        ...style,
+      }}
+    >
+      {`${label} ${formatHeatMetricValue(label, value)}`}
+    </span>
+  );
+}
+
+function renderStatusChip(viewModel: CinenerdleCardViewModel) {
+  if (!viewModel.status?.text) {
+    return null;
+  }
+
+  return (
+    <span
+      className={`cinenerdle-card-chip cinenerdle-card-status cinenerdle-card-status-${viewModel.status.tone}`}
+    >
+      {viewModel.status.text}
+    </span>
+  );
+}
+
+function renderFooter(viewModel: CinenerdleCardViewModel) {
+  const hasTopLeftContent =
+    typeof viewModel.connectionCount === "number" || viewModel.sources.length > 0;
+  const statusChip = renderStatusChip(viewModel);
+  const voteCountChip =
+    viewModel.kind === "movie"
+      ? renderHeatChip("Votes", viewModel.voteCount, 20000)
+      : null;
+  const ratingChip =
+    viewModel.kind === "movie"
+      ? renderHeatChip(
+          "Rating",
+          viewModel.voteAverage,
+          10,
+          "cinenerdle-card-chip",
+          typeof viewModel.voteCount === "number" &&
+          Number.isFinite(viewModel.voteCount)
+            ? { marginLeft: "auto" }
+            : undefined,
+        )
+      : null;
+  const shouldRenderBottomRow =
+    viewModel.kind === "movie" || Boolean(statusChip);
+
+  return (
+    <footer className="cinenerdle-card-footer">
+      <div className="cinenerdle-card-footer-top">
+        {hasTopLeftContent ? (
+          <div className="cinenerdle-card-footer-left">
+            {typeof viewModel.connectionCount === "number" ? (
+              <span className="cinenerdle-card-count">{viewModel.connectionCount}</span>
+            ) : null}
+            {viewModel.sources.length > 0 ? (
+              <div className="cinenerdle-card-sources">
+                {viewModel.sources.map((source) => (
+                  <img
+                    alt={source.label}
+                    aria-label={source.label}
+                    className="cinenerdle-card-source-icon"
+                    key={`${source.iconUrl}:${source.label}`}
+                    src={source.iconUrl}
+                    title={source.label}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="cinenerdle-card-footer-spacer" />
+        )}
+        {renderHeatChip("Popularity", viewModel.popularity, 100)}
+      </div>
+      {shouldRenderBottomRow ? (
+        <div className="cinenerdle-card-footer-bottom">
+          {voteCountChip}
+          {ratingChip}
+          {statusChip}
+        </div>
+      ) : null}
+    </footer>
+  );
+}
+
 function renderCinenerdleCard(
   row: number,
   col: number,
   tree: GeneratorTree<CinenerdleCard>,
 ) {
   const card = tree[row][col].data;
-  const isSelected = tree[row][col].selected;
+  const viewModel = createCardViewModel(card, {
+    isSelected: tree[row][col].selected,
+    isLocked: false,
+    isAncestorSelected: getSelectedAncestorCards(tree, row).some((ancestorCard) =>
+      cardsMatch(card, ancestorCard),
+    ),
+  });
 
   return (
     <article
-      className={
-        isSelected ? "cinenerdle-card cinenerdle-card-selected" : "cinenerdle-card"
-      }
+      className={[
+        "cinenerdle-card",
+        viewModel.isSelected ? "cinenerdle-card-selected" : "",
+        viewModel.isLocked ? "cinenerdle-card-locked" : "",
+        viewModel.isAncestorSelected ? "cinenerdle-card-ancestor-selected" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
     >
       <div className="cinenerdle-card-image-shell">
-        {card.imageUrl ? (
-          <img alt="" className="cinenerdle-card-image" src={card.imageUrl} />
+        {viewModel.imageUrl ? (
+          <img
+            alt={viewModel.name}
+            className="cinenerdle-card-image"
+            loading="lazy"
+            src={viewModel.imageUrl}
+          />
         ) : (
           <div className="cinenerdle-card-image cinenerdle-card-image-fallback">
-            {card.kind === "movie" ? "FILM" : card.kind.toUpperCase()}
+            {viewModel.name}
           </div>
         )}
       </div>
 
       <div className="cinenerdle-card-copy">
-        <p className="cinenerdle-card-title">{card.name}</p>
-        <p className="cinenerdle-card-subtitle">
-          {card.kind === "movie" ? formatMoviePathLabel(card.subtitle, card.year) : card.subtitle}
-        </p>
-        {card.subtitleDetail ? (
-          <p className="cinenerdle-card-detail">{card.subtitleDetail}</p>
-        ) : null}
+        <p className="cinenerdle-card-title">{viewModel.name}</p>
+        <div className="cinenerdle-card-copy-spacer" />
+        <div className="cinenerdle-card-secondary">
+          <p className="cinenerdle-card-subtitle">{viewModel.subtitle}</p>
+          {viewModel.subtitleDetail ? (
+            <p className="cinenerdle-card-detail">{viewModel.subtitleDetail}</p>
+          ) : null}
+        </div>
+        {renderFooter(viewModel)}
       </div>
-
-      <footer className="cinenerdle-card-footer">
-        <div className="cinenerdle-card-meta">
-          <span className="cinenerdle-card-count">
-            {card.connectionCount ?? 0} links
-          </span>
-          <span className="cinenerdle-card-popularity">
-            popularity {card.popularity.toFixed(1)}
-          </span>
-        </div>
-        <div className="cinenerdle-card-sources">
-          {card.sources.map((source) => (
-            <span className="cinenerdle-card-source" key={source.label}>
-              <img alt="" className="cinenerdle-card-source-icon" src={source.iconUrl} />
-              <span>{source.label}</span>
-            </span>
-          ))}
-        </div>
-      </footer>
     </article>
   );
 }

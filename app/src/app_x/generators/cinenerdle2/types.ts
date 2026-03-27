@@ -23,6 +23,8 @@ export type TmdbMovieSearchResult = {
   poster_path?: string | null;
   release_date?: string;
   popularity?: number;
+  vote_average?: number;
+  vote_count?: number;
 };
 
 export type TmdbMovieCredit = {
@@ -32,9 +34,12 @@ export type TmdbMovieCredit = {
   poster_path?: string | null;
   release_date?: string;
   popularity?: number;
+  vote_average?: number;
+  vote_count?: number;
   creditType?: "cast" | "crew";
   character?: string;
   job?: string;
+  department?: string;
 };
 
 export type TmdbPersonCredit = {
@@ -43,8 +48,10 @@ export type TmdbPersonCredit = {
   profile_path?: string | null;
   popularity?: number;
   known_for_department?: string;
+  creditType?: "cast" | "crew";
   character?: string;
   job?: string;
+  department?: string;
 };
 
 export type TmdbMovieCreditsResponse = {
