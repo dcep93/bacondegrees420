@@ -133,6 +133,7 @@ export type CinenerdlePathNode =
 type BaseCard = {
   key: string;
   name: string;
+  popularity: number;
   imageUrl: string | null;
   subtitle: string;
   subtitleDetail: string;

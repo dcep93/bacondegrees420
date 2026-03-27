@@ -23,12 +23,9 @@ import {
   getPersonRecordsByMovieKey,
 } from "./indexed_db";
 import {
-  ensureMovieCreditsRecord,
-  ensureMovieRecordForCard,
-  ensurePersonRecordByName,
   fetchCinenerdleDailyStarterMovies,
-  resolveMovieRecord,
-  resolvePersonRecord,
+  prepareSelectedMovie,
+  prepareSelectedPerson,
 } from "./tmdb";
 import type { CinenerdleCard, CinenerdlePathNode } from "./types";
 import {
@@ -42,6 +39,22 @@ import {
   normalizeTitle,
   parseMoviePathLabel,
 } from "./utils";
+
+function createUncachedMovieCard(name: string, year: string): Extract<CinenerdleCard, { kind: "movie" }> {
+  return {
+    key: `movie:${normalizeTitle(name)}:${year}`,
+    kind: "movie",
+    name,
+    year,
+    popularity: 0,
+    imageUrl: null,
+    subtitle: "Movie",
+    subtitleDetail: "Not cached yet",
+    connectionCount: null,
+    sources: [],
+    record: null,
+  };
+}
 
 type CinenerdleControllerOptions = {
   readHash: () => string;
@@ -57,6 +70,28 @@ function createNode(data: CinenerdleCard, selected = false): GeneratorNode<Cinen
 
 function createRow(cards: CinenerdleCard[], selectedKey?: string) {
   return cards.map((card) => createNode(card, selectedKey === card.key));
+}
+
+function sortCardsByPopularity(cards: CinenerdleCard[]) {
+  return [...cards].sort((left, right) => {
+    const popularityDifference = right.popularity - left.popularity;
+    if (popularityDifference !== 0) {
+      return popularityDifference;
+    }
+
+    const nameDifference = normalizeTitle(left.name).localeCompare(
+      normalizeTitle(right.name),
+    );
+    if (nameDifference !== 0) {
+      return nameDifference;
+    }
+
+    if (left.kind === "movie" && right.kind === "movie") {
+      return Number(right.year || 0) - Number(left.year || 0);
+    }
+
+    return 0;
+  });
 }
 
 function getSelectedCard(tree: GeneratorTree<CinenerdleCard>, rowIndex: number) {
@@ -82,12 +117,38 @@ function getSelectedPathNodes(tree: GeneratorTree<CinenerdleCard>): CinenerdlePa
 
 async function createDailyStarterRow() {
   const starterFilms = await fetchCinenerdleDailyStarterMovies();
+  const hydratedStarterFilms = await Promise.all(
+    starterFilms.map(async (starterFilm) => {
+      const cachedFilmRecord = await getFilmRecordByTitleAndYear(
+        starterFilm.title,
+        starterFilm.year,
+      );
 
-  if (starterFilms.length === 0) {
+      if (!cachedFilmRecord) {
+        return starterFilm;
+      }
+
+      return {
+        ...starterFilm,
+        id: cachedFilmRecord.id,
+        tmdbId: cachedFilmRecord.tmdbId,
+        popularity: cachedFilmRecord.popularity,
+        rawTmdbMovie: cachedFilmRecord.rawTmdbMovie,
+        rawTmdbMovieSearchResponse: cachedFilmRecord.rawTmdbMovieSearchResponse,
+        rawTmdbMovieCreditsResponse: cachedFilmRecord.rawTmdbMovieCreditsResponse,
+        tmdbSavedAt: cachedFilmRecord.tmdbSavedAt,
+        tmdbCreditsSavedAt: cachedFilmRecord.tmdbCreditsSavedAt,
+      };
+    }),
+  );
+
+  if (hydratedStarterFilms.length === 0) {
     return null;
   }
 
-  return createRow(starterFilms.map(createDailyStarterMovieCard));
+  return createRow(
+    sortCardsByPopularity(hydratedStarterFilms.map(createDailyStarterMovieCard)),
+  );
 }
 
 async function buildChildRowForCard(
@@ -98,7 +159,8 @@ async function buildChildRowForCard(
   }
 
   if (card.kind === "person") {
-    const personRecord = await ensurePersonRecordByName(card.name);
+    const personRecord =
+      card.record ?? (await getPersonRecordByName(card.name));
     if (!personRecord) {
       return null;
     }
@@ -120,17 +182,19 @@ async function buildChildRowForCard(
     );
 
     return createRow(
-      movieCredits.map((credit) =>
+      sortCardsByPopularity(
+        movieCredits.map((credit) =>
         createMovieAssociationCard(
           credit,
           (credit.id ? filmRecordsById.get(credit.id) : null) ?? null,
           connectionCounts.get(getMovieKeyFromCredit(credit)) ?? 1,
         ),
+        ),
       ),
     );
   }
 
-  const movieRecord = await ensureMovieCreditsRecord(await ensureMovieRecordForCard(card));
+  const movieRecord = card.record ?? (await getFilmRecordByTitleAndYear(card.name, card.year));
   if (!movieRecord) {
     return null;
   }
@@ -175,7 +239,7 @@ async function buildChildRowForCard(
     });
   });
 
-  return createRow(cards);
+  return createRow(sortCardsByPopularity(cards));
 }
 
 async function createCinenerdleRootTree(): Promise<GeneratorTree<CinenerdleCard>> {
@@ -200,12 +264,10 @@ async function createRootTreeFromPathNode(
   }
 
   if (pathNode.kind === "person") {
-    const personRecord = await resolvePersonRecord(pathNode.name);
-    if (!personRecord) {
-      return null;
-    }
-
-    const rootCard = createPersonRootCard(personRecord, pathNode.name);
+    const personRecord = await getPersonRecordByName(pathNode.name);
+    const rootCard = personRecord
+      ? createPersonRootCard(personRecord, pathNode.name)
+      : createCinenerdleOnlyPersonCard(pathNode.name, "database only");
     const tree: GeneratorTree<CinenerdleCard> = [[createNode(rootCard, true)]];
     const childRow = await buildChildRowForCard(rootCard);
 
@@ -216,12 +278,10 @@ async function createRootTreeFromPathNode(
     return tree;
   }
 
-  const movieRecord = await resolveMovieRecord(pathNode);
-  if (!movieRecord) {
-    return null;
-  }
-
-  const rootCard = createMovieRootCard(movieRecord, pathNode.name);
+  const movieRecord = await getFilmRecordByTitleAndYear(pathNode.name, pathNode.year);
+  const rootCard = movieRecord
+    ? createMovieRootCard(movieRecord, pathNode.name)
+    : createUncachedMovieCard(pathNode.name, pathNode.year);
   const tree: GeneratorTree<CinenerdleCard> = [[createNode(rootCard, true)]];
   const childRow = await buildChildRowForCard(rootCard);
 
@@ -281,26 +341,20 @@ async function createDisconnectedRow(
   pathNode: Extract<CinenerdlePathNode, { kind: "movie" | "person" }>,
 ): Promise<GeneratorNode<CinenerdleCard>[] | null> {
   if (pathNode.kind === "person") {
-    const personRecord = await resolvePersonRecord(pathNode.name);
-    if (!personRecord) {
-      return null;
-    }
+    const personRecord = await getPersonRecordByName(pathNode.name);
+    const personCard = personRecord
+      ? createPersonRootCard(personRecord, pathNode.name)
+      : createCinenerdleOnlyPersonCard(pathNode.name, "database only");
 
-    return createRow(
-      [createPersonRootCard(personRecord, pathNode.name)],
-      createPersonRootCard(personRecord, pathNode.name).key,
-    );
+    return createRow([personCard], personCard.key);
   }
 
-  const movieRecord = await resolveMovieRecord(pathNode);
-  if (!movieRecord) {
-    return null;
-  }
+  const movieRecord = await getFilmRecordByTitleAndYear(pathNode.name, pathNode.year);
+  const movieCard = movieRecord
+    ? createMovieRootCard(movieRecord, pathNode.name)
+    : createUncachedMovieCard(pathNode.name, pathNode.year);
 
-  return createRow(
-    [createMovieRootCard(movieRecord, pathNode.name)],
-    createMovieRootCard(movieRecord, pathNode.name).key,
-  );
+  return createRow([movieCard], movieCard.key);
 }
 
 function findCardIndex(
@@ -458,9 +512,14 @@ function renderCinenerdleCard(
       </div>
 
       <footer className="cinenerdle-card-footer">
-        <span className="cinenerdle-card-count">
-          {card.connectionCount ?? 0} links
-        </span>
+        <div className="cinenerdle-card-meta">
+          <span className="cinenerdle-card-count">
+            {card.connectionCount ?? 0} links
+          </span>
+          <span className="cinenerdle-card-popularity">
+            popularity {card.popularity.toFixed(1)}
+          </span>
+        </div>
         <div className="cinenerdle-card-sources">
           {card.sources.map((source) => (
             <span className="cinenerdle-card-source" key={source.label}>
@@ -501,12 +560,55 @@ export function useCinenerdleController({
               return;
             }
 
-            const childRow = await buildChildRowForCard(selectedCard);
+            const preparedCard =
+              selectedCard.kind === "person"
+                ? (() => {
+                    const personRecord = selectedCard.record;
+                    return prepareSelectedPerson(
+                      selectedCard.name,
+                      personRecord?.id ?? null,
+                    ).then((nextRecord) =>
+                      nextRecord
+                        ? createPersonRootCard(nextRecord, selectedCard.name)
+                        : selectedCard,
+                    );
+                  })()
+                : selectedCard.kind === "movie"
+                  ? (() => {
+                      const movieRecord = selectedCard.record;
+                      return prepareSelectedMovie(
+                        selectedCard.name,
+                        selectedCard.year,
+                        movieRecord?.id ?? null,
+                      ).then((nextRecord) =>
+                        nextRecord
+                          ? createMovieRootCard(nextRecord, selectedCard.name)
+                          : selectedCard,
+                      );
+                    })()
+                  : Promise.resolve(selectedCard);
+
+            const resolvedSelectedCard = await preparedCard;
+            const resolvedTree = tree.map((currentRow, currentRowIndex) =>
+              currentRowIndex === row
+                ? currentRow.map((node, currentColIndex) =>
+                    currentColIndex === col
+                      ? {
+                          ...node,
+                          data: resolvedSelectedCard,
+                        }
+                      : node,
+                  )
+                : currentRow,
+            );
+
+            const childRow = await buildChildRowForCard(resolvedSelectedCard);
             if (!childRow || childRow.length === 0) {
+              setTree(resolvedTree);
               return;
             }
 
-            setTree([...tree, childRow]);
+            setTree([...resolvedTree, childRow]);
           } catch (error) {
             console.error("cinenerdle2.afterCardSelected", error);
           }

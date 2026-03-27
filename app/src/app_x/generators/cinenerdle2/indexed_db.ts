@@ -231,6 +231,47 @@ export async function getAllFilmRecords(): Promise<FilmRecord[]> {
   });
 }
 
+export async function estimateIndexedDbUsageBytes(): Promise<number> {
+  const [peopleRecords, filmRecords] = await Promise.all([
+    getAllPersonRecords(),
+    getAllFilmRecords(),
+  ]);
+
+  return new Blob([JSON.stringify({ peopleRecords, filmRecords })]).size;
+}
+
+function stripCinenerdleFilmData(filmRecord: FilmRecord): FilmRecord {
+  const { rawCinenerdleDailyStarter, cinenerdleSnapshot, ...persistedFilmRecord } =
+    filmRecord;
+  void rawCinenerdleDailyStarter;
+  void cinenerdleSnapshot;
+  return persistedFilmRecord;
+}
+
+export async function clearIndexedDb(): Promise<void> {
+  const database = await openIndexedDb();
+
+  try {
+    const transaction = database.transaction(
+      [PEOPLE_STORE_NAME, FILMS_STORE_NAME],
+      "readwrite",
+    );
+
+    await Promise.all([
+      indexedDbRequestToPromise(
+        transaction.objectStore(PEOPLE_STORE_NAME).clear(),
+      ),
+      indexedDbRequestToPromise(
+        transaction.objectStore(FILMS_STORE_NAME).clear(),
+      ),
+    ]);
+
+    await transactionDonePromise(transaction);
+  } finally {
+    database.close();
+  }
+}
+
 export async function getCachedStarterFilms(): Promise<FilmRecord[]> {
   const records = await getAllFilmRecords();
 
@@ -241,7 +282,7 @@ export async function getCachedStarterFilms(): Promise<FilmRecord[]> {
 
 export async function saveFilmRecord(filmRecord: FilmRecord): Promise<void> {
   await withStore(FILMS_STORE_NAME, "readwrite", async (store) => {
-    await indexedDbRequestToPromise(store.put(filmRecord));
+    await indexedDbRequestToPromise(store.put(stripCinenerdleFilmData(filmRecord)));
   });
 }
 
@@ -252,7 +293,9 @@ export async function saveFilmRecords(filmRecords: FilmRecord[]): Promise<void> 
 
   await withStore(FILMS_STORE_NAME, "readwrite", async (store) => {
     for (const filmRecord of filmRecords) {
-      await indexedDbRequestToPromise(store.put(filmRecord));
+      await indexedDbRequestToPromise(
+        store.put(stripCinenerdleFilmData(filmRecord)),
+      );
     }
   });
 }

@@ -4,7 +4,6 @@ import {
 } from "./constants";
 import { createDailyStarterFilmRecord } from "./cards";
 import {
-  getCachedStarterFilms,
   getFilmRecordById,
   getFilmRecordByTitleAndYear,
   getFilmRecordsByIds,
@@ -21,29 +20,40 @@ import {
   withDerivedFilmFields,
 } from "./records";
 import type {
-  CinenerdleCard,
-  CinenerdleDailyStarter,
-  CinenerdlePathNode,
   FilmRecord,
   PersonRecord,
   TmdbMovieCreditsResponse,
   TmdbMovieSearchResult,
-  TmdbPersonCredit,
   TmdbPersonMovieCreditsResponse,
   TmdbPersonSearchResult,
   TmdbSearchResponse,
 } from "./types";
 import {
-  getAssociatedPeopleFromMovieCredits,
   getMovieTitleFromCredit,
   getMovieYearFromCredit,
   getUniqueSortedTmdbMovieCredits,
   getValidTmdbEntityId,
   isAllowedBfsTmdbMovieCredit,
   normalizeName,
+  normalizeTitle,
 } from "./utils";
 
 let hasPrimedTmdbApiKey = false;
+
+function logEntityEvent(
+  kind: "person" | "movie",
+  label: string,
+  action: "database" | "fetch" | "prefetch",
+) {
+  const normalizedLabel =
+    kind === "person" ? normalizeName(label) : normalizeTitle(label);
+
+  if (!normalizedLabel) {
+    return;
+  }
+
+  console.log(`${kind} ${normalizedLabel} ${action}`);
+}
 
 function readEnvTmdbApiKey(): string {
   const envValue = import.meta.env.VITE_TMDB_API_KEY;
@@ -116,38 +126,19 @@ async function fetchTmdbCredits<T>(pathname: string): Promise<T> {
 }
 
 export async function fetchCinenerdleDailyStarterMovies(): Promise<FilmRecord[]> {
-  try {
-    const payload = await fetchJson<{ data?: CinenerdleDailyStarter[] }>(
-      CINENERDLE_DAILY_STARTERS_URL,
-    );
-    const starterRecords = (payload.data ?? []).map(createDailyStarterFilmRecord);
-    await saveFilmRecords(starterRecords.map(withDerivedFilmFields));
-    return starterRecords;
-  } catch (error) {
-    console.error("cinenerdle2.fetchCinenerdleDailyStarterMovies", error);
-    return getCachedStarterFilms();
-  }
-}
+  const payload = await fetchJson<{ data?: import("./types").CinenerdleDailyStarter[] }>(
+    CINENERDLE_DAILY_STARTERS_URL,
+  );
 
-export async function resolvePersonRecord(
-  personName: string,
-  { allowApi = true }: { allowApi?: boolean } = {},
-): Promise<PersonRecord | null> {
-  const localPersonRecord = await getPersonRecordByName(personName);
-  if (localPersonRecord) {
-    return localPersonRecord;
-  }
-
-  if (!allowApi) {
-    return null;
-  }
-
-  return fetchAndCachePerson(personName);
+  return (payload.data ?? []).map(createDailyStarterFilmRecord);
 }
 
 export async function fetchAndCachePerson(
   personName: string,
+  reason: "fetch" | "prefetch" = "fetch",
 ): Promise<PersonRecord | null> {
+  logEntityEvent("person", personName, reason);
+
   const searchPayload = await fetchTmdbSearch<TmdbPersonSearchResult>(
     "search/person",
     personName,
@@ -170,7 +161,9 @@ export async function fetchAndCachePerson(
 
   const storedPersonRecord =
     (await getPersonRecordById(person.id)) ?? personRecord;
-  void prefetchBestMovieForPersonRecord(storedPersonRecord);
+  if (reason === "fetch") {
+    void prefetchBestMovieForPersonRecord(storedPersonRecord);
+  }
   return storedPersonRecord;
 }
 
@@ -208,29 +201,13 @@ export async function saveFilmRecordsFromCredits(
   await saveFilmRecords(nextRecords);
 }
 
-export async function resolveMovieRecord(
-  pathNode: Extract<CinenerdlePathNode, { kind: "movie" }>,
-  { allowApi = true }: { allowApi?: boolean } = {},
-): Promise<FilmRecord | null> {
-  const localMovieRecord = await getFilmRecordByTitleAndYear(
-    pathNode.name,
-    pathNode.year,
-  );
-  if (localMovieRecord) {
-    return localMovieRecord;
-  }
-
-  if (!allowApi) {
-    return null;
-  }
-
-  return fetchAndCacheMovie(pathNode.name, pathNode.year);
-}
-
 export async function fetchAndCacheMovie(
   movieName: string,
   preferredYear = "",
+  reason: "fetch" | "prefetch" = "fetch",
 ): Promise<FilmRecord | null> {
+  logEntityEvent("movie", movieName, reason);
+
   const searchPayload = await fetchTmdbSearch<TmdbMovieSearchResult>(
     "search/movie",
     movieName,
@@ -252,11 +229,12 @@ export async function fetchAndCacheMovie(
   await saveFilmRecord(filmRecord);
   const storedMovieRecord = (await getFilmRecordById(movie.id)) ?? filmRecord;
 
-  return fetchAndCacheMovieCredits(storedMovieRecord);
+  return fetchAndCacheMovieCredits(storedMovieRecord, reason);
 }
 
 export async function fetchAndCacheMovieCredits(
   movieRecord: FilmRecord,
+  reason: "fetch" | "prefetch" = "fetch",
 ): Promise<FilmRecord | null> {
   let resolvedMovieRecord = movieRecord;
   let tmdbId = getValidTmdbEntityId(
@@ -267,6 +245,7 @@ export async function fetchAndCacheMovieCredits(
     const refreshedRecord = await fetchAndCacheMovie(
       resolvedMovieRecord.title,
       resolvedMovieRecord.year,
+      reason,
     );
     resolvedMovieRecord = refreshedRecord ?? resolvedMovieRecord;
     tmdbId = getValidTmdbEntityId(
@@ -290,54 +269,10 @@ export async function fetchAndCacheMovieCredits(
   });
 
   await saveFilmRecord(updatedRecord);
-  void prefetchBestPersonForMovieRecord(updatedRecord);
+  if (reason === "fetch") {
+    void prefetchBestPersonForMovieRecord(updatedRecord);
+  }
   return updatedRecord;
-}
-
-export async function ensurePersonRecordByName(
-  personName: string,
-): Promise<PersonRecord | null> {
-  let personRecord = await getPersonRecordByName(personName);
-
-  if (!personRecord || !personRecord.rawTmdbMovieCreditsResponse) {
-    personRecord = await fetchAndCachePerson(personName);
-  }
-
-  return personRecord;
-}
-
-export async function ensureMovieRecordByPathNode(
-  pathNode: Extract<CinenerdlePathNode, { kind: "movie" }>,
-): Promise<FilmRecord | null> {
-  return resolveMovieRecord(pathNode);
-}
-
-export async function ensureMovieRecordForCard(
-  card: Extract<CinenerdleCard, { kind: "movie" }>,
-): Promise<FilmRecord | null> {
-  const tmdbId = getValidTmdbEntityId(card.record?.tmdbId ?? card.record?.id);
-
-  if (tmdbId) {
-    return (await getFilmRecordById(tmdbId)) ?? card.record;
-  }
-
-  return ensureMovieRecordByPathNode({
-    kind: "movie",
-    name: card.name,
-    year: card.year,
-  });
-}
-
-export async function ensureMovieCreditsRecord(
-  movieRecord: FilmRecord | null,
-): Promise<FilmRecord | null> {
-  if (!movieRecord) {
-    return null;
-  }
-
-  return movieRecord.rawTmdbMovieCreditsResponse
-    ? movieRecord
-    : fetchAndCacheMovieCredits(movieRecord);
 }
 
 async function prefetchBestMovieForPersonRecord(
@@ -352,45 +287,100 @@ async function prefetchBestMovieForPersonRecord(
       ? await getFilmRecordById(credit.id)
       : null;
 
-    if (existingMovieRecord?.rawTmdbMovieCreditsResponse) {
+    if (
+      existingMovieRecord ??
+      (getMovieTitleFromCredit(credit)
+        ? await getFilmRecordByTitleAndYear(
+            getMovieTitleFromCredit(credit),
+            getMovieYearFromCredit(credit),
+          )
+        : null)
+    ) {
       continue;
     }
 
     await fetchAndCacheMovie(
       getMovieTitleFromCredit(credit),
       getMovieYearFromCredit(credit),
+      "prefetch",
     );
     return;
   }
 }
 
-function isAllowedMoviePersonCredit(credit: TmdbPersonCredit): boolean {
-  if (credit.character) {
-    return !credit.character.toLowerCase().includes("(uncredited)");
-  }
-
-  return Boolean(credit.job);
-}
-
 async function prefetchBestPersonForMovieRecord(
   movieRecord: FilmRecord,
 ): Promise<void> {
-  const candidateCredits = getAssociatedPeopleFromMovieCredits(movieRecord)
-    .filter(isAllowedMoviePersonCredit)
-    .sort((left, right) => (right.popularity ?? 0) - (left.popularity ?? 0));
+  const credits = movieRecord.rawTmdbMovieCreditsResponse ?? {};
+  const candidateCredits = [
+    ...(credits.cast ?? []),
+    ...(credits.crew ?? []),
+  ].sort((left, right) => (right.popularity ?? 0) - (left.popularity ?? 0));
 
   for (const credit of candidateCredits) {
     const existingPersonRecord =
       (credit.id ? await getPersonRecordById(credit.id) : null) ??
       (credit.name ? await getPersonRecordByName(credit.name) : null);
 
-    if (existingPersonRecord?.rawTmdbMovieCreditsResponse) {
+    if (existingPersonRecord) {
       continue;
     }
 
     if (credit.name) {
-      await fetchAndCachePerson(credit.name);
+      await fetchAndCachePerson(credit.name, "prefetch");
       return;
     }
   }
+}
+
+async function getLocalPersonRecordForCard(
+  personName: string,
+  personId?: number | null,
+): Promise<PersonRecord | null> {
+  return (
+    (personId ? await getPersonRecordById(personId) : null) ??
+    (personName ? await getPersonRecordByName(personName) : null)
+  );
+}
+
+async function getLocalMovieRecordForCard(
+  movieName: string,
+  movieYear = "",
+  movieId?: number | string | null,
+): Promise<FilmRecord | null> {
+  return (
+    (movieId ? await getFilmRecordById(movieId) : null) ??
+    (movieName ? await getFilmRecordByTitleAndYear(movieName, movieYear) : null)
+  );
+}
+
+export async function prepareSelectedPerson(
+  personName: string,
+  personId?: number | null,
+): Promise<PersonRecord | null> {
+  const localPersonRecord = await getLocalPersonRecordForCard(personName, personId);
+  if (localPersonRecord) {
+    logEntityEvent("person", localPersonRecord.name || personName, "database");
+    return localPersonRecord;
+  }
+
+  return fetchAndCachePerson(personName, "fetch");
+}
+
+export async function prepareSelectedMovie(
+  movieName: string,
+  movieYear = "",
+  movieId?: number | string | null,
+): Promise<FilmRecord | null> {
+  const localMovieRecord = await getLocalMovieRecordForCard(
+    movieName,
+    movieYear,
+    movieId,
+  );
+  if (localMovieRecord) {
+    logEntityEvent("movie", localMovieRecord.title || movieName, "database");
+    return localMovieRecord;
+  }
+
+  return fetchAndCacheMovie(movieName, movieYear, "fetch");
 }

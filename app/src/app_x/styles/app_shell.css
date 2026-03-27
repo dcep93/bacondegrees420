@@ -15,9 +15,11 @@
 .bacon-app-shell {
   width: 100vw;
   min-height: 100svh;
+  max-height: 100svh;
   margin-left: calc(50% - 50vw);
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
   background:
     radial-gradient(circle at top left, rgba(213, 163, 108, 0.16), transparent 26%),
     radial-gradient(circle at top right, rgba(255, 179, 102, 0.1), transparent 28%),
@@ -80,6 +82,39 @@
   line-height: 0.95;
 }
 
+.bacon-title-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bacon-title-action-button {
+  appearance: none;
+  min-height: 42px;
+  padding: 10px 16px;
+  border: 1px solid var(--bacon-border-strong);
+  border-radius: 999px;
+  background: var(--bacon-panel-strong);
+  box-shadow: var(--bacon-shadow);
+  color: var(--bacon-text);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.bacon-title-action-button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(228, 193, 150, 0.6);
+  background: rgba(27, 20, 15, 0.96);
+}
+
 .bacon-app-content {
   flex: 1;
   min-height: 0;
@@ -96,5 +131,15 @@
     width: 46px;
     height: 46px;
     border-radius: 16px;
+  }
+
+  .bacon-title-actions {
+    gap: 8px;
+  }
+
+  .bacon-title-action-button {
+    min-height: 38px;
+    padding: 8px 12px;
+    font-size: 0.72rem;
   }
 }

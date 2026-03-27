@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
 import Cinenerdle2 from "./generators/cinenerdle2";
+import {
+  clearIndexedDb,
+  estimateIndexedDbUsageBytes,
+} from "./generators/cinenerdle2/indexed_db";
 import "./styles/app_shell.css";
 
 function clearHash() {
@@ -31,6 +35,23 @@ export default function AppX() {
     setResetVersion((version) => version + 1);
   }
 
+  function handleClearDatabase() {
+    void estimateIndexedDbUsageBytes().then((bytes) => {
+      const megabytes = bytes / (1024 * 1024);
+      const confirmed = window.confirm(
+        `Clear the TMDB cache?\n\nAbout ${megabytes.toFixed(2)} MB would be reclaimed.`,
+      );
+
+      if (!confirmed) {
+        return;
+      }
+
+      return clearIndexedDb().then(() => {
+        handleReset();
+      });
+    });
+  }
+
   return (
     <div className="bacon-app-shell">
       <header className="bacon-title-bar">
@@ -43,6 +64,15 @@ export default function AppX() {
           <img alt="" className="bacon-title-icon" src="/favicon.svg" />
         </button>
         <h1 className="bacon-title">bacondegrees420</h1>
+        <div className="bacon-title-actions">
+          <button
+            className="bacon-title-action-button"
+            onClick={handleClearDatabase}
+            type="button"
+          >
+            Clear DB
+          </button>
+        </div>
       </header>
 
       <main className="bacon-app-content">
