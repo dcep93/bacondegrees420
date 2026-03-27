@@ -1,10 +1,12 @@
 import {
+  Fragment,
   useCallback,
   useEffect,
   useRef,
   useState,
   type FormEvent,
   type KeyboardEvent,
+  type MouseEvent,
 } from "react";
 import Cinenerdle2 from "./generators/cinenerdle2";
 import {
@@ -20,25 +22,67 @@ import {
   logCinenerdleDebug,
 } from "./generators/cinenerdle2/debug";
 import {
+  buildConnectionGraph,
+  createConnectionEntityFromMovieRecord,
+  createConnectionEntityFromPersonRecord,
+  createFallbackConnectionEntity,
+  findConnectionPathBidirectional,
+  getConnectionEdgeKey,
+  type ConnectionEntity,
+  type ConnectionSearchResult,
+} from "./generators/cinenerdle2/connection_graph";
+import {
   clearIndexedDb,
   estimateIndexedDbUsageBytes,
   getAllFilmRecords,
   getAllPersonRecords,
 } from "./generators/cinenerdle2/indexed_db";
 import { resolveConnectionQuery } from "./generators/cinenerdle2/tmdb";
+import { TMDB_ICON_URL } from "./generators/cinenerdle2/constants";
 import {
   formatMoviePathLabel,
-  normalizeName,
-  normalizeTitle,
   normalizeWhitespace,
 } from "./generators/cinenerdle2/utils";
 import "./styles/app_shell.css";
 
-type ConnectionSuggestion = {
-  kind: "movie" | "person";
-  label: string;
+type ConnectionSuggestion = ConnectionEntity & {
   sortScore: number;
   popularity: number;
+};
+
+type PendingHashWrite = {
+  hash: string;
+  mode: "selection" | "navigation";
+};
+
+type SelectedPathTarget =
+  | {
+      kind: "movie";
+      name: string;
+      year: string;
+    }
+  | {
+      kind: "person";
+      name: string;
+      year: "";
+    }
+  | null;
+
+type ConnectionSearchRow = {
+  id: string;
+  excludedNodeKeys: string[];
+  excludedEdgeKeys: string[];
+  childDisallowedNodeKeys: string[];
+  childDisallowedEdgeKeys: string[];
+  status: ConnectionSearchResult["status"] | "searching";
+  path: ConnectionEntity[];
+};
+
+type ConnectionSession = {
+  id: string;
+  left: ConnectionEntity;
+  right: ConnectionEntity;
+  rows: ConnectionSearchRow[];
 };
 
 function getDocumentTitle(hashValue: string): string {
@@ -55,21 +99,44 @@ function getDocumentTitle(hashValue: string): string {
   return rootPathNode.name || "BaconDegrees420";
 }
 
-function getHighestGenerationSelectedLabel(hashValue: string): string {
+function getHighestGenerationSelectedTarget(hashValue: string): SelectedPathTarget {
   const selectedPathNodes = buildPathNodesFromSegments(parseHashSegments(hashValue)).filter(
-    (pathNode) => pathNode.kind !== "break",
+    (pathNode): pathNode is Exclude<(typeof pathNode), { kind: "break" | "cinenerdle" }> =>
+      pathNode.kind === "movie" || pathNode.kind === "person",
   );
   const selectedPathNode = selectedPathNodes[selectedPathNodes.length - 1];
 
-  if (!selectedPathNode || selectedPathNode.kind === "cinenerdle") {
-    return "cinenerdle";
+  if (!selectedPathNode) {
+    return null;
   }
 
   if (selectedPathNode.kind === "movie") {
-    return formatMoviePathLabel(selectedPathNode.name, selectedPathNode.year);
+    return {
+      kind: "movie",
+      name: selectedPathNode.name,
+      year: selectedPathNode.year,
+    };
   }
 
-  return selectedPathNode.name;
+  return {
+    kind: "person",
+    name: selectedPathNode.name,
+    year: "",
+  };
+}
+
+function getHighestGenerationSelectedLabel(hashValue: string): string {
+  const selectedPathTarget = getHighestGenerationSelectedTarget(hashValue);
+
+  if (!selectedPathTarget) {
+    return "cinenerdle";
+  }
+
+  if (selectedPathTarget.kind === "movie") {
+    return formatMoviePathLabel(selectedPathTarget.name, selectedPathTarget.year);
+  }
+
+  return selectedPathTarget.name;
 }
 
 function getSuggestionScore(query: string, label: string): number {
@@ -103,10 +170,25 @@ function clearHash() {
   );
 }
 
-type PendingHashWrite = {
-  hash: string;
-  mode: "selection" | "navigation";
-};
+function serializeConnectionEntityHash(entity: ConnectionEntity): string {
+  return serializePathNodes([
+    entity.kind === "movie"
+      ? createPathNode("movie", entity.name, entity.year)
+      : createPathNode("person", entity.name),
+  ]);
+}
+
+function createSearchingConnectionRow(id: string): ConnectionSearchRow {
+  return {
+    id,
+    excludedNodeKeys: [],
+    excludedEdgeKeys: [],
+    childDisallowedNodeKeys: [],
+    childDisallowedEdgeKeys: [],
+    status: "searching",
+    path: [],
+  };
+}
 
 export default function AppX() {
   const [hashValue, setHashValue] = useState(() => window.location.hash);
@@ -117,8 +199,11 @@ export default function AppX() {
   const [isResolvingConnection, setIsResolvingConnection] = useState(false);
   const [connectionSuggestions, setConnectionSuggestions] = useState<ConnectionSuggestion[]>([]);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
+  const [connectionSession, setConnectionSession] = useState<ConnectionSession | null>(null);
   const pendingHashWriteRef = useRef<PendingHashWrite | null>(null);
   const autocompleteRequestIdRef = useRef(0);
+  const connectionSessionIdRef = useRef(0);
+  const connectionRowIdRef = useRef(0);
   const connectionBarRef = useRef<HTMLElement | null>(null);
   const connectionInputWrapRef = useRef<HTMLDivElement | null>(null);
   const connectionDropdownRef = useRef<HTMLDivElement | null>(null);
@@ -196,12 +281,11 @@ export default function AppX() {
 
         const personSuggestions: ConnectionSuggestion[] = personRecords
           .map((personRecord) => {
-            const label = personRecord.name;
-            const sortScore = getSuggestionScore(query, label);
+            const entity = createConnectionEntityFromPersonRecord(personRecord);
+            const sortScore = getSuggestionScore(query, entity.label);
 
             return {
-              kind: "person" as const,
-              label,
+              ...entity,
               sortScore,
               popularity: personRecord.rawTmdbPerson?.popularity ?? 0,
             };
@@ -210,14 +294,13 @@ export default function AppX() {
 
         const movieSuggestions: ConnectionSuggestion[] = filmRecords
           .map((filmRecord) => {
-            const label = formatMoviePathLabel(filmRecord.title, filmRecord.year);
+            const entity = createConnectionEntityFromMovieRecord(filmRecord);
             const titleScore = getSuggestionScore(query, filmRecord.title);
-            const labelScore = getSuggestionScore(query, label);
+            const labelScore = getSuggestionScore(query, entity.label);
             const sortScore = Math.max(titleScore, labelScore);
 
             return {
-              kind: "movie" as const,
-              label,
+              ...entity,
               sortScore,
               popularity: filmRecord.popularity ?? 0,
             };
@@ -242,15 +325,11 @@ export default function AppX() {
             return left.label.localeCompare(right.label);
           })
           .filter((item) => {
-            const dedupeKey =
-              item.kind === "person"
-                ? `person:${normalizeName(item.label)}`
-                : `movie:${normalizeTitle(item.label)}`;
-            if (seenLabels.has(dedupeKey)) {
+            if (seenLabels.has(item.key)) {
               return false;
             }
 
-            seenLabels.add(dedupeKey);
+            seenLabels.add(item.key);
             return true;
           })
           .slice(0, 12);
@@ -265,6 +344,8 @@ export default function AppX() {
             label: suggestion.label,
             sortScore: suggestion.sortScore,
             popularity: suggestion.popularity,
+            connectionCount: suggestion.connectionCount,
+            hasCachedTmdbSource: suggestion.hasCachedTmdbSource,
           })),
         });
 
@@ -346,8 +427,7 @@ export default function AppX() {
               tagName: topElement.tagName,
               className:
                 typeof topElement.className === "string" ? topElement.className : null,
-              text:
-                topElement.textContent?.trim().slice(0, 120) ?? "",
+              text: topElement.textContent?.trim().slice(0, 120) ?? "",
             }
           : null,
       });
@@ -364,6 +444,7 @@ export default function AppX() {
     });
     clearHash();
     setHashValue("");
+    setConnectionSession(null);
     setResetVersion((version) => version + 1);
   }
 
@@ -441,11 +522,245 @@ export default function AppX() {
     [handleHashWrite],
   );
 
+  const navigateToConnectionEntity = useCallback(
+    (entity: ConnectionEntity) => {
+      navigateToHash(serializeConnectionEntityHash(entity), "navigation");
+    },
+    [navigateToHash],
+  );
+
+  const runConnectionRowSearch = useCallback(
+    async (params: {
+      sessionId: string;
+      rowId: string;
+      left: ConnectionEntity;
+      right: ConnectionEntity;
+      excludedNodeKeys: string[];
+      excludedEdgeKeys: string[];
+    }) => {
+      logCinenerdleDebug("app.connectionRows.search.start", {
+        sessionId: params.sessionId,
+        rowId: params.rowId,
+        left: params.left.label,
+        right: params.right.label,
+        excludedNodeKeys: params.excludedNodeKeys,
+        excludedEdgeKeys: params.excludedEdgeKeys,
+      });
+
+      const [personRecords, filmRecords] = await Promise.all([
+        getAllPersonRecords(),
+        getAllFilmRecords(),
+      ]);
+      const graph = buildConnectionGraph(personRecords, filmRecords);
+      const leftEntity =
+        graph.entitiesByKey.get(params.left.key) ??
+        createFallbackConnectionEntity(params.left);
+      const rightEntity =
+        graph.entitiesByKey.get(params.right.key) ??
+        createFallbackConnectionEntity(params.right);
+      const result = findConnectionPathBidirectional(graph, leftEntity.key, rightEntity.key, {
+        excludedNodeKeys: new Set(params.excludedNodeKeys),
+        excludedEdgeKeys: new Set(params.excludedEdgeKeys),
+        timeoutMs: 5000,
+      });
+
+      logCinenerdleDebug("app.connectionRows.search.complete", {
+        sessionId: params.sessionId,
+        rowId: params.rowId,
+        status: result.status,
+        elapsedMs: result.elapsedMs,
+        path: result.path.map((entity) => entity.label),
+      });
+
+      setConnectionSession((currentSession) => {
+        if (!currentSession || currentSession.id !== params.sessionId) {
+          return currentSession;
+        }
+
+        return {
+          ...currentSession,
+          left: leftEntity,
+          right: rightEntity,
+          rows: currentSession.rows.map((row) =>
+            row.id === params.rowId
+              ? {
+                  ...row,
+                  status: result.status,
+                  path: result.path,
+                }
+              : row,
+          ),
+        };
+      });
+    },
+    [],
+  );
+
+  const openConnectionRowsForEntity = useCallback(
+    async (entity: ConnectionEntity) => {
+      const selectedTarget = getHighestGenerationSelectedTarget(hashValue);
+      const counterpart = selectedTarget
+        ? createFallbackConnectionEntity(selectedTarget)
+        : entity;
+      const sessionId = `connection-session-${connectionSessionIdRef.current + 1}`;
+      connectionSessionIdRef.current += 1;
+      const rowId = `connection-row-${connectionRowIdRef.current + 1}`;
+      connectionRowIdRef.current += 1;
+
+      logCinenerdleDebug("app.connectionRows.open", {
+        sessionId,
+        left: entity.label,
+        right: counterpart.label,
+      });
+
+      setConnectionSession({
+        id: sessionId,
+        left: entity,
+        right: counterpart,
+        rows: [createSearchingConnectionRow(rowId)],
+      });
+      setConnectionQuery("");
+      setConnectionSuggestions([]);
+      setSelectedSuggestionIndex(-1);
+
+      await runConnectionRowSearch({
+        sessionId,
+        rowId,
+        left: entity,
+        right: counterpart,
+        excludedNodeKeys: [],
+        excludedEdgeKeys: [],
+      });
+    },
+    [hashValue, runConnectionRowSearch],
+  );
+
+  const spawnAlternativeConnectionRow = useCallback(
+    (
+      parentRowId: string,
+      exclusion:
+        | {
+            kind: "node";
+            nodeKey: string;
+          }
+        | {
+            kind: "edge";
+            edgeKey: string;
+          },
+    ) => {
+      let nextSearch:
+        | {
+            sessionId: string;
+            rowId: string;
+            left: ConnectionEntity;
+            right: ConnectionEntity;
+            excludedNodeKeys: string[];
+            excludedEdgeKeys: string[];
+          }
+        | null = null;
+
+      setConnectionSession((currentSession) => {
+        if (!currentSession) {
+          return currentSession;
+        }
+
+        const parentRow = currentSession.rows.find((row) => row.id === parentRowId);
+        if (!parentRow || parentRow.status !== "found") {
+          return currentSession;
+        }
+
+        if (
+          exclusion.kind === "node" &&
+          parentRow.childDisallowedNodeKeys.includes(exclusion.nodeKey)
+        ) {
+          return currentSession;
+        }
+
+        if (
+          exclusion.kind === "edge" &&
+          parentRow.childDisallowedEdgeKeys.includes(exclusion.edgeKey)
+        ) {
+          return currentSession;
+        }
+
+        const rowId = `connection-row-${connectionRowIdRef.current + 1}`;
+        connectionRowIdRef.current += 1;
+        const excludedNodeKeys = Array.from(
+          new Set([
+            ...parentRow.excludedNodeKeys,
+            ...(exclusion.kind === "node" ? [exclusion.nodeKey] : []),
+          ]),
+        );
+        const excludedEdgeKeys = Array.from(
+          new Set([
+            ...parentRow.excludedEdgeKeys,
+            ...(exclusion.kind === "edge" ? [exclusion.edgeKey] : []),
+          ]),
+        );
+
+        nextSearch = {
+          sessionId: currentSession.id,
+          rowId,
+          left: currentSession.left,
+          right: currentSession.right,
+          excludedNodeKeys,
+          excludedEdgeKeys,
+        };
+
+        logCinenerdleDebug("app.connectionRows.spawnAlternative", {
+          sessionId: currentSession.id,
+          parentRowId,
+          rowId,
+          exclusion,
+        });
+
+        return {
+          ...currentSession,
+          rows: [
+            ...currentSession.rows.map((row) =>
+              row.id === parentRowId
+                ? {
+                    ...row,
+                    childDisallowedNodeKeys:
+                      exclusion.kind === "node"
+                        ? [...row.childDisallowedNodeKeys, exclusion.nodeKey]
+                        : row.childDisallowedNodeKeys,
+                    childDisallowedEdgeKeys:
+                      exclusion.kind === "edge"
+                        ? [...row.childDisallowedEdgeKeys, exclusion.edgeKey]
+                        : row.childDisallowedEdgeKeys,
+                  }
+                : row,
+            ),
+            {
+              ...createSearchingConnectionRow(rowId),
+              excludedNodeKeys,
+              excludedEdgeKeys,
+            },
+          ],
+        };
+      });
+
+      if (nextSearch) {
+        void runConnectionRowSearch(nextSearch);
+      }
+    },
+    [runConnectionRowSearch],
+  );
+
   const handleConnectionSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
 
       const query = connectionQuery.trim();
+      const selectedSuggestion =
+        selectedSuggestionIndex >= 0 ? connectionSuggestions[selectedSuggestionIndex] ?? null : null;
+
+      if (selectedSuggestion) {
+        await openConnectionRowsForEntity(selectedSuggestion);
+        return;
+      }
+
       if (!query || isResolvingConnection) {
         return;
       }
@@ -485,7 +800,14 @@ export default function AppX() {
         setIsResolvingConnection(false);
       }
     },
-    [connectionQuery, isResolvingConnection, navigateToHash],
+    [
+      connectionQuery,
+      connectionSuggestions,
+      isResolvingConnection,
+      navigateToHash,
+      openConnectionRowsForEntity,
+      selectedSuggestionIndex,
+    ],
   );
 
   const handleConnectionInputKeyDown = useCallback(
@@ -499,39 +821,88 @@ export default function AppX() {
         setSelectedSuggestionIndex((currentIndex) =>
           Math.min(currentIndex + 1, connectionSuggestions.length - 1),
         );
-        logCinenerdleDebug("app.connectionAutocomplete.arrowDown", {
-          currentIndex: selectedSuggestionIndex,
-          nextIndex: Math.min(selectedSuggestionIndex + 1, connectionSuggestions.length - 1),
-          suggestionCount: connectionSuggestions.length,
-        });
         return;
       }
 
       if (event.key === "ArrowUp") {
         event.preventDefault();
-        setSelectedSuggestionIndex((currentIndex) =>
-          Math.max(currentIndex - 1, 0),
-        );
-        logCinenerdleDebug("app.connectionAutocomplete.arrowUp", {
-          currentIndex: selectedSuggestionIndex,
-          nextIndex: Math.max(selectedSuggestionIndex - 1, 0),
-          suggestionCount: connectionSuggestions.length,
-        });
+        setSelectedSuggestionIndex((currentIndex) => Math.max(currentIndex - 1, 0));
         return;
       }
 
       if (event.key === "Enter" && selectedSuggestionIndex >= 0) {
         event.preventDefault();
-        const selectedLabel = connectionSuggestions[selectedSuggestionIndex]?.label ?? "";
-        logCinenerdleDebug("app.connectionAutocomplete.enterSelected", {
-          selectedSuggestionIndex,
-          selectedLabel,
-        });
-        window.alert(selectedLabel);
+        const selectedSuggestion = connectionSuggestions[selectedSuggestionIndex] ?? null;
+        if (!selectedSuggestion) {
+          return;
+        }
+
+        void openConnectionRowsForEntity(selectedSuggestion);
       }
     },
-    [connectionSuggestions, selectedSuggestionIndex],
+    [connectionSuggestions, openConnectionRowsForEntity, selectedSuggestionIndex],
   );
+
+  const handleConnectionSuggestionClick = useCallback(
+    (event: MouseEvent<HTMLButtonElement>, suggestion: ConnectionSuggestion) => {
+      event.preventDefault();
+      void openConnectionRowsForEntity(suggestion);
+    },
+    [openConnectionRowsForEntity],
+  );
+
+  function renderConnectionEntityCard(
+    entity: ConnectionEntity,
+    options: {
+      dimmed?: boolean;
+      onCardClick?: () => void;
+      onNameClick?: () => void;
+    },
+  ) {
+    return (
+      <article
+        className={[
+          "bacon-connection-node",
+          options.onCardClick ? "bacon-connection-node-clickable" : "",
+          options.dimmed ? "bacon-connection-node-dimmed" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        onClick={options.onCardClick}
+      >
+        <button
+          className="bacon-connection-node-name"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            options.onNameClick?.();
+          }}
+          type="button"
+        >
+          {entity.label}
+        </button>
+        <div className="bacon-connection-node-meta">
+          <span className="bacon-connection-node-count">
+            {entity.connectionCount} {entity.connectionCount === 1 ? "connection" : "connections"}
+          </span>
+          <img
+            alt="TMDb"
+            className="bacon-connection-node-source-icon"
+            src={TMDB_ICON_URL}
+            style={
+              entity.hasCachedTmdbSource
+                ? undefined
+                : {
+                    filter: "grayscale(1)",
+                    opacity: 0.9,
+                  }
+            }
+            title="TMDb"
+          />
+        </div>
+      </article>
+    );
+  }
 
   return (
     <div className="bacon-app-shell">
@@ -589,10 +960,10 @@ export default function AppX() {
                     ]
                       .filter(Boolean)
                       .join(" ")}
-                    key={`${suggestion.kind}:${suggestion.label}`}
+                    key={suggestion.key}
                     onMouseEnter={() => setSelectedSuggestionIndex(index)}
                     onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => window.alert(suggestion.label)}
+                    onClick={(event) => handleConnectionSuggestionClick(event, suggestion)}
                     type="button"
                   >
                     {suggestion.label}
@@ -603,6 +974,96 @@ export default function AppX() {
           </div>
           <span className="bacon-connection-pill">{highestGenerationSelectedLabel}</span>
         </form>
+
+        {connectionSession ? (
+          <div className="bacon-connection-results">
+            <div className="bacon-connection-row">
+              {renderConnectionEntityCard(connectionSession.left, {
+                onCardClick: () => navigateToConnectionEntity(connectionSession.left),
+                onNameClick: () => navigateToConnectionEntity(connectionSession.left),
+              })}
+              <span className="bacon-connection-arrow bacon-connection-arrow-static">→</span>
+              {renderConnectionEntityCard(connectionSession.right, {
+                onCardClick: () => navigateToConnectionEntity(connectionSession.right),
+                onNameClick: () => navigateToConnectionEntity(connectionSession.right),
+              })}
+            </div>
+
+            {connectionSession.rows.map((row) => {
+              if (row.status === "searching") {
+                return (
+                  <div className="bacon-connection-row" key={row.id}>
+                    <div className="bacon-connection-status-card">
+                      Searching cached connections...
+                    </div>
+                  </div>
+                );
+              }
+
+              if (row.status !== "found" || row.path.length === 0) {
+                return (
+                  <div className="bacon-connection-row" key={row.id}>
+                    <div className="bacon-connection-status-card">
+                      {row.status === "timeout"
+                        ? "Timed out after 5 seconds without finding a cached path."
+                        : "No cached path found."}
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="bacon-connection-row" key={row.id}>
+                  {row.path.map((entity, index) => {
+                    const nextEntity = row.path[index + 1] ?? null;
+                    const edgeKey = nextEntity
+                      ? getConnectionEdgeKey(entity.key, nextEntity.key)
+                      : "";
+                    const isMiddleNode = index > 0 && index < row.path.length - 1;
+                    const isNodeDimmed = row.childDisallowedNodeKeys.includes(entity.key);
+                    const isEdgeDimmed = row.childDisallowedEdgeKeys.includes(edgeKey);
+
+                    return (
+                      <Fragment key={`${row.id}:${entity.key}:${index}`}>
+                        {renderConnectionEntityCard(entity, {
+                          dimmed: isNodeDimmed,
+                          onCardClick: isMiddleNode
+                            ? () =>
+                                spawnAlternativeConnectionRow(row.id, {
+                                  kind: "node",
+                                  nodeKey: entity.key,
+                                })
+                            : undefined,
+                          onNameClick: () => navigateToConnectionEntity(entity),
+                        })}
+                        {nextEntity ? (
+                          <button
+                            className={[
+                              "bacon-connection-arrow",
+                              "bacon-connection-arrow-button",
+                              isEdgeDimmed ? "bacon-connection-arrow-dimmed" : "",
+                            ]
+                              .filter(Boolean)
+                              .join(" ")}
+                            onClick={() =>
+                              spawnAlternativeConnectionRow(row.id, {
+                                kind: "edge",
+                                edgeKey,
+                              })
+                            }
+                            type="button"
+                          >
+                            →
+                          </button>
+                        ) : null}
+                      </Fragment>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
       </section>
 
       <main className="bacon-app-content">
