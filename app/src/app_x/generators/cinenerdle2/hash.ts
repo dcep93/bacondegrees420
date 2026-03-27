@@ -70,21 +70,32 @@ function serializeHashSegment(segment: string): string {
 }
 
 export function serializePathNodes(pathNodes: CinenerdlePathNode[]): string {
-  const segments = pathNodes.map((pathNode) => {
+  const [rootNode, ...remainingNodes] = pathNodes;
+
+  if (!rootNode || rootNode.kind === "break") {
+    return "";
+  }
+
+  const segments =
+    rootNode.kind === "cinenerdle"
+      ? ["cinenerdle"]
+      : rootNode.kind === "movie"
+        ? ["film", formatMoviePathLabel(rootNode.name, rootNode.year)]
+        : ["person", rootNode.name];
+
+  remainingNodes.forEach((pathNode) => {
     if (pathNode.kind === "break") {
-      return "";
+      segments.push("");
+      return;
     }
 
     if (pathNode.kind === "movie") {
-      return formatMoviePathLabel(pathNode.name, pathNode.year);
+      segments.push(formatMoviePathLabel(pathNode.name, pathNode.year));
+      return;
     }
 
-    return pathNode.name;
+    segments.push(pathNode.name);
   });
-
-  if (segments.length === 0) {
-    return "";
-  }
 
   return `#${segments.map(serializeHashSegment).join("|")}`;
 }
@@ -99,20 +110,55 @@ export function buildPathNodesFromSegments(segments: string[]): CinenerdlePathNo
   }
 
   const [firstSegment, ...remainingSegments] = segments;
+  const normalizedFirstSegment = normalizeTitle(firstSegment);
+
+  if (normalizedFirstSegment === "cinenerdle") {
+    const pathNodes: CinenerdlePathNode[] = [createPathNode("cinenerdle", "cinenerdle")];
+    let nextKind = "movie" as "movie" | "person";
+
+    remainingSegments.forEach((segment) => {
+      if (!segment) {
+        pathNodes.push(createPathNode("break", ""));
+        nextKind = getNextEntityKind(nextKind);
+        return;
+      }
+
+      if (nextKind === "movie") {
+        const movie = parseMoviePathLabel(segment);
+        pathNodes.push(createPathNode("movie", movie.name, movie.year));
+        nextKind = "person";
+        return;
+      }
+
+      pathNodes.push(createPathNode("person", segment));
+      nextKind = "movie";
+    });
+
+    return pathNodes;
+  }
+
+  if (
+    (normalizedFirstSegment !== "film" &&
+      normalizedFirstSegment !== "movie" &&
+      normalizedFirstSegment !== "person") ||
+    remainingSegments.length === 0
+  ) {
+    return [];
+  }
+
+  const [rootValue, ...continuationSegments] = remainingSegments;
   const rootNode =
-    normalizeTitle(firstSegment) === "cinenerdle"
-      ? createPathNode("cinenerdle", "cinenerdle")
-      : /\(\d{4}\)$/.test(firstSegment)
-        ? createPathNode(
-            "movie",
-            parseMoviePathLabel(firstSegment).name,
-            parseMoviePathLabel(firstSegment).year,
-          )
-        : createPathNode("person", firstSegment);
+    normalizedFirstSegment === "person"
+      ? createPathNode("person", rootValue)
+      : createPathNode(
+          "movie",
+          parseMoviePathLabel(rootValue).name,
+          parseMoviePathLabel(rootValue).year,
+        );
   const pathNodes: CinenerdlePathNode[] = [rootNode];
 
   let nextKind = getNextEntityKind(rootNode.kind);
-  remainingSegments.forEach((segment) => {
+  continuationSegments.forEach((segment) => {
     if (!segment) {
       pathNodes.push(createPathNode("break", ""));
       nextKind = getNextEntityKind(nextKind);

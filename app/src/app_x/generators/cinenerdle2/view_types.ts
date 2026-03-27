@@ -77,6 +77,7 @@ type BaseCardViewModel = {
   isSelected: boolean;
   isLocked: boolean;
   isAncestorSelected: boolean;
+  hasCachedTmdbSource: boolean;
 };
 
 export type CinenerdleCardViewModel =

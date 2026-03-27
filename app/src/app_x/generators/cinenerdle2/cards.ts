@@ -248,8 +248,9 @@ export function createMovieAssociationCard(
 export function createPersonAssociationCard(
   credit: TmdbPersonCredit,
   connectionCount: number,
+  personRecord: PersonRecord | null = null,
 ): CinenerdleCard {
-  const personName = credit.name ?? "";
+  const personName = personRecord?.name ?? credit.name ?? "";
   const isCastCredit = credit.creditType === "cast";
   const subtitle = isCastCredit
     ? "Cast as"
@@ -259,14 +260,16 @@ export function createPersonAssociationCard(
     key: getPersonCardKey(personName, credit.id),
     kind: "person",
     name: personName,
-    popularity: credit.popularity ?? 0,
-    imageUrl: getPosterUrl(credit.profile_path, "w300_and_h450_face"),
+    popularity: personRecord?.rawTmdbPerson?.popularity ?? credit.popularity ?? 0,
+    imageUrl:
+      getPersonProfileImageUrl(personRecord) ??
+      getPosterUrl(credit.profile_path, "w300_and_h450_face"),
     subtitle,
     subtitleDetail: isCastCredit ? credit.character?.trim() ?? "" : "",
     connectionCount,
     sources: [{ iconUrl: TMDB_ICON_URL, label: "TMDb" }],
     status: null,
-    record: null,
+    record: personRecord,
   };
 }
 
