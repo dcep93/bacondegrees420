@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { AbstractGenerator } from "../../components/abstract_generator";
 import { useCinenerdleController } from "./controller";
 import { logCinenerdleDebug } from "./debug";
@@ -37,7 +37,10 @@ export default function Cinenerdle2({
 }: Cinenerdle2Props) {
   const normalizedHash = normalizeHashValue(hashValue);
   const hashRef = useRef(normalizedHash);
-  hashRef.current = normalizedHash;
+
+  useLayoutEffect(() => {
+    hashRef.current = normalizedHash;
+  }, [normalizedHash]);
 
   useEffect(() => {
     primeTmdbApiKeyOnInit();
