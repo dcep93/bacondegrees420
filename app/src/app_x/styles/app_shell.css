@@ -1,0 +1,100 @@
+:root {
+  --bacon-bg-top: #19120e;
+  --bacon-bg-bottom: #080605;
+  --bacon-panel: rgba(26, 20, 16, 0.84);
+  --bacon-panel-strong: rgba(17, 12, 10, 0.92);
+  --bacon-panel-soft: rgba(43, 31, 25, 0.72);
+  --bacon-border: rgba(201, 156, 107, 0.22);
+  --bacon-border-strong: rgba(228, 193, 150, 0.4);
+  --bacon-text: #fff7ef;
+  --bacon-text-muted: rgba(255, 247, 239, 0.72);
+  --bacon-accent: #d5a36c;
+  --bacon-shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
+}
+
+.bacon-app-shell {
+  width: 100vw;
+  min-height: 100svh;
+  margin-left: calc(50% - 50vw);
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(circle at top left, rgba(213, 163, 108, 0.16), transparent 26%),
+    radial-gradient(circle at top right, rgba(255, 179, 102, 0.1), transparent 28%),
+    radial-gradient(circle at bottom center, rgba(99, 67, 38, 0.18), transparent 34%),
+    linear-gradient(180deg, var(--bacon-bg-top) 0%, var(--bacon-bg-bottom) 100%);
+  color: var(--bacon-text);
+  text-align: left;
+}
+
+.bacon-title-bar {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 88px;
+  padding: 18px 24px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  border-bottom: 1px solid var(--bacon-border);
+  background: rgba(10, 8, 7, 0.34);
+  backdrop-filter: blur(18px);
+}
+
+.bacon-title-icon-button {
+  appearance: none;
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  border: 1px solid var(--bacon-border-strong);
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  background: var(--bacon-panel-strong);
+  box-shadow: var(--bacon-shadow);
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.bacon-title-icon-button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(228, 193, 150, 0.6);
+  background: rgba(27, 20, 15, 0.96);
+}
+
+.bacon-title-icon {
+  width: 28px;
+  height: 28px;
+  display: block;
+}
+
+.bacon-title {
+  margin: 0;
+  color: var(--bacon-text);
+  font-family: "Trebuchet MS", "Avenir Next", sans-serif;
+  font-size: clamp(1.8rem, 3vw, 2.8rem);
+  font-weight: 700;
+  letter-spacing: -0.06em;
+  line-height: 0.95;
+}
+
+.bacon-app-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+@media (max-width: 720px) {
+  .bacon-title-bar {
+    padding: 16px 16px 14px;
+    gap: 14px;
+  }
+
+  .bacon-title-icon-button {
+    width: 46px;
+    height: 46px;
+    border-radius: 16px;
+  }
+}
