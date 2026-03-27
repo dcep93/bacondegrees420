@@ -200,9 +200,6 @@ async function buildChildRowForCard(
   }
 
   const tmdbCredits = getAssociatedPeopleFromMovieCredits(movieRecord);
-  const cachedPeople = await Promise.all(
-    tmdbCredits.map((credit) => getPersonRecordByName(credit.name ?? "")),
-  );
   const connectionCounts = new Map(
     await Promise.all(
       tmdbCredits.map(async (credit) => {
@@ -213,10 +210,9 @@ async function buildChildRowForCard(
     ),
   );
 
-  const cards = tmdbCredits.map((credit, index) =>
+  const cards = tmdbCredits.map((credit) =>
     createPersonAssociationCard(
       credit,
-      cachedPeople[index] ?? null,
       connectionCounts.get(normalizeName(credit.name ?? "")) ?? 1,
     ),
   );

@@ -16,6 +16,7 @@ import {
   getMovieYearFromCredit,
   getPersonCardKey,
   getPersonProfileImageUrl,
+  getPosterUrl,
   normalizeName,
   normalizeTitle,
 } from "./utils";
@@ -181,14 +182,18 @@ export function createMovieAssociationCard(
             : undefined,
         }
       : null);
-
   return {
     key: getMovieCardKey(title, year, resolvedFilmRecord?.id ?? credit.id),
     kind: "movie",
     name: title,
     year,
-    popularity: resolvedFilmRecord?.popularity ?? credit.popularity ?? 0,
-    imageUrl: getMoviePosterUrl(resolvedFilmRecord),
+    popularity:
+      credit.popularity ??
+      resolvedFilmRecord?.rawTmdbMovie?.popularity ??
+      resolvedFilmRecord?.popularity ??
+      0,
+    imageUrl:
+      getPosterUrl(credit.poster_path) ?? getMoviePosterUrl(resolvedFilmRecord),
     subtitle: "Movie",
     subtitleDetail:
       credit.creditType === "cast"
@@ -202,41 +207,21 @@ export function createMovieAssociationCard(
 
 export function createPersonAssociationCard(
   credit: TmdbPersonCredit,
-  personRecord: PersonRecord | null,
   connectionCount: number,
 ): CinenerdleCard {
-  const personName = personRecord?.name ?? credit.name ?? "";
-  const resolvedPersonRecord =
-    personRecord ??
-    (credit.id && personName
-      ? {
-          id: credit.id,
-          tmdbId: credit.id,
-          lookupKey: normalizeName(personName),
-          name: personName,
-          nameLower: normalizeName(personName),
-          movieConnectionKeys: [],
-          rawTmdbPerson: {
-            id: credit.id,
-            name: personName,
-            profile_path: credit.profile_path,
-            popularity: credit.popularity,
-          },
-        }
-      : null);
+  const personName = credit.name ?? "";
 
   return {
-    key: getPersonCardKey(personName, resolvedPersonRecord?.id ?? credit.id),
+    key: getPersonCardKey(personName, credit.id),
     kind: "person",
     name: personName,
-    popularity:
-      resolvedPersonRecord?.rawTmdbPerson?.popularity ?? credit.popularity ?? 0,
-    imageUrl: getPersonProfileImageUrl(resolvedPersonRecord),
+    popularity: credit.popularity ?? 0,
+    imageUrl: getPosterUrl(credit.profile_path, "w300_and_h450_face"),
     subtitle: credit.job?.trim() ?? "Person",
     subtitleDetail: credit.character?.trim() ?? "",
     connectionCount,
     sources: [{ iconUrl: TMDB_ICON_URL, label: "TMDB" }],
-    record: resolvedPersonRecord,
+    record: null,
   };
 }
 
