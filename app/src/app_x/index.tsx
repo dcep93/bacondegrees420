@@ -24,7 +24,10 @@ import {
 import { BookmarkPreviewCardView } from "./components/bookmark_preview_card";
 import Cinenerdle2 from "./generators/cinenerdle2";
 import { buildBookmarkPreviewCardsFromHash } from "./generators/cinenerdle2/controller";
-import { copyCinenerdleIndexedDbSnapshotToClipboard } from "./generators/cinenerdle2/debug";
+import {
+  copyCinenerdleDebugLogToClipboard,
+  copyCinenerdleIndexedDbSnapshotToClipboard,
+} from "./generators/cinenerdle2/debug";
 import {
   createCinenerdleConnectionEntity,
   createFallbackConnectionEntity,
@@ -1364,6 +1367,27 @@ export default function AppX() {
     });
   }
 
+  function handleTitleDebugCopy(event: MouseEvent<HTMLElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!import.meta.env.DEV) {
+      return;
+    }
+
+    void copyCinenerdleDebugLogToClipboard()
+      .then((entryCount) => {
+        setCopyStatus(`Debug log copied (${entryCount})`);
+      })
+      .catch((error: unknown) => {
+        setCopyStatus(
+          error instanceof Error && error.message
+            ? error.message
+            : "Debug copy failed",
+        );
+      });
+  }
+
   const syncLocationFromWindow = useCallback((options?: {
     nextHashOverride?: string;
     preserveHashValue?: boolean;
@@ -2079,6 +2103,8 @@ export default function AppX() {
         </button>
         <h1
           className="bacon-title"
+          onClick={handleTitleDebugCopy}
+          title={import.meta.env.DEV ? "Copy debug log" : undefined}
         >
           BaconDegrees420
         </h1>

@@ -75,6 +75,10 @@ function trimCinenerdleDebugEntries() {
 }
 
 export function addCinenerdleDebugLog(event: string, details?: unknown): void {
+  if (!IS_DEV_MODE) {
+    return;
+  }
+
   cinenerdleDebugEntries.push({
     at: new Date().toISOString(),
     event,
