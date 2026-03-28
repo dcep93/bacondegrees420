@@ -109,7 +109,6 @@ export function loadBookmarks(): BookmarkEntry[] {
       }))
       .filter((bookmark) => bookmark.label && bookmark.previewCards.length > 0);
   } catch (error) {
-    console.error("bacondegrees420.loadBookmarks", error);
     return [];
   }
 }

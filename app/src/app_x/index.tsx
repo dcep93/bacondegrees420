@@ -6,6 +6,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type FormEvent,
   type KeyboardEvent,
   type MouseEvent,
@@ -37,9 +38,6 @@ import {
 } from "./generators/cinenerdle2/connection_graph";
 import { CINENERDLE_ICON_URL, TMDB_ICON_URL } from "./generators/cinenerdle2/constants";
 import {
-  copyCinenerdleDebugLogToClipboard,
-} from "./generators/cinenerdle2/debug";
-import {
   buildPathNodesFromSegments,
   createPathNode,
   normalizeHashValue,
@@ -54,7 +52,6 @@ import {
   getFilmRecordByTitleAndYear,
   getAllSearchableConnectionEntities,
   getFilmRecordsByPersonConnectionKey,
-  getIndexedDbSnapshot,
   getPersonRecordById,
   getPersonRecordByName,
   getPersonRecordsByMovieKey,
@@ -597,6 +594,41 @@ function formatPreviewPopularity(popularity: number): string {
   return Number(popularity.toFixed(2)).toString();
 }
 
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function formatHeatMetricValue(label: "Popularity" | "Votes" | "Rating", value: number) {
+  if (label === "Popularity" || label === "Rating") {
+    return Number(value.toFixed(2));
+  }
+
+  return value;
+}
+
+function createHeatChipStyle(value: number, maxValue: number): CSSProperties {
+  const normalizedValue = clampNumber(value / maxValue, 0, 1);
+  const hue = 210 - normalizedValue * 210;
+  const backgroundLightness = 20 + normalizedValue * 12;
+  const borderLightness = 34 + normalizedValue * 18;
+
+  return {
+    backgroundColor: `hsl(${hue} 55% ${backgroundLightness}%)`,
+    border: `1px solid hsl(${hue} 70% ${borderLightness}%)`,
+    color: "#eff6ff",
+  };
+}
+
+function getTooltipPopularity(entry: string): number | null {
+  const match = entry.match(/^Popularity:\s*(-?\d+(?:\.\d+)?)$/);
+  if (!match) {
+    return null;
+  }
+
+  const popularity = Number(match[1]);
+  return Number.isFinite(popularity) ? popularity : null;
+}
+
 function buildCounterpartTooltipText(
   entityName: string,
   popularity: number,
@@ -662,6 +694,76 @@ function getPreviewFallbackText(name: string): string {
   }
 
   return words.map((word) => word[0]?.toUpperCase() ?? "").join("");
+}
+
+function getTooltipEntries(tooltipText: string): string[] {
+  return tooltipText
+    .split("\n")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function renderTooltipEntry(entry: string, key: string) {
+  const popularity = getTooltipPopularity(entry);
+
+  return (
+    <span
+      className="bacon-connection-pill-tooltip-entry"
+      key={key}
+    >
+      {typeof popularity === "number" ? (
+        <span
+          className="cinenerdle-card-chip"
+          style={createHeatChipStyle(popularity, 100)}
+        >
+          {`Popularity ${formatHeatMetricValue("Popularity", popularity)}`}
+        </span>
+      ) : (
+        entry
+      )}
+    </span>
+  );
+}
+
+function renderTooltipEntries(
+  tooltipEntries: string[],
+  keyPrefix: string,
+) {
+  const titleEntry = tooltipEntries[0] ?? "";
+  const inlinePopularity = tooltipEntries.length > 1
+    ? getTooltipPopularity(tooltipEntries[1] ?? "")
+    : null;
+  const remainingEntries = inlinePopularity === null
+    ? tooltipEntries.slice(1)
+    : tooltipEntries.slice(2);
+
+  if (!titleEntry) {
+    return remainingEntries.map((entry, index) =>
+      renderTooltipEntry(entry, `${keyPrefix}:${index}:${entry}`));
+  }
+
+  return [
+    <span
+      className="bacon-connection-pill-tooltip-entry"
+      key={`${keyPrefix}:title`}
+    >
+      <span className="bacon-connection-pill-tooltip-entry-group">
+        <span>{titleEntry}</span>
+        {typeof inlinePopularity === "number" ? (
+          <span className="bacon-connection-pill-tooltip-entry-group-secondary">
+            <span
+              className="cinenerdle-card-chip"
+              style={createHeatChipStyle(inlinePopularity, 100)}
+            >
+              {`Popularity ${formatHeatMetricValue("Popularity", inlinePopularity)}`}
+            </span>
+          </span>
+        ) : null}
+      </span>
+    </span>,
+    ...remainingEntries.map((entry, index) =>
+      renderTooltipEntry(entry, `${keyPrefix}:${index}:${entry}`)),
+  ];
 }
 
 async function findMovieCounterpart(
@@ -798,8 +900,9 @@ async function findPersonCounterpart(
   };
 }
 
-async function findMostPopularDisconnectedPerson(
-  movieRecord: FilmRecord,
+async function findMostPopularSelectedMovieSpoiler(
+  selectedMovieRecord: FilmRecord,
+  counterpartMovieRecord: FilmRecord,
 ): Promise<PersonRecord | null> {
   const allPeople = await getAllPersonRecords();
   const sortedPeople = [...allPeople].sort((left, right) =>
@@ -808,11 +911,18 @@ async function findMostPopularDisconnectedPerson(
       createPreviewEntityFromPersonRecord(right),
     ));
 
-  return sortedPeople.find((personRecord) => !isPersonConnectedToMovie(personRecord, movieRecord)) ?? null;
+  return (
+    sortedPeople.find(
+      (personRecord) =>
+        isMovieConnectedToPerson(selectedMovieRecord, personRecord) &&
+        !isMovieConnectedToPerson(counterpartMovieRecord, personRecord),
+    ) ?? null
+  );
 }
 
-async function findMostPopularDisconnectedMovie(
-  personRecord: PersonRecord,
+async function findMostPopularSelectedPersonSpoiler(
+  selectedPersonRecord: PersonRecord,
+  counterpartPersonRecord: PersonRecord,
 ): Promise<FilmRecord | null> {
   const allFilms = await getAllFilmRecords();
   const sortedFilms = [...allFilms].sort((left, right) =>
@@ -821,10 +931,16 @@ async function findMostPopularDisconnectedMovie(
       createPreviewEntityFromMovieRecord(right),
     ));
 
-  return sortedFilms.find((movieRecord) => !isMovieConnectedToPerson(movieRecord, personRecord)) ?? null;
+  return (
+    sortedFilms.find(
+      (movieRecord) =>
+        isPersonConnectedToMovie(selectedPersonRecord, movieRecord) &&
+        !isPersonConnectedToMovie(counterpartPersonRecord, movieRecord),
+    ) ?? null
+  );
 }
 
-async function resolveConnectionMatchupPreview(
+export async function resolveConnectionMatchupPreview(
   youngestSelectedCard: YoungestSelectedCard | null,
 ): Promise<ConnectionMatchupPreview | null> {
   if (!youngestSelectedCard || youngestSelectedCard.kind === "cinenerdle") {
@@ -842,7 +958,10 @@ async function resolveConnectionMatchupPreview(
       return null;
     }
 
-    const spoilerPerson = await findMostPopularDisconnectedPerson(counterpartMovie.movieRecord);
+    const spoilerPerson = await findMostPopularSelectedMovieSpoiler(
+      selectedMovieRecord,
+      counterpartMovie.movieRecord,
+    );
     if (!spoilerPerson) {
       return null;
     }
@@ -866,7 +985,10 @@ async function resolveConnectionMatchupPreview(
     return null;
   }
 
-  const spoilerMovie = await findMostPopularDisconnectedMovie(counterpartPerson.personRecord);
+  const spoilerMovie = await findMostPopularSelectedPersonSpoiler(
+    selectedPersonRecord,
+    counterpartPerson.personRecord,
+  );
   if (!spoilerMovie) {
     return null;
   }
@@ -984,6 +1106,8 @@ export default function AppX() {
   const [isHighlightedConnectionEntityInYoungestGeneration, setIsHighlightedConnectionEntityInYoungestGeneration] =
     useState(false);
   const [isSelectedPathTooltipVisible, setIsSelectedPathTooltipVisible] = useState(false);
+  const [visibleConnectionMatchupTooltipKey, setVisibleConnectionMatchupTooltipKey] =
+    useState<string | null>(null);
   const connectionSessionRef = useRef<ConnectionSession | null>(null);
   const pendingHashWriteRef = useRef<PendingHashWrite | null>(null);
   const bookmarksReturnHashRef = useRef(normalizeHashValue(initialLocationState.hash));
@@ -1085,9 +1209,7 @@ export default function AppX() {
 
         setConnectionMatchupPreview(nextPreview);
       })
-      .catch((error) => {
-        console.error("bacondegrees420.resolveConnectionMatchupPreview", error);
-
+      .catch(() => {
         if (!cancelled) {
           setConnectionMatchupPreview(null);
         }
@@ -1207,30 +1329,13 @@ export default function AppX() {
       );
 
       if (!confirmed) {
-        return getIndexedDbSnapshot()
-          .then((snapshot) => {
-            console.log(snapshot);
-          })
-          .catch((error) => {
-            console.error("Failed to read IndexedDB snapshot after clear cancellation.", error);
-          });
+        return;
       }
 
       return clearIndexedDb().then(() => {
         handleReset();
       });
     });
-  }
-
-  function handleCopyLogs() {
-    void copyCinenerdleDebugLogToClipboard()
-      .then((count) => {
-        setCopyStatus(`${count} logs copied`);
-      })
-      .catch((error) => {
-        setCopyStatus("Copy failed");
-        void error;
-      });
   }
 
   const syncLocationFromWindow = useCallback((options?: {
@@ -1372,8 +1477,7 @@ export default function AppX() {
         setBookmarks((currentBookmarks) => upsertBookmarkEntry(currentBookmarks, nextBookmark));
         setCopyStatus(existingBookmark ? "Bookmark updated" : "Bookmark saved");
       })
-      .catch((error) => {
-        console.error("bacondegrees420.saveBookmark", error);
+      .catch(() => {
         setCopyStatus("Bookmark failed");
       })
       .finally(() => {
@@ -1740,24 +1844,45 @@ export default function AppX() {
   );
 
   function renderConnectionMatchupTile(entity: ConnectionMatchupPreviewEntity) {
+    const tooltipEntries = getTooltipEntries(entity.tooltipText);
+    const isTooltipVisible = visibleConnectionMatchupTooltipKey === entity.key;
+
     return (
       <span
-        aria-label={entity.name}
-        className="bacon-connection-matchup-tile"
-        title={entity.tooltipText}
+        className="bacon-connection-matchup-tile-wrap"
+        onBlur={() => setVisibleConnectionMatchupTooltipKey((currentKey) =>
+          currentKey === entity.key ? null : currentKey)}
+        onFocus={() => setVisibleConnectionMatchupTooltipKey(entity.key)}
+        onMouseEnter={() => setVisibleConnectionMatchupTooltipKey(entity.key)}
+        onMouseLeave={() => setVisibleConnectionMatchupTooltipKey((currentKey) =>
+          currentKey === entity.key ? null : currentKey)}
       >
-        {entity.imageUrl ? (
-          <img
-            alt=""
-            className="bacon-connection-matchup-image"
-            loading="lazy"
-            src={entity.imageUrl}
-          />
-        ) : (
-          <span className="bacon-connection-matchup-fallback">
-            {getPreviewFallbackText(entity.name)}
+        <span
+          aria-label={entity.name}
+          className="bacon-connection-matchup-tile"
+          tabIndex={0}
+        >
+          {entity.imageUrl ? (
+            <img
+              alt=""
+              className="bacon-connection-matchup-image"
+              loading="lazy"
+              src={entity.imageUrl}
+            />
+          ) : (
+            <span className="bacon-connection-matchup-fallback">
+              {getPreviewFallbackText(entity.name)}
+            </span>
+          )}
+        </span>
+        {isTooltipVisible ? (
+          <span
+            className="bacon-connection-pill-tooltip bacon-connection-matchup-tooltip"
+            role="tooltip"
+          >
+            {renderTooltipEntries(tooltipEntries, entity.key)}
           </span>
-        )}
+        ) : null}
       </span>
     );
   }
@@ -1934,8 +2059,6 @@ export default function AppX() {
         </button>
         <h1
           className="bacon-title"
-          onClick={handleCopyLogs}
-          title="Click to copy Cinenerdle debug logs"
         >
           BaconDegrees420
         </h1>
@@ -2027,14 +2150,8 @@ export default function AppX() {
               </span>
               {isSelectedPathTooltipVisible ? (
                 <span className="bacon-connection-pill-tooltip" role="tooltip">
-                  {selectedPathTooltipEntries.map((entry, index) => (
-                    <span
-                      className="bacon-connection-pill-tooltip-entry"
-                      key={`${index}:${entry}`}
-                    >
-                      {entry}
-                    </span>
-                  ))}
+                  {selectedPathTooltipEntries.map((entry, index) =>
+                    renderTooltipEntry(entry, `${index}:${entry}`))}
                 </span>
               ) : null}
             </span>

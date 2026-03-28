@@ -17,8 +17,7 @@ function trimCinenerdleDebugEntries() {
   cinenerdleDebugEntries.splice(0, cinenerdleDebugEntries.length - MAX_DEBUG_ENTRIES);
 }
 
-// Keep this helper exported even if there are no active call sites.
-// It's used for quick ad hoc instrumentation when debugging Cinenerdle flows.
+// Keep these exports available so debug logging can be reactivated quickly.
 export function addCinenerdleDebugLog(event: string, details?: unknown): void {
   cinenerdleDebugEntries.push({
     at: new Date().toISOString(),
