@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { AbstractGenerator } from "../../components/abstract_generator";
 import { useCinenerdleController } from "./controller";
 import { normalizeHashValue } from "./hash";
@@ -28,7 +28,7 @@ function applyHash(nextHash: string) {
   window.location.hash = normalizedHash.replace(/^#/, "");
 }
 
-export default function Cinenerdle2({
+const Cinenerdle2 = memo(function Cinenerdle2({
   hashValue,
   navigationVersion,
   onHashWrite,
@@ -74,4 +74,6 @@ export default function Cinenerdle2({
       resetKey={`${resetVersion}:${navigationVersion}`}
     />
   );
-}
+});
+
+export default Cinenerdle2;

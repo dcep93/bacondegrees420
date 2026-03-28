@@ -1,6 +1,8 @@
 import {
   Fragment,
+  startTransition,
   useCallback,
+  useDeferredValue,
   useEffect,
   useRef,
   useState,
@@ -299,6 +301,7 @@ export default function AppX() {
   const connectionBarRef = useRef<HTMLElement | null>(null);
   const connectionInputWrapRef = useRef<HTMLDivElement | null>(null);
   const connectionDropdownRef = useRef<HTMLDivElement | null>(null);
+  const deferredConnectionQuery = useDeferredValue(connectionQuery);
   const highestGenerationSelectedLabel = getHighestGenerationSelectedLabel(hashValue);
 
   useEffect(() => {
@@ -340,10 +343,12 @@ export default function AppX() {
   }, [hashValue]);
 
   useEffect(() => {
-    const query = connectionQuery.trim();
+    const query = deferredConnectionQuery.trim();
     if (!query) {
-      setConnectionSuggestions([]);
-      setSelectedSuggestionIndex(-1);
+      startTransition(() => {
+        setConnectionSuggestions([]);
+        setSelectedSuggestionIndex(-1);
+      });
       return;
     }
 
@@ -405,10 +410,12 @@ export default function AppX() {
         return;
       }
 
-      setConnectionSuggestions(nextSuggestions);
-      setSelectedSuggestionIndex(nextSuggestions.length > 0 ? 0 : -1);
+      startTransition(() => {
+        setConnectionSuggestions(nextSuggestions);
+        setSelectedSuggestionIndex(nextSuggestions.length > 0 ? 0 : -1);
+      });
     });
-  }, [connectionQuery]);
+  }, [deferredConnectionQuery]);
 
   function handleReset() {
     clearHash();
