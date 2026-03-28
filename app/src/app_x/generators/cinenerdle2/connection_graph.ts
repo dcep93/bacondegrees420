@@ -347,12 +347,43 @@ function reconstructPath(
   return path;
 }
 
+function setPopularityScore(
+  popularityByKey: Map<string, number>,
+  entityKey: string,
+  popularity: number | null | undefined,
+) {
+  const nextPopularity = popularity ?? 0;
+  const currentPopularity = popularityByKey.get(entityKey) ?? 0;
+  popularityByKey.set(entityKey, Math.max(currentPopularity, nextPopularity));
+}
+
+function sortEntityKeysByPopularity(
+  entityKeys: Iterable<string>,
+  popularityByKey: Map<string, number>,
+): string[] {
+  return Array.from(entityKeys).sort((leftKey, rightKey) => {
+    const popularityDifference =
+      (popularityByKey.get(rightKey) ?? 0) - (popularityByKey.get(leftKey) ?? 0);
+
+    if (popularityDifference !== 0) {
+      return popularityDifference;
+    }
+
+    return leftKey.localeCompare(rightKey);
+  });
+}
+
 async function getNeighborKeysForEntityKey(entityKey: string): Promise<string[]> {
   if (entityKey === getCinenerdleConnectionEntityKey()) {
     const starterFilms = await getCinenerdleStarterFilmRecords();
-    return starterFilms.map((filmRecord) =>
-      getMovieConnectionEntityKey(filmRecord.title, filmRecord.year),
-    );
+    const popularityByKey = new Map<string, number>();
+    const starterKeys = starterFilms.map((filmRecord) => {
+      const movieKey = getMovieConnectionEntityKey(filmRecord.title, filmRecord.year);
+      setPopularityScore(popularityByKey, movieKey, filmRecord.popularity);
+      return movieKey;
+    });
+
+    return sortEntityKeysByPopularity(starterKeys, popularityByKey);
   }
 
   if (entityKey.startsWith("person:")) {
@@ -362,16 +393,39 @@ async function getNeighborKeysForEntityKey(entityKey: string): Promise<string[]>
       getFilmRecordsByPersonConnectionKey(personNameLower),
     ]);
     const movieKeys = new Set<string>();
+    const popularityByKey = new Map<string, number>();
+    const moviePopularityByLookupKey = new Map<string, number>();
+
+    getTmdbMovieCredits(personRecord).forEach((credit) => {
+      const title = getMovieTitleFromCredit(credit);
+      if (!title) {
+        return;
+      }
+
+      const movieLookupKey = getFilmKey(title, getMovieYearFromCredit(credit));
+      moviePopularityByLookupKey.set(
+        movieLookupKey,
+        Math.max(moviePopularityByLookupKey.get(movieLookupKey) ?? 0, credit.popularity ?? 0),
+      );
+    });
 
     personRecord?.movieConnectionKeys.forEach((movieKey) => {
-      movieKeys.add(getMovieConnectionEntityKeyFromLookupKey(movieKey));
+      const connectionMovieKey = getMovieConnectionEntityKeyFromLookupKey(movieKey);
+      movieKeys.add(connectionMovieKey);
+      setPopularityScore(
+        popularityByKey,
+        connectionMovieKey,
+        moviePopularityByLookupKey.get(movieKey) ?? 0,
+      );
     });
 
     filmRecords.forEach((filmRecord) => {
-      movieKeys.add(getMovieConnectionEntityKey(filmRecord.title, filmRecord.year));
+      const connectionMovieKey = getMovieConnectionEntityKey(filmRecord.title, filmRecord.year);
+      movieKeys.add(connectionMovieKey);
+      setPopularityScore(popularityByKey, connectionMovieKey, filmRecord.popularity);
     });
 
-    return Array.from(movieKeys);
+    return sortEntityKeysByPopularity(movieKeys, popularityByKey);
   }
 
   const parsedMovie = parseMovieConnectionEntityKey(entityKey);
@@ -381,15 +435,43 @@ async function getNeighborKeysForEntityKey(entityKey: string): Promise<string[]>
     getPersonRecordsByMovieKey(movieLookupKey),
   ]);
   const personKeys = new Set<string>();
+  const popularityByKey = new Map<string, number>();
+  const personPopularityByKey = new Map<string, number>();
+
+  getAssociatedPeopleFromMovieCredits(filmRecord).forEach((credit) => {
+    const personName = normalizeName(credit.name ?? "");
+    if (!personName) {
+      return;
+    }
+
+    personPopularityByKey.set(
+      personName,
+      Math.max(personPopularityByKey.get(personName) ?? 0, credit.popularity ?? 0),
+    );
+  });
 
   filmRecord?.personConnectionKeys.forEach((personName) => {
-    personKeys.add(getPersonConnectionEntityKey(personName));
+    const connectionPersonKey = getPersonConnectionEntityKey(personName);
+    personKeys.add(connectionPersonKey);
+    setPopularityScore(
+      popularityByKey,
+      connectionPersonKey,
+      personPopularityByKey.get(normalizeName(personName)) ?? 0,
+    );
   });
   personRecords.forEach((personRecord) => {
-    personKeys.add(getPersonConnectionEntityKey(personRecord.name));
+    const connectionPersonKey = getPersonConnectionEntityKey(personRecord.name);
+    personKeys.add(connectionPersonKey);
+    setPopularityScore(
+      popularityByKey,
+      connectionPersonKey,
+      personRecord.rawTmdbPerson?.popularity ??
+        personPopularityByKey.get(normalizeName(personRecord.name)) ??
+        0,
+    );
   });
 
-  const nextKeys = Array.from(personKeys);
+  const nextKeys = sortEntityKeysByPopularity(personKeys, popularityByKey);
   if (filmRecord?.rawCinenerdleDailyStarter) {
     nextKeys.push(getCinenerdleConnectionEntityKey());
   }
@@ -415,6 +497,7 @@ export async function findConnectionPathBidirectional(
   const endKey = endEntity.key;
   const neighborCache = new Map<string, Promise<string[]>>();
   const entityCache = new Map<string, Promise<ConnectionEntity>>();
+  const popularityCache = new Map<string, Promise<number>>();
 
   if (excludedNodeKeys.has(startKey) || excludedNodeKeys.has(endKey)) {
     return {
@@ -457,6 +540,41 @@ export async function findConnectionPathBidirectional(
     return nextEntityPromise;
   }
 
+  async function getPopularity(entityKey: string): Promise<number> {
+    const cachedPopularity = popularityCache.get(entityKey);
+    if (cachedPopularity) {
+      return cachedPopularity;
+    }
+
+    const nextPopularityPromise = (async () => {
+      if (entityKey === getCinenerdleConnectionEntityKey()) {
+        return 0;
+      }
+
+      if (entityKey.startsWith("person:")) {
+        const personRecord = await getPersonRecordByName(parsePersonConnectionEntityKey(entityKey));
+        return personRecord?.rawTmdbPerson?.popularity ?? 0;
+      }
+
+      const parsedMovie = parseMovieConnectionEntityKey(entityKey);
+      const filmRecord = await getFilmRecordByTitleAndYear(parsedMovie.name, parsedMovie.year);
+      return filmRecord?.popularity ?? 0;
+    })();
+
+    popularityCache.set(entityKey, nextPopularityPromise);
+    return nextPopularityPromise;
+  }
+
+  async function sortFrontierByPopularity(frontier: string[]): Promise<string[]> {
+    const popularityByKey = new Map<string, number>(
+      await Promise.all(
+        frontier.map(async (entityKey) => [entityKey, await getPopularity(entityKey)] as const),
+      ),
+    );
+
+    return sortEntityKeysByPopularity(frontier, popularityByKey);
+  }
+
   const visitedFromStart = new Set<string>([startKey]);
   const visitedFromEnd = new Set<string>([endKey]);
   const parentFromStart = new Map<string, string | null>([[startKey, null]]);
@@ -471,8 +589,9 @@ export async function findConnectionPathBidirectional(
     parentHere: Map<string, string | null>,
   ): Promise<{ meetingKey: string | null; nextFrontier: string[]; timedOut: boolean }> {
     const nextFrontier: string[] = [];
+    const orderedFrontier = await sortFrontierByPopularity(frontier);
 
-    for (const currentKey of frontier) {
+    for (const currentKey of orderedFrontier) {
       if (performance.now() >= deadline) {
         return {
           meetingKey: null,
@@ -512,9 +631,11 @@ export async function findConnectionPathBidirectional(
       }
     }
 
+    const orderedNextFrontier = await sortFrontierByPopularity(nextFrontier);
+
     return {
       meetingKey: null,
-      nextFrontier,
+      nextFrontier: orderedNextFrontier,
       timedOut: false,
     };
   }

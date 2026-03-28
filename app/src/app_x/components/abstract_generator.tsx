@@ -63,6 +63,7 @@ export function AbstractGenerator<T>({
   const mountedRef = useRef(true);
   const activeLifecycleRef = useRef(0);
   const activeSelectionRef = useRef(0);
+  const pendingScrollToSelectedRowRef = useRef<number | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -106,6 +107,7 @@ export function AbstractGenerator<T>({
     const lifecycleId = activeLifecycleRef.current + 1;
     activeLifecycleRef.current = lifecycleId;
     activeSelectionRef.current = 0;
+    pendingScrollToSelectedRowRef.current = null;
 
     const guardedSetTree = createGuardedSetTree(lifecycleId, activeSelectionRef.current);
     setRenderTreeOverride(null);
@@ -121,6 +123,57 @@ export function AbstractGenerator<T>({
   }));
 
   const renderedGenerations = [...generations].reverse();
+
+  const handleScrollToSelected = useCallback((generationIndex: number) => {
+    const selectedRow = resolvedTree[generationIndex];
+    const selectedNode = selectedRow?.find((node) => node.selected) ?? null;
+
+    if (!selectedRow || !selectedNode) {
+      return;
+    }
+
+    const selectedCard = cardRefs.current[
+      `${generationIndex}:${getDataKey(
+        selectedNode.data,
+        selectedRow.indexOf(selectedNode),
+      )}`
+    ];
+
+    if (selectedCard) {
+      selectedCard.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+        inline: "center",
+      });
+      return;
+    }
+
+    rowRefs.current[generationIndex]?.scrollTo({
+      left: 0,
+      behavior: "smooth",
+    });
+  }, [resolvedTree]);
+
+  useEffect(() => {
+    if (renderTreeOverride !== null || placeholderRowIndex !== null) {
+      return;
+    }
+
+    const pendingGenerationIndex = pendingScrollToSelectedRowRef.current;
+    if (pendingGenerationIndex === null) {
+      return;
+    }
+
+    pendingScrollToSelectedRowRef.current = null;
+
+    const frameId = window.requestAnimationFrame(() => {
+      handleScrollToSelected(pendingGenerationIndex);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [handleScrollToSelected, placeholderRowIndex, renderTreeOverride, resolvedTree]);
 
   function handleCardSelect(row: number, col: number) {
     if (tree === null) {
@@ -151,9 +204,11 @@ export function AbstractGenerator<T>({
         selected: false,
       }));
       const renderedTreeWithPlaceholder = [...normalizedTree, placeholderRow];
+      pendingScrollToSelectedRowRef.current = row;
       setRenderTreeOverride(renderedTreeWithPlaceholder);
       setPlaceholderRowIndex(row + 1);
     } else {
+      pendingScrollToSelectedRowRef.current = null;
       setRenderTreeOverride(null);
       setPlaceholderRowIndex(null);
     }
@@ -171,36 +226,6 @@ export function AbstractGenerator<T>({
         tree: normalizedTree,
         setTree: guardedSetTree,
       });
-    });
-  }
-
-  function handleScrollToSelected(generationIndex: number) {
-    const selectedRow = resolvedTree[generationIndex];
-    const selectedNode = selectedRow?.find((node) => node.selected) ?? null;
-
-    if (!selectedRow || !selectedNode) {
-      return;
-    }
-
-    const selectedCard = cardRefs.current[
-      `${generationIndex}:${getDataKey(
-        selectedNode.data,
-        selectedRow.indexOf(selectedNode),
-      )}`
-    ];
-
-    if (selectedCard) {
-      selectedCard.scrollIntoView({
-        behavior: "smooth",
-        block: "nearest",
-        inline: "center",
-      });
-      return;
-    }
-
-    rowRefs.current[generationIndex]?.scrollTo({
-      left: 0,
-      behavior: "smooth",
     });
   }
 
