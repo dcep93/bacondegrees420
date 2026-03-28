@@ -1,4 +1,4 @@
-import { startTransition, useCallback, useEffect, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type {
   GeneratorController,
   GeneratorNode,
@@ -6,6 +6,7 @@ import type {
   GeneratorTreeState,
   SetGeneratorTree,
 } from "../types/generator";
+import { addCinenerdleDebugLog } from "../generators/cinenerdle2/debug";
 import "../styles/abstract_generator.css";
 
 export type AbstractGeneratorProps<T> = GeneratorController<T> & {
@@ -49,6 +50,33 @@ function isDisabledNode<T>(node: GeneratorNode<T>): boolean {
   return node.disabled === true;
 }
 
+function getRowSignature<T>(row: GeneratorNode<T>[]): string {
+  return row
+    .map((node, index) => {
+      const dataKey = getDataKey(node.data, index);
+      return `${dataKey}:${node.selected ? "1" : "0"}:${isDisabledNode(node) ? "1" : "0"}:${isPlaceholderData(node.data) ? "1" : "0"}`;
+    })
+    .join("|");
+}
+
+function getSelectedNodeSummary<T>(row: GeneratorNode<T>[] | undefined, generationIndex: number) {
+  const selectedIndex = row?.findIndex((node) => node.selected) ?? -1;
+  if (!row || selectedIndex < 0) {
+    return {
+      generationIndex,
+      selectedIndex: -1,
+      selectedKey: "",
+    };
+  }
+
+  const selectedNode = row[selectedIndex];
+  return {
+    generationIndex,
+    selectedIndex,
+    selectedKey: getDataKey(selectedNode.data, selectedIndex),
+  };
+}
+
 export function AbstractGenerator<T>({
   initTree,
   afterCardSelected,
@@ -63,7 +91,7 @@ export function AbstractGenerator<T>({
   const mountedRef = useRef(true);
   const activeLifecycleRef = useRef(0);
   const activeSelectionRef = useRef(0);
-  const pendingScrollToSelectedRowRef = useRef<number | null>(null);
+  const stableRowSignaturesRef = useRef<string[]>([]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -107,7 +135,7 @@ export function AbstractGenerator<T>({
     const lifecycleId = activeLifecycleRef.current + 1;
     activeLifecycleRef.current = lifecycleId;
     activeSelectionRef.current = 0;
-    pendingScrollToSelectedRowRef.current = null;
+    stableRowSignaturesRef.current = [];
 
     const guardedSetTree = createGuardedSetTree(lifecycleId, activeSelectionRef.current);
     setRenderTreeOverride(null);
@@ -124,55 +152,149 @@ export function AbstractGenerator<T>({
 
   const renderedGenerations = [...generations].reverse();
 
-  const handleScrollToSelected = useCallback((generationIndex: number) => {
+  const handleScrollToSelected = useCallback((
+    generationIndex: number,
+    options?: {
+      behavior?: ScrollBehavior;
+      source?: "auto" | "manual";
+    },
+  ) => {
+    const behavior = options?.behavior ?? "smooth";
+    const source = options?.source ?? "manual";
     const selectedRow = resolvedTree[generationIndex];
     const selectedNode = selectedRow?.find((node) => node.selected) ?? null;
 
     if (!selectedRow || !selectedNode) {
+      addCinenerdleDebugLog("generator.scrollToSelected.skipped", {
+        generationIndex,
+        source,
+        reason: "missing-selected-row",
+        rowLength: selectedRow?.length ?? 0,
+      });
       return;
     }
 
+    const selectedIndex = selectedRow.indexOf(selectedNode);
+    const selectedKey = getDataKey(selectedNode.data, selectedIndex);
+    const rowElement = rowRefs.current[generationIndex];
     const selectedCard = cardRefs.current[
       `${generationIndex}:${getDataKey(
         selectedNode.data,
-        selectedRow.indexOf(selectedNode),
+        selectedIndex,
       )}`
     ];
 
+    if (selectedCard && rowElement) {
+      const maxScrollLeft = Math.max(0, rowElement.scrollWidth - rowElement.clientWidth);
+      const centeredScrollLeft = Math.max(
+        0,
+        Math.min(
+          selectedCard.offsetLeft - (rowElement.clientWidth - selectedCard.offsetWidth) / 2,
+          maxScrollLeft,
+        ),
+      );
+
+      addCinenerdleDebugLog("generator.scrollToSelected.card", {
+        generationIndex,
+        source,
+        selectedIndex,
+        selectedKey,
+        rowScrollLeft: rowElement.scrollLeft,
+        rowClientWidth: rowElement.clientWidth,
+        rowScrollWidth: rowElement.scrollWidth,
+        cardOffsetLeft: selectedCard.offsetLeft,
+        cardOffsetWidth: selectedCard.offsetWidth,
+        targetScrollLeft: Number(centeredScrollLeft.toFixed(2)),
+      });
+
+      rowElement.scrollTo({
+        left: centeredScrollLeft,
+        behavior,
+      });
+      return;
+    }
+
     if (selectedCard) {
+      addCinenerdleDebugLog("generator.scrollToSelected.cardFallback", {
+        generationIndex,
+        source,
+        selectedIndex,
+        selectedKey,
+        reason: "missing-row-element",
+      });
       selectedCard.scrollIntoView({
-        behavior: "smooth",
+        behavior,
         block: "nearest",
         inline: "center",
       });
       return;
     }
 
-    rowRefs.current[generationIndex]?.scrollTo({
+    addCinenerdleDebugLog("generator.scrollToSelected.fallback", {
+      generationIndex,
+      source,
+      selectedIndex,
+      selectedKey,
+      rowScrollWidth: rowElement?.scrollWidth ?? null,
+    });
+    rowElement?.scrollTo({
       left: 0,
-      behavior: "smooth",
+      behavior,
     });
   }, [resolvedTree]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (renderTreeOverride !== null || placeholderRowIndex !== null) {
       return;
     }
 
-    const pendingGenerationIndex = pendingScrollToSelectedRowRef.current;
-    if (pendingGenerationIndex === null) {
+    const nextStableRowSignatures = resolvedTree.map((row) => getRowSignature(row));
+    const previousStableRowSignatures = stableRowSignaturesRef.current;
+    stableRowSignaturesRef.current = nextStableRowSignatures;
+    const changedGenerationIndexes: number[] = [];
+    const generationIndexesToScroll: number[] = [];
+
+    for (let generationIndex = 0; generationIndex < resolvedTree.length; generationIndex += 1) {
+      const row = resolvedTree[generationIndex];
+      const hasSelection = row?.some((node) => node.selected) ?? false;
+      const rowChanged =
+        previousStableRowSignatures[generationIndex] !== nextStableRowSignatures[generationIndex];
+
+      if (rowChanged) {
+        changedGenerationIndexes.push(generationIndex);
+      }
+
+      if (hasSelection && rowChanged) {
+        generationIndexesToScroll.push(generationIndex);
+      }
+    }
+
+    if (changedGenerationIndexes.length > 0) {
+      addCinenerdleDebugLog("generator.autoscroll.evaluate", {
+        placeholderRowIndex,
+        renderTreeOverrideActive: renderTreeOverride !== null,
+        changedGenerationIndexes,
+        chosenGenerationIndexes: generationIndexesToScroll,
+        selectedRows: resolvedTree
+          .map((row, generationIndex) => getSelectedNodeSummary(row, generationIndex))
+          .filter((summary) => summary.selectedIndex >= 0),
+      });
+    }
+
+    if (generationIndexesToScroll.length === 0) {
       return;
     }
 
-    pendingScrollToSelectedRowRef.current = null;
-
-    const frameId = window.requestAnimationFrame(() => {
-      handleScrollToSelected(pendingGenerationIndex);
+    addCinenerdleDebugLog("generator.autoscroll.execute", {
+      generationIndexesToScroll,
     });
 
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
+    generationIndexesToScroll.forEach((generationIndex) => {
+      handleScrollToSelected(generationIndex, {
+        behavior: "auto",
+        source: "auto",
+      });
+    });
   }, [handleScrollToSelected, placeholderRowIndex, renderTreeOverride, resolvedTree]);
 
   function handleCardSelect(row: number, col: number) {
@@ -203,12 +325,16 @@ export function AbstractGenerator<T>({
         ...node,
         selected: false,
       }));
+      addCinenerdleDebugLog("generator.placeholderRow.rendered", {
+        row,
+        col,
+        placeholderRowIndex: row + 1,
+        selectedKey: getDataKey(selectedRow[col].data, col),
+      });
       const renderedTreeWithPlaceholder = [...normalizedTree, placeholderRow];
-      pendingScrollToSelectedRowRef.current = row;
       setRenderTreeOverride(renderedTreeWithPlaceholder);
       setPlaceholderRowIndex(row + 1);
     } else {
-      pendingScrollToSelectedRowRef.current = null;
       setRenderTreeOverride(null);
       setPlaceholderRowIndex(null);
     }
@@ -244,7 +370,10 @@ export function AbstractGenerator<T>({
             <button
               className="generator-row-bubble"
               disabled={!hasSelection}
-              onClick={() => handleScrollToSelected(generationIndex)}
+              onClick={() => handleScrollToSelected(generationIndex, {
+                behavior: "smooth",
+                source: "manual",
+              })}
               type="button"
             >
               {`GEN ${generationIndex}`}
