@@ -284,8 +284,8 @@
 }
 
 .bacon-connection-node {
-  width: 220px;
-  min-width: 220px;
+  width: 192px;
+  min-width: 192px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -383,17 +383,17 @@
 }
 
 .bacon-connection-arrow-disconnected {
-  border-color: rgba(248, 113, 113, 0.58);
-  background: linear-gradient(180deg, rgba(84, 28, 28, 0.94), rgba(48, 17, 17, 0.94));
-  color: #fecaca;
+  border-color: rgba(168, 162, 158, 0.48);
+  background: linear-gradient(180deg, rgba(67, 61, 57, 0.94), rgba(39, 35, 32, 0.94));
+  color: rgba(245, 245, 244, 0.84);
   box-shadow:
-    0 0 0 1px rgba(248, 113, 113, 0.16),
+    0 0 0 1px rgba(168, 162, 158, 0.12),
     var(--bacon-shadow);
 }
 
 .bacon-connection-arrow-disconnected:hover {
-  border-color: rgba(252, 165, 165, 0.78);
-  background: linear-gradient(180deg, rgba(104, 34, 34, 0.96), rgba(58, 20, 20, 0.96));
+  border-color: rgba(214, 211, 209, 0.58);
+  background: linear-gradient(180deg, rgba(79, 73, 69, 0.96), rgba(48, 43, 40, 0.96));
 }
 
 .bacon-connection-status-card {
@@ -451,7 +451,7 @@
   }
 
   .bacon-connection-node {
-    width: 184px;
-    min-width: 184px;
+    width: 172px;
+    min-width: 172px;
   }
 }
