@@ -144,7 +144,11 @@ export function isAllowedBfsTmdbMovieCredit(credit: TmdbMovieCredit): boolean {
     return false;
   }
 
-  return credit.creditType === "cast" || credit.job === "Director";
+  if (credit.creditType === "cast") {
+    return true;
+  }
+
+  return isAllowedConnectionCrewJob(credit.job);
 }
 
 export function getUniqueSortedTmdbMovieCredits(
@@ -164,19 +168,29 @@ export function getUniqueSortedTmdbMovieCredits(
     .sort((left, right) => (right.popularity ?? 0) - (left.popularity ?? 0));
 }
 
+function isAllowedConnectionCrewJob(job: string | undefined): boolean {
+  const normalizedJob = normalizeName(job ?? "");
+
+  return (
+    normalizedJob === "director" ||
+    normalizedJob === "writer" ||
+    normalizedJob === "screenplay" ||
+    normalizedJob === "story" ||
+    normalizedJob === "original story" ||
+    normalizedJob === "adaptation" ||
+    normalizedJob === "teleplay" ||
+    normalizedJob.includes("director of photography") ||
+    normalizedJob.includes("cinematograph") ||
+    normalizedJob.includes("composer")
+  );
+}
+
 function isAllowedMoviePersonCredit(credit: TmdbPersonCredit): boolean {
   if (credit.character) {
     return !credit.character.toLowerCase().includes("(uncredited)");
   }
 
-  return (
-    credit.job === "Director" ||
-    credit.job === "Writer" ||
-    credit.job === "Screenplay" ||
-    credit.job === "Story" ||
-    credit.job === "Original Music Composer" ||
-    credit.job === "Composer"
-  );
+  return isAllowedConnectionCrewJob(credit.job);
 }
 
 export function getAssociatedPeopleFromMovieCredits(
