@@ -69,6 +69,14 @@ describe("parseHashSegments", () => {
       "",
     ]);
   });
+
+  it("trims surrounding whitespace around each segment", () => {
+    expect(parseHashSegments("# film |  Heat+(1995)  |  Al+Pacino  ")).toEqual([
+      "film",
+      "Heat (1995)",
+      "Al Pacino",
+    ]);
+  });
 });
 
 describe("buildPathNodesFromSegments", () => {
@@ -103,6 +111,24 @@ describe("buildPathNodesFromSegments", () => {
       createPathNode("person", "Al Pacino"),
       createPathNode("break"),
       createPathNode("person", "Kenneth Collard", "", 123),
+    ]);
+  });
+
+  it("toggles the expected entity kind after consecutive breaks", () => {
+    expect(
+      buildPathNodesFromSegments([
+        "cinenerdle",
+        "Heat (1995)",
+        "",
+        "",
+        "Collateral (2004)",
+      ]),
+    ).toEqual([
+      createPathNode("cinenerdle", "cinenerdle"),
+      createPathNode("movie", "Heat", "1995"),
+      createPathNode("break"),
+      createPathNode("break"),
+      createPathNode("person", "Collateral (2004)"),
     ]);
   });
 
@@ -146,6 +172,15 @@ describe("serializePathNodes", () => {
         createPathNode("person", "Kenneth Collard", "", 123),
       ]),
     ).toBe("#cinenerdle|Heat+(1995)|Al+Pacino||Kenneth+Collard");
+  });
+
+  it("normalizes internal whitespace and percent-encodes special characters", () => {
+    expect(
+      serializePathNodes([
+        createPathNode("person", "  Kenneth   Collard / Jr.  "),
+        createPathNode("movie", "L.A. Confidential", "1997"),
+      ]),
+    ).toBe("#person|Kenneth+Collard+%2F+Jr.|L.A.+Confidential+(1997)");
   });
 });
 

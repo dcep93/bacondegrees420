@@ -61,6 +61,20 @@ describe("withDerivedPersonFields", () => {
       "insomnia (2002)",
     ]);
   });
+
+  it("falls back to a numeric record id when no tmdb person payload is present", () => {
+    const personRecord = withDerivedPersonFields(
+      makePersonRecord({
+        id: 444,
+        tmdbId: null,
+        rawTmdbPerson: undefined,
+        rawTmdbMovieCreditsResponse: undefined,
+      }),
+    );
+
+    expect(personRecord.tmdbId).toBe(444);
+    expect(personRecord.movieConnectionKeys).toEqual([]);
+  });
 });
 
 describe("withDerivedFilmFields", () => {
@@ -118,6 +132,21 @@ describe("withDerivedFilmFields", () => {
     ]);
     expect(filmRecord.isCinenerdleDailyStarter).toBe(1);
   });
+
+  it("defaults the starter flag to zero when no starter payload exists", () => {
+    const filmRecord = withDerivedFilmFields(
+      makeFilmRecord({
+        id: "plain-film",
+        tmdbId: null,
+        rawTmdbMovie: undefined,
+        rawCinenerdleDailyStarter: undefined,
+        isCinenerdleDailyStarter: undefined,
+      }),
+    );
+
+    expect(filmRecord.isCinenerdleDailyStarter).toBe(0);
+    expect(filmRecord.tmdbId).toBeNull();
+  });
 });
 
 describe("buildFilmRecord", () => {
@@ -170,6 +199,29 @@ describe("buildFilmRecord", () => {
     expect(filmRecord.tmdbSavedAt).toBe("2026-03-28T12:34:56.000Z");
     expect(filmRecord.isCinenerdleDailyStarter).toBe(1);
   });
+
+  it("uses original_title and release year when no existing film record is present", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-28T13:00:00.000Z"));
+
+    const filmRecord = buildFilmRecord(
+      null,
+      makeTmdbMovieSearchResult({
+        id: 42,
+        title: undefined,
+        original_title: "Le Samourai",
+        release_date: "1967-10-25",
+        popularity: 75,
+      }),
+    );
+
+    expect(filmRecord.id).toBe(42);
+    expect(filmRecord.tmdbId).toBe(42);
+    expect(filmRecord.title).toBe("Le Samourai");
+    expect(filmRecord.year).toBe("1967");
+    expect(filmRecord.lookupKey).toBe("le samourai (1967)");
+    expect(filmRecord.tmdbSavedAt).toBe("2026-03-28T13:00:00.000Z");
+  });
 });
 
 describe("chooseBestMovieSearchResult", () => {
@@ -193,6 +245,15 @@ describe("chooseBestMovieSearchResult", () => {
     expect(chooseBestMovieSearchResult(results, "Heat")).toEqual(results[1]);
     expect(chooseBestMovieSearchResult(results, "Collateral")).toEqual(results[0]);
     expect(chooseBestMovieSearchResult(undefined, "Collateral")).toBeNull();
+  });
+
+  it("matches titles case-insensitively and ignores surrounding whitespace in the query", () => {
+    const results = [
+      makeTmdbMovieSearchResult({ id: 1, title: "Heat" }),
+      makeTmdbMovieSearchResult({ id: 2, title: "Collateral" }),
+    ];
+
+    expect(chooseBestMovieSearchResult(results, "  HEAT  ")).toEqual(results[0]);
   });
 });
 
@@ -224,6 +285,27 @@ describe("chooseBestFilmRecord", () => {
       exactWithTmdb,
     );
     expect(chooseBestFilmRecord([wrongYear], "Heat", "1995")).toBeNull();
+  });
+
+  it("falls back to popularity ordering when tmdb availability is tied", () => {
+    const lowerPopularity = makeFilmRecord({
+      id: "low",
+      tmdbId: null,
+      title: "Heat",
+      year: "1995",
+      popularity: 10,
+    });
+    const higherPopularity = makeFilmRecord({
+      id: "high",
+      tmdbId: null,
+      title: "Heat",
+      year: "1995",
+      popularity: 40,
+    });
+
+    expect(chooseBestFilmRecord([lowerPopularity, higherPopularity], "heat", "1995")).toEqual(
+      higherPopularity,
+    );
   });
 });
 

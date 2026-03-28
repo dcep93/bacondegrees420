@@ -130,6 +130,22 @@ describe("poster helpers", () => {
     ).toBe("https://img.test/starter.jpg");
     expect(getMoviePosterUrl(makeFilmRecord())).toBeNull();
   });
+
+  it("falls back to TMDb poster and null profile values when starter data is missing", () => {
+    expect(
+      getMoviePosterUrl(
+        makeFilmRecord({
+          rawCinenerdleDailyStarter: makeStarter({ posterUrl: null }),
+          rawTmdbMovie: {
+            id: 9,
+            title: "Heat",
+            poster_path: "/tmdb-only.jpg",
+          },
+        }),
+      ),
+    ).toBe(`${TMDB_POSTER_BASE_URL}/w185/tmdb-only.jpg`);
+    expect(getPersonProfileImageUrl(makePersonRecord())).toBeNull();
+  });
 });
 
 describe("tmdb credit aggregation", () => {
@@ -145,6 +161,11 @@ describe("tmdb credit aggregation", () => {
       expect.objectContaining({ id: 1, title: "Heat", creditType: "cast" }),
       expect.objectContaining({ id: 2, title: "The Insider", creditType: "crew", job: "Writer" }),
     ]);
+  });
+
+  it("returns an empty list when a person record has no TMDb credits", () => {
+    expect(getTmdbMovieCredits(null)).toEqual([]);
+    expect(getUniqueSortedTmdbMovieCredits(makePersonRecord())).toEqual([]);
   });
 
   it("filters BFS movie credits by uncredited cast and allowed crew jobs", () => {
@@ -239,6 +260,21 @@ describe("tmdb credit aggregation", () => {
       "Kenneth Collard",
     ]);
   });
+
+  it("drops nameless movie-credit people even if they have ids", () => {
+    const filmRecord = makeFilmRecord({
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({ id: 1, name: "", popularity: 90 }),
+          makePersonCredit({ id: 2, name: "Val Kilmer", popularity: 50 }),
+        ],
+      },
+    });
+
+    expect(getAssociatedPeopleFromMovieCredits(filmRecord).map((credit) => credit.name)).toEqual([
+      "Val Kilmer",
+    ]);
+  });
 });
 
 describe("starter and snapshot helpers", () => {
@@ -265,6 +301,10 @@ describe("starter and snapshot helpers", () => {
       writers: ["Delia Ephron"],
       composers: ["Marc Shaiman"],
     });
+  });
+
+  it("returns empty role buckets when the starter is missing", () => {
+    expect(buildPeopleByRoleFromStarter(undefined)).toEqual(createEmptyPeopleByRole());
   });
 
   it("returns snapshot people and flattened labels with an empty fallback", () => {

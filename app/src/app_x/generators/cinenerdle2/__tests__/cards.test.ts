@@ -196,6 +196,42 @@ describe("daily starter records and cards", () => {
       record: filmRecord,
     });
   });
+
+  it("falls back to a generic movie subtitle and empty detail when year and genres are missing", () => {
+    const filmRecord = makeFilmRecord({
+      year: "",
+      personConnectionKeys: ["al pacino", "robert de niro"],
+      rawCinenerdleDailyStarter: makeStarter({
+        genres: null,
+        posterUrl: null,
+      }),
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        poster_path: "/heat.jpg",
+        vote_average: undefined,
+        vote_count: undefined,
+      }),
+    });
+
+    expect(createDailyStarterMovieCard(filmRecord)).toEqual({
+      key: "movie:50",
+      kind: "movie",
+      name: "Heat",
+      year: "",
+      popularity: 66,
+      imageUrl: `${TMDB_POSTER_BASE_URL}/w185/heat.jpg`,
+      subtitle: "Movie",
+      subtitleDetail: "",
+      connectionCount: 2,
+      sources: [
+        { iconUrl: TMDB_ICON_URL, label: "TMDb" },
+        { iconUrl: CINENERDLE_ICON_URL, label: "Cinenerdle daily starter" },
+      ],
+      status: null,
+      voteAverage: null,
+      voteCount: null,
+      record: filmRecord,
+    });
+  });
 });
 
 describe("database info cards", () => {
@@ -274,6 +310,51 @@ describe("database info cards", () => {
       profilePath: "/kenneth.jpg",
       savedAt: "2026-03-28T12:00:00.000Z",
     });
+  });
+
+  it("uses the requested movie metadata when cached title and year are empty", () => {
+    const filmRecord = makeFilmRecord({
+      title: "",
+      year: "",
+      tmdbId: null,
+      popularity: 0,
+      personConnectionKeys: [],
+      rawTmdbMovie: undefined,
+      rawTmdbMovieCreditsResponse: undefined,
+      tmdbSavedAt: undefined,
+      tmdbCreditsSavedAt: undefined,
+    });
+    const card = createRootDatabaseInfoCard(
+      {
+        kind: "movie",
+        name: "Heat",
+        year: "1995",
+      },
+      filmRecord,
+    ) as DbInfoCard;
+
+    expect(JSON.parse(card.body)).toEqual({
+      cached: true,
+      kind: "movie",
+      title: "Heat",
+      year: "1995",
+      id: 50,
+      tmdbId: null,
+      popularity: 0,
+      voteAverage: null,
+      voteCount: null,
+      castCount: 0,
+      crewCount: 0,
+      connectionCount: 0,
+      hasTmdbMovie: false,
+      hasTmdbCredits: false,
+      posterPath: null,
+      tmdbSavedAt: null,
+      tmdbCreditsSavedAt: null,
+      hasCinenerdleStarter: false,
+    });
+    expect(getSummaryItemValue(card, "Rating")).toBe("-");
+    expect(getSummaryItemValue(card, "Credits")).toBe("No");
   });
 });
 
@@ -435,6 +516,36 @@ describe("association cards", () => {
       subtitle: "Writing",
       subtitleDetail: "",
       connectionCount: 5,
+      sources: [{ iconUrl: TMDB_ICON_URL, label: "TMDb" }],
+      status: null,
+      record: null,
+    });
+  });
+
+  it("falls back to crew labels and empty image/name details when person credit data is sparse", () => {
+    expect(
+      createPersonAssociationCard(
+        makePersonCredit({
+          id: undefined,
+          name: undefined,
+          popularity: undefined,
+          creditType: "crew",
+          character: undefined,
+          job: " ",
+          department: undefined,
+          profile_path: null,
+        }),
+        1,
+      ),
+    ).toEqual({
+      key: "person:",
+      kind: "person",
+      name: "",
+      popularity: 0,
+      imageUrl: null,
+      subtitle: "Crew",
+      subtitleDetail: "",
+      connectionCount: 1,
       sources: [{ iconUrl: TMDB_ICON_URL, label: "TMDb" }],
       status: null,
       record: null,
