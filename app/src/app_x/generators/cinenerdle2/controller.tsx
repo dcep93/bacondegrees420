@@ -10,6 +10,7 @@ import {
   createMovieRootCard,
   createPersonAssociationCard,
   createPersonRootCard,
+  createSnapshotPersonCard,
 } from "./cards";
 import { TMDB_ICON_URL } from "./constants";
 import {
@@ -699,6 +700,25 @@ async function buildChildRowForMovieCard(
   );
   const seenPeople = new Set(cards.map((personCard) => normalizeName(personCard.name)));
   const snapshotPeople = getSnapshotPeopleByRole(movieRecord);
+  const snapshotPersonRecords = new Map(
+    await Promise.all(
+      Array.from(
+        new Set(
+          Object.values(snapshotPeople)
+            .flat()
+            .map((personName) => normalizeName(personName))
+            .filter(Boolean),
+        ),
+      ).map(async (normalizedPersonName) => {
+        const snapshotPersonName = Object.values(snapshotPeople)
+          .flat()
+          .find((personName) => normalizeName(personName) === normalizedPersonName);
+        const personRecord =
+          snapshotPersonName ? await getPersonRecordByName(snapshotPersonName) : null;
+        return [normalizedPersonName, personRecord] as const;
+      }),
+    ),
+  );
 
   (
     Object.entries(snapshotPeople) as Array<
@@ -707,7 +727,7 @@ async function buildChildRowForMovieCard(
   ).forEach(([role, people]) => {
     people.forEach((personName) => {
       const normalizedPersonName = normalizeName(personName);
-      if (seenPeople.has(normalizedPersonName)) {
+        if (seenPeople.has(normalizedPersonName)) {
         if (shouldLogPersonCase && normalizedPersonName === "andy weir") {
           logProjectHailMaryPersonDebug("snapshot_person_skipped", {
             role,
@@ -718,16 +738,24 @@ async function buildChildRowForMovieCard(
         return;
       }
 
-      const fallbackCard = createCinenerdleOnlyPersonCard(personName, role);
-      cards.push(fallbackCard);
+      const snapshotCard = createSnapshotPersonCard(
+        personName,
+        role,
+        snapshotPersonRecords.get(normalizedPersonName) ?? null,
+      );
+      cards.push(snapshotCard);
       seenPeople.add(normalizedPersonName);
 
       if (shouldLogPersonCase && normalizedPersonName === "andy weir") {
         logProjectHailMaryPersonDebug("snapshot_person_added", {
           role,
           snapshotName: personName,
-          renderedCardName: fallbackCard.name,
-          renderedCardKey: fallbackCard.key,
+          renderedCardName: snapshotCard.name,
+          renderedCardKey: snapshotCard.key,
+          renderedCardImageUrl: snapshotCard.imageUrl,
+          snapshotPersonRecord: summarizePersonRecord(
+            snapshotPersonRecords.get(normalizedPersonName) ?? null,
+          ),
         });
       }
     });

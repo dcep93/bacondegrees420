@@ -2108,9 +2108,9 @@ export default function AppX() {
         >
           BaconDegrees420
         </h1>
+        {copyStatus ? <span className="bacon-copy-status">{copyStatus}</span> : null}
         <div className="bacon-title-actions">
           {renderConnectionMatchupPreview()}
-          {copyStatus ? <span className="bacon-copy-status">{copyStatus}</span> : null}
           <button
             aria-label="Save bookmark"
             className="bacon-title-action-icon-button"

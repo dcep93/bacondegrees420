@@ -490,3 +490,32 @@ export function createCinenerdleOnlyPersonCard(
     record: null,
   };
 }
+
+export function createSnapshotPersonCard(
+  personName: string,
+  role: string,
+  personRecord: PersonRecord | null = null,
+): CinenerdleCard {
+  if (!personRecord) {
+    return createCinenerdleOnlyPersonCard(personName, role);
+  }
+
+  const displayName = personRecord.name || formatFallbackPersonDisplayName(personName);
+
+  return {
+    key: getPersonCardKey(displayName, personRecord.id),
+    kind: "person",
+    name: displayName,
+    popularity: personRecord.rawTmdbPerson?.popularity ?? 0,
+    imageUrl: getPersonProfileImageUrl(personRecord),
+    subtitle: getFallbackPersonSubtitle(role),
+    subtitleDetail: "",
+    connectionCount: Math.max(personRecord.movieConnectionKeys.length, 1),
+    sources: [
+      { iconUrl: TMDB_ICON_URL, label: "TMDb" },
+      { iconUrl: CINENERDLE_ICON_URL, label: "Cinenerdle" },
+    ],
+    status: null,
+    record: personRecord,
+  };
+}

@@ -127,4 +127,70 @@ describe("buildBookmarkPreviewCardsFromHash", () => {
       }),
     );
   });
+
+  it("uses a cached snapshot person record when the movie credits omit that person", async () => {
+    const andyWeirRecord = makePersonRecord({
+      id: 1352085,
+      tmdbId: 1352085,
+      name: "Andy Weir",
+      movieConnectionKeys: ["project hail mary (2026)"],
+      rawTmdbPerson: makeTmdbPersonSearchResult({
+        id: 1352085,
+        name: "Andy Weir",
+        profile_path: "/andy-weir.jpg",
+        popularity: 42,
+      }),
+      rawTmdbMovieCreditsResponse: {
+        crew: [],
+      },
+    });
+    const projectHailMary = makeFilmRecord({
+      id: "project-hail-mary-2026",
+      tmdbId: 123,
+      title: "Project Hail Mary",
+      year: "2026",
+      personConnectionKeys: ["andy weir"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [
+          makePersonCredit({
+            id: 47506,
+            name: "Drew Goddard",
+            job: "Screenplay",
+            popularity: 10,
+          }),
+        ],
+      },
+      starterPeopleByRole: {
+        cast: [],
+        directors: [],
+        writers: ["Andy Weir", "Drew Goddard"],
+        composers: [],
+      },
+    });
+
+    indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (title: string, year: string) =>
+      title === "Project Hail Mary" && year === "2026" ? projectHailMary : null,
+    );
+    indexedDbMock.getFilmRecordsByPersonConnectionKey.mockResolvedValue([]);
+    indexedDbMock.getPersonRecordById.mockResolvedValue(null);
+    indexedDbMock.getPersonRecordByName.mockImplementation(async (personName: string) =>
+      personName === "Andy Weir" ? andyWeirRecord : null,
+    );
+
+    const previewCards = await buildBookmarkPreviewCardsFromHash(
+      "#film|Project+Hail+Mary+(2026)|Andy+Weir",
+    );
+
+    expect(previewCards).toHaveLength(2);
+    expect(previewCards[1]).toEqual(
+      expect.objectContaining({
+        kind: "person",
+        key: "person:1352085",
+        name: "Andy Weir",
+        imageUrl: expect.stringContaining("/andy-weir.jpg"),
+        hasCachedTmdbSource: true,
+      }),
+    );
+  });
 });
