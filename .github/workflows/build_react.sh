@@ -6,5 +6,6 @@ set -euo pipefail
 
 cd app
 npm install
+npm test
 yarn build
 rm -rf node_modules
