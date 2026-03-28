@@ -106,7 +106,8 @@ function decodeTmdbApiKey(encodedValue: string): string {
 }
 
 function readEnvTmdbApiKey(): string {
-  const envValue = import.meta.env.VITE_TMDB_API_KEY;
+  const envValue =
+    import.meta.env.VITE_TMDB_API_KEY_LOCAL ?? import.meta.env.VITE_TMDB_API_KEY;
   return typeof envValue === "string" ? decodeTmdbApiKey(envValue) : "";
 }
 
