@@ -1,6 +1,7 @@
 import { useMemo, type CSSProperties, type MouseEvent } from "react";
 import { createBookmarkPreviewCard, type BookmarkPreviewCard } from "../../components/bookmark_preview";
 import type { GeneratorController, GeneratorNode, GeneratorTree } from "../../types/generator";
+import { addCinenerdleDebugLog } from "./debug";
 import {
   createCinenerdleOnlyPersonCard,
   createCinenerdleRootCard,
@@ -87,6 +88,19 @@ function createNode(data: CinenerdleCard, selected = false): GeneratorNode<Cinen
 function getPersonIdentityKey(personName: string, personTmdbId?: number | string | null): string {
   const validTmdbId = getValidTmdbEntityId(personTmdbId);
   return validTmdbId ? `tmdb:${validTmdbId}` : `name:${normalizeName(personName)}`;
+}
+
+function shouldLogProjectHailMaryPersonDebug(
+  movieRecord: FilmRecord | null | undefined,
+  fallbackTitle = "",
+): boolean {
+  const title = movieRecord?.title || fallbackTitle;
+  return normalizeTitle(title) === "project hail mary";
+}
+
+function logProjectHailMaryPersonDebug(event: string, details: unknown): void {
+  console.debug("cinenerdle2.personCase", event, details);
+  addCinenerdleDebugLog(`personCase:${event}`, details);
 }
 
 function createRow(cards: CinenerdleCard[], selectedKey?: string) {
@@ -530,7 +544,24 @@ async function buildChildRowForMovieCard(
     return null;
   }
 
+  const shouldLogPersonCase = shouldLogProjectHailMaryPersonDebug(movieRecord, card.name);
   const tmdbCredits = getAssociatedPeopleFromMovieCredits(movieRecord);
+  if (shouldLogPersonCase) {
+    logProjectHailMaryPersonDebug("movie_row_start", {
+      cardName: card.name,
+      cardYear: card.year,
+      movieRecordTitle: movieRecord.title,
+      movieRecordYear: movieRecord.year,
+      starterPeopleByRole: movieRecord.starterPeopleByRole ?? null,
+      tmdbCreditNames: tmdbCredits.map((credit) => ({
+        name: credit.name ?? "",
+        id: credit.id ?? null,
+        job: credit.job ?? null,
+        department: credit.department ?? null,
+        creditType: credit.creditType ?? null,
+      })),
+    });
+  }
   const personDetails = new Map(
     await Promise.all(
       tmdbCredits.map(async (credit) => {
@@ -542,6 +573,17 @@ async function buildChildRowForMovieCard(
             : personName
               ? await getPersonRecordByName(personName)
               : null;
+
+        if (shouldLogPersonCase && normalizeName(personName) === "andy weir") {
+          logProjectHailMaryPersonDebug("tmdb_credit_resolution", {
+            creditName: personName,
+            creditId: credit.id ?? null,
+            cachedPersonRecordName: cachedPersonRecord?.name ?? null,
+            cachedPersonRecordTmdbId:
+              getValidTmdbEntityId(cachedPersonRecord?.tmdbId ?? cachedPersonRecord?.id),
+            matchingFilmCount: matchingFilms.length,
+          });
+        }
 
         return [
           getPersonIdentityKey(personName, credit.id),
@@ -572,13 +614,51 @@ async function buildChildRowForMovieCard(
     people.forEach((personName) => {
       const normalizedPersonName = normalizeName(personName);
       if (seenPeople.has(normalizedPersonName)) {
+        if (shouldLogPersonCase && normalizedPersonName === "andy weir") {
+          logProjectHailMaryPersonDebug("snapshot_person_skipped", {
+            role,
+            snapshotName: personName,
+            reason: "already_seen",
+          });
+        }
         return;
       }
 
-      cards.push(createCinenerdleOnlyPersonCard(personName, role));
+      const fallbackCard = createCinenerdleOnlyPersonCard(personName, role);
+      cards.push(fallbackCard);
       seenPeople.add(normalizedPersonName);
+
+      if (shouldLogPersonCase && normalizedPersonName === "andy weir") {
+        logProjectHailMaryPersonDebug("snapshot_person_added", {
+          role,
+          snapshotName: personName,
+          renderedCardName: fallbackCard.name,
+          renderedCardKey: fallbackCard.key,
+        });
+      }
     });
   });
+
+  if (shouldLogPersonCase) {
+    logProjectHailMaryPersonDebug("movie_row_final_cards", {
+      cardNames: cards.map((personCard) => ({
+        name: personCard.name,
+        key: personCard.key,
+        sourceLabels: personCard.sources.map((source) => source.label),
+      })),
+      andyWeirCards: cards
+        .filter((personCard) => normalizeName(personCard.name) === "andy weir")
+        .map((personCard) => ({
+          name: personCard.name,
+          key: personCard.key,
+          sourceLabels: personCard.sources.map((source) => source.label),
+          recordName:
+            personCard.kind === "person"
+              ? personCard.record?.name ?? null
+              : null,
+        })),
+    });
+  }
 
   return createRow(sortCardsByPopularity(cards));
 }
