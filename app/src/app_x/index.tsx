@@ -462,9 +462,6 @@ export default function AppX() {
     [navigateToHash],
   );
 
-  const hasFoundConnectionRow =
-    connectionSession?.rows.some((row) => row.status === "found" && row.path.length > 0) ?? false;
-
   const runConnectionRowSearch = useCallback(
     async (params: {
       sessionId: string;
@@ -777,7 +774,7 @@ export default function AppX() {
         </button>
         <div className="bacon-connection-node-meta">
           <span className="bacon-connection-node-count">
-            {entity.connectionCount}
+            {entity.connectionCount} {entity.connectionCount === 1 ? "connection" : "connections"}
           </span>
           <img
             alt={entity.kind === "cinenerdle" ? "Cinenerdle" : "TMDb"}
@@ -871,19 +868,17 @@ export default function AppX() {
 
         {connectionSession ? (
           <div className="bacon-connection-results">
-            {!hasFoundConnectionRow ? (
-              <div className="bacon-connection-row">
-                {renderConnectionEntityCard(connectionSession.left, {
-                  onCardClick: () => navigateToConnectionEntity(connectionSession.left),
-                  onNameClick: () => navigateToConnectionEntity(connectionSession.left),
-                })}
-                <span className="bacon-connection-arrow bacon-connection-arrow-static">→</span>
-                {renderConnectionEntityCard(connectionSession.right, {
-                  onCardClick: () => navigateToConnectionEntity(connectionSession.right),
-                  onNameClick: () => navigateToConnectionEntity(connectionSession.right),
-                })}
-              </div>
-            ) : null}
+            <div className="bacon-connection-row">
+              {renderConnectionEntityCard(connectionSession.left, {
+                onCardClick: () => navigateToConnectionEntity(connectionSession.left),
+                onNameClick: () => navigateToConnectionEntity(connectionSession.left),
+              })}
+              <span className="bacon-connection-arrow bacon-connection-arrow-static">→</span>
+              {renderConnectionEntityCard(connectionSession.right, {
+                onCardClick: () => navigateToConnectionEntity(connectionSession.right),
+                onNameClick: () => navigateToConnectionEntity(connectionSession.right),
+              })}
+            </div>
 
             {connectionSession.rows.map((row) => {
               if (row.status === "searching") {
