@@ -231,6 +231,8 @@
   border-radius: 999px;
   background: rgba(17, 12, 10, 0.92);
   box-shadow: var(--bacon-shadow);
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .bacon-connection-matchup-tile {
@@ -243,6 +245,8 @@
   flex: 0 0 auto;
   background: rgba(43, 31, 25, 0.92);
   color: var(--bacon-text);
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .bacon-connection-matchup-tile-wrap {
@@ -280,11 +284,22 @@
 }
 
 .bacon-connection-matchup-vs {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  min-height: 28px;
+  border-radius: 999px;
   color: var(--bacon-text-muted);
   font-size: 0.76rem;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.bacon-connection-matchup-vs:focus {
+  outline: 2px solid rgba(251, 191, 36, 0.9);
+  outline-offset: 3px;
 }
 
 .bacon-connection-pill {
@@ -350,6 +365,8 @@
   color: var(--bacon-text);
   white-space: normal;
   text-align: left;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .bacon-connection-pill-tooltip-entry {

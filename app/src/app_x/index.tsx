@@ -138,6 +138,10 @@ type ConnectionMatchupPreview = {
   spoiler: ConnectionMatchupPreviewEntity;
 };
 
+const CONNECTION_MATCHUP_VS_TOOLTIP_KEY = "vs";
+const CONNECTION_MATCHUP_VS_TOOLTIP_TEXT =
+  "Suggested matchup preview: left is the closest counterpart, right is the spoiler unique to your current pick.";
+
 type ConnectionSearchRow = {
   id: string;
   excludedNodeKeys: string[];
@@ -714,6 +718,29 @@ function getTooltipEntries(tooltipText: string): string[] {
     .split("\n")
     .map((entry) => entry.trim())
     .filter(Boolean);
+}
+
+function alertTooltipText(tooltipEntries: string[]): void {
+  const alertText = tooltipEntries.join("\n").trim();
+  if (!alertText) {
+    return;
+  }
+
+  window.alert(alertText);
+}
+
+function preventTooltipMouseFocus(event: MouseEvent<HTMLElement>): void {
+  event.preventDefault();
+}
+
+function handleTooltipClick(
+  event: MouseEvent<HTMLElement>,
+  tooltipEntries: string[],
+): void {
+  event.preventDefault();
+  event.stopPropagation();
+  event.currentTarget.blur();
+  alertTooltipText(tooltipEntries);
 }
 
 function renderTooltipEntry(entry: string, key: string) {
@@ -1902,6 +1929,8 @@ export default function AppX() {
         <span
           aria-label={entity.name}
           className="bacon-connection-matchup-tile"
+          onClick={(event) => handleTooltipClick(event, tooltipEntries)}
+          onMouseDown={preventTooltipMouseFocus}
           tabIndex={0}
         >
           {entity.imageUrl ? (
@@ -1934,14 +1963,43 @@ export default function AppX() {
       return null;
     }
 
+    const isVsTooltipVisible =
+      visibleConnectionMatchupTooltipKey === CONNECTION_MATCHUP_VS_TOOLTIP_KEY;
+
     return (
       <div
         aria-label={`Suggested matchup: ${connectionMatchupPreview.counterpart.name} vs ${connectionMatchupPreview.spoiler.name}`}
         className="bacon-connection-matchup"
       >
         {renderConnectionMatchupTile(connectionMatchupPreview.counterpart)}
-        <span aria-hidden="true" className="bacon-connection-matchup-vs">
-          vs
+        <span
+          className="bacon-connection-matchup-tile-wrap"
+          onBlur={() => setVisibleConnectionMatchupTooltipKey((currentKey) =>
+            currentKey === CONNECTION_MATCHUP_VS_TOOLTIP_KEY ? null : currentKey)}
+          onFocus={() => setVisibleConnectionMatchupTooltipKey(CONNECTION_MATCHUP_VS_TOOLTIP_KEY)}
+          onMouseEnter={() => setVisibleConnectionMatchupTooltipKey(CONNECTION_MATCHUP_VS_TOOLTIP_KEY)}
+          onMouseLeave={() => setVisibleConnectionMatchupTooltipKey((currentKey) =>
+            currentKey === CONNECTION_MATCHUP_VS_TOOLTIP_KEY ? null : currentKey)}
+        >
+          <span
+            aria-label="What this matchup preview means"
+            className="bacon-connection-matchup-vs"
+            onClick={(event) => handleTooltipClick(event, [CONNECTION_MATCHUP_VS_TOOLTIP_TEXT])}
+            onMouseDown={preventTooltipMouseFocus}
+            tabIndex={0}
+          >
+            vs
+          </span>
+          {isVsTooltipVisible ? (
+            <span
+              className="bacon-connection-pill-tooltip bacon-connection-matchup-tooltip"
+              role="tooltip"
+            >
+              <span className="bacon-connection-pill-tooltip-entry">
+                {CONNECTION_MATCHUP_VS_TOOLTIP_TEXT}
+              </span>
+            </span>
+          ) : null}
         </span>
         {renderConnectionMatchupTile(connectionMatchupPreview.spoiler)}
       </div>
@@ -2188,6 +2246,8 @@ export default function AppX() {
             >
               <span
                 className="bacon-connection-pill"
+                onClick={(event) => handleTooltipClick(event, selectedPathTooltipEntries)}
+                onMouseDown={preventTooltipMouseFocus}
                 tabIndex={0}
               >
                 {highestGenerationSelectedLabel}
