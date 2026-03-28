@@ -10,6 +10,20 @@ import {
 } from "react";
 import Cinenerdle2 from "./generators/cinenerdle2";
 import {
+  createCinenerdleConnectionEntity,
+  createFallbackConnectionEntity,
+  findConnectionPathBidirectional,
+  getConnectionEdgeKey,
+  hydrateConnectionEntityFromKey,
+  hydrateConnectionEntityFromSearchRecord,
+  type ConnectionEntity,
+  type ConnectionSearchResult,
+} from "./generators/cinenerdle2/connection_graph";
+import { CINENERDLE_ICON_URL, TMDB_ICON_URL } from "./generators/cinenerdle2/constants";
+import {
+  copyCinenerdleDebugLogToClipboard,
+} from "./generators/cinenerdle2/debug";
+import {
   buildPathNodesFromSegments,
   createPathNode,
   normalizeHashValue,
@@ -17,27 +31,11 @@ import {
   serializePathNodes,
 } from "./generators/cinenerdle2/hash";
 import {
-  copyCinenerdleDebugLogToClipboard,
-} from "./generators/cinenerdle2/debug";
-import {
-  buildConnectionGraph,
-  createCinenerdleConnectionEntity,
-  createConnectionEntityFromMovieRecord,
-  createConnectionEntityFromPersonRecord,
-  createFallbackConnectionEntity,
-  findConnectionPathBidirectional,
-  getConnectionEdgeKey,
-  type ConnectionEntity,
-  type ConnectionSearchResult,
-} from "./generators/cinenerdle2/connection_graph";
-import {
   clearIndexedDb,
   estimateIndexedDbUsageBytes,
-  getAllFilmRecords,
-  getAllPersonRecords,
+  getAllSearchableConnectionEntities,
 } from "./generators/cinenerdle2/indexed_db";
 import { resolveConnectionQuery } from "./generators/cinenerdle2/tmdb";
-import { CINENERDLE_ICON_URL, TMDB_ICON_URL } from "./generators/cinenerdle2/constants";
 import {
   formatMoviePathLabel,
   normalizeWhitespace,
@@ -46,7 +44,6 @@ import "./styles/app_shell.css";
 
 type ConnectionSuggestion = ConnectionEntity & {
   sortScore: number;
-  popularity: number;
 };
 
 type PendingHashWrite = {
@@ -56,30 +53,30 @@ type PendingHashWrite = {
 
 type ConnectionExclusion =
   | {
-      kind: "node";
-      nodeKey: string;
-    }
+    kind: "node";
+    nodeKey: string;
+  }
   | {
-      kind: "edge";
-      edgeKey: string;
-    };
+    kind: "edge";
+    edgeKey: string;
+  };
 
 type SelectedPathTarget =
   | {
-      kind: "cinenerdle";
-      name: "cinenerdle";
-      year: "";
-    }
+    kind: "cinenerdle";
+    name: "cinenerdle";
+    year: "";
+  }
   | {
-      kind: "movie";
-      name: string;
-      year: string;
-    }
+    kind: "movie";
+    name: string;
+    year: string;
+  }
   | {
-      kind: "person";
-      name: string;
-      year: "";
-    }
+    kind: "person";
+    name: string;
+    year: "";
+  }
   | null;
 
 type ConnectionSearchRow = {
@@ -205,8 +202,8 @@ function serializeConnectionEntityHash(entity: ConnectionEntity): string {
     entity.kind === "cinenerdle"
       ? createPathNode("cinenerdle", "cinenerdle")
       : entity.kind === "movie"
-      ? createPathNode("movie", entity.name, entity.year)
-      : createPathNode("person", entity.name),
+        ? createPathNode("movie", entity.name, entity.year)
+        : createPathNode("person", entity.name),
   ]);
 }
 
@@ -238,9 +235,15 @@ function matchesConnectionExclusion(
     return false;
   }
 
-  return left.kind === "node"
-    ? left.nodeKey === right.nodeKey
-    : left.edgeKey === right.edgeKey;
+  if (left.kind === "node" && right.kind === "node") {
+    return left.nodeKey === right.nodeKey;
+  }
+
+  if (left.kind === "edge" && right.kind === "edge") {
+    return left.edgeKey === right.edgeKey;
+  }
+
+  return false;
 }
 
 function collectConnectionRowFamilyIds(
@@ -335,71 +338,62 @@ export default function AppX() {
     const requestId = autocompleteRequestIdRef.current + 1;
     autocompleteRequestIdRef.current = requestId;
 
-    void Promise.all([getAllPersonRecords(), getAllFilmRecords()]).then(
-      ([personRecords, filmRecords]) => {
-        if (autocompleteRequestIdRef.current !== requestId) {
-          return;
-        }
+    void getAllSearchableConnectionEntities().then(async (searchRecords) => {
+      if (autocompleteRequestIdRef.current !== requestId) {
+        return;
+      }
 
-        const personSuggestions: ConnectionSuggestion[] = personRecords
-          .map((personRecord) => {
-            const entity = createConnectionEntityFromPersonRecord(personRecord);
-            const sortScore = getSuggestionScore(query, entity.label);
+      const candidateRecords = searchRecords
+        .map((record) => ({
+          record,
+          sortScore: getSuggestionScore(query, record.nameLower),
+        }))
+        .filter((item) => item.sortScore >= 0)
+        .sort((left, right) => {
+          if (right.sortScore !== left.sortScore) {
+            return right.sortScore - left.sortScore;
+          }
 
-            return {
-              ...entity,
+          if (left.record.type !== right.record.type) {
+            return left.record.type === "person" ? -1 : 1;
+          }
+
+          return left.record.nameLower.localeCompare(right.record.nameLower);
+        })
+        .slice(0, 24);
+
+      const nextSuggestions = (await Promise.all(
+        candidateRecords.map(async ({ record, sortScore }) => {
+          const entity = await hydrateConnectionEntityFromSearchRecord(record);
+          return {
+            ...entity,
+            sortScore: Math.max(
               sortScore,
-              popularity: personRecord.rawTmdbPerson?.popularity ?? 0,
-            };
-          })
-          .filter((item) => item.sortScore >= 0);
+              getSuggestionScore(query, entity.label),
+            ),
+          };
+        }),
+      ))
+        .sort((left, right) => {
+          if (right.sortScore !== left.sortScore) {
+            return right.sortScore - left.sortScore;
+          }
 
-        const movieSuggestions: ConnectionSuggestion[] = filmRecords
-          .map((filmRecord) => {
-            const entity = createConnectionEntityFromMovieRecord(filmRecord);
-            const titleScore = getSuggestionScore(query, filmRecord.title);
-            const labelScore = getSuggestionScore(query, entity.label);
-            const sortScore = Math.max(titleScore, labelScore);
+          if (left.kind !== right.kind) {
+            return left.kind === "person" ? -1 : 1;
+          }
 
-            return {
-              ...entity,
-              sortScore,
-              popularity: filmRecord.popularity ?? 0,
-            };
-          })
-          .filter((item) => item.sortScore >= 0);
+          return left.label.localeCompare(right.label);
+        })
+        .slice(0, 12);
 
-        const seenLabels = new Set<string>();
-        const nextSuggestions = [...personSuggestions, ...movieSuggestions]
-          .sort((left, right) => {
-            if (right.sortScore !== left.sortScore) {
-              return right.sortScore - left.sortScore;
-            }
+      if (autocompleteRequestIdRef.current !== requestId) {
+        return;
+      }
 
-            if (right.popularity !== left.popularity) {
-              return right.popularity - left.popularity;
-            }
-
-            if (left.kind !== right.kind) {
-              return left.kind === "person" ? -1 : 1;
-            }
-
-            return left.label.localeCompare(right.label);
-          })
-          .filter((item) => {
-            if (seenLabels.has(item.key)) {
-              return false;
-            }
-
-            seenLabels.add(item.key);
-            return true;
-          })
-          .slice(0, 12);
-
-        setConnectionSuggestions(nextSuggestions);
-        setSelectedSuggestionIndex(nextSuggestions.length > 0 ? 0 : -1);
-      },
-    );
+      setConnectionSuggestions(nextSuggestions);
+      setSelectedSuggestionIndex(nextSuggestions.length > 0 ? 0 : -1);
+    });
   }, [connectionQuery]);
 
   function handleReset() {
@@ -477,19 +471,16 @@ export default function AppX() {
       excludedNodeKeys: string[];
       excludedEdgeKeys: string[];
     }) => {
-      const [personRecords, filmRecords] = await Promise.all([
-        getAllPersonRecords(),
-        getAllFilmRecords(),
+      const [leftEntity, rightEntity] = await Promise.all([
+        hydrateConnectionEntityFromKey(params.left.key).catch(() =>
+          createFallbackConnectionEntity(params.left),
+        ),
+        hydrateConnectionEntityFromKey(params.right.key).catch(() =>
+          createFallbackConnectionEntity(params.right),
+        ),
       ]);
-      const graph = buildConnectionGraph(personRecords, filmRecords);
-      const leftEntity =
-        graph.entitiesByKey.get(params.left.key) ??
-        createFallbackConnectionEntity(params.left);
-      const rightEntity =
-        graph.entitiesByKey.get(params.right.key) ??
-        createFallbackConnectionEntity(params.right);
 
-      const result = findConnectionPathBidirectional(graph, leftEntity.key, rightEntity.key, {
+      const result = await findConnectionPathBidirectional(leftEntity, rightEntity, {
         excludedNodeKeys: new Set(params.excludedNodeKeys),
         excludedEdgeKeys: new Set(params.excludedEdgeKeys),
         timeoutMs: 5000,
@@ -507,10 +498,10 @@ export default function AppX() {
           rows: currentSession.rows.map((row) =>
             row.id === params.rowId
               ? {
-                  ...row,
-                  status: result.status,
-                  path: result.path,
-                }
+                ...row,
+                status: result.status,
+                path: result.path,
+              }
               : row,
           ),
         };
@@ -593,11 +584,11 @@ export default function AppX() {
               .map((row) =>
                 row.id === parentRowId
                   ? {
-                      ...row,
-                      childDisallowedEdgeKeys: row.childDisallowedEdgeKeys.filter(
-                        (edgeKey) => edgeKey !== exclusion.edgeKey,
-                      ),
-                    }
+                    ...row,
+                    childDisallowedEdgeKeys: row.childDisallowedEdgeKeys.filter(
+                      (edgeKey) => edgeKey !== exclusion.edgeKey,
+                    ),
+                  }
                   : row,
               ),
           };
@@ -638,16 +629,16 @@ export default function AppX() {
           ...currentSession.rows.map((row) =>
             row.id === parentRowId
               ? {
-                  ...row,
-                  childDisallowedNodeKeys:
-                    exclusion.kind === "node"
-                      ? [...row.childDisallowedNodeKeys, exclusion.nodeKey]
-                      : row.childDisallowedNodeKeys,
-                  childDisallowedEdgeKeys:
-                    exclusion.kind === "edge"
-                      ? [...row.childDisallowedEdgeKeys, exclusion.edgeKey]
-                      : row.childDisallowedEdgeKeys,
-                }
+                ...row,
+                childDisallowedNodeKeys:
+                  exclusion.kind === "node"
+                    ? [...row.childDisallowedNodeKeys, exclusion.nodeKey]
+                    : row.childDisallowedNodeKeys,
+                childDisallowedEdgeKeys:
+                  exclusion.kind === "edge"
+                    ? [...row.childDisallowedEdgeKeys, exclusion.edgeKey]
+                    : row.childDisallowedEdgeKeys,
+              }
               : row,
           ),
           {
@@ -793,9 +784,9 @@ export default function AppX() {
               entity.kind === "cinenerdle" || entity.hasCachedTmdbSource
                 ? undefined
                 : {
-                    filter: "grayscale(1)",
-                    opacity: 0.9,
-                  }
+                  filter: "grayscale(1)",
+                  opacity: 0.9,
+                }
             }
             title={entity.kind === "cinenerdle" ? "Cinenerdle" : "TMDb"}
           />
@@ -929,10 +920,10 @@ export default function AppX() {
                           dimmed: isNodeDimmed,
                           onCardClick: isMiddleNode
                             ? () =>
-                                spawnAlternativeConnectionRow(row.id, {
-                                  kind: "node",
-                                  nodeKey: entity.key,
-                                })
+                              spawnAlternativeConnectionRow(row.id, {
+                                kind: "node",
+                                nodeKey: entity.key,
+                              })
                             : undefined,
                           onNameClick: () => navigateToConnectionEntity(entity),
                         })}
@@ -961,7 +952,7 @@ export default function AppX() {
                             }
                             type="button"
                           >
-                            {isEdgeDimmed ? "↛" : "→"}
+                            →
                           </button>
                         ) : null}
                       </Fragment>

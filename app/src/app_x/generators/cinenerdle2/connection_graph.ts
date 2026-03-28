@@ -1,7 +1,23 @@
-import type { FilmRecord, PersonRecord } from "./types";
+import {
+  getCinenerdleStarterFilmRecords,
+  getFilmRecordByTitleAndYear,
+  getFilmRecordsByPersonConnectionKey,
+  getPersonRecordByName,
+  getPersonRecordsByMovieKey,
+} from "./indexed_db";
+import type {
+  FilmRecord,
+  PersonRecord,
+  SearchableConnectionEntityRecord,
+} from "./types";
 import {
   formatMoviePathLabel,
   getAssociatedPeopleFromMovieCredits,
+  getFilmKey,
+  getMovieTitleFromCredit,
+  getMovieYearFromCredit,
+  getSnapshotConnectionLabels,
+  getTmdbMovieCredits,
   normalizeName,
   normalizeTitle,
 } from "./utils";
@@ -14,11 +30,6 @@ export type ConnectionEntity = {
   label: string;
   connectionCount: number;
   hasCachedTmdbSource: boolean;
-};
-
-type ConnectionGraph = {
-  entitiesByKey: Map<string, ConnectionEntity>;
-  adjacencyByKey: Map<string, string[]>;
 };
 
 export type ConnectionSearchResult = {
@@ -46,16 +57,16 @@ export function getConnectionEdgeKey(leftKey: string, rightKey: string): string 
 export function hasCachedTmdbSourceForMovieRecord(movieRecord: FilmRecord | null): boolean {
   return Boolean(
     movieRecord?.tmdbCreditsSavedAt ||
-    movieRecord?.rawTmdbMovieCreditsResponse,
+      movieRecord?.rawTmdbMovieCreditsResponse,
   );
 }
 
 export function hasCachedTmdbSourceForPersonRecord(personRecord: PersonRecord | null): boolean {
   return Boolean(
     personRecord?.savedAt ||
-    personRecord?.rawTmdbPerson ||
-    personRecord?.rawTmdbPersonSearchResponse ||
-    personRecord?.rawTmdbMovieCreditsResponse,
+      personRecord?.rawTmdbPerson ||
+      personRecord?.rawTmdbPersonSearchResponse ||
+      personRecord?.rawTmdbMovieCreditsResponse,
   );
 }
 
@@ -95,132 +106,6 @@ export function createCinenerdleConnectionEntity(starterCount: number): Connecti
   };
 }
 
-function addAdjacency(adjacencyByKey: Map<string, Set<string>>, fromKey: string, toKey: string) {
-  const nextValues = adjacencyByKey.get(fromKey) ?? new Set<string>();
-  nextValues.add(toKey);
-  adjacencyByKey.set(fromKey, nextValues);
-}
-
-function ensureEntity(
-  entitiesByKey: Map<string, ConnectionEntity>,
-  entity: ConnectionEntity,
-): ConnectionEntity {
-  const existingEntity = entitiesByKey.get(entity.key);
-  if (!existingEntity) {
-    entitiesByKey.set(entity.key, entity);
-    return entity;
-  }
-
-  const mergedEntity: ConnectionEntity = {
-    ...existingEntity,
-    ...entity,
-    label:
-      entity.label.length >= existingEntity.label.length
-        ? entity.label
-        : existingEntity.label,
-    connectionCount: Math.max(existingEntity.connectionCount, entity.connectionCount),
-    hasCachedTmdbSource:
-      existingEntity.hasCachedTmdbSource || entity.hasCachedTmdbSource,
-  };
-  entitiesByKey.set(entity.key, mergedEntity);
-  return mergedEntity;
-}
-
-export function buildConnectionGraph(
-  personRecords: PersonRecord[],
-  filmRecords: FilmRecord[],
-): ConnectionGraph {
-  const entitiesByKey = new Map<string, ConnectionEntity>();
-  const adjacencyByKey = new Map<string, Set<string>>();
-  const personNameByKey = new Map<string, string>();
-
-  personRecords.forEach((personRecord) => {
-    personNameByKey.set(normalizeName(personRecord.name), personRecord.name);
-    ensureEntity(entitiesByKey, createConnectionEntityFromPersonRecord(personRecord));
-  });
-
-  filmRecords.forEach((filmRecord) => {
-    getAssociatedPeopleFromMovieCredits(filmRecord).forEach((credit) => {
-      const personName = credit.name?.trim();
-      if (!personName) {
-        return;
-      }
-
-      personNameByKey.set(normalizeName(personName), personName);
-    });
-  });
-
-  filmRecords.forEach((filmRecord) => {
-    const movieEntity = ensureEntity(
-      entitiesByKey,
-      createConnectionEntityFromMovieRecord(filmRecord),
-    );
-    const seenPersonKeys = new Set<string>();
-
-    filmRecord.personConnectionKeys.forEach((personConnectionKey) => {
-      const normalizedPersonKey = normalizeName(personConnectionKey);
-      const personKey = getPersonConnectionEntityKey(normalizedPersonKey);
-      if (!normalizedPersonKey || seenPersonKeys.has(personKey)) {
-        return;
-      }
-
-      seenPersonKeys.add(personKey);
-      const personName = personNameByKey.get(normalizedPersonKey) ?? normalizedPersonKey;
-      const personEntity = ensureEntity(entitiesByKey, {
-        key: personKey,
-        kind: "person",
-        name: personName,
-        year: "",
-        label: personName,
-        connectionCount: 0,
-        hasCachedTmdbSource: false,
-      });
-
-      addAdjacency(adjacencyByKey, movieEntity.key, personEntity.key);
-      addAdjacency(adjacencyByKey, personEntity.key, movieEntity.key);
-    });
-  });
-
-  const starterMovieRecords = filmRecords.filter((filmRecord) =>
-    Boolean(filmRecord.rawCinenerdleDailyStarter),
-  );
-  if (starterMovieRecords.length > 0) {
-    const cinenerdleEntity = ensureEntity(
-      entitiesByKey,
-      createCinenerdleConnectionEntity(starterMovieRecords.length),
-    );
-
-    starterMovieRecords.forEach((filmRecord) => {
-      const movieEntity = ensureEntity(
-        entitiesByKey,
-        createConnectionEntityFromMovieRecord(filmRecord),
-      );
-      addAdjacency(adjacencyByKey, cinenerdleEntity.key, movieEntity.key);
-      addAdjacency(adjacencyByKey, movieEntity.key, cinenerdleEntity.key);
-    });
-  }
-
-  const normalizedAdjacency = new Map<string, string[]>();
-  adjacencyByKey.forEach((neighborKeys, key) => {
-    normalizedAdjacency.set(key, Array.from(neighborKeys));
-
-    const entity = entitiesByKey.get(key);
-    if (!entity) {
-      return;
-    }
-
-    entitiesByKey.set(key, {
-      ...entity,
-      connectionCount: Math.max(entity.connectionCount, neighborKeys.size, 1),
-    });
-  });
-
-  return {
-    entitiesByKey,
-    adjacencyByKey: normalizedAdjacency,
-  };
-}
-
 export function createFallbackConnectionEntity(
   item: {
     kind: "cinenerdle" | "movie" | "person";
@@ -255,6 +140,178 @@ export function createFallbackConnectionEntity(
   };
 }
 
+function parseMovieConnectionEntityKey(key: string): { name: string; year: string } {
+  const rawValue = key.startsWith("movie:") ? key.slice("movie:".length) : key;
+  const lastColonIndex = rawValue.lastIndexOf(":");
+
+  if (lastColonIndex < 0) {
+    return {
+      name: rawValue,
+      year: "",
+    };
+  }
+
+  return {
+    name: rawValue.slice(0, lastColonIndex),
+    year: rawValue.slice(lastColonIndex + 1),
+  };
+}
+
+function parsePersonConnectionEntityKey(key: string): string {
+  return key.startsWith("person:") ? key.slice("person:".length) : key;
+}
+
+function getMovieLookupKeyFromConnectionEntityKey(key: string): string {
+  const parsedMovie = parseMovieConnectionEntityKey(key);
+  return getFilmKey(parsedMovie.name, parsedMovie.year);
+}
+
+function getMovieConnectionEntityKeyFromLookupKey(movieKey: string): string {
+  const normalizedMovie = normalizeTitle(movieKey);
+  const match = normalizedMovie.match(/^(.*) \((\d{4})\)$/);
+
+  if (!match) {
+    return getMovieConnectionEntityKey(normalizedMovie, "");
+  }
+
+  return getMovieConnectionEntityKey(match[1], match[2]);
+}
+
+function createReadableFallbackLabel(normalizedLabel: string): string {
+  return normalizedLabel.replace(/\b[a-z]/g, (character) => character.toUpperCase());
+}
+
+function findOriginalPersonNameInFilms(
+  filmRecords: FilmRecord[],
+  personNameLower: string,
+): string | null {
+  for (const filmRecord of filmRecords) {
+    const creditMatch = getAssociatedPeopleFromMovieCredits(filmRecord).find(
+      (credit) => normalizeName(credit.name ?? "") === personNameLower,
+    );
+
+    if (creditMatch?.name?.trim()) {
+      return creditMatch.name.trim();
+    }
+
+    const starterMatch = getSnapshotConnectionLabels(filmRecord).find(
+      (personName) => normalizeName(personName) === personNameLower,
+    );
+
+    if (starterMatch?.trim()) {
+      return starterMatch.trim();
+    }
+  }
+
+  return null;
+}
+
+function findOriginalMovieInPeople(
+  personRecords: PersonRecord[],
+  movieLookupKey: string,
+): { title: string; year: string } | null {
+  for (const personRecord of personRecords) {
+    const creditMatch = getTmdbMovieCredits(personRecord).find((credit) => {
+      const title = getMovieTitleFromCredit(credit);
+      if (!title) {
+        return false;
+      }
+
+      return getFilmKey(title, getMovieYearFromCredit(credit)) === movieLookupKey;
+    });
+
+    if (!creditMatch) {
+      continue;
+    }
+
+    const title = getMovieTitleFromCredit(creditMatch).trim();
+    if (!title) {
+      continue;
+    }
+
+    return {
+      title,
+      year: getMovieYearFromCredit(creditMatch),
+    };
+  }
+
+  return null;
+}
+
+export async function hydrateConnectionEntityFromSearchRecord(
+  searchRecord: SearchableConnectionEntityRecord,
+): Promise<ConnectionEntity> {
+  if (searchRecord.type === "person") {
+    const personRecord = await getPersonRecordByName(searchRecord.nameLower);
+    if (personRecord) {
+      return createConnectionEntityFromPersonRecord(personRecord);
+    }
+
+    const matchingFilms = await getFilmRecordsByPersonConnectionKey(searchRecord.nameLower);
+    const personName =
+      findOriginalPersonNameInFilms(matchingFilms, searchRecord.nameLower) ??
+      createReadableFallbackLabel(searchRecord.nameLower);
+
+    return {
+      key: searchRecord.key,
+      kind: "person",
+      name: personName,
+      year: "",
+      label: personName,
+      connectionCount: Math.max(matchingFilms.length, 1),
+      hasCachedTmdbSource: false,
+    };
+  }
+
+  const parsedMovie = parseMovieConnectionEntityKey(searchRecord.key);
+  const filmRecord = await getFilmRecordByTitleAndYear(parsedMovie.name, parsedMovie.year);
+  if (filmRecord) {
+    return createConnectionEntityFromMovieRecord(filmRecord);
+  }
+
+  const movieLookupKey = getMovieLookupKeyFromConnectionEntityKey(searchRecord.key);
+  const matchingPeople = await getPersonRecordsByMovieKey(movieLookupKey);
+  const originalMovie =
+    findOriginalMovieInPeople(matchingPeople, movieLookupKey) ?? {
+      title: createReadableFallbackLabel(parsedMovie.name),
+      year: parsedMovie.year,
+    };
+
+  return {
+    key: searchRecord.key,
+    kind: "movie",
+    name: originalMovie.title,
+    year: originalMovie.year,
+    label: formatMoviePathLabel(originalMovie.title, originalMovie.year),
+    connectionCount: Math.max(matchingPeople.length, 1),
+    hasCachedTmdbSource: false,
+  };
+}
+
+export async function hydrateConnectionEntityFromKey(key: string): Promise<ConnectionEntity> {
+  if (key === getCinenerdleConnectionEntityKey()) {
+    const starterFilms = await getCinenerdleStarterFilmRecords();
+    return createCinenerdleConnectionEntity(starterFilms.length);
+  }
+
+  if (key.startsWith("person:")) {
+    return hydrateConnectionEntityFromSearchRecord({
+      key,
+      type: "person",
+      nameLower: parsePersonConnectionEntityKey(key),
+    });
+  }
+
+  return hydrateConnectionEntityFromSearchRecord({
+    key,
+    type: "movie",
+    nameLower: formatMoviePathLabel(
+      parseMovieConnectionEntityKey(key).name,
+      parseMovieConnectionEntityKey(key).year,
+    ),
+  });
+}
+
 function reconstructPath(
   startKey: string,
   endKey: string,
@@ -286,23 +343,76 @@ function reconstructPath(
   return path;
 }
 
-export function findConnectionPathBidirectional(
-  graph: ConnectionGraph,
-  startKey: string,
-  endKey: string,
+async function getNeighborKeysForEntityKey(entityKey: string): Promise<string[]> {
+  if (entityKey === getCinenerdleConnectionEntityKey()) {
+    const starterFilms = await getCinenerdleStarterFilmRecords();
+    return starterFilms.map((filmRecord) =>
+      getMovieConnectionEntityKey(filmRecord.title, filmRecord.year),
+    );
+  }
+
+  if (entityKey.startsWith("person:")) {
+    const personNameLower = parsePersonConnectionEntityKey(entityKey);
+    const [personRecord, filmRecords] = await Promise.all([
+      getPersonRecordByName(personNameLower),
+      getFilmRecordsByPersonConnectionKey(personNameLower),
+    ]);
+    const movieKeys = new Set<string>();
+
+    personRecord?.movieConnectionKeys.forEach((movieKey) => {
+      movieKeys.add(getMovieConnectionEntityKeyFromLookupKey(movieKey));
+    });
+
+    filmRecords.forEach((filmRecord) => {
+      movieKeys.add(getMovieConnectionEntityKey(filmRecord.title, filmRecord.year));
+    });
+
+    return Array.from(movieKeys);
+  }
+
+  const parsedMovie = parseMovieConnectionEntityKey(entityKey);
+  const movieLookupKey = getMovieLookupKeyFromConnectionEntityKey(entityKey);
+  const [filmRecord, personRecords] = await Promise.all([
+    getFilmRecordByTitleAndYear(parsedMovie.name, parsedMovie.year),
+    getPersonRecordsByMovieKey(movieLookupKey),
+  ]);
+  const personKeys = new Set<string>();
+
+  filmRecord?.personConnectionKeys.forEach((personName) => {
+    personKeys.add(getPersonConnectionEntityKey(personName));
+  });
+  personRecords.forEach((personRecord) => {
+    personKeys.add(getPersonConnectionEntityKey(personRecord.name));
+  });
+
+  const nextKeys = Array.from(personKeys);
+  if (filmRecord?.rawCinenerdleDailyStarter) {
+    nextKeys.push(getCinenerdleConnectionEntityKey());
+  }
+
+  return nextKeys;
+}
+
+export async function findConnectionPathBidirectional(
+  startEntity: ConnectionEntity,
+  endEntity: ConnectionEntity,
   options?: {
     excludedNodeKeys?: Set<string>;
     excludedEdgeKeys?: Set<string>;
     timeoutMs?: number;
   },
-): ConnectionSearchResult {
+): Promise<ConnectionSearchResult> {
   const startTime = performance.now();
   const timeoutMs = options?.timeoutMs ?? 5000;
   const deadline = startTime + timeoutMs;
   const excludedNodeKeys = options?.excludedNodeKeys ?? new Set<string>();
   const excludedEdgeKeys = options?.excludedEdgeKeys ?? new Set<string>();
+  const startKey = startEntity.key;
+  const endKey = endEntity.key;
+  const neighborCache = new Map<string, Promise<string[]>>();
+  const entityCache = new Map<string, Promise<ConnectionEntity>>();
 
-  if (!graph.entitiesByKey.has(startKey) || !graph.entitiesByKey.has(endKey)) {
+  if (excludedNodeKeys.has(startKey) || excludedNodeKeys.has(endKey)) {
     return {
       status: "not_found",
       path: [],
@@ -313,9 +423,34 @@ export function findConnectionPathBidirectional(
   if (startKey === endKey) {
     return {
       status: "found",
-      path: [graph.entitiesByKey.get(startKey)!],
+      path: [startEntity],
       elapsedMs: performance.now() - startTime,
     };
+  }
+
+  entityCache.set(startKey, Promise.resolve(startEntity));
+  entityCache.set(endKey, Promise.resolve(endEntity));
+
+  async function getNeighborKeys(entityKey: string): Promise<string[]> {
+    const cachedNeighbors = neighborCache.get(entityKey);
+    if (cachedNeighbors) {
+      return cachedNeighbors;
+    }
+
+    const nextNeighborsPromise = getNeighborKeysForEntityKey(entityKey);
+    neighborCache.set(entityKey, nextNeighborsPromise);
+    return nextNeighborsPromise;
+  }
+
+  async function getEntity(entityKey: string): Promise<ConnectionEntity> {
+    const cachedEntity = entityCache.get(entityKey);
+    if (cachedEntity) {
+      return cachedEntity;
+    }
+
+    const nextEntityPromise = hydrateConnectionEntityFromKey(entityKey);
+    entityCache.set(entityKey, nextEntityPromise);
+    return nextEntityPromise;
   }
 
   const visitedFromStart = new Set<string>([startKey]);
@@ -325,12 +460,12 @@ export function findConnectionPathBidirectional(
   let frontierFromStart = [startKey];
   let frontierFromEnd = [endKey];
 
-  function expandFrontier(
+  async function expandFrontier(
     frontier: string[],
     visitedHere: Set<string>,
     visitedOther: Set<string>,
     parentHere: Map<string, string | null>,
-  ): { meetingKey: string | null; nextFrontier: string[]; timedOut: boolean } {
+  ): Promise<{ meetingKey: string | null; nextFrontier: string[]; timedOut: boolean }> {
     const nextFrontier: string[] = [];
 
     for (const currentKey of frontier) {
@@ -342,7 +477,9 @@ export function findConnectionPathBidirectional(
         };
       }
 
-      for (const neighborKey of graph.adjacencyByKey.get(currentKey) ?? []) {
+      const neighborKeys = await getNeighborKeys(currentKey);
+
+      for (const neighborKey of neighborKeys) {
         if (excludedNodeKeys.has(neighborKey)) {
           continue;
         }
@@ -380,13 +517,13 @@ export function findConnectionPathBidirectional(
   while (frontierFromStart.length > 0 && frontierFromEnd.length > 0) {
     const expandFromStart = frontierFromStart.length <= frontierFromEnd.length;
     const expansion = expandFromStart
-      ? expandFrontier(
+      ? await expandFrontier(
           frontierFromStart,
           visitedFromStart,
           visitedFromEnd,
           parentFromStart,
         )
-      : expandFrontier(
+      : await expandFrontier(
           frontierFromEnd,
           visitedFromEnd,
           visitedFromStart,
@@ -409,12 +546,11 @@ export function findConnectionPathBidirectional(
         parentFromStart,
         parentFromEnd,
       );
+      const path = await Promise.all(pathKeys.map((pathKey) => getEntity(pathKey)));
 
       return {
-        status: pathKeys.length > 0 ? "found" : "not_found",
-        path: pathKeys
-          .map((pathKey) => graph.entitiesByKey.get(pathKey) ?? null)
-          .filter((entity): entity is ConnectionEntity => entity !== null),
+        status: path.length > 0 ? "found" : "not_found",
+        path,
         elapsedMs: performance.now() - startTime,
       };
     }

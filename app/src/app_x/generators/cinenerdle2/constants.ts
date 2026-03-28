@@ -1,8 +1,10 @@
 export const TMDB_API_KEY_STORAGE_KEY = "cinenerdle2.tmdbApiKey";
 export const INDEXED_DB_NAME = "cinenerdle2";
-export const INDEXED_DB_VERSION = 1;
+export const INDEXED_DB_VERSION = 2;
 export const PEOPLE_STORE_NAME = "people";
 export const FILMS_STORE_NAME = "films";
+export const SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME =
+  "searchableConnectionEntities";
 
 export const CINENERDLE_DAILY_STARTERS_URL =
   "https://www.cinenerdle2.app/api/battle-data/daily-starters?";

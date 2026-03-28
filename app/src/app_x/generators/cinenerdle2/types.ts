@@ -106,6 +106,13 @@ export type FilmRecord = {
   rawTmdbMovieCreditsResponse?: TmdbMovieCreditsResponse;
   rawCinenerdleDailyStarter?: CinenerdleDailyStarter;
   starterPeopleByRole?: PeopleByRole;
+  isCinenerdleDailyStarter?: 0 | 1;
   tmdbSavedAt?: string;
   tmdbCreditsSavedAt?: string;
+};
+
+export type SearchableConnectionEntityRecord = {
+  key: string;
+  type: "person" | "movie";
+  nameLower: string;
 };

@@ -87,6 +87,9 @@ export function buildFilmRecord(
     rawTmdbMovie: tmdbFilm,
     rawCinenerdleDailyStarter: existingFilmRecord?.rawCinenerdleDailyStarter,
     starterPeopleByRole: existingFilmRecord?.starterPeopleByRole,
+    isCinenerdleDailyStarter:
+      existingFilmRecord?.isCinenerdleDailyStarter ??
+      (existingFilmRecord?.rawCinenerdleDailyStarter ? 1 : 0),
     tmdbSavedAt: new Date().toISOString(),
     rawTmdbMovieCreditsResponse: existingFilmRecord?.rawTmdbMovieCreditsResponse,
     tmdbCreditsSavedAt: existingFilmRecord?.tmdbCreditsSavedAt,

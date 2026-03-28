@@ -4,6 +4,7 @@ import {
 } from "./constants";
 import { createDailyStarterFilmRecord } from "./cards";
 import {
+  getAllSearchableConnectionEntities,
   getFilmRecordById,
   getFilmRecordByTitleAndYear,
   getFilmRecordsByIds,
@@ -13,6 +14,9 @@ import {
   saveFilmRecords,
   savePersonRecord,
 } from "./indexed_db";
+import {
+  hydrateConnectionEntityFromSearchRecord,
+} from "./connection_graph";
 import {
   buildFilmRecord,
   buildPersonRecord,
@@ -38,6 +42,7 @@ import {
   normalizeWhitespace,
   normalizeTitle,
   parseMoviePathLabel,
+  formatMoviePathLabel,
 } from "./utils";
 
 export type ConnectionTarget =
@@ -472,6 +477,15 @@ function getPersonPopularity(record: PersonRecord | null): number {
   return record?.rawTmdbPerson?.popularity ?? 0;
 }
 
+function getMovieLabelNameLower(movieName: string, movieYear = ""): string {
+  return normalizeTitle(formatMoviePathLabel(movieName, movieYear));
+}
+
+function getTitleOnlyMovieLabelNameLower(movieLabel: string): string {
+  const match = normalizeTitle(movieLabel).match(/^(.*) \((\d{4})\)$/);
+  return match ? match[1] : normalizeTitle(movieLabel);
+}
+
 function isExactPersonMatch(record: PersonRecord | null, query: string): boolean {
   return normalizeName(record?.name ?? "") === normalizeName(query);
 }
@@ -573,22 +587,84 @@ export async function resolveConnectionQuery(
   }
 
   const parsedMovie = parseMoviePathLabel(normalizedQuery);
-
-  const [exactPersonRecord, exactFilmRecord] = await Promise.all([
-    getPersonRecordByName(normalizedQuery),
-    getFilmRecordByTitleAndYear(parsedMovie.name, parsedMovie.year),
-  ]);
-
-  const exactTarget = pickBestConnectionTarget(
-    normalizedQuery,
+  const searchRecords = await getAllSearchableConnectionEntities();
+  const exactPersonRecord = await getPersonRecordByName(normalizedQuery);
+  const exactMovieRecord = await getFilmRecordByTitleAndYear(
     parsedMovie.name,
     parsedMovie.year,
-    exactPersonRecord,
-    exactFilmRecord,
   );
+  const exactPersonSearchRecord =
+    searchRecords.find(
+      (record) =>
+        record.type === "person" &&
+        record.nameLower === normalizeName(normalizedQuery),
+    ) ?? null;
+  const exactMovieSearchRecord = parsedMovie.year
+    ? (searchRecords.find(
+        (record) =>
+          record.type === "movie" &&
+          record.nameLower === getMovieLabelNameLower(parsedMovie.name, parsedMovie.year),
+      ) ?? null)
+    : null;
+  const titleOnlyMovieSearchRecords = parsedMovie.year
+    ? []
+    : searchRecords.filter(
+        (record) =>
+          record.type === "movie" &&
+          getTitleOnlyMovieLabelNameLower(record.nameLower) === normalizeTitle(parsedMovie.name),
+      );
 
-  if (exactTarget) {
-    return exactTarget;
+  const resolvedMovieSearchRecord =
+    exactMovieSearchRecord ??
+    (exactMovieRecord
+      ? titleOnlyMovieSearchRecords.find(
+          (record) =>
+            record.nameLower === getMovieLabelNameLower(exactMovieRecord.title, exactMovieRecord.year),
+        ) ?? null
+      : titleOnlyMovieSearchRecords[0] ?? null);
+
+  if (exactPersonSearchRecord || resolvedMovieSearchRecord) {
+    const [personEntity, movieEntity, resolvedMovieRecord] = await Promise.all([
+      exactPersonSearchRecord
+        ? hydrateConnectionEntityFromSearchRecord(exactPersonSearchRecord)
+        : Promise.resolve(null),
+      resolvedMovieSearchRecord
+        ? hydrateConnectionEntityFromSearchRecord(resolvedMovieSearchRecord)
+        : Promise.resolve(null),
+      resolvedMovieSearchRecord
+        ? getFilmRecordByTitleAndYear(
+            parseMoviePathLabel(resolvedMovieSearchRecord.nameLower).name,
+            parseMoviePathLabel(resolvedMovieSearchRecord.nameLower).year,
+          )
+        : Promise.resolve(null),
+    ]);
+
+    const exactTarget = pickBestConnectionTarget(
+      normalizedQuery,
+      movieEntity?.name ?? parsedMovie.name,
+      movieEntity?.year ?? parsedMovie.year,
+      exactPersonRecord,
+      resolvedMovieRecord,
+    );
+
+    if (exactTarget) {
+      return exactTarget;
+    }
+
+    if (movieEntity) {
+      return {
+        kind: "movie",
+        name: movieEntity.name,
+        year: movieEntity.year,
+      };
+    }
+
+    if (personEntity) {
+      return {
+        kind: "person",
+        name: personEntity.name,
+      };
+    }
   }
 
   const [fetchedPersonRecord, fetchedFilmRecord] = await Promise.all([
