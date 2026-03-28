@@ -851,6 +851,12 @@ export default function AppX() {
     [navigateToHash],
   );
 
+  const clearConnectionInputState = useCallback(() => {
+    setConnectionQuery("");
+    setConnectionSuggestions([]);
+    setSelectedSuggestionIndex(-1);
+  }, []);
+
   const hasFoundConnectionRow =
     connectionSession?.rows.some((row) => row.status === "found" && row.path.length > 0) ?? false;
 
@@ -919,9 +925,7 @@ export default function AppX() {
         right: counterpart,
         rows: [createSearchingConnectionRow(rowId)],
       });
-      setConnectionQuery("");
-      setConnectionSuggestions([]);
-      setSelectedSuggestionIndex(-1);
+      clearConnectionInputState();
 
       await runConnectionRowSearch({
         sessionId,
@@ -1126,6 +1130,7 @@ export default function AppX() {
             requestKey: `highlighted-connection-entity:${highlightedConnectionEntitySelectionRequestIdRef.current}`,
             entity: selectedSuggestion,
           });
+          clearConnectionInputState();
           return;
         }
 
@@ -1134,6 +1139,7 @@ export default function AppX() {
     },
     [
       connectionSuggestions,
+      clearConnectionInputState,
       isHighlightedConnectionEntityInYoungestGeneration,
       openConnectionRowsForEntity,
       selectedSuggestionIndex,
