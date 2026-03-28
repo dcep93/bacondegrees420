@@ -1,4 +1,4 @@
-import { useMemo, useRef, type CSSProperties, type MouseEvent } from "react";
+import { useMemo, type CSSProperties, type MouseEvent } from "react";
 import { createBookmarkPreviewCard, type BookmarkPreviewCard } from "../../components/bookmark_preview";
 import type { GeneratorController, GeneratorNode, GeneratorTree } from "../../types/generator";
 import {
@@ -10,6 +10,7 @@ import {
   createPersonAssociationCard,
   createPersonRootCard,
 } from "./cards";
+import { TMDB_ICON_URL } from "./constants";
 import {
   buildPathNodesFromSegments,
   createPathNode,
@@ -30,7 +31,7 @@ import {
   prepareSelectedMovie,
   prepareSelectedPerson,
 } from "./tmdb";
-import { TMDB_ICON_URL } from "./constants";
+import type { FilmRecord, PersonRecord } from "./types";
 import {
   getAssociatedPeopleFromMovieCredits,
   getMovieKeyFromCredit,
@@ -40,7 +41,6 @@ import {
   normalizeName,
   normalizeTitle,
 } from "./utils";
-import type { FilmRecord, PersonRecord } from "./types";
 import type { CinenerdleCard, CinenerdleCardViewModel, CinenerdlePathNode } from "./view_types";
 
 function createUncachedMovieCard(name: string, year: string): Extract<CinenerdleCard, { kind: "movie" }> {
@@ -963,15 +963,15 @@ function renderFooter(viewModel: CinenerdleCardViewModel) {
   const ratingChip =
     viewModel.kind === "movie"
       ? renderHeatChip(
-          "Rating",
-          viewModel.voteAverage,
-          10,
-          "cinenerdle-card-chip",
-          typeof viewModel.voteCount === "number" &&
+        "Rating",
+        viewModel.voteAverage,
+        10,
+        "cinenerdle-card-chip",
+        typeof viewModel.voteCount === "number" &&
           Number.isFinite(viewModel.voteCount)
-            ? { marginLeft: "auto" }
-            : undefined,
-        )
+          ? { marginLeft: "auto" }
+          : undefined,
+      )
       : null;
   const shouldRenderBottomRow =
     viewModel.kind === "movie" || Boolean(statusChip);
@@ -997,9 +997,9 @@ function renderFooter(viewModel: CinenerdleCardViewModel) {
                       viewModel.hasCachedTmdbSource
                         ? undefined
                         : {
-                            filter: "grayscale(1)",
-                            opacity: 0.9,
-                          }
+                          filter: "grayscale(1)",
+                          opacity: 0.9,
+                        }
                     }
                     title={source.label}
                   />
@@ -1036,7 +1036,7 @@ function renderDbInfoCard(viewModel: Extract<CinenerdleCardViewModel, { kind: "d
 
     void navigator.clipboard
       .writeText(viewModel.body)
-      .catch(() => {});
+      .catch(() => { });
   }
 
   return (
@@ -1168,16 +1168,16 @@ export function useCinenerdleController({
           try {
             const nextTree = await buildTreeFromHash(readHash());
             setTree(nextTree);
-            void hydrateMissingSelectedPathItemsAndRedraw(setTree, readHash).catch(() => {});
+            void hydrateMissingSelectedPathItemsAndRedraw(setTree, readHash).catch(() => { });
             if (isCinenerdleRootTree(nextTree)) {
-              void hydrateDailyStartersAndRedraw(setTree, readHash).catch(() => {});
+              void hydrateDailyStartersAndRedraw(setTree, readHash).catch(() => { });
             }
           } catch {
             const fallbackTree = await createCinenerdleRootTree();
             setTree(fallbackTree);
-            void hydrateMissingSelectedPathItemsAndRedraw(setTree, readHash).catch(() => {});
+            void hydrateMissingSelectedPathItemsAndRedraw(setTree, readHash).catch(() => { });
             if (isCinenerdleRootTree(fallbackTree)) {
-              void hydrateDailyStartersAndRedraw(setTree, readHash).catch(() => {});
+              void hydrateDailyStartersAndRedraw(setTree, readHash).catch(() => { });
             }
           }
         })();
