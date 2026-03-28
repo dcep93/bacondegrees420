@@ -1398,13 +1398,7 @@ export default function AppX() {
         return;
       }
 
-      if (event.key === "Escape" && isBookmarksView) {
-        event.preventDefault();
-        handleToggleBookmarks();
-        return;
-      }
-
-      if ((event.key === "b" || event.key === "B") && !isBookmarksView) {
+      if (event.key === "Escape" || event.key === "b" || event.key === "B") {
         event.preventDefault();
         handleToggleBookmarks();
       }

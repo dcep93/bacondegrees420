@@ -9,6 +9,7 @@ import type {
 import type { CinenerdleCard, DbInfoSummaryItem } from "./view_types";
 import {
   buildPeopleByRoleFromStarter,
+  formatFallbackPersonDisplayName,
   getCinenerdleMovieId,
   getMovieCardKey,
   getMoviePosterUrl,
@@ -473,10 +474,12 @@ export function createCinenerdleOnlyPersonCard(
   personName: string,
   role: string,
 ): CinenerdleCard {
+  const displayName = formatFallbackPersonDisplayName(personName);
+
   return {
-    key: getPersonCardKey(personName, `starter:${normalizeName(personName)}`),
+    key: getPersonCardKey(displayName, `starter:${normalizeName(personName)}`),
     kind: "person",
-    name: personName,
+    name: displayName,
     popularity: 0,
     imageUrl: null,
     subtitle: getFallbackPersonSubtitle(role),

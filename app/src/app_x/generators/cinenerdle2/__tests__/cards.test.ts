@@ -575,4 +575,20 @@ describe("cinenerdle-only person cards", () => {
       record: null,
     });
   });
+
+  it("formats lowercase starter-only names for display while keeping a normalized starter key", () => {
+    expect(createCinenerdleOnlyPersonCard("andy weir", "writer")).toEqual({
+      key: "person:starter:andy weir",
+      kind: "person",
+      name: "Andy Weir",
+      popularity: 0,
+      imageUrl: null,
+      subtitle: "Writer",
+      subtitleDetail: "",
+      connectionCount: 1,
+      sources: [{ iconUrl: CINENERDLE_ICON_URL, label: "Cinenerdle" }],
+      status: null,
+      record: null,
+    });
+  });
 });

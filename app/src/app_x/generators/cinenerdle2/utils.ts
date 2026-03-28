@@ -22,6 +22,27 @@ export function normalizeTitle(value: string): string {
   return normalizeWhitespace(value).toLowerCase();
 }
 
+export function formatFallbackPersonDisplayName(value: string): string {
+  const normalizedValue = normalizeWhitespace(value);
+  if (!normalizedValue) {
+    return "";
+  }
+
+  const isAllLowercase = normalizedValue === normalizedValue.toLowerCase();
+  const isAllUppercase = normalizedValue === normalizedValue.toUpperCase();
+  if (!isAllLowercase && !isAllUppercase) {
+    return normalizedValue;
+  }
+
+  if (normalizedValue.includes(".")) {
+    return normalizedValue;
+  }
+
+  return normalizedValue
+    .toLowerCase()
+    .replace(/(^|[\s'-])\p{L}/gu, (match) => match.toUpperCase());
+}
+
 export function formatMoviePathLabel(name: string, year = ""): string {
   return year ? `${name} (${year})` : name;
 }

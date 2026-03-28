@@ -4,6 +4,7 @@ import type { CinenerdleDailyStarter } from "../types";
 import {
   buildPeopleByRoleFromStarter,
   createEmptyPeopleByRole,
+  formatFallbackPersonDisplayName,
   formatMoviePathLabel,
   getAssociatedPeopleFromMovieCredits,
   getCinenerdleMovieId,
@@ -42,6 +43,12 @@ describe("normalization helpers", () => {
     expect(normalizeWhitespace("  Kenneth   Collard  ")).toBe("Kenneth Collard");
     expect(normalizeName("  Kenneth   Collard  ")).toBe("kenneth collard");
     expect(normalizeTitle("  The   Insider  ")).toBe("the insider");
+  });
+
+  it("formats fallback person display names without touching mixed-case names", () => {
+    expect(formatFallbackPersonDisplayName("  andy   weir  ")).toBe("Andy Weir");
+    expect(formatFallbackPersonDisplayName("Drew Goddard")).toBe("Drew Goddard");
+    expect(formatFallbackPersonDisplayName("k.d. lang")).toBe("k.d. lang");
   });
 
   it("formats and parses movie labels with and without a year", () => {
