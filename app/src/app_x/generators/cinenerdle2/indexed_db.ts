@@ -647,6 +647,40 @@ export async function getAllSearchableConnectionEntities(): Promise<
   );
 }
 
+export async function getIndexedDbSnapshot(): Promise<{
+  people: PersonRecord[];
+  films: FilmRecord[];
+  searchableConnectionEntities: SearchableConnectionEntityRecord[];
+}> {
+  return withStores(
+    [
+      PEOPLE_STORE_NAME,
+      FILMS_STORE_NAME,
+      SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME,
+    ],
+    "readonly",
+    async (stores) => {
+      const [people, films, searchableConnectionEntities] = await Promise.all([
+        indexedDbRequestToPromise<PersonRecord[]>(
+          stores.get(PEOPLE_STORE_NAME)!.getAll(),
+        ),
+        indexedDbRequestToPromise<FilmRecord[]>(
+          stores.get(FILMS_STORE_NAME)!.getAll(),
+        ),
+        indexedDbRequestToPromise<SearchableConnectionEntityRecord[]>(
+          stores.get(SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME)!.getAll(),
+        ),
+      ]);
+
+      return {
+        people: people ?? [],
+        films: films ?? [],
+        searchableConnectionEntities: searchableConnectionEntities ?? [],
+      };
+    },
+  );
+}
+
 export async function getSearchableConnectionEntityByKey(
   key: string,
 ): Promise<SearchableConnectionEntityRecord | null> {

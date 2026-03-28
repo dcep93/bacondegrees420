@@ -54,6 +54,7 @@ import {
   getFilmRecordByTitleAndYear,
   getAllSearchableConnectionEntities,
   getFilmRecordsByPersonConnectionKey,
+  getIndexedDbSnapshot,
   getPersonRecordById,
   getPersonRecordByName,
   getPersonRecordsByMovieKey,
@@ -1206,7 +1207,13 @@ export default function AppX() {
       );
 
       if (!confirmed) {
-        return;
+        return getIndexedDbSnapshot()
+          .then((snapshot) => {
+            console.log(snapshot);
+          })
+          .catch((error) => {
+            console.error("Failed to read IndexedDB snapshot after clear cancellation.", error);
+          });
       }
 
       return clearIndexedDb().then(() => {
