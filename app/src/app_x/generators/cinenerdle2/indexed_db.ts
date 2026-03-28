@@ -15,6 +15,7 @@ import {
   formatMoviePathLabel,
   getValidTmdbEntityId,
   getAssociatedPeopleFromMovieCredits,
+  getMovieCreditPersonPopularityLookup,
   getFilmKey,
   getMovieTitleFromCredit,
   getMovieYearFromCredit,
@@ -158,6 +159,7 @@ function collectSearchableConnectionEntitiesFromFilmRecord(
 ): SearchableConnectionEntityRecord[] {
   const recordsByKey = new Map<string, SearchableConnectionEntityRecord>();
   const coveredFallbackPersonNames = new Set<string>();
+  const movieCreditPopularityByName = getMovieCreditPersonPopularityLookup(filmRecord);
 
   const movieRecord = createMovieSearchRecord(
     filmRecord.title,
@@ -186,18 +188,20 @@ function collectSearchableConnectionEntitiesFromFilmRecord(
     upsertPersonName(credit.name ?? "", credit.id, credit.popularity ?? 0);
   });
   getSnapshotConnectionLabels(filmRecord).forEach((personName) => {
-    if (coveredFallbackPersonNames.has(normalizeName(personName))) {
+    const normalizedPersonName = normalizeName(personName);
+    if (coveredFallbackPersonNames.has(normalizedPersonName)) {
       return;
     }
 
-    upsertPersonName(personName);
+    upsertPersonName(personName, null, movieCreditPopularityByName.get(normalizedPersonName) ?? 0);
   });
   filmRecord.personConnectionKeys.forEach((personName) => {
-    if (coveredFallbackPersonNames.has(normalizeName(personName))) {
+    const normalizedPersonName = normalizeName(personName);
+    if (coveredFallbackPersonNames.has(normalizedPersonName)) {
       return;
     }
 
-    upsertPersonName(personName);
+    upsertPersonName(personName, null, movieCreditPopularityByName.get(normalizedPersonName) ?? 0);
   });
 
   return Array.from(recordsByKey.values());

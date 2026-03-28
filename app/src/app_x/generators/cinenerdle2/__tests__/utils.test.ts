@@ -12,6 +12,7 @@ import {
   getMovieCardKey,
   getMovieKeyFromCredit,
   getMoviePosterUrl,
+  getMovieCreditPersonPopularityLookup,
   getMovieTitleFromCredit,
   getMovieYearFromCredit,
   getPersonCardKey,
@@ -274,6 +275,42 @@ describe("tmdb credit aggregation", () => {
     expect(getAssociatedPeopleFromMovieCredits(filmRecord).map((credit) => credit.name)).toEqual([
       "Val Kilmer",
     ]);
+  });
+
+  it("keeps the highest raw-credit popularity by normalized person name for fallback records", () => {
+    const filmRecord = makeFilmRecord({
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({ id: 1, name: "Kenneth Collard", popularity: 40 }),
+          makePersonCredit({ id: undefined, name: "  kenneth   collard ", popularity: 10 }),
+        ],
+        crew: [
+          makePersonCredit({
+            id: 2116590,
+            name: "Aaron Barlow",
+            creditType: undefined,
+            character: undefined,
+            job: "Senior Animator",
+            department: "Visual Effects",
+            popularity: 0.1669,
+          }),
+          makePersonCredit({
+            id: undefined,
+            name: "",
+            creditType: undefined,
+            character: undefined,
+            job: "Director",
+            popularity: 999,
+          }),
+        ],
+      },
+    });
+
+    const popularityByName = getMovieCreditPersonPopularityLookup(filmRecord);
+
+    expect(popularityByName.get("kenneth collard")).toBe(40);
+    expect(popularityByName.get("aaron barlow")).toBe(0.1669);
+    expect(popularityByName.has("")).toBe(false);
   });
 });
 

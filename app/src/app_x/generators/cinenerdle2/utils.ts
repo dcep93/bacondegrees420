@@ -229,6 +229,28 @@ export function getAssociatedPeopleFromMovieCredits(
     .sort((left, right) => (right.popularity ?? 0) - (left.popularity ?? 0));
 }
 
+export function getMovieCreditPersonPopularityLookup(
+  movieRecord: FilmRecord | null,
+): Map<string, number> {
+  const credits: TmdbMovieCreditsResponse =
+    movieRecord?.rawTmdbMovieCreditsResponse ?? {};
+  const popularityByName = new Map<string, number>();
+
+  [...(credits.cast ?? []), ...(credits.crew ?? [])].forEach((credit) => {
+    const normalizedName = normalizeName(credit.name ?? "");
+    if (!normalizedName) {
+      return;
+    }
+
+    popularityByName.set(
+      normalizedName,
+      Math.max(popularityByName.get(normalizedName) ?? 0, credit.popularity ?? 0),
+    );
+  });
+
+  return popularityByName;
+}
+
 export function createEmptyPeopleByRole(): PeopleByRole {
   return {
     cast: [],
