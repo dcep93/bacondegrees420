@@ -3,22 +3,27 @@ if (
   window.location.pathname === "/battle"
 ) {
   const existingIframe = document.getElementById("bacondegrees420-iframe");
+  const iframe =
+    existingIframe instanceof HTMLIFrameElement ? existingIframe : document.createElement("iframe");
+  const postBattleHtml = () => {
+    iframe.contentWindow?.postMessage(
+      {
+        type: "bacondegrees420:rawhtml",
+        rawHtml: document.documentElement.outerHTML,
+      },
+      "http://localhost:5173",
+    );
+  };
 
-  if (!existingIframe) {
-    const iframe = document.createElement("iframe");
+  if (!(existingIframe instanceof HTMLIFrameElement)) {
     iframe.id = "bacondegrees420-iframe";
     iframe.src = "http://localhost:5173/iframe";
     iframe.title = "BaconDegrees420";
-    iframe.style.position = "fixed";
-    iframe.style.top = "0";
-    iframe.style.left = "0";
-    iframe.style.width = "100vw";
-    iframe.style.height = "100vh";
-    iframe.style.border = "0";
-    iframe.style.margin = "0";
-    iframe.style.padding = "0";
-    iframe.style.zIndex = "2147483647";
-    iframe.style.background = "#fff";
+    iframe.style.display = "none";
+    iframe.setAttribute("aria-hidden", "true");
+    iframe.addEventListener("load", postBattleHtml, { once: true });
     document.body.appendChild(iframe);
+  } else {
+    postBattleHtml();
   }
 }
