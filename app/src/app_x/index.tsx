@@ -10,7 +10,19 @@ import {
   type KeyboardEvent,
   type MouseEvent,
 } from "react";
+import {
+  type AppViewMode,
+  createBookmarkId,
+  loadBookmarks,
+  moveBookmarkEntry,
+  removeBookmarkEntry,
+  type BookmarkEntry,
+  toggleBookmarkPreviewCardSelection,
+  upsertBookmarkEntry,
+} from "./bookmarks";
+import { BookmarkPreviewCardView } from "./components/bookmark_preview_card";
 import Cinenerdle2 from "./generators/cinenerdle2";
+import { buildBookmarkPreviewCardsFromHash } from "./generators/cinenerdle2/controller";
 import {
   createCinenerdleConnectionEntity,
   createFallbackConnectionEntity,
@@ -100,6 +112,116 @@ type ConnectionSession = {
   right: ConnectionEntity;
   rows: ConnectionSearchRow[];
 };
+
+type AppLocationState = {
+  viewMode: AppViewMode;
+  pathname: string;
+  basePathname: string;
+  hash: string;
+};
+
+const BOOKMARKS_PATH_SUFFIX = "/bookmarks";
+
+function normalizePathname(pathname: string): string {
+  const trimmedPathname = pathname.trim() || "/";
+  const withLeadingSlash = trimmedPathname.startsWith("/") ? trimmedPathname : `/${trimmedPathname}`;
+  const withoutTrailingSlash = withLeadingSlash.replace(/\/+$/, "");
+  return withoutTrailingSlash || "/";
+}
+
+function getBookmarksPathname(basePathname: string): string {
+  const normalizedBasePathname = normalizePathname(basePathname);
+  return normalizedBasePathname === "/"
+    ? BOOKMARKS_PATH_SUFFIX
+    : `${normalizedBasePathname}${BOOKMARKS_PATH_SUFFIX}`;
+}
+
+function getBasePathname(pathname: string): string {
+  const normalizedPathname = normalizePathname(pathname);
+
+  if (normalizedPathname === BOOKMARKS_PATH_SUFFIX) {
+    return "/";
+  }
+
+  if (normalizedPathname.endsWith(BOOKMARKS_PATH_SUFFIX)) {
+    return normalizePathname(
+      normalizedPathname.slice(0, normalizedPathname.length - BOOKMARKS_PATH_SUFFIX.length),
+    );
+  }
+
+  return normalizedPathname;
+}
+
+function readAppLocationState(): AppLocationState {
+  const pathname = normalizePathname(window.location.pathname);
+  const basePathname = getBasePathname(pathname);
+  const viewMode: AppViewMode = pathname === getBookmarksPathname(basePathname)
+    ? "bookmarks"
+    : "generator";
+
+  return {
+    viewMode,
+    pathname,
+    basePathname,
+    hash: window.location.hash,
+  };
+}
+
+function buildLocationHref(pathname: string, hashValue: string) {
+  const normalizedPathname = normalizePathname(pathname);
+  const normalizedHash = normalizeHashValue(hashValue);
+  return `${normalizedPathname}${window.location.search}${normalizedHash}`;
+}
+
+function formatBookmarkLabel(hashValue: string): string {
+  return getSelectedPathTooltipEntries(hashValue).join(" -> ");
+}
+
+function formatBookmarkSavedAt(savedAt: string): string {
+  const date = new Date(savedAt);
+
+  if (Number.isNaN(date.valueOf())) {
+    return "";
+  }
+
+  return date.toLocaleString();
+}
+
+function formatBookmarkIndexTooltip(bookmark: BookmarkEntry): string {
+  const savedAt = formatBookmarkSavedAt(bookmark.savedAt);
+  const lines = [
+    savedAt ? `Saved ${savedAt}` : "Saved bookmark",
+    ...bookmark.previewCards.map((card) => card.name),
+  ];
+
+  return lines.join("\n");
+}
+
+function getBookmarkPreviewCardHash(bookmarkHash: string, previewCardIndex: number): string {
+  const normalizedHash = normalizeHashValue(bookmarkHash);
+  const pathNodes = buildPathNodesFromSegments(parseHashSegments(normalizedHash)).filter(
+    (pathNode): pathNode is Exclude<(typeof pathNode), { kind: "break" }> => pathNode.kind !== "break",
+  );
+
+  if (previewCardIndex < 0 || previewCardIndex >= pathNodes.length) {
+    return normalizedHash;
+  }
+
+  return serializePathNodes(pathNodes.slice(0, previewCardIndex + 1));
+}
+
+function isEditableKeyboardTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return (
+    target.isContentEditable ||
+    target.tagName === "INPUT" ||
+    target.tagName === "TEXTAREA" ||
+    target.tagName === "SELECT"
+  );
+}
 
 function isPlaceholderPersonLabel(entity: ConnectionEntity): boolean {
   return entity.kind === "person" && /^Person \d+$/.test(entity.label);
@@ -238,14 +360,6 @@ function getSuggestionScore(query: string, label: string): number {
   return 100;
 }
 
-function clearHash() {
-  window.history.replaceState(
-    null,
-    "",
-    `${window.location.pathname}${window.location.search}`,
-  );
-}
-
 function createPathNodeFromConnectionEntity(entity: ConnectionEntity) {
   if (entity.kind === "cinenerdle") {
     return createPathNode("cinenerdle", "cinenerdle");
@@ -329,10 +443,14 @@ function collectConnectionRowFamilyIds(
 }
 
 export default function AppX() {
-  const [hashValue, setHashValue] = useState(() => window.location.hash);
+  const initialLocationState = readAppLocationState();
+  const [appLocation, setAppLocation] = useState(initialLocationState);
+  const [bookmarks, setBookmarks] = useState<BookmarkEntry[]>(() => loadBookmarks());
+  const [hashValue, setHashValue] = useState(() => initialLocationState.hash);
   const [resetVersion, setResetVersion] = useState(0);
   const [navigationVersion, setNavigationVersion] = useState(0);
   const [copyStatus, setCopyStatus] = useState("");
+  const [isSavingBookmark, setIsSavingBookmark] = useState(false);
   const [connectionQuery, setConnectionQuery] = useState("");
   const [isResolvingConnection, setIsResolvingConnection] = useState(false);
   const [connectionSuggestions, setConnectionSuggestions] = useState<ConnectionSuggestion[]>([]);
@@ -341,6 +459,7 @@ export default function AppX() {
   const [isSelectedPathTooltipVisible, setIsSelectedPathTooltipVisible] = useState(false);
   const connectionSessionRef = useRef<ConnectionSession | null>(null);
   const pendingHashWriteRef = useRef<PendingHashWrite | null>(null);
+  const bookmarksReturnHashRef = useRef(normalizeHashValue(initialLocationState.hash));
   const autocompleteRequestIdRef = useRef(0);
   const connectionSessionIdRef = useRef(0);
   const connectionRowIdRef = useRef(0);
@@ -348,6 +467,7 @@ export default function AppX() {
   const connectionInputWrapRef = useRef<HTMLDivElement | null>(null);
   const connectionDropdownRef = useRef<HTMLDivElement | null>(null);
   const deferredConnectionQuery = useDeferredValue(connectionQuery);
+  const isBookmarksView = appLocation.viewMode === "bookmarks";
   const highestGenerationSelectedLabel = getHighestGenerationSelectedLabel(hashValue);
   const selectedPathTooltipEntries = getSelectedPathTooltipEntries(hashValue);
 
@@ -356,8 +476,7 @@ export default function AppX() {
   }, [connectionSession]);
 
   useEffect(() => {
-    function handleHashChange() {
-      const nextHash = window.location.hash;
+    function syncHashState(nextHash: string) {
       const normalizedNextHash = normalizeHashValue(nextHash);
       const pendingHashWrite = pendingHashWriteRef.current;
       const matchedPendingHashWrite =
@@ -374,11 +493,38 @@ export default function AppX() {
       }
     }
 
+    function handleHashChange() {
+      setAppLocation(readAppLocationState());
+      syncHashState(window.location.hash);
+    }
+
+    function handlePopState() {
+      const nextLocation = readAppLocationState();
+      setAppLocation(nextLocation);
+      syncHashState(nextLocation.hash);
+    }
+
     window.addEventListener("hashchange", handleHashChange);
+    window.addEventListener("popstate", handlePopState);
     return () => {
       window.removeEventListener("hashchange", handleHashChange);
+      window.removeEventListener("popstate", handlePopState);
     };
   }, []);
+
+  useEffect(() => {
+    if (!copyStatus) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setCopyStatus("");
+    }, 2000);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [copyStatus]);
 
   useEffect(() => {
     connectionSessionRef.current = null;
@@ -386,8 +532,8 @@ export default function AppX() {
   }, [hashValue]);
 
   useEffect(() => {
-    document.title = getDocumentTitle(hashValue);
-  }, [hashValue]);
+    document.title = isBookmarksView ? "Bookmarks | BaconDegrees420" : getDocumentTitle(hashValue);
+  }, [hashValue, isBookmarksView]);
 
   useEffect(() => {
     const query = deferredConnectionQuery.trim();
@@ -465,8 +611,16 @@ export default function AppX() {
   }, [deferredConnectionQuery]);
 
   function handleReset() {
-    clearHash();
-    setHashValue("");
+    bookmarksReturnHashRef.current = "";
+    window.history.replaceState(
+      null,
+      "",
+      buildLocationHref(appLocation.basePathname, ""),
+    );
+    syncLocationFromWindow({
+      nextHashOverride: "",
+      incrementNavigationVersion: true,
+    });
     setConnectionSession(null);
     setResetVersion((version) => version + 1);
   }
@@ -496,6 +650,154 @@ export default function AppX() {
       .catch((error) => {
         setCopyStatus("Copy failed");
         void error;
+      });
+  }
+
+  const syncLocationFromWindow = useCallback((options?: {
+    nextHashOverride?: string;
+    preserveHashValue?: boolean;
+    incrementNavigationVersion?: boolean;
+  }) => {
+    const nextLocation = readAppLocationState();
+    setAppLocation(nextLocation);
+
+    if (options?.preserveHashValue) {
+      return;
+    }
+
+    const nextHash = options?.nextHashOverride ?? nextLocation.hash;
+    setHashValue(nextHash);
+
+    if (options?.incrementNavigationVersion) {
+      setNavigationVersion((version) => version + 1);
+    }
+
+    pendingHashWriteRef.current = null;
+  }, []);
+
+  const handleToggleBookmarks = useCallback(() => {
+    if (isBookmarksView) {
+      const restoreHash = bookmarksReturnHashRef.current;
+      window.history.replaceState(
+        null,
+        "",
+        buildLocationHref(appLocation.basePathname, restoreHash),
+      );
+      syncLocationFromWindow({
+        nextHashOverride: restoreHash,
+        incrementNavigationVersion: true,
+      });
+      return;
+    }
+
+    bookmarksReturnHashRef.current = normalizeHashValue(hashValue);
+    window.history.pushState(
+      null,
+      "",
+      buildLocationHref(getBookmarksPathname(appLocation.basePathname), ""),
+    );
+    syncLocationFromWindow({
+      preserveHashValue: true,
+    });
+  }, [appLocation.basePathname, hashValue, isBookmarksView, syncLocationFromWindow]);
+
+  useEffect(() => {
+    function handleWindowKeyDown(event: globalThis.KeyboardEvent) {
+      if (
+        event.defaultPrevented ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        isEditableKeyboardTarget(event.target)
+      ) {
+        return;
+      }
+
+      if (event.key === "Escape" && isBookmarksView) {
+        event.preventDefault();
+        handleToggleBookmarks();
+        return;
+      }
+
+      if ((event.key === "b" || event.key === "B") && !isBookmarksView) {
+        event.preventDefault();
+        handleToggleBookmarks();
+      }
+    }
+
+    window.addEventListener("keydown", handleWindowKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleWindowKeyDown);
+    };
+  }, [handleToggleBookmarks, isBookmarksView]);
+
+  function handleRemoveBookmark(bookmarkId: string) {
+    setBookmarks((currentBookmarks) => removeBookmarkEntry(currentBookmarks, bookmarkId));
+  }
+
+  function handleMoveBookmark(bookmarkId: string, direction: "up" | "down") {
+    setBookmarks((currentBookmarks) => moveBookmarkEntry(currentBookmarks, bookmarkId, direction));
+  }
+
+  function handleLoadBookmark(bookmark: BookmarkEntry) {
+    const normalizedBookmarkHash = normalizeHashValue(bookmark.hash);
+    bookmarksReturnHashRef.current = normalizedBookmarkHash;
+    window.history.replaceState(
+      null,
+      "",
+      buildLocationHref(appLocation.basePathname, normalizedBookmarkHash),
+    );
+    syncLocationFromWindow({
+      nextHashOverride: normalizedBookmarkHash,
+      incrementNavigationVersion: true,
+    });
+  }
+
+  function handleLoadBookmarkPreviewCard(bookmark: BookmarkEntry, previewCardIndex: number) {
+    const previewCardHash = getBookmarkPreviewCardHash(bookmark.hash, previewCardIndex);
+    bookmarksReturnHashRef.current = previewCardHash;
+    window.history.replaceState(
+      null,
+      "",
+      buildLocationHref(appLocation.basePathname, previewCardHash),
+    );
+    syncLocationFromWindow({
+      nextHashOverride: previewCardHash,
+      incrementNavigationVersion: true,
+    });
+  }
+
+  function handleToggleBookmarkPreviewCard(bookmarkId: string, previewCardIndex: number) {
+    setBookmarks((currentBookmarks) =>
+      toggleBookmarkPreviewCardSelection(currentBookmarks, bookmarkId, previewCardIndex)
+    );
+  }
+
+  function handleSaveBookmark() {
+    const normalizedHash = normalizeHashValue(hashValue);
+    setIsSavingBookmark(true);
+
+    void buildBookmarkPreviewCardsFromHash(normalizedHash)
+      .then((previewCards) => {
+        const existingBookmark = bookmarks.find((bookmark) => bookmark.hash === normalizedHash);
+        const nextBookmark: BookmarkEntry = {
+          id: existingBookmark?.id ?? createBookmarkId(),
+          hash: normalizedHash,
+          savedAt: new Date().toISOString(),
+          label: formatBookmarkLabel(normalizedHash),
+          previewCards,
+          selectedPreviewCardIndices: existingBookmark?.selectedPreviewCardIndices ?? [],
+        };
+
+        setBookmarks((currentBookmarks) => upsertBookmarkEntry(currentBookmarks, nextBookmark));
+        setCopyStatus(existingBookmark ? "Bookmark updated" : "Bookmark saved");
+      })
+      .catch((error) => {
+        console.error("bacondegrees420.saveBookmark", error);
+        setCopyStatus("Bookmark failed");
+      })
+      .finally(() => {
+        setIsSavingBookmark(false);
       });
   }
 
@@ -873,6 +1175,93 @@ export default function AppX() {
     );
   }
 
+  function renderBookmarksPage() {
+    if (bookmarks.length === 0) {
+      return (
+        <section className="bacon-bookmarks-page">
+          <div className="bacon-bookmarks-empty-state">
+            <p className="bacon-bookmarks-empty-title">No bookmarks yet.</p>
+            <p className="bacon-bookmarks-empty-copy">
+              Save the current path with `💾` and it will show up here as a row of cards.
+            </p>
+          </div>
+        </section>
+      );
+    }
+
+    return (
+      <section className="bacon-bookmarks-page">
+        {bookmarks.map((bookmark, bookmarkIndex) => (
+          <article className="bacon-bookmark-row-shell" key={bookmark.id}>
+            <div className="bacon-bookmark-row-layout">
+              <div className="bacon-bookmark-row-actions bacon-bookmark-row-actions-left">
+                <button
+                  aria-label={`Move ${bookmark.label} up`}
+                  className="bacon-title-action-icon-button"
+                  disabled={bookmarkIndex === 0}
+                  onClick={() => handleMoveBookmark(bookmark.id, "up")}
+                  title="Move bookmark up"
+                  type="button"
+                >
+                  ⬆️
+                </button>
+                <span
+                  className="bacon-bookmark-index-bubble"
+                  role="note"
+                  tabIndex={0}
+                  title={formatBookmarkIndexTooltip(bookmark)}
+                >
+                  {bookmarkIndex + 1}
+                </span>
+                <button
+                  aria-label={`Move ${bookmark.label} down`}
+                  className="bacon-title-action-icon-button"
+                  disabled={bookmarkIndex === bookmarks.length - 1}
+                  onClick={() => handleMoveBookmark(bookmark.id, "down")}
+                  title="Move bookmark down"
+                  type="button"
+                >
+                  ⬇️
+                </button>
+                <button
+                  aria-label={`Load ${bookmark.label}`}
+                  className="bacon-title-action-icon-button"
+                  onClick={() => handleLoadBookmark(bookmark)}
+                  title="Load bookmark"
+                  type="button"
+                >
+                  📥
+                </button>
+                <button
+                  aria-label={`Remove ${bookmark.label}`}
+                  className="bacon-title-action-icon-button bacon-title-action-icon-button-danger"
+                  onClick={() => handleRemoveBookmark(bookmark.id)}
+                  title="Remove bookmark"
+                  type="button"
+                >
+                  🗑️
+                </button>
+              </div>
+              <div className="bacon-bookmark-row-body">
+                <div className="bacon-bookmark-card-row">
+                  {bookmark.previewCards.map((card, cardIndex) => (
+                    <BookmarkPreviewCardView
+                      card={card}
+                      isSelected={bookmark.selectedPreviewCardIndices.includes(cardIndex)}
+                      key={card.key}
+                      onNameClick={() => handleLoadBookmarkPreviewCard(bookmark, cardIndex)}
+                      onToggleSelected={() => handleToggleBookmarkPreviewCard(bookmark.id, cardIndex)}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </article>
+        ))}
+      </section>
+    );
+  }
+
   return (
     <div className="bacon-app-shell">
       <header className="bacon-title-bar">
@@ -894,8 +1283,29 @@ export default function AppX() {
         <div className="bacon-title-actions">
           {copyStatus ? <span className="bacon-copy-status">{copyStatus}</span> : null}
           <button
+            aria-label="Save bookmark"
+            className="bacon-title-action-icon-button"
+            disabled={isSavingBookmark}
+            onClick={handleSaveBookmark}
+            title={isSavingBookmark ? "Saving bookmark..." : "Save bookmark"}
+            type="button"
+          >
+            💾
+          </button>
+          <button
+            aria-label={isBookmarksView ? "Close bookmarks" : "Open bookmarks"}
+            className="bacon-title-action-icon-button"
+            onClick={handleToggleBookmarks}
+            title={isBookmarksView ? "Close bookmarks" : "Open bookmarks"}
+            type="button"
+          >
+            {isBookmarksView ? "🎬" : "📚"}
+          </button>
+          <button
+            aria-label="Clear database"
             className="bacon-title-action-button"
             onClick={handleClearDatabase}
+            title="Clear TMDB cache"
             type="button"
           >
             Clear DB
@@ -903,189 +1313,195 @@ export default function AppX() {
         </div>
       </header>
 
-      <section className="bacon-connection-bar" ref={connectionBarRef}>
-        <form className="bacon-connection-form" onSubmit={handleConnectionSubmit}>
-          <div className="bacon-connection-input-wrap" ref={connectionInputWrapRef}>
-            <input
-              autoCapitalize="words"
-              autoCorrect="off"
-              className="bacon-connection-input"
-              disabled={isResolvingConnection}
-              onChange={(event) => setConnectionQuery(event.target.value)}
-              onKeyDown={handleConnectionInputKeyDown}
-              placeholder="Connect to film or person"
-              type="text"
-              value={connectionQuery}
-            />
-            {connectionSuggestions.length > 0 ? (
-              <div className="bacon-connection-dropdown" ref={connectionDropdownRef}>
-                {connectionSuggestions.map((suggestion, index) => (
-                  <button
-                    className={[
-                      "bacon-connection-option",
-                      index === selectedSuggestionIndex
-                        ? "bacon-connection-option-selected"
-                        : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                    key={suggestion.key}
-                    onMouseEnter={() => setSelectedSuggestionIndex(index)}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={(event) => handleConnectionSuggestionClick(event, suggestion)}
-                    type="button"
-                  >
-                    {suggestion.label}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
-          <span
-            className="bacon-connection-pill-wrap"
-            onBlur={() => setIsSelectedPathTooltipVisible(false)}
-            onFocus={() => setIsSelectedPathTooltipVisible(true)}
-            onMouseEnter={() => setIsSelectedPathTooltipVisible(true)}
-            onMouseLeave={() => setIsSelectedPathTooltipVisible(false)}
-          >
+      {!isBookmarksView ? (
+        <section className="bacon-connection-bar" ref={connectionBarRef}>
+          <form className="bacon-connection-form" onSubmit={handleConnectionSubmit}>
+            <div className="bacon-connection-input-wrap" ref={connectionInputWrapRef}>
+              <input
+                autoCapitalize="words"
+                autoCorrect="off"
+                className="bacon-connection-input"
+                disabled={isResolvingConnection}
+                onChange={(event) => setConnectionQuery(event.target.value)}
+                onKeyDown={handleConnectionInputKeyDown}
+                placeholder="Connect to film or person"
+                type="text"
+                value={connectionQuery}
+              />
+              {connectionSuggestions.length > 0 ? (
+                <div className="bacon-connection-dropdown" ref={connectionDropdownRef}>
+                  {connectionSuggestions.map((suggestion, index) => (
+                    <button
+                      className={[
+                        "bacon-connection-option",
+                        index === selectedSuggestionIndex
+                          ? "bacon-connection-option-selected"
+                          : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                      key={suggestion.key}
+                      onMouseEnter={() => setSelectedSuggestionIndex(index)}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={(event) => handleConnectionSuggestionClick(event, suggestion)}
+                      type="button"
+                    >
+                      {suggestion.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
             <span
-              className="bacon-connection-pill"
-              tabIndex={0}
+              className="bacon-connection-pill-wrap"
+              onBlur={() => setIsSelectedPathTooltipVisible(false)}
+              onFocus={() => setIsSelectedPathTooltipVisible(true)}
+              onMouseEnter={() => setIsSelectedPathTooltipVisible(true)}
+              onMouseLeave={() => setIsSelectedPathTooltipVisible(false)}
             >
-              {highestGenerationSelectedLabel}
-            </span>
-            {isSelectedPathTooltipVisible ? (
-              <span className="bacon-connection-pill-tooltip" role="tooltip">
-                {selectedPathTooltipEntries.map((entry, index) => (
-                  <span
-                    className="bacon-connection-pill-tooltip-entry"
-                    key={`${index}:${entry}`}
-                  >
-                    {entry}
-                  </span>
-                ))}
+              <span
+                className="bacon-connection-pill"
+                tabIndex={0}
+              >
+                {highestGenerationSelectedLabel}
               </span>
-            ) : null}
-          </span>
-        </form>
-
-        {connectionSession ? (
-          <div className="bacon-connection-results">
-            {!hasFoundConnectionRow ? (
-              <div className="bacon-connection-row">
-                {renderConnectionEntityCard(connectionSession.left, {
-                  onCardClick: () => navigateToConnectionEntity(connectionSession.left),
-                  onNameClick: () => navigateToConnectionEntity(connectionSession.left),
-                })}
-                <span className="bacon-connection-arrow bacon-connection-arrow-static">
-                  <span className="bacon-connection-arrow-break" aria-hidden="true">
-                    <span className="bacon-connection-arrow-break-line" />
-                    <span className="bacon-connection-arrow-break-slash">/</span>
-                    <span className="bacon-connection-arrow-break-head">→</span>
-                  </span>
+              {isSelectedPathTooltipVisible ? (
+                <span className="bacon-connection-pill-tooltip" role="tooltip">
+                  {selectedPathTooltipEntries.map((entry, index) => (
+                    <span
+                      className="bacon-connection-pill-tooltip-entry"
+                      key={`${index}:${entry}`}
+                    >
+                      {entry}
+                    </span>
+                  ))}
                 </span>
-                {renderConnectionEntityCard(connectionSession.right, {
-                  onCardClick: () => navigateToConnectionEntity(connectionSession.right),
-                  onNameClick: () => navigateToConnectionEntity(connectionSession.right),
-                })}
-              </div>
-            ) : null}
+              ) : null}
+            </span>
+          </form>
 
-            {connectionSession.rows.map((row) => {
-              if (row.status === "searching") {
-                return (
-                  <div className="bacon-connection-row" key={row.id}>
-                    <div className="bacon-connection-status-card">
-                      Searching cached connections...
-                    </div>
-                  </div>
-                );
-              }
-
-              if (row.status !== "found" || row.path.length === 0) {
-                return (
-                  <div className="bacon-connection-row" key={row.id}>
-                    <div className="bacon-connection-status-card">
-                      {row.status === "timeout"
-                        ? "Timed out after 5 seconds without finding a cached path."
-                        : "No cached path found."}
-                    </div>
-                  </div>
-                );
-              }
-
-              return (
-                <div className="bacon-connection-row" key={row.id}>
-                  {row.path.map((entity, index) => {
-                    const nextEntity = row.path[index + 1] ?? null;
-                    const edgeKey = nextEntity
-                      ? getConnectionEdgeKey(entity.key, nextEntity.key)
-                      : "";
-                    const isLeftmostNode = index === 0;
-                    const isMiddleNode = index > 0 && index < row.path.length - 1;
-                    const isNodeDimmed = row.childDisallowedNodeKeys.includes(entity.key);
-                    const isEdgeDimmed = row.childDisallowedEdgeKeys.includes(edgeKey);
-
-                    return (
-                      <Fragment key={`${row.id}:${entity.key}:${index}`}>
-                        {renderConnectionEntityCard(entity, {
-                          dimmed: isNodeDimmed,
-                          onCardClick: isMiddleNode
-                            ? () =>
-                              spawnAlternativeConnectionRow(row.id, {
-                                kind: "node",
-                                nodeKey: entity.key,
-                              })
-                            : undefined,
-                          onNameClick: isLeftmostNode
-                            ? () => navigateToConnectionPath([...row.path].reverse())
-                            : () => navigateToConnectionEntity(entity),
-                        })}
-                        {nextEntity ? (
-                          <button
-                            className={[
-                              "bacon-connection-arrow",
-                              "bacon-connection-arrow-button",
-                              isEdgeDimmed
-                                ? "bacon-connection-arrow-disconnected"
-                                : "bacon-connection-arrow-connected",
-                            ]
-                              .filter(Boolean)
-                              .join(" ")}
-                            aria-pressed={isEdgeDimmed}
-                            onClick={() =>
-                              spawnAlternativeConnectionRow(row.id, {
-                                kind: "edge",
-                                edgeKey,
-                              })
-                            }
-                            title={
-                              isEdgeDimmed
-                                ? "Reconnect this edge"
-                                : "Disconnect this edge"
-                            }
-                            type="button"
-                          >
-                            →
-                          </button>
-                        ) : null}
-                      </Fragment>
-                    );
+          {connectionSession ? (
+            <div className="bacon-connection-results">
+              {!hasFoundConnectionRow ? (
+                <div className="bacon-connection-row">
+                  {renderConnectionEntityCard(connectionSession.left, {
+                    onCardClick: () => navigateToConnectionEntity(connectionSession.left),
+                    onNameClick: () => navigateToConnectionEntity(connectionSession.left),
+                  })}
+                  <span className="bacon-connection-arrow bacon-connection-arrow-static">
+                    <span className="bacon-connection-arrow-break" aria-hidden="true">
+                      <span className="bacon-connection-arrow-break-line" />
+                      <span className="bacon-connection-arrow-break-slash">/</span>
+                      <span className="bacon-connection-arrow-break-head">→</span>
+                    </span>
+                  </span>
+                  {renderConnectionEntityCard(connectionSession.right, {
+                    onCardClick: () => navigateToConnectionEntity(connectionSession.right),
+                    onNameClick: () => navigateToConnectionEntity(connectionSession.right),
                   })}
                 </div>
-              );
-            })}
-          </div>
-        ) : null}
-      </section>
+              ) : null}
+
+              {connectionSession.rows.map((row) => {
+                if (row.status === "searching") {
+                  return (
+                    <div className="bacon-connection-row" key={row.id}>
+                      <div className="bacon-connection-status-card">
+                        Searching cached connections...
+                      </div>
+                    </div>
+                  );
+                }
+
+                if (row.status !== "found" || row.path.length === 0) {
+                  return (
+                    <div className="bacon-connection-row" key={row.id}>
+                      <div className="bacon-connection-status-card">
+                        {row.status === "timeout"
+                          ? "Timed out after 5 seconds without finding a cached path."
+                          : "No cached path found."}
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="bacon-connection-row" key={row.id}>
+                    {row.path.map((entity, index) => {
+                      const nextEntity = row.path[index + 1] ?? null;
+                      const edgeKey = nextEntity
+                        ? getConnectionEdgeKey(entity.key, nextEntity.key)
+                        : "";
+                      const isLeftmostNode = index === 0;
+                      const isMiddleNode = index > 0 && index < row.path.length - 1;
+                      const isNodeDimmed = row.childDisallowedNodeKeys.includes(entity.key);
+                      const isEdgeDimmed = row.childDisallowedEdgeKeys.includes(edgeKey);
+
+                      return (
+                        <Fragment key={`${row.id}:${entity.key}:${index}`}>
+                          {renderConnectionEntityCard(entity, {
+                            dimmed: isNodeDimmed,
+                            onCardClick: isMiddleNode
+                              ? () =>
+                                spawnAlternativeConnectionRow(row.id, {
+                                  kind: "node",
+                                  nodeKey: entity.key,
+                                })
+                              : undefined,
+                            onNameClick: isLeftmostNode
+                              ? () => navigateToConnectionPath([...row.path].reverse())
+                              : () => navigateToConnectionEntity(entity),
+                          })}
+                          {nextEntity ? (
+                            <button
+                              className={[
+                                "bacon-connection-arrow",
+                                "bacon-connection-arrow-button",
+                                isEdgeDimmed
+                                  ? "bacon-connection-arrow-disconnected"
+                                  : "bacon-connection-arrow-connected",
+                              ]
+                                .filter(Boolean)
+                                .join(" ")}
+                              aria-pressed={isEdgeDimmed}
+                              onClick={() =>
+                                spawnAlternativeConnectionRow(row.id, {
+                                  kind: "edge",
+                                  edgeKey,
+                                })
+                              }
+                              title={
+                                isEdgeDimmed
+                                  ? "Reconnect this edge"
+                                  : "Disconnect this edge"
+                              }
+                              type="button"
+                            >
+                              →
+                            </button>
+                          ) : null}
+                        </Fragment>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       <main className="bacon-app-content">
-        <Cinenerdle2
-          hashValue={hashValue}
-          navigationVersion={navigationVersion}
-          onHashWrite={handleHashWrite}
-          resetVersion={resetVersion}
-        />
+        {isBookmarksView ? (
+          renderBookmarksPage()
+        ) : (
+          <Cinenerdle2
+            hashValue={hashValue}
+            navigationVersion={navigationVersion}
+            onHashWrite={handleHashWrite}
+            resetVersion={resetVersion}
+          />
+        )}
       </main>
     </div>
   );

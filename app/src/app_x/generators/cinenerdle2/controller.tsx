@@ -1,4 +1,5 @@
-import { useMemo, type CSSProperties, type MouseEvent } from "react";
+import { useMemo, useRef, type CSSProperties, type MouseEvent } from "react";
+import { createBookmarkPreviewCard, type BookmarkPreviewCard } from "../../components/bookmark_preview";
 import type { GeneratorController, GeneratorNode, GeneratorTree } from "../../types/generator";
 import {
   createCinenerdleOnlyPersonCard,
@@ -42,7 +43,7 @@ import {
 } from "./utils";
 import type { FilmRecord, PersonRecord } from "./types";
 import type { CinenerdleCard, CinenerdleCardViewModel, CinenerdlePathNode } from "./view_types";
-import { clearCinenerdleDebugLog } from "./debug";
+import { addCinenerdleDebugLog, clearCinenerdleDebugLog } from "./debug";
 
 function createUncachedMovieCard(name: string, year: string): Extract<CinenerdleCard, { kind: "movie" }> {
   return {
@@ -151,6 +152,10 @@ function getSelectedPathNodes(tree: GeneratorTree<CinenerdleCard>): CinenerdlePa
     .map((row) => row.find((node) => node.selected)?.data ?? null)
     .filter((card): card is CinenerdleCard => card !== null)
     .map((card) => getPathNodeFromCard(card));
+}
+
+function createDebugStackTrace(message: string): string {
+  return new Error(message).stack ?? "";
 }
 
 function getPersonTmdbIdFromCard(
@@ -384,7 +389,7 @@ async function hydrateMissingSelectedPathItemsAndRedraw(
 
     if (pathNode.kind === "person") {
       const existingPersonRecord = await getLocalPersonRecord(pathNode.name, pathNode.tmdbId);
-      if (existingPersonRecord) {
+      if (hasPersonMovieCredits(existingPersonRecord)) {
         continue;
       }
 
@@ -397,7 +402,7 @@ async function hydrateMissingSelectedPathItemsAndRedraw(
         pathNode.name,
         pathNode.year,
       );
-      if (existingMovieRecord) {
+      if (hasMovieCredits(existingMovieRecord)) {
         continue;
       }
 
@@ -462,6 +467,15 @@ async function buildChildRowForMovieCard(
     card.record ??
     (await getFilmRecordByTitleAndYear(card.name, card.year));
   if (!movieRecord) {
+    addCinenerdleDebugLog("movieChildrenMissing", {
+      reason: "movieRecordMissing",
+      movieName: card.name,
+      movieYear: card.year,
+      movieKey: card.key,
+      usedOverride: movieRecordOverride != null,
+      hadCardRecord: card.record != null,
+      stacktrace: createDebugStackTrace("cinenerdle movie children missing: movie record missing"),
+    });
     return null;
   }
 
@@ -510,6 +524,20 @@ async function buildChildRowForMovieCard(
       seenPeople.add(normalizedPersonName);
     });
   });
+
+  if (cards.length === 0) {
+    addCinenerdleDebugLog("movieChildrenMissing", {
+      reason: "childCardsEmpty",
+      movieName: card.name,
+      movieYear: card.year,
+      movieKey: card.key,
+      movieRecordId: movieRecord.id ?? null,
+      hasRawTmdbMovieCreditsResponse: movieRecord.rawTmdbMovieCreditsResponse != null,
+      tmdbCreditsCount: tmdbCredits.length,
+      snapshotPeople,
+      stacktrace: createDebugStackTrace("cinenerdle movie children missing: child cards empty"),
+    });
+  }
 
   return createRow(sortCardsByPopularity(cards));
 }
@@ -715,6 +743,19 @@ async function buildTreeFromHash(
   }
 
   return tree;
+}
+
+export async function buildBookmarkPreviewCardsFromHash(
+  hashValue: string,
+): Promise<BookmarkPreviewCard[]> {
+  const tree = await buildTreeFromHash(hashValue);
+
+  return tree
+    .map((row) => row.find((node) => node.selected)?.data ?? null)
+    .filter((card): card is Exclude<CinenerdleCard, { kind: "dbinfo" }> =>
+      card !== null && card.kind !== "dbinfo",
+    )
+    .map((card) => createBookmarkPreviewCard(card));
 }
 
 function clampNumber(value: number, min: number, max: number) {
@@ -1081,11 +1122,16 @@ export function useCinenerdleController({
   readHash,
   writeHash,
 }: CinenerdleControllerOptions): GeneratorController<CinenerdleCard> {
+  const hasClearedDebugLogRef = useRef(false);
+
   return useMemo(
     () => ({
       initTree(setTree) {
         void (async () => {
-          clearCinenerdleDebugLog();
+          if (!hasClearedDebugLogRef.current) {
+            clearCinenerdleDebugLog();
+            hasClearedDebugLogRef.current = true;
+          }
 
           try {
             const nextTree = await buildTreeFromHash(readHash());
@@ -1113,65 +1159,9 @@ export function useCinenerdleController({
           }
         })();
       },
-      afterCardSelected({ row, col, removedDescendantRows, tree, setTree }) {
-        void (async () => {
-          try {
-            const selectedCard = tree[row]?.[col]?.data;
-            if (!selectedCard) {
-              return;
-            }
-
-            const nextHash = serializePathNodes(getSelectedPathNodes(tree));
-            if (!removedDescendantRows) {
-              setTree(tree);
-            }
-
-            let resolvedSelectedCard = selectedCard;
-            let childRow: GeneratorNode<CinenerdleCard>[] | null = null;
-
-            if (selectedCard.kind === "person") {
-              const personRecord = hasPersonMovieCredits(selectedCard.record)
-                ? selectedCard.record
-                : await prepareSelectedPerson(
-                    selectedCard.name,
-                    getPersonTmdbIdFromCard(selectedCard),
-                  );
-              resolvedSelectedCard = maybePromoteSelectedPersonCard(selectedCard, personRecord);
-              childRow = await buildChildRowForCard(selectedCard, {
-                personRecord,
-              });
-            } else if (selectedCard.kind === "movie") {
-              const movieRecord = hasMovieCredits(selectedCard.record)
-                ? selectedCard.record
-                : await prepareSelectedMovie(
-                    selectedCard.name,
-                    selectedCard.year,
-                    selectedCard.record?.id ?? getMovieTmdbIdFromCard(selectedCard),
-                  );
-              resolvedSelectedCard = maybePromoteSelectedMovieCard(selectedCard, movieRecord);
-              childRow = await buildChildRowForCard(selectedCard, {
-                movieRecord,
-              });
-            } else {
-              childRow = await buildChildRowForCard(selectedCard);
-            }
-
-            const resolvedTree =
-              resolvedSelectedCard === selectedCard
-                ? tree
-                : replaceCardInTree(tree, row, col, resolvedSelectedCard);
-            if (!childRow || childRow.length === 0) {
-              setTree(resolvedTree);
-              writeHash(nextHash, "selection");
-              return;
-            }
-
-            setTree([...resolvedTree, childRow]);
-            writeHash(nextHash, "selection");
-          } catch (error) {
-            console.error("cinenerdle2.afterCardSelected", error);
-          }
-        })();
+      afterCardSelected({ tree }) {
+        const nextHash = serializePathNodes(getSelectedPathNodes(tree));
+        writeHash(nextHash, "selection");
       },
       renderCard(row, col, tree) {
         return renderCinenerdleCard(row, col, tree, writeHash);

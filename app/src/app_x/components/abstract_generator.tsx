@@ -9,6 +9,7 @@ import type {
 import "../styles/abstract_generator.css";
 
 export type AbstractGeneratorProps<T> = GeneratorController<T> & {
+  optimisticSelection?: boolean;
   resetKey?: number | string;
 };
 
@@ -61,6 +62,7 @@ function getRowSignature<T>(row: GeneratorNode<T>[]): string {
 export function AbstractGenerator<T>({
   initTree,
   afterCardSelected,
+  optimisticSelection = true,
   renderCard,
   resetKey,
 }: AbstractGeneratorProps<T>) {
@@ -243,7 +245,7 @@ export function AbstractGenerator<T>({
         })),
       );
 
-    if (removedDescendantRows && tree[row + 1]) {
+    if (optimisticSelection && removedDescendantRows && tree[row + 1]) {
       const placeholderRow = tree[row + 1].map((node) => ({
         ...node,
         selected: false,

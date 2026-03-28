@@ -475,16 +475,28 @@ function hasMovieCredits(
   return Boolean(movieRecord?.rawTmdbMovieCreditsResponse);
 }
 
+function hasPersonMovieCredits(
+  personRecord: PersonRecord | null,
+): personRecord is PersonRecord & {
+  rawTmdbMovieCreditsResponse: NonNullable<PersonRecord["rawTmdbMovieCreditsResponse"]>;
+} {
+  return Boolean(personRecord?.rawTmdbMovieCreditsResponse);
+}
+
 export async function prepareSelectedPerson(
   personName: string,
   personId?: number | null,
 ): Promise<PersonRecord | null> {
   const localPersonRecord = await getLocalPersonRecordForCard(personName, personId);
-  if (localPersonRecord) {
+  if (hasPersonMovieCredits(localPersonRecord)) {
     return localPersonRecord;
   }
 
-  const fetchedPersonRecord = await fetchAndCachePerson(personName, "fetch", personId ?? null);
+  const fetchedPersonRecord = await fetchAndCachePerson(
+    personName,
+    "fetch",
+    personId ?? localPersonRecord?.tmdbId ?? localPersonRecord?.id ?? null,
+  );
   return fetchedPersonRecord;
 }
 

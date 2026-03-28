@@ -136,6 +136,56 @@
   background: rgba(27, 20, 15, 0.96);
 }
 
+.bacon-title-action-button:focus-visible {
+  outline: 2px solid var(--bacon-accent);
+  outline-offset: 3px;
+}
+
+.bacon-title-action-icon-button {
+  appearance: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--bacon-border-strong);
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  background: var(--bacon-panel-strong);
+  box-shadow: var(--bacon-shadow);
+  color: var(--bacon-text);
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease,
+    opacity 160ms ease;
+}
+
+.bacon-title-action-icon-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(228, 193, 150, 0.6);
+  background: rgba(27, 20, 15, 0.96);
+}
+
+.bacon-title-action-icon-button:focus-visible {
+  outline: 2px solid var(--bacon-accent);
+  outline-offset: 3px;
+}
+
+.bacon-title-action-icon-button:disabled {
+  opacity: 0.58;
+  cursor: wait;
+}
+
+.bacon-title-action-icon-button-danger {
+  border-color: rgba(244, 114, 182, 0.42);
+}
+
+.bacon-title-action-icon-button-danger:hover:not(:disabled) {
+  border-color: rgba(244, 114, 182, 0.68);
+}
+
 .bacon-app-content {
   position: relative;
   z-index: 1;
@@ -480,6 +530,129 @@
   font-size: 0.92rem;
 }
 
+.bacon-bookmarks-page {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 18px 24px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.bacon-bookmarks-empty-state,
+.bacon-bookmark-row-shell {
+  padding: 16px;
+  border: 1px solid var(--bacon-border-strong);
+  border-radius: 24px;
+  background: rgba(17, 12, 10, 0.88);
+  box-shadow: var(--bacon-shadow);
+}
+
+.bacon-bookmarks-empty-state {
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+}
+
+.bacon-bookmarks-empty-title {
+  margin: 0 0 10px;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.bacon-bookmarks-empty-copy {
+  margin: 0;
+  max-width: 420px;
+  color: var(--bacon-text-muted);
+  line-height: 1.5;
+}
+
+.bacon-bookmark-row-shell {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.bacon-bookmark-row-layout {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.bacon-bookmark-row-body {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.bacon-bookmark-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.bacon-bookmark-row-actions-left {
+  flex-direction: column;
+  align-self: center;
+}
+
+.bacon-bookmark-index-bubble {
+  box-sizing: border-box;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--bacon-border-strong);
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: var(--bacon-panel-strong);
+  box-shadow: var(--bacon-shadow);
+  color: var(--bacon-text);
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.bacon-bookmark-index-bubble:focus-visible {
+  outline: 2px solid var(--bacon-accent);
+  outline-offset: 3px;
+}
+
+.bacon-bookmark-card-row {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 2px 6px;
+  scrollbar-width: none;
+}
+
+.bacon-bookmark-card-row::-webkit-scrollbar {
+  display: none;
+}
+
+.bacon-bookmark-card {
+  flex: 0 0 184px;
+}
+
+.bacon-bookmark-card[role="button"] {
+  cursor: pointer;
+}
+
+.bacon-bookmark-card[role="button"]:focus-visible {
+  outline: 2px solid rgba(148, 163, 184, 0.9);
+  outline-offset: 2px;
+}
+
 @media (max-width: 720px) {
   .bacon-title-bar {
     padding: 16px 16px 14px;
@@ -494,6 +667,13 @@
 
   .bacon-title-actions {
     gap: 8px;
+  }
+
+  .bacon-title-action-icon-button {
+    width: 40px;
+    height: 40px;
+    border-radius: 14px;
+    font-size: 1rem;
   }
 
   .bacon-title-action-button {
@@ -532,5 +712,40 @@
   .bacon-connection-node {
     width: 120px;
     min-width: 120px;
+  }
+
+  .bacon-bookmarks-page {
+    padding: 14px 12px 20px;
+    gap: 14px;
+  }
+
+  .bacon-bookmarks-empty-state,
+  .bacon-bookmark-row-shell {
+    padding: 14px;
+    border-radius: 20px;
+  }
+
+  .bacon-bookmark-row-shell {
+    padding: 0;
+    border-radius: 0;
+  }
+
+  .bacon-bookmark-row-actions {
+    justify-content: flex-end;
+  }
+
+  .bacon-bookmark-row-layout {
+    flex-direction: column;
+  }
+
+  .bacon-bookmark-row-actions-left {
+    width: 100%;
+    flex-direction: row;
+    justify-content: flex-start;
+    align-self: stretch;
+  }
+
+  .bacon-bookmark-card-row {
+    gap: 10px;
   }
 }

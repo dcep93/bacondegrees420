@@ -91,11 +91,17 @@
 }
 
 .cinenerdle-card-title {
+  appearance: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
   font-size: 16.25px;
   font-weight: 700;
   line-height: 1.25;
   color: #f8fafc;
   cursor: pointer;
+  text-align: left;
   text-decoration-line: underline;
   text-decoration-color: rgba(148, 163, 184, 0.45);
   text-decoration-thickness: 1px;

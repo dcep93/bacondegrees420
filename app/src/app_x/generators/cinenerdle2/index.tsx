@@ -70,8 +70,9 @@ const Cinenerdle2 = memo(function Cinenerdle2({
     <AbstractGenerator
       afterCardSelected={controller.afterCardSelected}
       initTree={controller.initTree}
+      optimisticSelection={false}
       renderCard={controller.renderCard}
-      resetKey={`${resetVersion}:${navigationVersion}`}
+      resetKey={`${resetVersion}:${navigationVersion}:${normalizedHash}`}
     />
   );
 });
