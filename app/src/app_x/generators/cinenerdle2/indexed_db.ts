@@ -556,6 +556,25 @@ export async function getAllSearchableConnectionEntities(): Promise<
   );
 }
 
+export async function getSearchableConnectionEntityByKey(
+  key: string,
+): Promise<SearchableConnectionEntityRecord | null> {
+  if (!key) {
+    return null;
+  }
+
+  return withStore(
+    SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME,
+    "readonly",
+    async (store) => {
+      const record = await indexedDbRequestToPromise<
+        SearchableConnectionEntityRecord | undefined
+      >(store.get(key));
+      return record ?? null;
+    },
+  );
+}
+
 export async function estimateIndexedDbUsageBytes(): Promise<number> {
   const estimate = (await navigator.storage?.estimate?.()) as
     | (StorageEstimate & {

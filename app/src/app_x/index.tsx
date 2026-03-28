@@ -101,6 +101,31 @@ type ConnectionSession = {
   rows: ConnectionSearchRow[];
 };
 
+function isPlaceholderPersonLabel(entity: ConnectionEntity): boolean {
+  return entity.kind === "person" && /^Person \d+$/.test(entity.label);
+}
+
+function mergeHydratedConnectionEntity(
+  originalEntity: ConnectionEntity,
+  hydratedEntity: ConnectionEntity,
+): ConnectionEntity {
+  if (
+    originalEntity.kind === "person" &&
+    hydratedEntity.kind === "person" &&
+    originalEntity.key === hydratedEntity.key &&
+    originalEntity.label.trim() &&
+    isPlaceholderPersonLabel(hydratedEntity)
+  ) {
+    return {
+      ...hydratedEntity,
+      name: originalEntity.name,
+      label: originalEntity.label,
+    };
+  }
+
+  return hydratedEntity;
+}
+
 function getDocumentTitle(hashValue: string): string {
   const rootPathNode = buildPathNodesFromSegments(parseHashSegments(hashValue))[0];
 
@@ -168,6 +193,26 @@ function getHighestGenerationSelectedLabel(hashValue: string): string {
   }
 
   return selectedPathTarget.name;
+}
+
+function getSelectedPathTooltipEntries(hashValue: string): string[] {
+  const pathNodes = buildPathNodesFromSegments(parseHashSegments(hashValue)).filter(
+    (pathNode): pathNode is Exclude<(typeof pathNode), { kind: "break" }> =>
+      pathNode.kind === "cinenerdle" ||
+      pathNode.kind === "movie" ||
+      pathNode.kind === "person",
+  );
+
+  if (pathNodes.length === 0) {
+    return ["cinenerdle"];
+  }
+
+  return pathNodes
+    .map((pathNode) =>
+      pathNode.kind === "movie"
+        ? formatMoviePathLabel(pathNode.name, pathNode.year)
+        : pathNode.name,
+    );
 }
 
 function getSuggestionScore(query: string, label: string): number {
@@ -293,6 +338,7 @@ export default function AppX() {
   const [connectionSuggestions, setConnectionSuggestions] = useState<ConnectionSuggestion[]>([]);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
   const [connectionSession, setConnectionSession] = useState<ConnectionSession | null>(null);
+  const [isSelectedPathTooltipVisible, setIsSelectedPathTooltipVisible] = useState(false);
   const connectionSessionRef = useRef<ConnectionSession | null>(null);
   const pendingHashWriteRef = useRef<PendingHashWrite | null>(null);
   const autocompleteRequestIdRef = useRef(0);
@@ -303,6 +349,7 @@ export default function AppX() {
   const connectionDropdownRef = useRef<HTMLDivElement | null>(null);
   const deferredConnectionQuery = useDeferredValue(connectionQuery);
   const highestGenerationSelectedLabel = getHighestGenerationSelectedLabel(hashValue);
+  const selectedPathTooltipEntries = getSelectedPathTooltipEntries(hashValue);
 
   useEffect(() => {
     connectionSessionRef.current = connectionSession;
@@ -503,12 +550,12 @@ export default function AppX() {
       excludedEdgeKeys: string[];
     }) => {
       const [leftEntity, rightEntity] = await Promise.all([
-        hydrateConnectionEntityFromKey(params.left.key).catch(() =>
-          createFallbackConnectionEntity(params.left),
-        ),
-        hydrateConnectionEntityFromKey(params.right.key).catch(() =>
-          createFallbackConnectionEntity(params.right),
-        ),
+        hydrateConnectionEntityFromKey(params.left.key)
+          .then((entity) => mergeHydratedConnectionEntity(params.left, entity))
+          .catch(() => createFallbackConnectionEntity(params.left)),
+        hydrateConnectionEntityFromKey(params.right.key)
+          .then((entity) => mergeHydratedConnectionEntity(params.right, entity))
+          .catch(() => createFallbackConnectionEntity(params.right)),
       ]);
 
       const result = await findConnectionPathBidirectional(leftEntity, rightEntity, {
@@ -894,7 +941,32 @@ export default function AppX() {
               </div>
             ) : null}
           </div>
-          <span className="bacon-connection-pill">{highestGenerationSelectedLabel}</span>
+          <span
+            className="bacon-connection-pill-wrap"
+            onBlur={() => setIsSelectedPathTooltipVisible(false)}
+            onFocus={() => setIsSelectedPathTooltipVisible(true)}
+            onMouseEnter={() => setIsSelectedPathTooltipVisible(true)}
+            onMouseLeave={() => setIsSelectedPathTooltipVisible(false)}
+          >
+            <span
+              className="bacon-connection-pill"
+              tabIndex={0}
+            >
+              {highestGenerationSelectedLabel}
+            </span>
+            {isSelectedPathTooltipVisible ? (
+              <span className="bacon-connection-pill-tooltip" role="tooltip">
+                {selectedPathTooltipEntries.map((entry, index) => (
+                  <span
+                    className="bacon-connection-pill-tooltip-entry"
+                    key={`${index}:${entry}`}
+                  >
+                    {entry}
+                  </span>
+                ))}
+              </span>
+            ) : null}
+          </span>
         </form>
 
         {connectionSession ? (

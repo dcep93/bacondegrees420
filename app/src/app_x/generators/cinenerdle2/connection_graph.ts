@@ -5,6 +5,7 @@ import {
   getPersonRecordById,
   getPersonRecordByName,
   getPersonRecordsByMovieKey,
+  getSearchableConnectionEntityByKey,
 } from "./indexed_db";
 import type {
   FilmRecord,
@@ -351,10 +352,11 @@ export async function hydrateConnectionEntityFromKey(key: string): Promise<Conne
 
   if (key.startsWith("person:")) {
     const parsedPerson = parsePersonConnectionEntityKey(key);
+    const searchRecord = await getSearchableConnectionEntityByKey(key);
     return hydrateConnectionEntityFromSearchRecord({
       key,
       type: "person",
-      nameLower: parsedPerson.nameLower,
+      nameLower: searchRecord?.nameLower ?? parsedPerson.nameLower,
     });
   }
 
@@ -440,10 +442,17 @@ async function getNeighborKeysForEntityKey(entityKey: string): Promise<string[]>
 
   if (entityKey.startsWith("person:")) {
     const parsedPerson = parsePersonConnectionEntityKey(entityKey);
-    const personRecord = await getPersonRecordForConnectionEntityKey(entityKey);
-    const filmRecords = parsedPerson.tmdbId
-      ? []
-      : await getFilmRecordsByPersonConnectionKey(parsedPerson.nameLower);
+    const [personRecord, searchablePersonRecord] = await Promise.all([
+      getPersonRecordForConnectionEntityKey(entityKey),
+      getSearchableConnectionEntityByKey(entityKey),
+    ]);
+    const personNameLower =
+      searchablePersonRecord?.type === "person" && searchablePersonRecord.nameLower
+        ? searchablePersonRecord.nameLower
+        : parsedPerson.nameLower;
+    const filmRecords = personNameLower
+      ? await getFilmRecordsByPersonConnectionKey(personNameLower)
+      : [];
     const movieKeys = new Set<string>();
     const popularityByKey = new Map<string, number>();
     const moviePopularityByLookupKey = new Map<string, number>();
