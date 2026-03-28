@@ -14,8 +14,17 @@ export type AbstractGeneratorFocusRequest<T> = {
   matchesNode: (node: GeneratorNode<T>) => boolean;
 };
 
+export type AbstractGeneratorActivationRequest<T> = {
+  requestKey: string;
+  targetGeneration: "youngest";
+  matchesNode: (node: GeneratorNode<T>) => boolean;
+};
+
 export type AbstractGeneratorProps<T> = GeneratorController<T> & {
+  activationRequest?: AbstractGeneratorActivationRequest<T> | null;
   focusRequest?: AbstractGeneratorFocusRequest<T> | null;
+  onActivationHandled?: (requestKey: string, didActivate: boolean) => void;
+  onFocusRequestMatchChange?: (didMatch: boolean) => void;
   optimisticSelection?: boolean;
   resetKey?: number | string;
 };
@@ -67,9 +76,12 @@ function getRowSignature<T>(row: GeneratorNode<T>[]): string {
 }
 
 export function AbstractGenerator<T>({
+  activationRequest = null,
   initTree,
   afterCardSelected,
   focusRequest = null,
+  onActivationHandled,
+  onFocusRequestMatchChange,
   optimisticSelection = true,
   renderCard,
   resetKey,
@@ -83,6 +95,7 @@ export function AbstractGenerator<T>({
   const activeLifecycleRef = useRef(0);
   const activeSelectionRef = useRef(0);
   const stableRowSignaturesRef = useRef<string[]>([]);
+  const lastHandledActivationRequestKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -246,40 +259,7 @@ export function AbstractGenerator<T>({
     });
   }, [handleScrollToSelected, placeholderRowIndex, renderTreeOverride, resolvedTree]);
 
-  useLayoutEffect(() => {
-    if (
-      focusRequest === null ||
-      renderTreeOverride !== null ||
-      placeholderRowIndex !== null ||
-      resolvedTree.length === 0
-    ) {
-      return;
-    }
-
-    if (focusRequest.targetGeneration !== "youngest") {
-      return;
-    }
-
-    const generationIndex = resolvedTree.length - 1;
-    const row = resolvedTree[generationIndex];
-    const matchingIndex = row?.findIndex((node) => focusRequest.matchesNode(node)) ?? -1;
-
-    if (matchingIndex < 0) {
-      return;
-    }
-
-    scrollToCardIndex(generationIndex, matchingIndex, {
-      behavior: "smooth",
-    });
-  }, [
-    focusRequest,
-    placeholderRowIndex,
-    renderTreeOverride,
-    resolvedTree,
-    scrollToCardIndex,
-  ]);
-
-  function handleCardSelect(row: number, col: number) {
+  const handleCardSelect = useCallback((row: number, col: number) => {
     if (tree === null) {
       return;
     }
@@ -329,7 +309,93 @@ export function AbstractGenerator<T>({
         setTree: guardedSetTree,
       });
     });
-  }
+  }, [
+    afterCardSelected,
+    createGuardedSetTree,
+    optimisticSelection,
+    tree,
+  ]);
+
+  useLayoutEffect(() => {
+    if (
+      focusRequest === null ||
+      renderTreeOverride !== null ||
+      placeholderRowIndex !== null ||
+      resolvedTree.length === 0
+    ) {
+      onFocusRequestMatchChange?.(false);
+      return;
+    }
+
+    if (focusRequest.targetGeneration !== "youngest") {
+      onFocusRequestMatchChange?.(false);
+      return;
+    }
+
+    const generationIndex = resolvedTree.length - 1;
+    const row = resolvedTree[generationIndex];
+    const matchingIndex = row?.findIndex((node) => focusRequest.matchesNode(node)) ?? -1;
+    const didMatch = matchingIndex >= 0;
+
+    onFocusRequestMatchChange?.(didMatch);
+
+    if (!didMatch) {
+      return;
+    }
+
+    scrollToCardIndex(generationIndex, matchingIndex, {
+      behavior: "smooth",
+    });
+  }, [
+    focusRequest,
+    onFocusRequestMatchChange,
+    placeholderRowIndex,
+    renderTreeOverride,
+    resolvedTree,
+    scrollToCardIndex,
+  ]);
+
+  useLayoutEffect(() => {
+    if (
+      activationRequest === null ||
+      activationRequest.requestKey === lastHandledActivationRequestKeyRef.current
+    ) {
+      return;
+    }
+
+    lastHandledActivationRequestKeyRef.current = activationRequest.requestKey;
+
+    if (
+      renderTreeOverride !== null ||
+      placeholderRowIndex !== null ||
+      resolvedTree.length === 0 ||
+      activationRequest.targetGeneration !== "youngest"
+    ) {
+      onActivationHandled?.(activationRequest.requestKey, false);
+      return;
+    }
+
+    const generationIndex = resolvedTree.length - 1;
+    const row = resolvedTree[generationIndex];
+    const matchingIndex = row?.findIndex((node) => activationRequest.matchesNode(node)) ?? -1;
+
+    if (matchingIndex < 0) {
+      onActivationHandled?.(activationRequest.requestKey, false);
+      return;
+    }
+
+    schedulePostSelectionWork(() => {
+      handleCardSelect(generationIndex, matchingIndex);
+      onActivationHandled?.(activationRequest.requestKey, true);
+    });
+  }, [
+    activationRequest,
+    handleCardSelect,
+    onActivationHandled,
+    placeholderRowIndex,
+    renderTreeOverride,
+    resolvedTree,
+  ]);
 
   return (
     <section

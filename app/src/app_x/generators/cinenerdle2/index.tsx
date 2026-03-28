@@ -1,5 +1,9 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
-import { AbstractGenerator, type AbstractGeneratorFocusRequest } from "../../components/abstract_generator";
+import {
+  AbstractGenerator,
+  type AbstractGeneratorActivationRequest,
+  type AbstractGeneratorFocusRequest,
+} from "../../components/abstract_generator";
 import type { GeneratorNode } from "../../types/generator";
 import type { ConnectionEntity } from "./connection_graph";
 import { useCinenerdleController } from "./controller";
@@ -12,7 +16,16 @@ import "../../styles/cinenerdle2.css";
 type Cinenerdle2Props = {
   hashValue: string;
   highlightedConnectionEntity?: ConnectionEntity | null;
+  highlightedConnectionEntitySelectionRequest?: {
+    requestKey: string;
+    entity: ConnectionEntity;
+  } | null;
   navigationVersion: number;
+  onHighlightedConnectionEntitySelectionHandled?: (
+    requestKey: string,
+    didSelect: boolean,
+  ) => void;
+  onHighlightedConnectionEntityYoungestGenerationMatchChange?: (didMatch: boolean) => void;
   onHashWrite: (nextHash: string, mode: "selection" | "navigation") => void;
   resetVersion: number;
 };
@@ -82,7 +95,10 @@ function applyHash(nextHash: string) {
 const Cinenerdle2 = memo(function Cinenerdle2({
   hashValue,
   highlightedConnectionEntity = null,
+  highlightedConnectionEntitySelectionRequest = null,
   navigationVersion,
+  onHighlightedConnectionEntitySelectionHandled,
+  onHighlightedConnectionEntityYoungestGenerationMatchChange,
   onHashWrite,
   resetVersion,
 }: Cinenerdle2Props) {
@@ -129,12 +145,27 @@ const Cinenerdle2 = memo(function Cinenerdle2({
         matchesHighlightedConnectionEntity(node.data, highlightedConnectionEntity),
     };
   }, [highlightedConnectionEntity]);
+  const activationRequest = useMemo<AbstractGeneratorActivationRequest<CinenerdleCard> | null>(() => {
+    if (!highlightedConnectionEntitySelectionRequest) {
+      return null;
+    }
+
+    return {
+      requestKey: highlightedConnectionEntitySelectionRequest.requestKey,
+      targetGeneration: "youngest",
+      matchesNode: (node: GeneratorNode<CinenerdleCard>) =>
+        matchesHighlightedConnectionEntity(node.data, highlightedConnectionEntitySelectionRequest.entity),
+    };
+  }, [highlightedConnectionEntitySelectionRequest]);
 
   return (
     <AbstractGenerator
+      activationRequest={activationRequest}
       afterCardSelected={controller.afterCardSelected}
       focusRequest={focusRequest}
       initTree={controller.initTree}
+      onActivationHandled={onHighlightedConnectionEntitySelectionHandled}
+      onFocusRequestMatchChange={onHighlightedConnectionEntityYoungestGenerationMatchChange}
       optimisticSelection={false}
       renderCard={controller.renderCard}
       resetKey={`${resetVersion}:${navigationVersion}:${normalizedHash}`}

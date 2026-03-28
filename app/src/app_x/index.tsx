@@ -65,6 +65,11 @@ type PendingHashWrite = {
   mode: "selection" | "navigation";
 };
 
+type HighlightedConnectionEntitySelectionRequest = {
+  requestKey: string;
+  entity: ConnectionEntity;
+};
+
 type ConnectionExclusion =
   | {
     kind: "node";
@@ -456,6 +461,10 @@ export default function AppX() {
   const [connectionSuggestions, setConnectionSuggestions] = useState<ConnectionSuggestion[]>([]);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
   const [connectionSession, setConnectionSession] = useState<ConnectionSession | null>(null);
+  const [highlightedConnectionEntitySelectionRequest, setHighlightedConnectionEntitySelectionRequest] =
+    useState<HighlightedConnectionEntitySelectionRequest | null>(null);
+  const [isHighlightedConnectionEntityInYoungestGeneration, setIsHighlightedConnectionEntityInYoungestGeneration] =
+    useState(false);
   const [isSelectedPathTooltipVisible, setIsSelectedPathTooltipVisible] = useState(false);
   const connectionSessionRef = useRef<ConnectionSession | null>(null);
   const pendingHashWriteRef = useRef<PendingHashWrite | null>(null);
@@ -463,6 +472,7 @@ export default function AppX() {
   const autocompleteRequestIdRef = useRef(0);
   const connectionSessionIdRef = useRef(0);
   const connectionRowIdRef = useRef(0);
+  const highlightedConnectionEntitySelectionRequestIdRef = useRef(0);
   const connectionBarRef = useRef<HTMLElement | null>(null);
   const connectionInputWrapRef = useRef<HTMLDivElement | null>(null);
   const connectionDropdownRef = useRef<HTMLDivElement | null>(null);
@@ -1110,10 +1120,41 @@ export default function AppX() {
           return;
         }
 
+        if (isHighlightedConnectionEntityInYoungestGeneration) {
+          highlightedConnectionEntitySelectionRequestIdRef.current += 1;
+          setHighlightedConnectionEntitySelectionRequest({
+            requestKey: `highlighted-connection-entity:${highlightedConnectionEntitySelectionRequestIdRef.current}`,
+            entity: selectedSuggestion,
+          });
+          return;
+        }
+
         void openConnectionRowsForEntity(selectedSuggestion);
       }
     },
-    [connectionSuggestions, openConnectionRowsForEntity, selectedSuggestionIndex],
+    [
+      connectionSuggestions,
+      isHighlightedConnectionEntityInYoungestGeneration,
+      openConnectionRowsForEntity,
+      selectedSuggestionIndex,
+    ],
+  );
+
+  const handleHighlightedConnectionEntitySelectionHandled = useCallback(
+    (requestKey: string, didSelect: boolean) => {
+      setHighlightedConnectionEntitySelectionRequest((currentRequest) => {
+        if (!currentRequest || currentRequest.requestKey !== requestKey) {
+          return currentRequest;
+        }
+
+        if (!didSelect) {
+          void openConnectionRowsForEntity(currentRequest.entity);
+        }
+
+        return null;
+      });
+    },
+    [openConnectionRowsForEntity],
   );
 
   const handleConnectionSuggestionClick = useCallback(
@@ -1500,7 +1541,10 @@ export default function AppX() {
           <Cinenerdle2
             hashValue={hashValue}
             highlightedConnectionEntity={highlightedConnectionEntity}
+            highlightedConnectionEntitySelectionRequest={highlightedConnectionEntitySelectionRequest}
             navigationVersion={navigationVersion}
+            onHighlightedConnectionEntitySelectionHandled={handleHighlightedConnectionEntitySelectionHandled}
+            onHighlightedConnectionEntityYoungestGenerationMatchChange={setIsHighlightedConnectionEntityInYoungestGeneration}
             onHashWrite={handleHashWrite}
             resetVersion={resetVersion}
           />
