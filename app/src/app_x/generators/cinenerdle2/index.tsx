@@ -1,16 +1,67 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useRef } from "react";
-import { AbstractGenerator } from "../../components/abstract_generator";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { AbstractGenerator, type AbstractGeneratorFocusRequest } from "../../components/abstract_generator";
+import type { GeneratorNode } from "../../types/generator";
+import type { ConnectionEntity } from "./connection_graph";
 import { useCinenerdleController } from "./controller";
 import { normalizeHashValue } from "./hash";
 import { primeTmdbApiKeyOnInit } from "./tmdb";
+import { getValidTmdbEntityId, normalizeName, normalizeTitle } from "./utils";
+import type { CinenerdleCard } from "./view_types";
 import "../../styles/cinenerdle2.css";
 
 type Cinenerdle2Props = {
   hashValue: string;
+  highlightedConnectionEntity?: ConnectionEntity | null;
   navigationVersion: number;
   onHashWrite: (nextHash: string, mode: "selection" | "navigation") => void;
   resetVersion: number;
 };
+
+function getCardTmdbEntityId(card: CinenerdleCard): number | null {
+  if (card.kind === "movie" || card.kind === "person") {
+    return getValidTmdbEntityId(card.record?.tmdbId ?? card.record?.id);
+  }
+
+  return null;
+}
+
+function matchesHighlightedConnectionEntity(
+  card: CinenerdleCard,
+  entity: ConnectionEntity,
+): boolean {
+  if (entity.kind === "cinenerdle") {
+    return card.kind === "cinenerdle";
+  }
+
+  if (entity.kind === "movie") {
+    if (card.kind !== "movie") {
+      return false;
+    }
+
+    if (
+      normalizeTitle(card.name) === normalizeTitle(entity.name) &&
+      card.year.trim() === entity.year.trim()
+    ) {
+      return true;
+    }
+
+    const entityTmdbId = getValidTmdbEntityId(entity.tmdbId);
+    const cardTmdbId = getCardTmdbEntityId(card);
+    return entityTmdbId !== null && cardTmdbId !== null && entityTmdbId === cardTmdbId;
+  }
+
+  if (card.kind !== "person") {
+    return false;
+  }
+
+  const entityTmdbId = getValidTmdbEntityId(entity.tmdbId);
+  const cardTmdbId = getCardTmdbEntityId(card);
+  if (entityTmdbId !== null && cardTmdbId !== null) {
+    return entityTmdbId === cardTmdbId;
+  }
+
+  return normalizeName(card.name) === normalizeName(entity.name);
+}
 
 function applyHash(nextHash: string) {
   const normalizedHash = normalizeHashValue(nextHash);
@@ -30,6 +81,7 @@ function applyHash(nextHash: string) {
 
 const Cinenerdle2 = memo(function Cinenerdle2({
   hashValue,
+  highlightedConnectionEntity = null,
   navigationVersion,
   onHashWrite,
   resetVersion,
@@ -65,10 +117,23 @@ const Cinenerdle2 = memo(function Cinenerdle2({
     readHash,
     writeHash,
   });
+  const focusRequest = useMemo<AbstractGeneratorFocusRequest<CinenerdleCard> | null>(() => {
+    if (!highlightedConnectionEntity) {
+      return null;
+    }
+
+    return {
+      requestKey: highlightedConnectionEntity.key,
+      targetGeneration: "youngest",
+      matchesNode: (node: GeneratorNode<CinenerdleCard>) =>
+        matchesHighlightedConnectionEntity(node.data, highlightedConnectionEntity),
+    };
+  }, [highlightedConnectionEntity]);
 
   return (
     <AbstractGenerator
       afterCardSelected={controller.afterCardSelected}
+      focusRequest={focusRequest}
       initTree={controller.initTree}
       optimisticSelection={false}
       renderCard={controller.renderCard}

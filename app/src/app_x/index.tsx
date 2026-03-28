@@ -470,6 +470,8 @@ export default function AppX() {
   const isBookmarksView = appLocation.viewMode === "bookmarks";
   const highestGenerationSelectedLabel = getHighestGenerationSelectedLabel(hashValue);
   const selectedPathTooltipEntries = getSelectedPathTooltipEntries(hashValue);
+  const highlightedConnectionEntity =
+    selectedSuggestionIndex >= 0 ? connectionSuggestions[selectedSuggestionIndex] ?? null : null;
 
   useEffect(() => {
     connectionSessionRef.current = connectionSession;
@@ -1497,6 +1499,7 @@ export default function AppX() {
         ) : (
           <Cinenerdle2
             hashValue={hashValue}
+            highlightedConnectionEntity={highlightedConnectionEntity}
             navigationVersion={navigationVersion}
             onHashWrite={handleHashWrite}
             resetVersion={resetVersion}

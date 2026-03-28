@@ -8,7 +8,14 @@ import type {
 } from "../types/generator";
 import "../styles/abstract_generator.css";
 
+export type AbstractGeneratorFocusRequest<T> = {
+  requestKey: string;
+  targetGeneration: "youngest";
+  matchesNode: (node: GeneratorNode<T>) => boolean;
+};
+
 export type AbstractGeneratorProps<T> = GeneratorController<T> & {
+  focusRequest?: AbstractGeneratorFocusRequest<T> | null;
   optimisticSelection?: boolean;
   resetKey?: number | string;
 };
@@ -62,6 +69,7 @@ function getRowSignature<T>(row: GeneratorNode<T>[]): string {
 export function AbstractGenerator<T>({
   initTree,
   afterCardSelected,
+  focusRequest = null,
   optimisticSelection = true,
   renderCard,
   resetKey,
@@ -135,35 +143,35 @@ export function AbstractGenerator<T>({
 
   const renderedGenerations = [...generations].reverse();
 
-  const handleScrollToSelected = useCallback((
+  const scrollToCardIndex = useCallback((
     generationIndex: number,
+    cardIndex: number,
     options?: {
       behavior?: ScrollBehavior;
     },
   ) => {
     const behavior = options?.behavior ?? "smooth";
-    const selectedRow = resolvedTree[generationIndex];
-    const selectedNode = selectedRow?.find((node) => node.selected) ?? null;
+    const row = resolvedTree[generationIndex];
+    const targetNode = row?.[cardIndex];
 
-    if (!selectedRow || !selectedNode) {
+    if (!row || !targetNode) {
       return;
     }
 
-    const selectedIndex = selectedRow.indexOf(selectedNode);
     const rowElement = rowRefs.current[generationIndex];
-    const selectedCard = cardRefs.current[
+    const targetCard = cardRefs.current[
       `${generationIndex}:${getDataKey(
-        selectedNode.data,
-        selectedIndex,
+        targetNode.data,
+        cardIndex,
       )}`
     ];
 
-    if (selectedCard && rowElement) {
+    if (targetCard && rowElement) {
       const maxScrollLeft = Math.max(0, rowElement.scrollWidth - rowElement.clientWidth);
       const centeredScrollLeft = Math.max(
         0,
         Math.min(
-          selectedCard.offsetLeft - (rowElement.clientWidth - selectedCard.offsetWidth) / 2,
+          targetCard.offsetLeft - (rowElement.clientWidth - targetCard.offsetWidth) / 2,
           maxScrollLeft,
         ),
       );
@@ -175,8 +183,8 @@ export function AbstractGenerator<T>({
       return;
     }
 
-    if (selectedCard) {
-      selectedCard.scrollIntoView({
+    if (targetCard) {
+      targetCard.scrollIntoView({
         behavior,
         block: "nearest",
         inline: "center",
@@ -189,6 +197,22 @@ export function AbstractGenerator<T>({
       behavior,
     });
   }, [resolvedTree]);
+
+  const handleScrollToSelected = useCallback((
+    generationIndex: number,
+    options?: {
+      behavior?: ScrollBehavior;
+    },
+  ) => {
+    const selectedRow = resolvedTree[generationIndex];
+    const selectedIndex = selectedRow?.findIndex((node) => node.selected) ?? -1;
+
+    if (selectedIndex < 0) {
+      return;
+    }
+
+    scrollToCardIndex(generationIndex, selectedIndex, options);
+  }, [resolvedTree, scrollToCardIndex]);
 
   useLayoutEffect(() => {
     if (renderTreeOverride !== null || placeholderRowIndex !== null) {
@@ -221,6 +245,39 @@ export function AbstractGenerator<T>({
       });
     });
   }, [handleScrollToSelected, placeholderRowIndex, renderTreeOverride, resolvedTree]);
+
+  useLayoutEffect(() => {
+    if (
+      focusRequest === null ||
+      renderTreeOverride !== null ||
+      placeholderRowIndex !== null ||
+      resolvedTree.length === 0
+    ) {
+      return;
+    }
+
+    if (focusRequest.targetGeneration !== "youngest") {
+      return;
+    }
+
+    const generationIndex = resolvedTree.length - 1;
+    const row = resolvedTree[generationIndex];
+    const matchingIndex = row?.findIndex((node) => focusRequest.matchesNode(node)) ?? -1;
+
+    if (matchingIndex < 0) {
+      return;
+    }
+
+    scrollToCardIndex(generationIndex, matchingIndex, {
+      behavior: "smooth",
+    });
+  }, [
+    focusRequest,
+    placeholderRowIndex,
+    renderTreeOverride,
+    resolvedTree,
+    scrollToCardIndex,
+  ]);
 
   function handleCardSelect(row: number, col: number) {
     if (tree === null) {
