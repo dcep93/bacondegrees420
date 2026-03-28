@@ -69,6 +69,7 @@ function mergeStarterDataIntoFilmRecord(
       starterFilm.rawCinenerdleDailyStarter ?? filmRecord.rawCinenerdleDailyStarter,
     starterPeopleByRole:
       starterFilm.starterPeopleByRole ?? filmRecord.starterPeopleByRole,
+    isCinenerdleDailyStarter: 1,
     personConnectionKeys: [
       ...filmRecord.personConnectionKeys,
       ...starterFilm.personConnectionKeys,

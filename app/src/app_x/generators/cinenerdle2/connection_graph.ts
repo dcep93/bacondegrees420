@@ -252,7 +252,7 @@ export async function hydrateConnectionEntityFromSearchRecord(
       findOriginalPersonNameInFilms(matchingFilms, searchRecord.nameLower) ??
       createReadableFallbackLabel(searchRecord.nameLower);
 
-    return {
+    const entity: ConnectionEntity = {
       key: searchRecord.key,
       kind: "person",
       name: personName,
@@ -261,6 +261,8 @@ export async function hydrateConnectionEntityFromSearchRecord(
       connectionCount: Math.max(matchingFilms.length, 1),
       hasCachedTmdbSource: false,
     };
+
+    return entity;
   }
 
   const parsedMovie = parseMovieConnectionEntityKey(searchRecord.key);
@@ -277,7 +279,7 @@ export async function hydrateConnectionEntityFromSearchRecord(
       year: parsedMovie.year,
     };
 
-  return {
+  const entity: ConnectionEntity = {
     key: searchRecord.key,
     kind: "movie",
     name: originalMovie.title,
@@ -286,6 +288,8 @@ export async function hydrateConnectionEntityFromSearchRecord(
     connectionCount: Math.max(matchingPeople.length, 1),
     hasCachedTmdbSource: false,
   };
+
+  return entity;
 }
 
 export async function hydrateConnectionEntityFromKey(key: string): Promise<ConnectionEntity> {
@@ -484,7 +488,8 @@ export async function findConnectionPathBidirectional(
           continue;
         }
 
-        if (excludedEdgeKeys.has(getConnectionEdgeKey(currentKey, neighborKey))) {
+        const edgeKey = getConnectionEdgeKey(currentKey, neighborKey);
+        if (excludedEdgeKeys.has(edgeKey)) {
           continue;
         }
 

@@ -44,6 +44,9 @@ export function withDerivedFilmFields(filmRecord: FilmRecord): FilmRecord {
     .map((credit) => normalizeName(credit.name ?? ""))
     .filter(Boolean);
   const starterPeople = getSnapshotConnectionLabels(filmRecord).map(normalizeName);
+  const isCinenerdleDailyStarter =
+    filmRecord.isCinenerdleDailyStarter ??
+    (filmRecord.rawCinenerdleDailyStarter ? 1 : 0);
 
   return {
     ...filmRecord,
@@ -61,6 +64,7 @@ export function withDerivedFilmFields(filmRecord: FilmRecord): FilmRecord {
         ...starterPeople,
       ]),
     ),
+    isCinenerdleDailyStarter,
   };
 }
 

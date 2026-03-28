@@ -5,7 +5,7 @@ import {
   PEOPLE_STORE_NAME,
   SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME,
 } from "./constants";
-import { chooseBestFilmRecord } from "./records";
+import { chooseBestFilmRecord, withDerivedFilmFields } from "./records";
 import type {
   FilmRecord,
   PersonRecord,
@@ -466,11 +466,33 @@ export async function getFilmRecordsByPersonConnectionKey(
 
 export async function getCinenerdleStarterFilmRecords(): Promise<FilmRecord[]> {
   return withStore(FILMS_STORE_NAME, "readonly", async (store) => {
-    const records = await indexedDbRequestToPromise<FilmRecord[]>(
+    const indexedRecords = await indexedDbRequestToPromise<FilmRecord[]>(
       store.index("isCinenerdleDailyStarter").getAll(1),
     );
 
-    return (records ?? []).sort((left, right) => (right.popularity ?? 0) - (left.popularity ?? 0));
+    if ((indexedRecords ?? []).length > 0) {
+      return (indexedRecords ?? []).sort(
+        (left, right) => (right.popularity ?? 0) - (left.popularity ?? 0),
+      );
+    }
+
+    const allRecords = await indexedDbRequestToPromise<FilmRecord[]>(store.getAll());
+    const starterRecords = (allRecords ?? []).filter(
+      (record) => record.isCinenerdleDailyStarter === 1 || record.rawCinenerdleDailyStarter,
+    );
+    const fallbackRecords = starterRecords
+      .map((record) => withDerivedFilmFields(record))
+      .sort((left, right) => (right.popularity ?? 0) - (left.popularity ?? 0));
+
+    if (fallbackRecords.length > 0) {
+      void saveFilmRecords(
+        starterRecords
+          .filter((record) => record.isCinenerdleDailyStarter !== 1)
+          .map((record) => withDerivedFilmFields(record)),
+      );
+    }
+
+    return fallbackRecords;
   });
 }
 

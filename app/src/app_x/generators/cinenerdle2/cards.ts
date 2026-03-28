@@ -217,6 +217,7 @@ export function createDailyStarterFilmRecord(
     popularity: 0,
     rawCinenerdleDailyStarter: starter,
     starterPeopleByRole: buildPeopleByRoleFromStarter(starter),
+    isCinenerdleDailyStarter: 1,
     personConnectionKeys: Array.from(
       new Set(
         [
