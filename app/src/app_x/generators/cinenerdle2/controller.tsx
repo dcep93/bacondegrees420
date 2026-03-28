@@ -137,6 +137,18 @@ function getSelectedPathNodes(tree: GeneratorTree<CinenerdleCard>): CinenerdlePa
     .map((card) => getPathNodeFromCard(card));
 }
 
+function getPersonTmdbIdFromCard(
+  card: Extract<CinenerdleCard, { kind: "person" }>,
+): number | null {
+  const recordTmdbId = getValidTmdbEntityId(card.record?.tmdbId ?? card.record?.id);
+  if (recordTmdbId) {
+    return recordTmdbId;
+  }
+
+  const keyMatch = card.key.match(/^person:(\d+)$/);
+  return keyMatch ? getValidTmdbEntityId(keyMatch[1]) : null;
+}
+
 function getPathNodeFromCard(card: CinenerdleCard): CinenerdlePathNode {
   if (card.kind === "cinenerdle") {
     return createPathNode("cinenerdle", "cinenerdle");
@@ -154,7 +166,7 @@ function getPathNodeFromCard(card: CinenerdleCard): CinenerdlePathNode {
     "person",
     card.name,
     "",
-    getValidTmdbEntityId(card.record?.tmdbId ?? card.record?.id),
+    getPersonTmdbIdFromCard(card),
   );
 }
 
@@ -166,6 +178,36 @@ async function getLocalPersonRecord(
     (personTmdbId ? await getPersonRecordById(personTmdbId) : null) ??
     (personName ? await getPersonRecordByName(personName) : null)
   );
+}
+
+async function resolvePersonPathNodeFromMovieContext(
+  pathNode: Extract<CinenerdlePathNode, { kind: "person" }>,
+  movieCard: Extract<CinenerdleCard, { kind: "movie" }> | null,
+): Promise<Extract<CinenerdlePathNode, { kind: "person" }>> {
+  if (!movieCard) {
+    return pathNode;
+  }
+
+  const movieRecord =
+    movieCard.record ?? (await getFilmRecordByTitleAndYear(movieCard.name, movieCard.year));
+  if (!movieRecord) {
+    return pathNode;
+  }
+
+  const matchingCredits = getAssociatedPeopleFromMovieCredits(movieRecord).filter(
+    (credit) => normalizeName(credit.name ?? "") === normalizeName(pathNode.name),
+  );
+  const matchingCreditIds = matchingCredits
+    .map((credit) => getValidTmdbEntityId(credit.id))
+    .filter((creditId): creditId is number => Boolean(creditId));
+  const resolvedTmdbId = matchingCreditIds[0] ?? null;
+  const shouldOverrideTmdbId =
+    Boolean(resolvedTmdbId) &&
+    (!pathNode.tmdbId || !matchingCreditIds.includes(pathNode.tmdbId));
+
+  return shouldOverrideTmdbId
+    ? createPathNode("person", pathNode.name, "", resolvedTmdbId)
+    : pathNode;
 }
 
 async function createDailyStarterRow() {
@@ -232,10 +274,23 @@ async function hydrateMissingSelectedPathItemsAndRedraw(
       pathNode.kind === "movie" || pathNode.kind === "person",
   );
 
-  for (const pathNode of selectedPathNodes) {
+  for (const [pathNodeIndex, originalPathNode] of selectedPathNodes.entries()) {
     if (readHash() !== initialHash) {
       return;
     }
+
+    const previousPathNode = selectedPathNodes[pathNodeIndex - 1] ?? null;
+    const movieContextCard: Extract<CinenerdleCard, { kind: "movie" }> | null =
+      previousPathNode && previousPathNode.kind === "movie"
+        ? (createUncachedMovieCard(previousPathNode.name, previousPathNode.year) as Extract<
+            CinenerdleCard,
+            { kind: "movie" }
+          >)
+        : null;
+    const pathNode: Extract<CinenerdlePathNode, { kind: "movie" | "person" }> =
+      originalPathNode.kind === "person"
+        ? await resolvePersonPathNodeFromMovieContext(originalPathNode, movieContextCard)
+        : originalPathNode;
 
     if (pathNode.kind === "person") {
       const existingPersonRecord = await getLocalPersonRecord(pathNode.name, pathNode.tmdbId);
@@ -501,7 +556,7 @@ async function buildTreeFromHash(
   }
 
   let tree = rootTree;
-  for (const pathNode of continuationPathNodes.filter(
+  for (const originalPathNode of continuationPathNodes.filter(
     (node): node is Extract<CinenerdlePathNode, { kind: "movie" | "person" }> =>
       node.kind === "movie" || node.kind === "person",
   )) {
@@ -513,6 +568,13 @@ async function buildTreeFromHash(
     if (!lastRow) {
       break;
     }
+
+    const parentSelectedCard =
+      tree.length >= 2 ? getSelectedCard(tree, tree.length - 2) : getSelectedCard(tree, 0);
+    const pathNode =
+      originalPathNode.kind === "person" && parentSelectedCard?.kind === "movie"
+        ? await resolvePersonPathNodeFromMovieContext(originalPathNode, parentSelectedCard)
+        : originalPathNode;
 
     let nextRow = lastRow;
     let selectedIndex = findCardIndex(lastRow, pathNode);
@@ -957,10 +1019,10 @@ export function useCinenerdleController({
             const preparedCard =
               selectedCard.kind === "person"
                 ? (() => {
-                    const personRecord = selectedCard.record;
+                    const personTmdbId = getPersonTmdbIdFromCard(selectedCard);
                     return prepareSelectedPerson(
                       selectedCard.name,
-                      personRecord?.id ?? null,
+                      personTmdbId,
                     ).then((nextRecord) =>
                       nextRecord
                         ? createPersonRootCard(nextRecord, selectedCard.name)

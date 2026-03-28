@@ -49,6 +49,7 @@ export type ConnectionTarget =
   | {
       kind: "person";
       name: string;
+      tmdbId: number | null;
     }
   | {
       kind: "movie";
@@ -212,15 +213,20 @@ export async function hydrateCinenerdleDailyStarterMovies(
 export async function fetchAndCachePerson(
   personName: string,
   reason: "fetch" | "prefetch" = "fetch",
+  preferredPersonId?: number | null,
 ): Promise<PersonRecord | null> {
-  const searchPayload = await fetchTmdbSearch<TmdbPersonSearchResult>(
-    "search/person",
-    personName,
-  );
-  const person =
-    searchPayload.results?.find(
-      (result) => normalizeName(result.name ?? "") === normalizeName(personName),
-    ) ?? searchPayload.results?.[0];
+  const validPreferredPersonId = getValidTmdbEntityId(preferredPersonId);
+  const searchPayload = validPreferredPersonId
+    ? { results: undefined }
+    : await fetchTmdbSearch<TmdbPersonSearchResult>(
+        "search/person",
+        personName,
+      );
+  const person = validPreferredPersonId
+    ? await fetchTmdbCredits<TmdbPersonSearchResult>(`person/${validPreferredPersonId}`)
+    : (searchPayload.results?.find(
+        (result) => normalizeName(result.name ?? "") === normalizeName(personName),
+      ) ?? searchPayload.results?.[0]);
 
   if (!person) {
     return null;
@@ -447,7 +453,8 @@ export async function prepareSelectedPerson(
     return localPersonRecord;
   }
 
-  return fetchAndCachePerson(personName, "fetch");
+  const fetchedPersonRecord = await fetchAndCachePerson(personName, "fetch", personId ?? null);
+  return fetchedPersonRecord;
 }
 
 export async function prepareSelectedMovie(
@@ -525,6 +532,7 @@ function pickBestConnectionTarget(
       ? {
           kind: "person",
           name: personRecord.name,
+          tmdbId: getValidTmdbEntityId(personRecord.tmdbId ?? personRecord.id),
         }
       : {
           kind: "movie",
@@ -545,6 +553,7 @@ function pickBestConnectionTarget(
     return {
       kind: "person",
       name: personRecord.name,
+      tmdbId: getValidTmdbEntityId(personRecord.tmdbId ?? personRecord.id),
     };
   }
 
@@ -553,6 +562,7 @@ function pickBestConnectionTarget(
       ? {
           kind: "person",
           name: personRecord.name,
+          tmdbId: getValidTmdbEntityId(personRecord.tmdbId ?? personRecord.id),
         }
       : {
           kind: "movie",
@@ -573,6 +583,7 @@ function pickBestConnectionTarget(
     return {
       kind: "person",
       name: personRecord.name,
+      tmdbId: getValidTmdbEntityId(personRecord.tmdbId ?? personRecord.id),
     };
   }
 
@@ -664,6 +675,7 @@ export async function resolveConnectionQuery(
       return {
         kind: "person",
         name: personEntity.name,
+        tmdbId: personEntity.tmdbId,
       };
     }
   }

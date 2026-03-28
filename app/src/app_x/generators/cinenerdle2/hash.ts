@@ -84,13 +84,8 @@ function serializeHashSegment(segment: string): string {
   );
 }
 
-function serializePersonPathLabel(name: string, tmdbId?: number | null): string {
-  const normalizedName = normalizeWhitespace(name);
-  const validTmdbId = getValidTmdbEntityId(tmdbId);
-
-  return validTmdbId
-    ? `${normalizedName}${PERSON_HASH_ID_DELIMITER}${validTmdbId}`
-    : normalizedName;
+function serializePersonPathLabel(name: string): string {
+  return normalizeWhitespace(name);
 }
 
 function parsePersonPathLabel(label: string): {
@@ -128,7 +123,7 @@ export function serializePathNodes(pathNodes: CinenerdlePathNode[]): string {
       ? ["cinenerdle"]
       : rootNode.kind === "movie"
         ? ["film", formatMoviePathLabel(rootNode.name, rootNode.year)]
-        : ["person", serializePersonPathLabel(rootNode.name, rootNode.tmdbId)];
+        : ["person", serializePersonPathLabel(rootNode.name)];
 
   remainingNodes.forEach((pathNode) => {
     if (pathNode.kind === "break") {
@@ -142,7 +137,7 @@ export function serializePathNodes(pathNodes: CinenerdlePathNode[]): string {
     }
 
     if (pathNode.kind === "person") {
-      segments.push(serializePersonPathLabel(pathNode.name, pathNode.tmdbId));
+      segments.push(serializePersonPathLabel(pathNode.name));
     }
   });
 

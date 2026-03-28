@@ -282,8 +282,7 @@ export async function hydrateConnectionEntityFromSearchRecord(
 
     if (parsedPerson.tmdbId) {
       const fallbackLabel = createReadableFallbackLabel(searchRecord.nameLower || `person ${parsedPerson.tmdbId}`);
-
-      return {
+      const entity: ConnectionEntity = {
         key: searchRecord.key,
         kind: "person",
         name: fallbackLabel,
@@ -293,6 +292,8 @@ export async function hydrateConnectionEntityFromSearchRecord(
         connectionCount: 1,
         hasCachedTmdbSource: false,
       };
+
+      return entity;
     }
 
     const matchingFilms = await getFilmRecordsByPersonConnectionKey(searchRecord.nameLower);
