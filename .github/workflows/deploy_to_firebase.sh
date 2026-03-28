@@ -30,7 +30,7 @@ cat <<EOF > firebase.json
 {
     "hosting": {
         "public": "dist",
-        "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+        "ignore": ["firebase.json", "**/.*", "**/node_modules/**", "src/app_x/generators/cinenerdle2/__tests__/dump.json"],
         "rewrites": [{
             "source": "**",
             "destination": "/index.html"
