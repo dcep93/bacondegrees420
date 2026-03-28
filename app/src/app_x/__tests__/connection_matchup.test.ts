@@ -1,14 +1,8 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-
-type IndexedDbSnapshot = {
-  people: Array<Record<string, unknown>>;
-  films: Array<Record<string, unknown>>;
-  searchableConnectionEntities: Array<Record<string, unknown>>;
-};
-
-const dumpPath = new URL("../generators/cinenerdle2/__tests__/dump.json", import.meta.url);
-const dump = JSON.parse(readFileSync(dumpPath, "utf8")) as IndexedDbSnapshot;
+import {
+  makeFilmRecord,
+  makePersonRecord,
+} from "../generators/cinenerdle2/__tests__/factories";
 
 function normalizeWhitespace(value: string): string {
   return value.trim().replace(/\s+/g, " ");
@@ -38,20 +32,72 @@ import { resolveConnectionMatchupPreview } from "../index";
 
 describe("resolveConnectionMatchupPreview", () => {
   it("suggests a spoiler connected to the youngest selected movie", async () => {
+    const theAmazingSpiderMan = makeFilmRecord({
+      id: "the-amazing-spider-man-2012",
+      tmdbId: 1930,
+      title: "The Amazing Spider-Man",
+      year: "2012",
+      popularity: 28.6,
+      personConnectionKeys: ["andrew garfield", "emma stone", "irrfan khan"],
+      starterPeopleByRole: {
+        cast: ["Andrew Garfield", "Emma Stone", "Irrfan Khan"],
+        directors: [],
+        writers: [],
+        composers: [],
+      },
+    });
+    const theAmazingSpiderMan2 = makeFilmRecord({
+      id: "the-amazing-spider-man-2-2014",
+      tmdbId: 102382,
+      title: "The Amazing Spider-Man 2",
+      year: "2014",
+      popularity: 22.4,
+      personConnectionKeys: ["andrew garfield", "emma stone"],
+      starterPeopleByRole: {
+        cast: ["Andrew Garfield", "Emma Stone"],
+        directors: [],
+        writers: [],
+        composers: [],
+      },
+    });
+    const people = [
+      makePersonRecord({
+        id: 37625,
+        tmdbId: 37625,
+        name: "Andrew Garfield",
+        movieConnectionKeys: ["the amazing spider-man (2012)", "the amazing spider-man 2 (2014)"],
+        rawTmdbPerson: { id: 37625, name: "Andrew Garfield", popularity: 88 },
+      }),
+      makePersonRecord({
+        id: 54693,
+        tmdbId: 54693,
+        name: "Emma Stone",
+        movieConnectionKeys: ["the amazing spider-man (2012)", "the amazing spider-man 2 (2014)"],
+        rawTmdbPerson: { id: 54693, name: "Emma Stone", popularity: 82 },
+      }),
+      makePersonRecord({
+        id: 86002,
+        tmdbId: 86002,
+        name: "Irrfan Khan",
+        movieConnectionKeys: ["the amazing spider-man (2012)"],
+        rawTmdbPerson: { id: 86002, name: "Irrfan Khan", popularity: 61 },
+      }),
+    ];
+
     indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (title: string, year: string) =>
-      dump.films.find(
+      [theAmazingSpiderMan, theAmazingSpiderMan2].find(
         (film) => film.title === title && film.year === year,
       ) ?? null,
     );
     indexedDbMock.getFilmRecordsByPersonConnectionKey.mockImplementation(async (personName: string) =>
-      dump.films.filter((film) =>
+      [theAmazingSpiderMan, theAmazingSpiderMan2].filter((film) =>
         Array.isArray(film.personConnectionKeys) &&
         film.personConnectionKeys.some(
           (candidate) => typeof candidate === "string" && normalizeName(candidate) === normalizeName(personName),
         ),
       ),
     );
-    indexedDbMock.getAllPersonRecords.mockResolvedValue(dump.people);
+    indexedDbMock.getAllPersonRecords.mockResolvedValue(people);
 
     const preview = await resolveConnectionMatchupPreview({
       key: "movie:the amazing spider-man:2012",
@@ -79,6 +125,8 @@ describe("resolveConnectionMatchupPreview", () => {
   });
 
   it("prefers starter display casing over normalized connection keys in counterpart tooltips", async () => {
+    // Keep matchup fixtures local to the test. Do not import dump.json here:
+    // that file is only for manual debugging and should never be test data.
     const projectHailMary = {
       id: "project-hail-mary-2026",
       tmdbId: null,
