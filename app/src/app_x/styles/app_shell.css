@@ -287,8 +287,8 @@
 }
 
 .bacon-connection-node {
-  width: 192px;
-  min-width: 192px;
+  width: 134px;
+  min-width: 134px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -482,7 +482,7 @@
   }
 
   .bacon-connection-node {
-    width: 172px;
-    min-width: 172px;
+    width: 120px;
+    min-width: 120px;
   }
 }
