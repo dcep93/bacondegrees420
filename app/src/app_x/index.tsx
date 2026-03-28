@@ -794,7 +794,7 @@ export default function AppX() {
         </button>
         <div className="bacon-connection-node-meta">
           <span className="bacon-connection-node-count">
-            {entity.connectionCount} {entity.connectionCount === 1 ? "connection" : "connections"}
+            {entity.connectionCount}
           </span>
           <img
             alt={entity.kind === "cinenerdle" ? "Cinenerdle" : "TMDb"}
