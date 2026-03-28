@@ -1212,8 +1212,6 @@ export default function AppX() {
       };
     }
 
-    setConnectionMatchupPreview(null);
-
     void resolveConnectionMatchupPreview(youngestSelectedCard)
       .then((nextPreview) => {
         if (cancelled) {
