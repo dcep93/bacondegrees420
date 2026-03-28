@@ -11,6 +11,7 @@ import {
   createRootDatabaseInfoCard,
 } from "../cards";
 import { CINENERDLE_ICON_URL, TMDB_ICON_URL, TMDB_POSTER_BASE_URL } from "../constants";
+import type { DbInfoCard } from "../view_types";
 import { getMovieCardKey, getPersonCardKey } from "../utils";
 import {
   makeFilmRecord,
@@ -23,7 +24,7 @@ import {
 } from "./factories";
 
 function getSummaryItemValue(
-  card: ReturnType<typeof createRootDatabaseInfoCard>,
+  card: DbInfoCard,
   label: string,
 ) {
   return card.summaryItems.find((item) => item.label === label)?.value;
@@ -206,7 +207,7 @@ describe("database info cards", () => {
         year: "1995",
       },
       null,
-    );
+    ) as DbInfoCard;
 
     expect(card.kind).toBe("dbinfo");
     expect(card.subtitle).toBe("Heat (1995)");
@@ -248,7 +249,7 @@ describe("database info cards", () => {
         ...personRecord,
         name: "Kenneth Collard",
       },
-    );
+    ) as DbInfoCard;
 
     expect(card.subtitle).toBe("Kenneth Collard");
     expect(card.subtitleDetail).toBe("IndexedDB record");

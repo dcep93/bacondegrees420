@@ -18,13 +18,13 @@ describe("createPathNode", () => {
   });
 
   it("normalizes person tmdb ids while keeping the original name", () => {
-    expect(createPathNode("person", "Kenneth Collard", "", "123")).toEqual({
+    expect(createPathNode("person", "Kenneth Collard", "", 123)).toEqual({
       kind: "person",
       name: "Kenneth Collard",
       year: "",
       tmdbId: 123,
     });
-    expect(createPathNode("person", "Kenneth Collard", "", "not-a-number")).toEqual({
+    expect(createPathNode("person", "Kenneth Collard", "", Number.NaN)).toEqual({
       kind: "person",
       name: "Kenneth Collard",
       year: "",
