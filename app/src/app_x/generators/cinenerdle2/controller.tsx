@@ -542,6 +542,7 @@ async function buildChildRowForMovieCard(
             : personName
               ? await getPersonRecordByName(personName)
               : null;
+
         return [
           getPersonIdentityKey(personName, credit.id),
           {

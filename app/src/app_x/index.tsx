@@ -24,6 +24,7 @@ import {
 import { BookmarkPreviewCardView } from "./components/bookmark_preview_card";
 import Cinenerdle2 from "./generators/cinenerdle2";
 import { buildBookmarkPreviewCardsFromHash } from "./generators/cinenerdle2/controller";
+import { copyCinenerdleDebugLogToClipboard } from "./generators/cinenerdle2/debug";
 import {
   createCinenerdleConnectionEntity,
   createFallbackConnectionEntity,
@@ -64,6 +65,7 @@ import {
   getMovieKeyFromCredit,
   getMoviePosterUrl,
   getPersonProfileImageUrl,
+  getSnapshotConnectionLabels,
   getTmdbMovieCredits,
   getValidTmdbEntityId,
   normalizeName,
@@ -475,6 +477,14 @@ function getMovieConnectedPersonLabels(movieRecord: FilmRecord): Map<string, str
     const normalizedPersonName = normalizeName(personName);
     const trimmedPersonName = normalizeWhitespace(personName);
     if (normalizedPersonName && trimmedPersonName && !labelsByName.has(normalizedPersonName)) {
+      labelsByName.set(normalizedPersonName, trimmedPersonName);
+    }
+  });
+
+  getSnapshotConnectionLabels(movieRecord).forEach((personName) => {
+    const normalizedPersonName = normalizeName(personName);
+    const trimmedPersonName = normalizeWhitespace(personName);
+    if (normalizedPersonName && trimmedPersonName) {
       labelsByName.set(normalizedPersonName, trimmedPersonName);
     }
   });
@@ -1479,6 +1489,29 @@ export default function AppX() {
       });
   }
 
+  function handleCopyDebugLog() {
+    void copyCinenerdleDebugLogToClipboard()
+      .then((entryCount) => {
+        setCopyStatus(`Debug log copied (${entryCount})`);
+      })
+      .catch((error: unknown) => {
+        setCopyStatus(
+          error instanceof Error && error.message
+            ? error.message
+            : "Debug copy failed",
+        );
+      });
+  }
+
+  function handleTitleKeyDown(event: KeyboardEvent<HTMLHeadingElement>) {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    event.preventDefault();
+    handleCopyDebugLog();
+  }
+
   const handleHashWrite = useCallback(
     (nextHash: string, mode: "selection" | "navigation") => {
       const normalizedHash = normalizeHashValue(nextHash);
@@ -2053,6 +2086,11 @@ export default function AppX() {
         </button>
         <h1
           className="bacon-title"
+          onClick={handleCopyDebugLog}
+          onKeyDown={handleTitleKeyDown}
+          role="button"
+          tabIndex={0}
+          title="Copy Cinenerdle debug log"
         >
           BaconDegrees420
         </h1>
