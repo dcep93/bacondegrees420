@@ -76,6 +76,7 @@ type SelectedPathTarget =
     kind: "person";
     name: string;
     year: "";
+    tmdbId: number | null;
   }
   | null;
 
@@ -145,6 +146,7 @@ function getHighestGenerationSelectedTarget(hashValue: string): SelectedPathTarg
     kind: "person",
     name: selectedPathNode.name,
     year: "",
+    tmdbId: selectedPathNode.tmdbId,
   };
 }
 
@@ -206,7 +208,7 @@ function createPathNodeFromConnectionEntity(entity: ConnectionEntity) {
     return createPathNode("movie", entity.name, entity.year);
   }
 
-  return createPathNode("person", entity.name);
+  return createPathNode("person", entity.name, "", entity.tmdbId);
 }
 
 function serializeConnectionEntityHash(entity: ConnectionEntity): string {
@@ -372,7 +374,7 @@ export default function AppX() {
         })
         .slice(0, 24);
 
-      const nextSuggestions = (await Promise.all(
+      const nextSuggestions = Array.from(new Map((await Promise.all(
         candidateRecords.map(async ({ record, sortScore }) => {
           const entity = await hydrateConnectionEntityFromSearchRecord(record);
           return {
@@ -384,6 +386,8 @@ export default function AppX() {
           };
         }),
       ))
+        .map((entity) => [entity.key, entity] as const))
+        .values())
         .sort((left, right) => {
           if (right.sortScore !== left.sortScore) {
             return right.sortScore - left.sortScore;

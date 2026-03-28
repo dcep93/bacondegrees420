@@ -19,6 +19,7 @@ import {
   getFilmRecordByTitleAndYear,
   getFilmRecordsByIds,
   getFilmRecordsByPersonConnectionKey,
+  getPersonRecordById,
   getPersonRecordByName,
   getPersonRecordsByMovieKey,
 } from "./indexed_db";
@@ -34,10 +35,12 @@ import {
   getMovieKeyFromCredit,
   getSnapshotPeopleByRole,
   getUniqueSortedTmdbMovieCredits,
+  getValidTmdbEntityId,
   isAllowedBfsTmdbMovieCredit,
   normalizeName,
   normalizeTitle,
 } from "./utils";
+import type { PersonRecord } from "./types";
 import type { CinenerdleCard, CinenerdleCardViewModel, CinenerdlePathNode } from "./view_types";
 import { clearCinenerdleDebugLog } from "./debug";
 
@@ -70,6 +73,11 @@ function createNode(data: CinenerdleCard, selected = false): GeneratorNode<Cinen
     selected,
     data,
   };
+}
+
+function getPersonIdentityKey(personName: string, personTmdbId?: number | string | null): string {
+  const validTmdbId = getValidTmdbEntityId(personTmdbId);
+  return validTmdbId ? `tmdb:${validTmdbId}` : `name:${normalizeName(personName)}`;
 }
 
 function createRow(cards: CinenerdleCard[], selectedKey?: string) {
@@ -142,7 +150,22 @@ function getPathNodeFromCard(card: CinenerdleCard): CinenerdlePathNode {
     return createPathNode("movie", card.name, card.year);
   }
 
-  return createPathNode("person", card.name);
+  return createPathNode(
+    "person",
+    card.name,
+    "",
+    getValidTmdbEntityId(card.record?.tmdbId ?? card.record?.id),
+  );
+}
+
+async function getLocalPersonRecord(
+  personName: string,
+  personTmdbId?: number | null,
+): Promise<PersonRecord | null> {
+  return (
+    (personTmdbId ? await getPersonRecordById(personTmdbId) : null) ??
+    (personName ? await getPersonRecordByName(personName) : null)
+  );
 }
 
 async function createDailyStarterRow() {
@@ -215,12 +238,12 @@ async function hydrateMissingSelectedPathItemsAndRedraw(
     }
 
     if (pathNode.kind === "person") {
-      const existingPersonRecord = await getPersonRecordByName(pathNode.name);
+      const existingPersonRecord = await getLocalPersonRecord(pathNode.name, pathNode.tmdbId);
       if (existingPersonRecord) {
         continue;
       }
 
-      const fetchedPersonRecord = await prepareSelectedPerson(pathNode.name);
+      const fetchedPersonRecord = await prepareSelectedPerson(pathNode.name, pathNode.tmdbId);
       if (!fetchedPersonRecord) {
         continue;
       }
@@ -253,8 +276,7 @@ async function buildChildRowForCard(
   }
 
   if (card.kind === "person") {
-    const personRecord =
-      card.record ?? (await getPersonRecordByName(card.name));
+    const personRecord = card.record ?? (await getLocalPersonRecord(card.name));
     if (!personRecord) {
       return null;
     }
@@ -305,9 +327,11 @@ async function buildChildRowForCard(
       tmdbCredits.map(async (credit) => {
         const personName = credit.name ?? "";
         const matchingFilms = await getFilmRecordsByPersonConnectionKey(personName);
-        const cachedPersonRecord = await getPersonRecordByName(personName);
+        const cachedPersonRecord =
+          (credit.id ? await getPersonRecordById(credit.id) : null) ??
+          (personName ? await getPersonRecordByName(personName) : null);
         return [
-          normalizeName(personName),
+          getPersonIdentityKey(personName, credit.id),
           {
             connectionCount: Math.max(matchingFilms.length, 1),
             personRecord: cachedPersonRecord,
@@ -320,8 +344,8 @@ async function buildChildRowForCard(
   const cards = tmdbCredits.map((credit) =>
     createPersonAssociationCard(
       credit,
-      personDetails.get(normalizeName(credit.name ?? ""))?.connectionCount ?? 1,
-      personDetails.get(normalizeName(credit.name ?? ""))?.personRecord ?? null,
+      personDetails.get(getPersonIdentityKey(credit.name ?? "", credit.id))?.connectionCount ?? 1,
+      personDetails.get(getPersonIdentityKey(credit.name ?? "", credit.id))?.personRecord ?? null,
     ),
   );
   const seenPeople = new Set(cards.map((personCard) => normalizeName(personCard.name)));
@@ -369,7 +393,7 @@ async function createRootTreeFromPathNode(
   }
 
   if (pathNode.kind === "person") {
-    const personRecord = await getPersonRecordByName(pathNode.name);
+    const personRecord = await getLocalPersonRecord(pathNode.name, pathNode.tmdbId);
     const rootCard = personRecord
       ? createPersonRootCard(personRecord, pathNode.name)
       : createCinenerdleOnlyPersonCard(pathNode.name, "database only");
@@ -401,7 +425,7 @@ async function createDisconnectedRow(
   pathNode: Extract<CinenerdlePathNode, { kind: "movie" | "person" }>,
 ): Promise<GeneratorNode<CinenerdleCard>[] | null> {
   if (pathNode.kind === "person") {
-    const personRecord = await getPersonRecordByName(pathNode.name);
+    const personRecord = await getLocalPersonRecord(pathNode.name, pathNode.tmdbId);
     const personCard = personRecord
       ? createPersonRootCard(personRecord, pathNode.name)
       : createCinenerdleOnlyPersonCard(pathNode.name, "database only");
@@ -431,6 +455,16 @@ function findCardIndex(
         normalizeTitle(node.data.name) === normalizeTitle(pathNode.name) &&
         node.data.year === pathNode.year
       );
+    }
+
+    if (pathNode.kind === "person" && node.data.kind === "person") {
+      const nodePersonTmdbId = getValidTmdbEntityId(
+        node.data.record?.tmdbId ?? node.data.record?.id,
+      );
+
+      if (pathNode.tmdbId && nodePersonTmdbId) {
+        return nodePersonTmdbId === pathNode.tmdbId;
+      }
     }
 
     return normalizeName(node.data.name) === normalizeName(pathNode.name);

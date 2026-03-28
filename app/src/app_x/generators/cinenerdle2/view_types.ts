@@ -25,6 +25,7 @@ export type CinenerdlePathNode =
       kind: "person";
       name: string;
       year: "";
+      tmdbId: number | null;
     }
   | {
       kind: "movie";

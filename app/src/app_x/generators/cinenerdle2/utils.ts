@@ -184,7 +184,7 @@ export function getAssociatedPeopleFromMovieCredits(
 ): TmdbPersonCredit[] {
   const credits: TmdbMovieCreditsResponse =
     movieRecord?.rawTmdbMovieCreditsResponse ?? {};
-  const seenNames = new Set<string>();
+  const seenPeople = new Set<string>();
   const candidates = [
     ...(credits.cast ?? []).map((credit) => ({
       ...credit,
@@ -201,11 +201,15 @@ export function getAssociatedPeopleFromMovieCredits(
   return candidates
     .filter((credit) => {
       const normalizedName = normalizeName(credit.name ?? "");
-      if (!normalizedName || seenNames.has(normalizedName)) {
+      const personIdentity = credit.id
+        ? `tmdb:${credit.id}`
+        : `name:${normalizedName}`;
+
+      if (!normalizedName || seenPeople.has(personIdentity)) {
         return false;
       }
 
-      seenNames.add(normalizedName);
+      seenPeople.add(personIdentity);
       return true;
     })
     .sort((left, right) => (right.popularity ?? 0) - (left.popularity ?? 0));

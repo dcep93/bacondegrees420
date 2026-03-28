@@ -13,6 +13,7 @@ import type {
 } from "./types";
 import {
   formatMoviePathLabel,
+  getValidTmdbEntityId,
   getAssociatedPeopleFromMovieCredits,
   getFilmKey,
   getMovieTitleFromCredit,
@@ -54,8 +55,12 @@ function getConnectionMovieEntityKey(title: string, year = ""): string {
   return `movie:${normalizeTitle(title)}:${year.trim()}`;
 }
 
-function getConnectionPersonEntityKey(name: string): string {
-  return `person:${normalizeName(name)}`;
+function getConnectionPersonEntityKey(
+  name: string,
+  tmdbId?: number | string | null,
+): string {
+  const validTmdbId = getValidTmdbEntityId(tmdbId);
+  return `person:${validTmdbId ?? normalizeName(name)}`;
 }
 
 function createSearchableConnectionEntityRecord(
@@ -81,11 +86,14 @@ function getMovieSearchableNameLower(title: string, year = ""): string {
   return normalizeTitle(formatMoviePathLabel(title, year));
 }
 
-function createPersonSearchRecord(personName: string): SearchableConnectionEntityRecord | null {
+function createPersonSearchRecord(
+  personName: string,
+  personTmdbId?: number | string | null,
+): SearchableConnectionEntityRecord | null {
   const normalizedName = normalizeName(personName);
   return createSearchableConnectionEntityRecord(
     "person",
-    getConnectionPersonEntityKey(normalizedName),
+    getConnectionPersonEntityKey(normalizedName, personTmdbId),
     normalizedName,
   );
 }
@@ -108,7 +116,10 @@ function collectSearchableConnectionEntitiesFromPersonRecord(
 ): SearchableConnectionEntityRecord[] {
   const recordsByKey = new Map<string, SearchableConnectionEntityRecord>();
 
-  const personRecordEntry = createPersonSearchRecord(personRecord.name);
+  const personRecordEntry = createPersonSearchRecord(
+    personRecord.name,
+    personRecord.tmdbId ?? personRecord.id,
+  );
   if (personRecordEntry) {
     recordsByKey.set(personRecordEntry.key, personRecordEntry);
   }
@@ -132,24 +143,43 @@ function collectSearchableConnectionEntitiesFromFilmRecord(
   filmRecord: FilmRecord,
 ): SearchableConnectionEntityRecord[] {
   const recordsByKey = new Map<string, SearchableConnectionEntityRecord>();
+  const coveredFallbackPersonNames = new Set<string>();
 
   const movieRecord = createMovieSearchRecord(filmRecord.title, filmRecord.year);
   if (movieRecord) {
     recordsByKey.set(movieRecord.key, movieRecord);
   }
 
-  const upsertPersonName = (personName: string) => {
-    const personRecord = createPersonSearchRecord(personName);
+  const upsertPersonName = (
+    personName: string,
+    personTmdbId?: number | string | null,
+  ) => {
+    const personRecord = createPersonSearchRecord(personName, personTmdbId);
     if (personRecord) {
       recordsByKey.set(personRecord.key, personRecord);
+      if (getValidTmdbEntityId(personTmdbId)) {
+        coveredFallbackPersonNames.add(normalizeName(personName));
+      }
     }
   };
 
   getAssociatedPeopleFromMovieCredits(filmRecord).forEach((credit) => {
-    upsertPersonName(credit.name ?? "");
+    upsertPersonName(credit.name ?? "", credit.id);
   });
-  getSnapshotConnectionLabels(filmRecord).forEach(upsertPersonName);
-  filmRecord.personConnectionKeys.forEach(upsertPersonName);
+  getSnapshotConnectionLabels(filmRecord).forEach((personName) => {
+    if (coveredFallbackPersonNames.has(normalizeName(personName))) {
+      return;
+    }
+
+    upsertPersonName(personName);
+  });
+  filmRecord.personConnectionKeys.forEach((personName) => {
+    if (coveredFallbackPersonNames.has(normalizeName(personName))) {
+      return;
+    }
+
+    upsertPersonName(personName);
+  });
 
   return Array.from(recordsByKey.values());
 }
@@ -354,6 +384,11 @@ export async function getPersonRecordsByMovieKey(
 
 export async function savePersonRecord(personRecord: PersonRecord): Promise<void> {
   const searchRecords = collectSearchableConnectionEntitiesFromPersonRecord(personRecord);
+  const canonicalSearchRecord = createPersonSearchRecord(
+    personRecord.name,
+    personRecord.tmdbId ?? personRecord.id,
+  );
+  const legacySearchRecord = createPersonSearchRecord(personRecord.name);
 
   await withStores(
     [PEOPLE_STORE_NAME, SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME],
@@ -366,6 +401,16 @@ export async function savePersonRecord(personRecord: PersonRecord): Promise<void
         stores.get(SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME)!,
         searchRecords,
       );
+
+      if (
+        canonicalSearchRecord &&
+        legacySearchRecord &&
+        canonicalSearchRecord.key !== legacySearchRecord.key
+      ) {
+        await indexedDbRequestToPromise(
+          stores.get(SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME)!.delete(legacySearchRecord.key),
+        );
+      }
     },
   );
 }

@@ -1,5 +1,13 @@
 import type { CinenerdlePathNode } from "./view_types";
-import { formatMoviePathLabel, normalizeTitle, parseMoviePathLabel } from "./utils";
+import {
+  formatMoviePathLabel,
+  getValidTmdbEntityId,
+  normalizeTitle,
+  normalizeWhitespace,
+  parseMoviePathLabel,
+} from "./utils";
+
+const PERSON_HASH_ID_DELIMITER = "~~";
 
 export function createPathNode(
   kind: "cinenerdle",
@@ -10,6 +18,7 @@ export function createPathNode(
   kind: "person",
   name: string,
   year?: string,
+  tmdbId?: number | null,
 ): Extract<CinenerdlePathNode, { kind: "person" }>;
 export function createPathNode(
   kind: "movie",
@@ -25,13 +34,19 @@ export function createPathNode(
   kind: CinenerdlePathNode["kind"],
   name = "",
   year = "",
+  tmdbId?: number | null,
 ): CinenerdlePathNode {
   if (kind === "cinenerdle") {
     return { kind, name: "cinenerdle", year: "" };
   }
 
   if (kind === "person") {
-    return { kind, name, year: "" };
+    return {
+      kind,
+      name,
+      year: "",
+      tmdbId: getValidTmdbEntityId(tmdbId),
+    };
   }
 
   if (kind === "movie") {
@@ -69,6 +84,38 @@ function serializeHashSegment(segment: string): string {
   );
 }
 
+function serializePersonPathLabel(name: string, tmdbId?: number | null): string {
+  const normalizedName = normalizeWhitespace(name);
+  const validTmdbId = getValidTmdbEntityId(tmdbId);
+
+  return validTmdbId
+    ? `${normalizedName}${PERSON_HASH_ID_DELIMITER}${validTmdbId}`
+    : normalizedName;
+}
+
+function parsePersonPathLabel(label: string): {
+  kind: "person";
+  name: string;
+  tmdbId: number | null;
+} {
+  const normalizedLabel = normalizeWhitespace(label);
+  const match = normalizedLabel.match(new RegExp(`^(.*)${PERSON_HASH_ID_DELIMITER}(\\d+)$`));
+
+  if (!match) {
+    return {
+      kind: "person",
+      name: normalizedLabel,
+      tmdbId: null,
+    };
+  }
+
+  return {
+    kind: "person",
+    name: normalizeWhitespace(match[1]),
+    tmdbId: getValidTmdbEntityId(match[2]),
+  };
+}
+
 export function serializePathNodes(pathNodes: CinenerdlePathNode[]): string {
   const [rootNode, ...remainingNodes] = pathNodes;
 
@@ -81,7 +128,7 @@ export function serializePathNodes(pathNodes: CinenerdlePathNode[]): string {
       ? ["cinenerdle"]
       : rootNode.kind === "movie"
         ? ["film", formatMoviePathLabel(rootNode.name, rootNode.year)]
-        : ["person", rootNode.name];
+        : ["person", serializePersonPathLabel(rootNode.name, rootNode.tmdbId)];
 
   remainingNodes.forEach((pathNode) => {
     if (pathNode.kind === "break") {
@@ -94,7 +141,9 @@ export function serializePathNodes(pathNodes: CinenerdlePathNode[]): string {
       return;
     }
 
-    segments.push(pathNode.name);
+    if (pathNode.kind === "person") {
+      segments.push(serializePersonPathLabel(pathNode.name, pathNode.tmdbId));
+    }
   });
 
   return `#${segments.map(serializeHashSegment).join("|")}`;
@@ -130,7 +179,8 @@ export function buildPathNodesFromSegments(segments: string[]): CinenerdlePathNo
         return;
       }
 
-      pathNodes.push(createPathNode("person", segment));
+      const person = parsePersonPathLabel(segment);
+      pathNodes.push(createPathNode("person", person.name, "", person.tmdbId));
       nextKind = "movie";
     });
 
@@ -149,7 +199,12 @@ export function buildPathNodesFromSegments(segments: string[]): CinenerdlePathNo
   const [rootValue, ...continuationSegments] = remainingSegments;
   const rootNode =
     normalizedFirstSegment === "person"
-      ? createPathNode("person", rootValue)
+      ? createPathNode(
+          "person",
+          parsePersonPathLabel(rootValue).name,
+          "",
+          parsePersonPathLabel(rootValue).tmdbId,
+        )
       : createPathNode(
           "movie",
           parseMoviePathLabel(rootValue).name,
@@ -172,7 +227,8 @@ export function buildPathNodesFromSegments(segments: string[]): CinenerdlePathNo
       return;
     }
 
-    pathNodes.push(createPathNode("person", segment));
+    const person = parsePersonPathLabel(segment);
+    pathNodes.push(createPathNode("person", person.name, "", person.tmdbId));
     nextKind = "movie";
   });
 

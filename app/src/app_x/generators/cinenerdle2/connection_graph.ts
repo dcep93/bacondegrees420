@@ -2,6 +2,7 @@ import {
   getCinenerdleStarterFilmRecords,
   getFilmRecordByTitleAndYear,
   getFilmRecordsByPersonConnectionKey,
+  getPersonRecordById,
   getPersonRecordByName,
   getPersonRecordsByMovieKey,
 } from "./indexed_db";
@@ -18,6 +19,7 @@ import {
   getMovieYearFromCredit,
   getSnapshotConnectionLabels,
   getTmdbMovieCredits,
+  getValidTmdbEntityId,
   normalizeName,
   normalizeTitle,
 } from "./utils";
@@ -27,6 +29,7 @@ export type ConnectionEntity = {
   kind: "cinenerdle" | "movie" | "person";
   name: string;
   year: string;
+  tmdbId: number | null;
   label: string;
   connectionCount: number;
   hasCachedTmdbSource: boolean;
@@ -42,8 +45,12 @@ export function getMovieConnectionEntityKey(title: string, year = ""): string {
   return `movie:${normalizeTitle(title)}:${year.trim()}`;
 }
 
-export function getPersonConnectionEntityKey(name: string): string {
-  return `person:${normalizeName(name)}`;
+export function getPersonConnectionEntityKey(
+  name: string,
+  tmdbId?: number | string | null,
+): string {
+  const validTmdbId = getValidTmdbEntityId(tmdbId);
+  return `person:${validTmdbId ?? normalizeName(name)}`;
 }
 
 export function getCinenerdleConnectionEntityKey(): string {
@@ -76,6 +83,7 @@ export function createConnectionEntityFromMovieRecord(movieRecord: FilmRecord): 
     kind: "movie",
     name: movieRecord.title,
     year: movieRecord.year,
+    tmdbId: getValidTmdbEntityId(movieRecord.tmdbId ?? movieRecord.id),
     label: formatMoviePathLabel(movieRecord.title, movieRecord.year),
     connectionCount: Math.max(movieRecord.personConnectionKeys.length, 1),
     hasCachedTmdbSource: hasCachedTmdbSourceForMovieRecord(movieRecord),
@@ -84,10 +92,11 @@ export function createConnectionEntityFromMovieRecord(movieRecord: FilmRecord): 
 
 export function createConnectionEntityFromPersonRecord(personRecord: PersonRecord): ConnectionEntity {
   return {
-    key: getPersonConnectionEntityKey(personRecord.name),
+    key: getPersonConnectionEntityKey(personRecord.name, personRecord.tmdbId ?? personRecord.id),
     kind: "person",
     name: personRecord.name,
     year: "",
+    tmdbId: getValidTmdbEntityId(personRecord.tmdbId ?? personRecord.id),
     label: personRecord.name,
     connectionCount: Math.max(personRecord.movieConnectionKeys.length, 1),
     hasCachedTmdbSource: hasCachedTmdbSourceForPersonRecord(personRecord),
@@ -100,6 +109,7 @@ export function createCinenerdleConnectionEntity(starterCount: number): Connecti
     kind: "cinenerdle",
     name: "cinenerdle",
     year: "",
+    tmdbId: null,
     label: "cinenerdle",
     connectionCount: Math.max(starterCount, 1),
     hasCachedTmdbSource: true,
@@ -111,6 +121,7 @@ export function createFallbackConnectionEntity(
     kind: "cinenerdle" | "movie" | "person";
     name: string;
     year?: string;
+    tmdbId?: number | null;
   },
 ): ConnectionEntity {
   if (item.kind === "cinenerdle") {
@@ -123,6 +134,7 @@ export function createFallbackConnectionEntity(
       kind: "movie",
       name: item.name,
       year: item.year ?? "",
+      tmdbId: null,
       label: formatMoviePathLabel(item.name, item.year ?? ""),
       connectionCount: 0,
       hasCachedTmdbSource: false,
@@ -130,10 +142,11 @@ export function createFallbackConnectionEntity(
   }
 
   return {
-    key: getPersonConnectionEntityKey(item.name),
+    key: getPersonConnectionEntityKey(item.name, item.tmdbId),
     kind: "person",
     name: item.name,
     year: "",
+    tmdbId: getValidTmdbEntityId(item.tmdbId),
     label: item.name,
     connectionCount: 0,
     hasCachedTmdbSource: false,
@@ -157,8 +170,17 @@ function parseMovieConnectionEntityKey(key: string): { name: string; year: strin
   };
 }
 
-function parsePersonConnectionEntityKey(key: string): string {
-  return key.startsWith("person:") ? key.slice("person:".length) : key;
+function parsePersonConnectionEntityKey(key: string): {
+  tmdbId: number | null;
+  nameLower: string;
+} {
+  const rawValue = key.startsWith("person:") ? key.slice("person:".length) : key;
+  const tmdbId = getValidTmdbEntityId(rawValue);
+
+  return {
+    tmdbId,
+    nameLower: tmdbId ? "" : normalizeName(rawValue),
+  };
 }
 
 function getMovieLookupKeyFromConnectionEntityKey(key: string): string {
@@ -179,6 +201,14 @@ function getMovieConnectionEntityKeyFromLookupKey(movieKey: string): string {
 
 function createReadableFallbackLabel(normalizedLabel: string): string {
   return normalizedLabel.replace(/\b[a-z]/g, (character) => character.toUpperCase());
+}
+
+async function getPersonRecordForConnectionEntityKey(entityKey: string): Promise<PersonRecord | null> {
+  const parsedPerson = parsePersonConnectionEntityKey(entityKey);
+
+  return parsedPerson.tmdbId
+    ? getPersonRecordById(parsedPerson.tmdbId)
+    : getPersonRecordByName(parsedPerson.nameLower);
 }
 
 function findOriginalPersonNameInFilms(
@@ -242,9 +272,27 @@ export async function hydrateConnectionEntityFromSearchRecord(
   searchRecord: SearchableConnectionEntityRecord,
 ): Promise<ConnectionEntity> {
   if (searchRecord.type === "person") {
-    const personRecord = await getPersonRecordByName(searchRecord.nameLower);
+    const parsedPerson = parsePersonConnectionEntityKey(searchRecord.key);
+    const personRecord = parsedPerson.tmdbId
+      ? await getPersonRecordById(parsedPerson.tmdbId)
+      : await getPersonRecordByName(searchRecord.nameLower);
     if (personRecord) {
       return createConnectionEntityFromPersonRecord(personRecord);
+    }
+
+    if (parsedPerson.tmdbId) {
+      const fallbackLabel = createReadableFallbackLabel(searchRecord.nameLower || `person ${parsedPerson.tmdbId}`);
+
+      return {
+        key: searchRecord.key,
+        kind: "person",
+        name: fallbackLabel,
+        year: "",
+        tmdbId: parsedPerson.tmdbId,
+        label: fallbackLabel,
+        connectionCount: 1,
+        hasCachedTmdbSource: false,
+      };
     }
 
     const matchingFilms = await getFilmRecordsByPersonConnectionKey(searchRecord.nameLower);
@@ -257,6 +305,7 @@ export async function hydrateConnectionEntityFromSearchRecord(
       kind: "person",
       name: personName,
       year: "",
+      tmdbId: null,
       label: personName,
       connectionCount: Math.max(matchingFilms.length, 1),
       hasCachedTmdbSource: false,
@@ -284,6 +333,7 @@ export async function hydrateConnectionEntityFromSearchRecord(
     kind: "movie",
     name: originalMovie.title,
     year: originalMovie.year,
+    tmdbId: null,
     label: formatMoviePathLabel(originalMovie.title, originalMovie.year),
     connectionCount: Math.max(matchingPeople.length, 1),
     hasCachedTmdbSource: false,
@@ -299,10 +349,11 @@ export async function hydrateConnectionEntityFromKey(key: string): Promise<Conne
   }
 
   if (key.startsWith("person:")) {
+    const parsedPerson = parsePersonConnectionEntityKey(key);
     return hydrateConnectionEntityFromSearchRecord({
       key,
       type: "person",
-      nameLower: parsePersonConnectionEntityKey(key),
+      nameLower: parsedPerson.nameLower,
     });
   }
 
@@ -387,11 +438,11 @@ async function getNeighborKeysForEntityKey(entityKey: string): Promise<string[]>
   }
 
   if (entityKey.startsWith("person:")) {
-    const personNameLower = parsePersonConnectionEntityKey(entityKey);
-    const [personRecord, filmRecords] = await Promise.all([
-      getPersonRecordByName(personNameLower),
-      getFilmRecordsByPersonConnectionKey(personNameLower),
-    ]);
+    const parsedPerson = parsePersonConnectionEntityKey(entityKey);
+    const personRecord = await getPersonRecordForConnectionEntityKey(entityKey);
+    const filmRecords = parsedPerson.tmdbId
+      ? []
+      : await getFilmRecordsByPersonConnectionKey(parsedPerson.nameLower);
     const movieKeys = new Set<string>();
     const popularityByKey = new Map<string, number>();
     const moviePopularityByLookupKey = new Map<string, number>();
@@ -437,12 +488,18 @@ async function getNeighborKeysForEntityKey(entityKey: string): Promise<string[]>
   const personKeys = new Set<string>();
   const popularityByKey = new Map<string, number>();
   const personPopularityByKey = new Map<string, number>();
+  const resolvedPersonNames = new Set<string>();
 
   getAssociatedPeopleFromMovieCredits(filmRecord).forEach((credit) => {
     const personName = normalizeName(credit.name ?? "");
     if (!personName) {
       return;
     }
+
+    const connectionPersonKey = getPersonConnectionEntityKey(credit.name ?? "", credit.id);
+    personKeys.add(connectionPersonKey);
+    resolvedPersonNames.add(personName);
+    setPopularityScore(popularityByKey, connectionPersonKey, credit.popularity ?? 0);
 
     personPopularityByKey.set(
       personName,
@@ -451,6 +508,10 @@ async function getNeighborKeysForEntityKey(entityKey: string): Promise<string[]>
   });
 
   filmRecord?.personConnectionKeys.forEach((personName) => {
+    if (resolvedPersonNames.has(normalizeName(personName))) {
+      return;
+    }
+
     const connectionPersonKey = getPersonConnectionEntityKey(personName);
     personKeys.add(connectionPersonKey);
     setPopularityScore(
@@ -460,8 +521,12 @@ async function getNeighborKeysForEntityKey(entityKey: string): Promise<string[]>
     );
   });
   personRecords.forEach((personRecord) => {
-    const connectionPersonKey = getPersonConnectionEntityKey(personRecord.name);
+    const connectionPersonKey = getPersonConnectionEntityKey(
+      personRecord.name,
+      personRecord.tmdbId ?? personRecord.id,
+    );
     personKeys.add(connectionPersonKey);
+    resolvedPersonNames.add(normalizeName(personRecord.name));
     setPopularityScore(
       popularityByKey,
       connectionPersonKey,
@@ -552,7 +617,7 @@ export async function findConnectionPathBidirectional(
       }
 
       if (entityKey.startsWith("person:")) {
-        const personRecord = await getPersonRecordByName(parsePersonConnectionEntityKey(entityKey));
+        const personRecord = await getPersonRecordForConnectionEntityKey(entityKey);
         return personRecord?.rawTmdbPerson?.popularity ?? 0;
       }
 
