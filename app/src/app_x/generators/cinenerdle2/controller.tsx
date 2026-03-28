@@ -40,7 +40,7 @@ import {
   normalizeName,
   normalizeTitle,
 } from "./utils";
-import type { PersonRecord } from "./types";
+import type { FilmRecord, PersonRecord } from "./types";
 import type { CinenerdleCard, CinenerdleCardViewModel, CinenerdlePathNode } from "./view_types";
 import { clearCinenerdleDebugLog } from "./debug";
 
@@ -110,6 +110,22 @@ function getSelectedCard(tree: GeneratorTree<CinenerdleCard>, rowIndex: number) 
   return tree[rowIndex]?.find((node) => node.selected)?.data ?? null;
 }
 
+function hasMovieCredits(
+  movieRecord: FilmRecord | null | undefined,
+): movieRecord is FilmRecord & {
+  rawTmdbMovieCreditsResponse: NonNullable<FilmRecord["rawTmdbMovieCreditsResponse"]>;
+} {
+  return Boolean(movieRecord?.rawTmdbMovieCreditsResponse);
+}
+
+function hasPersonMovieCredits(
+  personRecord: PersonRecord | null | undefined,
+): personRecord is PersonRecord & {
+  rawTmdbMovieCreditsResponse: NonNullable<PersonRecord["rawTmdbMovieCreditsResponse"]>;
+} {
+  return Boolean(personRecord?.rawTmdbMovieCreditsResponse);
+}
+
 function hasCachedTmdbSource(card: CinenerdleCard) {
   if (card.kind === "movie") {
     return Boolean(
@@ -149,6 +165,30 @@ function getPersonTmdbIdFromCard(
   return keyMatch ? getValidTmdbEntityId(keyMatch[1]) : null;
 }
 
+function getMovieTmdbIdFromCard(
+  card: Extract<CinenerdleCard, { kind: "movie" }>,
+): number | null {
+  const recordTmdbId = getValidTmdbEntityId(card.record?.tmdbId ?? card.record?.id);
+  if (recordTmdbId) {
+    return recordTmdbId;
+  }
+
+  const keyMatch = card.key.match(/^movie:(\d+)$/);
+  return keyMatch ? getValidTmdbEntityId(keyMatch[1]) : null;
+}
+
+function isCardFullyInDb(card: CinenerdleCard): boolean {
+  if (card.kind === "movie") {
+    return hasMovieCredits(card.record);
+  }
+
+  if (card.kind === "person") {
+    return hasPersonMovieCredits(card.record);
+  }
+
+  return true;
+}
+
 function getPathNodeFromCard(card: CinenerdleCard): CinenerdlePathNode {
   if (card.kind === "cinenerdle") {
     return createPathNode("cinenerdle", "cinenerdle");
@@ -177,6 +217,56 @@ async function getLocalPersonRecord(
   return (
     (personTmdbId ? await getPersonRecordById(personTmdbId) : null) ??
     (personName ? await getPersonRecordByName(personName) : null)
+  );
+}
+
+function maybePromoteSelectedPersonCard(
+  card: Extract<CinenerdleCard, { kind: "person" }>,
+  personRecord: PersonRecord | null,
+): CinenerdleCard {
+  if (
+    isCardFullyInDb(card) ||
+    getPersonTmdbIdFromCard(card) ||
+    !getValidTmdbEntityId(personRecord?.tmdbId ?? personRecord?.id)
+  ) {
+    return card;
+  }
+
+  return personRecord ? createPersonRootCard(personRecord, card.name) : card;
+}
+
+function maybePromoteSelectedMovieCard(
+  card: Extract<CinenerdleCard, { kind: "movie" }>,
+  movieRecord: FilmRecord | null,
+): CinenerdleCard {
+  if (
+    isCardFullyInDb(card) ||
+    getMovieTmdbIdFromCard(card) ||
+    !getValidTmdbEntityId(movieRecord?.tmdbId ?? movieRecord?.id)
+  ) {
+    return card;
+  }
+
+  return movieRecord ? createMovieRootCard(movieRecord, card.name) : card;
+}
+
+function replaceCardInTree(
+  tree: GeneratorTree<CinenerdleCard>,
+  row: number,
+  col: number,
+  nextCard: CinenerdleCard,
+): GeneratorTree<CinenerdleCard> {
+  return tree.map((currentRow, currentRowIndex) =>
+    currentRowIndex === row
+      ? currentRow.map((node, currentColIndex) =>
+          currentColIndex === col
+            ? {
+                ...node,
+                data: nextCard,
+              }
+            : node,
+        )
+      : currentRow,
   );
 }
 
@@ -322,56 +412,55 @@ async function hydrateMissingSelectedPathItemsAndRedraw(
   }
 }
 
-async function buildChildRowForCard(
-  card: CinenerdleCard,
+async function buildChildRowForPersonCard(
+  card: Extract<CinenerdleCard, { kind: "person" }>,
+  personRecordOverride?: PersonRecord | null,
 ): Promise<GeneratorNode<CinenerdleCard>[] | null> {
-  if (card.kind === "cinenerdle") {
-    const starterRow = await createDailyStarterRow();
-    return starterRow;
+  const personRecord =
+    personRecordOverride ??
+    card.record ??
+    (await getLocalPersonRecord(card.name, getPersonTmdbIdFromCard(card)));
+  if (!personRecord) {
+    return null;
   }
 
-  if (card.kind === "person") {
-    const personRecord = card.record ?? (await getLocalPersonRecord(card.name));
-    if (!personRecord) {
-      return null;
-    }
+  const movieCredits = getUniqueSortedTmdbMovieCredits(personRecord).filter(
+    isAllowedBfsTmdbMovieCredit,
+  );
+  const filmRecordsById = await getFilmRecordsByIds(
+    movieCredits.map((credit) => credit.id),
+  );
+  const connectionCounts = new Map(
+    await Promise.all(
+      movieCredits.map(async (credit) => {
+        const movieKey = getMovieKeyFromCredit(credit);
+        const matchingPeople = await getPersonRecordsByMovieKey(movieKey);
+        return [movieKey, Math.max(matchingPeople.length, 1)] as const;
+      }),
+    ),
+  );
 
-    const movieCredits = getUniqueSortedTmdbMovieCredits(personRecord).filter(
-      isAllowedBfsTmdbMovieCredit,
-    );
-    const filmRecordsById = await getFilmRecordsByIds(
-      movieCredits.map((credit) => credit.id),
-    );
-    const connectionCounts = new Map(
-      await Promise.all(
-        movieCredits.map(async (credit) => {
-          const movieKey = getMovieKeyFromCredit(credit);
-          const matchingPeople = await getPersonRecordsByMovieKey(movieKey);
-          return [movieKey, Math.max(matchingPeople.length, 1)] as const;
-        }),
-      ),
-    );
-
-    const row = createRow(
-      sortCardsByPopularity(
-        movieCredits.map((credit) =>
+  return createRow(
+    sortCardsByPopularity(
+      movieCredits.map((credit) =>
         createMovieAssociationCard(
           credit,
           (credit.id ? filmRecordsById.get(credit.id) : null) ?? null,
           connectionCounts.get(getMovieKeyFromCredit(credit)) ?? 1,
         ),
-        ),
       ),
-    );
+    ),
+  );
+}
 
-    return row;
-  }
-
-  if (card.kind !== "movie") {
-    return null;
-  }
-
-  const movieRecord = card.record ?? (await getFilmRecordByTitleAndYear(card.name, card.year));
+async function buildChildRowForMovieCard(
+  card: Extract<CinenerdleCard, { kind: "movie" }>,
+  movieRecordOverride?: FilmRecord | null,
+): Promise<GeneratorNode<CinenerdleCard>[] | null> {
+  const movieRecord =
+    movieRecordOverride ??
+    card.record ??
+    (await getFilmRecordByTitleAndYear(card.name, card.year));
   if (!movieRecord) {
     return null;
   }
@@ -422,8 +511,29 @@ async function buildChildRowForCard(
     });
   });
 
-  const row = createRow(sortCardsByPopularity(cards));
-  return row;
+  return createRow(sortCardsByPopularity(cards));
+}
+
+async function buildChildRowForCard(
+  card: CinenerdleCard,
+  options?: {
+    personRecord?: PersonRecord | null;
+    movieRecord?: FilmRecord | null;
+  },
+): Promise<GeneratorNode<CinenerdleCard>[] | null> {
+  if (card.kind === "cinenerdle") {
+    return createDailyStarterRow();
+  }
+
+  if (card.kind === "person") {
+    return buildChildRowForPersonCard(card, options?.personRecord);
+  }
+
+  if (card.kind === "movie") {
+    return buildChildRowForMovieCard(card, options?.movieRecord);
+  }
+
+  return null;
 }
 
 async function createCinenerdleRootTree(): Promise<GeneratorTree<CinenerdleCard>> {
@@ -1016,49 +1126,40 @@ export function useCinenerdleController({
               setTree(tree);
             }
 
-            const preparedCard =
-              selectedCard.kind === "person"
-                ? (() => {
-                    const personTmdbId = getPersonTmdbIdFromCard(selectedCard);
-                    return prepareSelectedPerson(
-                      selectedCard.name,
-                      personTmdbId,
-                    ).then((nextRecord) =>
-                      nextRecord
-                        ? createPersonRootCard(nextRecord, selectedCard.name)
-                        : selectedCard,
-                    );
-                  })()
-                : selectedCard.kind === "movie"
-                  ? (() => {
-                      const movieRecord = selectedCard.record;
-                      return prepareSelectedMovie(
-                        selectedCard.name,
-                        selectedCard.year,
-                        movieRecord?.id ?? null,
-                      ).then((nextRecord) =>
-                        nextRecord
-                          ? createMovieRootCard(nextRecord, selectedCard.name)
-                          : selectedCard,
-                      );
-                    })()
-                  : Promise.resolve(selectedCard);
+            let resolvedSelectedCard = selectedCard;
+            let childRow: GeneratorNode<CinenerdleCard>[] | null = null;
 
-            const resolvedSelectedCard = await preparedCard;
-            const resolvedTree = tree.map((currentRow, currentRowIndex) =>
-              currentRowIndex === row
-                ? currentRow.map((node, currentColIndex) =>
-                    currentColIndex === col
-                      ? {
-                          ...node,
-                          data: resolvedSelectedCard,
-                        }
-                      : node,
-                  )
-                : currentRow,
-            );
+            if (selectedCard.kind === "person") {
+              const personRecord = hasPersonMovieCredits(selectedCard.record)
+                ? selectedCard.record
+                : await prepareSelectedPerson(
+                    selectedCard.name,
+                    getPersonTmdbIdFromCard(selectedCard),
+                  );
+              resolvedSelectedCard = maybePromoteSelectedPersonCard(selectedCard, personRecord);
+              childRow = await buildChildRowForCard(selectedCard, {
+                personRecord,
+              });
+            } else if (selectedCard.kind === "movie") {
+              const movieRecord = hasMovieCredits(selectedCard.record)
+                ? selectedCard.record
+                : await prepareSelectedMovie(
+                    selectedCard.name,
+                    selectedCard.year,
+                    selectedCard.record?.id ?? getMovieTmdbIdFromCard(selectedCard),
+                  );
+              resolvedSelectedCard = maybePromoteSelectedMovieCard(selectedCard, movieRecord);
+              childRow = await buildChildRowForCard(selectedCard, {
+                movieRecord,
+              });
+            } else {
+              childRow = await buildChildRowForCard(selectedCard);
+            }
 
-            const childRow = await buildChildRowForCard(resolvedSelectedCard);
+            const resolvedTree =
+              resolvedSelectedCard === selectedCard
+                ? tree
+                : replaceCardInTree(tree, row, col, resolvedSelectedCard);
             if (!childRow || childRow.length === 0) {
               setTree(resolvedTree);
               writeHash(nextHash, "selection");
