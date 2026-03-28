@@ -59,6 +59,7 @@ export type ConnectionTarget =
 
 let hasPrimedTmdbApiKey = false;
 let dailyStarterMoviesPromise: Promise<FilmRecord[]> | null = null;
+const TMDB_API_KEY_PREFIX = "key:";
 
 function mergeStarterDataIntoFilmRecord(
   filmRecord: FilmRecord,
@@ -78,9 +79,35 @@ function mergeStarterDataIntoFilmRecord(
   });
 }
 
+function encodeTmdbApiKey(apiKey: string): string {
+  return btoa(`${TMDB_API_KEY_PREFIX}${apiKey}`);
+}
+
+function decodeTmdbApiKey(encodedValue: string): string {
+  const trimmedValue = encodedValue.trim();
+  if (!trimmedValue) {
+    return "";
+  }
+
+  if (trimmedValue.startsWith(TMDB_API_KEY_PREFIX)) {
+    return trimmedValue.slice(TMDB_API_KEY_PREFIX.length).trim();
+  }
+
+  try {
+    const decodedValue = atob(trimmedValue).trim();
+    if (decodedValue.startsWith(TMDB_API_KEY_PREFIX)) {
+      return decodedValue.slice(TMDB_API_KEY_PREFIX.length).trim();
+    }
+  } catch {
+    return trimmedValue;
+  }
+
+  return trimmedValue;
+}
+
 function readEnvTmdbApiKey(): string {
   const envValue = import.meta.env.VITE_TMDB_API_KEY;
-  return typeof envValue === "string" ? envValue.trim() : "";
+  return typeof envValue === "string" ? decodeTmdbApiKey(envValue) : "";
 }
 
 export function getTmdbApiKey(): string | null {
@@ -89,18 +116,21 @@ export function getTmdbApiKey(): string | null {
     return envApiKey;
   }
 
-  const localStorageKey =
-    localStorage.getItem(TMDB_API_KEY_STORAGE_KEY)?.trim() ?? "";
+  const localStorageKey = decodeTmdbApiKey(
+    localStorage.getItem(TMDB_API_KEY_STORAGE_KEY) ?? "",
+  );
   if (localStorageKey) {
     return localStorageKey;
   }
 
-  const promptedApiKey = window.prompt("Enter your TMDb API key")?.trim() ?? "";
+  const promptedApiKey = decodeTmdbApiKey(
+    window.prompt("Enter your TMDb API key") ?? "",
+  );
   if (!promptedApiKey) {
     return null;
   }
 
-  localStorage.setItem(TMDB_API_KEY_STORAGE_KEY, promptedApiKey);
+  localStorage.setItem(TMDB_API_KEY_STORAGE_KEY, encodeTmdbApiKey(promptedApiKey));
   return promptedApiKey;
 }
 
