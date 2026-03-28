@@ -1,7 +1,6 @@
 import { useMemo, type CSSProperties, type MouseEvent } from "react";
 import { createBookmarkPreviewCard, type BookmarkPreviewCard } from "../../components/bookmark_preview";
 import type { GeneratorController, GeneratorNode, GeneratorTree } from "../../types/generator";
-import { addCinenerdleDebugLog } from "./debug";
 import {
   createCinenerdleOnlyPersonCard,
   createCinenerdleRootCard,
@@ -90,73 +89,6 @@ function createNode(data: CinenerdleCard, selected = false): GeneratorNode<Cinen
 function getPersonIdentityKey(personName: string, personTmdbId?: number | string | null): string {
   const validTmdbId = getValidTmdbEntityId(personTmdbId);
   return validTmdbId ? `tmdb:${validTmdbId}` : `name:${normalizeName(personName)}`;
-}
-
-function shouldLogProjectHailMaryPersonDebug(
-  movieRecord: FilmRecord | null | undefined,
-  fallbackTitle = "",
-): boolean {
-  const title = movieRecord?.title || fallbackTitle;
-  return normalizeTitle(title) === "project hail mary";
-}
-
-function shouldLogAndyWeirDebug(personName: string | null | undefined): boolean {
-  return normalizeName(personName ?? "") === "andy weir";
-}
-
-function shouldLogProjectHailMaryAndyWeirHash(hashValue: string): boolean {
-  const normalizedHash = normalizeTitle(hashValue);
-  return (
-    normalizedHash.includes("project+hail+mary") &&
-    normalizedHash.includes("andy+weir")
-  );
-}
-
-function summarizePersonRecord(personRecord: PersonRecord | null | undefined) {
-  if (!personRecord) {
-    return null;
-  }
-
-  return {
-    id: personRecord.id,
-    tmdbId: personRecord.tmdbId,
-    name: personRecord.name,
-    hasRawTmdbPerson: Boolean(personRecord.rawTmdbPerson),
-    profilePath: personRecord.rawTmdbPerson?.profile_path ?? null,
-    popularity: personRecord.rawTmdbPerson?.popularity ?? null,
-    hasMovieCredits: Boolean(personRecord.rawTmdbMovieCreditsResponse),
-    savedAt: personRecord.savedAt ?? null,
-  };
-}
-
-function summarizeCard(card: CinenerdleCard | null | undefined) {
-  if (!card) {
-    return null;
-  }
-
-  return {
-    kind: card.kind,
-    key: card.key,
-    name: card.name,
-    year: card.kind === "movie" ? card.year : "",
-    imageUrl: "imageUrl" in card ? card.imageUrl : null,
-    sourceLabels: "sources" in card ? card.sources.map((source) => source.label) : [],
-    record:
-      card.kind === "person"
-        ? summarizePersonRecord(card.record)
-        : card.kind === "movie"
-          ? {
-            id: card.record?.id ?? null,
-            tmdbId: card.record?.tmdbId ?? null,
-            title: card.record?.title ?? null,
-            year: card.record?.year ?? null,
-          }
-          : null,
-  };
-}
-
-function logProjectHailMaryPersonDebug(event: string, details: unknown): void {
-  addCinenerdleDebugLog(`personCase:${event}`, details);
 }
 
 function createRow(cards: CinenerdleCard[], selectedKey?: string) {
@@ -271,19 +203,7 @@ async function getLocalPersonRecord(
 ): Promise<PersonRecord | null> {
   const personRecordById = personTmdbId ? await getPersonRecordById(personTmdbId) : null;
   const personRecordByName = personName ? await getPersonRecordByName(personName) : null;
-  const resolvedPersonRecord = pickBestPersonRecord(personRecordById, personRecordByName);
-
-  if (shouldLogAndyWeirDebug(personName)) {
-    logProjectHailMaryPersonDebug("local_person_record_resolution", {
-      personName,
-      requestedTmdbId: personTmdbId ?? null,
-      personRecordById: summarizePersonRecord(personRecordById),
-      personRecordByName: summarizePersonRecord(personRecordByName),
-      resolvedPersonRecord: summarizePersonRecord(resolvedPersonRecord),
-    });
-  }
-
-  return resolvedPersonRecord;
+  return pickBestPersonRecord(personRecordById, personRecordByName);
 }
 
 function getSelectedEntityPathNodes(hashValue: string): SelectedEntityPathNode[] {
@@ -456,30 +376,9 @@ async function resolvePersonPathNodeFromMovieContext(
   const shouldOverrideTmdbId =
     Boolean(resolvedTmdbId) &&
     (!pathNode.tmdbId || !matchingCreditIds.includes(pathNode.tmdbId));
-  const resolvedPathNode = shouldOverrideTmdbId
+  return shouldOverrideTmdbId
     ? createPathNode("person", pathNode.name, "", resolvedTmdbId)
     : pathNode;
-
-  if (
-    shouldLogProjectHailMaryPersonDebug(movieRecord, movieCard.name) &&
-    shouldLogAndyWeirDebug(pathNode.name)
-  ) {
-    logProjectHailMaryPersonDebug("person_path_from_movie_context", {
-      originalPathNode: pathNode,
-      movieCard: summarizeCard(movieCard),
-      matchingCredits: matchingCredits.map((credit) => ({
-        name: credit.name ?? "",
-        id: credit.id ?? null,
-        profilePath: credit.profile_path ?? null,
-        job: credit.job ?? null,
-        department: credit.department ?? null,
-      })),
-      matchingCreditIds,
-      resolvedPathNode,
-    });
-  }
-
-  return resolvedPathNode;
 }
 
 async function createDailyStarterRow() {
@@ -632,24 +531,7 @@ async function buildChildRowForMovieCard(
     return null;
   }
 
-  const shouldLogPersonCase = shouldLogProjectHailMaryPersonDebug(movieRecord, card.name);
   const tmdbCredits = getAssociatedPeopleFromMovieCredits(movieRecord);
-  if (shouldLogPersonCase) {
-    logProjectHailMaryPersonDebug("movie_row_start", {
-      cardName: card.name,
-      cardYear: card.year,
-      movieRecordTitle: movieRecord.title,
-      movieRecordYear: movieRecord.year,
-      starterPeopleByRole: movieRecord.starterPeopleByRole ?? null,
-      tmdbCreditNames: tmdbCredits.map((credit) => ({
-        name: credit.name ?? "",
-        id: credit.id ?? null,
-        job: credit.job ?? null,
-        department: credit.department ?? null,
-        creditType: credit.creditType ?? null,
-      })),
-    });
-  }
   const personDetails = new Map(
     await Promise.all(
       tmdbCredits.map(async (credit) => {
@@ -659,26 +541,6 @@ async function buildChildRowForMovieCard(
           credit.id ? await getPersonRecordById(credit.id) : null,
           personName ? await getPersonRecordByName(personName) : null,
         );
-
-        if (shouldLogPersonCase && normalizeName(personName) === "andy weir") {
-          logProjectHailMaryPersonDebug("tmdb_credit_resolution", {
-            creditName: personName,
-            creditId: credit.id ?? null,
-            creditProfilePath: credit.profile_path ?? null,
-            personRecordById: summarizePersonRecord(
-              credit.id ? await getPersonRecordById(credit.id) : null,
-            ),
-            personRecordByName: summarizePersonRecord(
-              personName ? await getPersonRecordByName(personName) : null,
-            ),
-            cachedPersonRecordName: cachedPersonRecord?.name ?? null,
-            cachedPersonRecordTmdbId:
-              getValidTmdbEntityId(cachedPersonRecord?.tmdbId ?? cachedPersonRecord?.id),
-            cachedPersonRecordProfilePath:
-              cachedPersonRecord?.rawTmdbPerson?.profile_path ?? null,
-            matchingFilmCount: matchingFilms.length,
-          });
-        }
 
         return [
           getPersonIdentityKey(personName, credit.id),
@@ -727,14 +589,7 @@ async function buildChildRowForMovieCard(
   ).forEach(([role, people]) => {
     people.forEach((personName) => {
       const normalizedPersonName = normalizeName(personName);
-        if (seenPeople.has(normalizedPersonName)) {
-        if (shouldLogPersonCase && normalizedPersonName === "andy weir") {
-          logProjectHailMaryPersonDebug("snapshot_person_skipped", {
-            role,
-            snapshotName: personName,
-            reason: "already_seen",
-          });
-        }
+      if (seenPeople.has(normalizedPersonName)) {
         return;
       }
 
@@ -745,46 +600,8 @@ async function buildChildRowForMovieCard(
       );
       cards.push(snapshotCard);
       seenPeople.add(normalizedPersonName);
-
-      if (shouldLogPersonCase && normalizedPersonName === "andy weir") {
-        logProjectHailMaryPersonDebug("snapshot_person_added", {
-          role,
-          snapshotName: personName,
-          renderedCardName: snapshotCard.name,
-          renderedCardKey: snapshotCard.key,
-          renderedCardImageUrl: snapshotCard.imageUrl,
-          snapshotPersonRecord: summarizePersonRecord(
-            snapshotPersonRecords.get(normalizedPersonName) ?? null,
-          ),
-        });
-      }
     });
   });
-
-  if (shouldLogPersonCase) {
-    logProjectHailMaryPersonDebug("movie_row_final_cards", {
-      cardNames: cards.map((personCard) => ({
-        name: personCard.name,
-        key: personCard.key,
-        sourceLabels: personCard.sources.map((source) => source.label),
-      })),
-      andyWeirCards: cards
-        .filter((personCard) => normalizeName(personCard.name) === "andy weir")
-        .map((personCard) => ({
-          name: personCard.name,
-          key: personCard.key,
-          imageUrl: personCard.imageUrl,
-          sourceLabels: personCard.sources.map((source) => source.label),
-          recordName:
-            personCard.kind === "person"
-              ? personCard.record?.name ?? null
-              : null,
-          record: personCard.kind === "person"
-            ? summarizePersonRecord(personCard.record)
-            : null,
-        })),
-    });
-  }
 
   return createRow(sortCardsByPopularity(cards));
 }
@@ -838,14 +655,6 @@ async function createRootTreeFromPathNode(
       ? createPersonRootCard(personRecord, pathNode.name)
       : createCinenerdleOnlyPersonCard(pathNode.name, "database only");
 
-    if (shouldLogAndyWeirDebug(pathNode.name)) {
-      logProjectHailMaryPersonDebug("create_root_tree_person", {
-        pathNode,
-        personRecord: summarizePersonRecord(personRecord),
-        rootCard: summarizeCard(rootCard),
-      });
-    }
-
     const tree: GeneratorTree<CinenerdleCard> = [[createNode(rootCard, true)]];
     const childRow = await buildChildRowForCard(rootCard);
 
@@ -878,14 +687,6 @@ async function createDisconnectedRow(
     const personCard = personRecord
       ? createPersonRootCard(personRecord, pathNode.name)
       : createCinenerdleOnlyPersonCard(pathNode.name, "database only");
-
-    if (shouldLogAndyWeirDebug(pathNode.name)) {
-      logProjectHailMaryPersonDebug("create_disconnected_person_row", {
-        pathNode,
-        personRecord: summarizePersonRecord(personRecord),
-        personCard: summarizeCard(personCard),
-      });
-    }
 
     return createRow([personCard], personCard.key);
   }
@@ -941,13 +742,6 @@ async function buildTreeFromHash(
 ): Promise<GeneratorTree<CinenerdleCard>> {
   const pathNodes = buildPathNodesFromSegments(parseHashSegments(hashValue));
 
-  if (shouldLogProjectHailMaryAndyWeirHash(hashValue)) {
-    logProjectHailMaryPersonDebug("build_tree_start", {
-      hashValue,
-      pathNodes,
-    });
-  }
-
   if (pathNodes.length === 0) {
     return createCinenerdleRootTree();
   }
@@ -986,16 +780,6 @@ async function buildTreeFromHash(
     let nextRow = lastRow;
     let selectedIndex = findCardIndex(lastRow, pathNode);
 
-    if (shouldLogAndyWeirDebug(pathNode.kind === "person" ? pathNode.name : "")) {
-      logProjectHailMaryPersonDebug("build_tree_row_match_attempt", {
-        originalPathNode,
-        resolvedPathNode: pathNode,
-        parentSelectedCard: summarizeCard(parentSelectedCard),
-        lastRowCards: lastRow.map((node) => summarizeCard(node.data)),
-        selectedIndex,
-      });
-    }
-
     if (selectedIndex >= 0) {
       nextRow = selectCardInRow(lastRow, selectedIndex);
       tree = [...tree.slice(0, -1), nextRow];
@@ -1016,28 +800,10 @@ async function buildTreeFromHash(
       break;
     }
 
-    if (
-      selectedCard.kind === "person" &&
-      shouldLogAndyWeirDebug(selectedCard.name)
-    ) {
-      logProjectHailMaryPersonDebug("build_tree_selected_card", {
-        selectedIndex,
-        selectedCard: summarizeCard(selectedCard),
-      });
-    }
-
     const childRow = await buildChildRowForCard(selectedCard);
     if (childRow && childRow.length > 0) {
       tree = [...tree, childRow];
     }
-  }
-
-  if (shouldLogProjectHailMaryAndyWeirHash(hashValue)) {
-    logProjectHailMaryPersonDebug("build_tree_final", {
-      selectedCards: tree.map((row) => summarizeCard(
-        row.find((node) => node.selected)?.data ?? null,
-      )),
-    });
   }
 
   return tree;
@@ -1349,25 +1115,6 @@ function renderCinenerdleCard(
 
   if (viewModel.kind === "dbinfo") {
     return renderDbInfoCard(viewModel);
-  }
-
-  if (
-    viewModel.isSelected &&
-    viewModel.kind === "person" &&
-    shouldLogAndyWeirDebug(viewModel.name)
-  ) {
-    logProjectHailMaryPersonDebug("render_selected_person_card", {
-      row,
-      col,
-      card: summarizeCard(card),
-      viewModel: {
-        name: viewModel.name,
-        imageUrl: viewModel.imageUrl,
-        subtitle: viewModel.subtitle,
-        sourceLabels: viewModel.sources.map((source) => source.label),
-        hasCachedTmdbSource: viewModel.hasCachedTmdbSource,
-      },
-    });
   }
 
   const rootHash = serializePathNodes([getPathNodeFromCard(card)]);
