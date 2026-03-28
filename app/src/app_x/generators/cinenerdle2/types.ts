@@ -115,4 +115,5 @@ export type SearchableConnectionEntityRecord = {
   key: string;
   type: "person" | "movie";
   nameLower: string;
+  popularity?: number;
 };

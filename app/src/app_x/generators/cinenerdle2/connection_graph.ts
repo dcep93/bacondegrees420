@@ -201,7 +201,10 @@ function getMovieConnectionEntityKeyFromLookupKey(movieKey: string): string {
 }
 
 function createReadableFallbackLabel(normalizedLabel: string): string {
-  return normalizedLabel.replace(/\b[a-z]/g, (character) => character.toUpperCase());
+  return normalizedLabel.replace(
+    /(^|[^\p{L}\p{N}]+)(\p{L})/gu,
+    (_match, prefix: string, character: string) => `${prefix}${character.toLocaleUpperCase()}`,
+  );
 }
 
 async function getPersonRecordForConnectionEntityKey(entityKey: string): Promise<PersonRecord | null> {

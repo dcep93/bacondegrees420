@@ -1,4 +1,5 @@
-import { startTransition, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import "../styles/abstract_generator.css";
 import type {
   GeneratorController,
   GeneratorNode,
@@ -6,7 +7,6 @@ import type {
   GeneratorTreeState,
   SetGeneratorTree,
 } from "../types/generator";
-import "../styles/abstract_generator.css";
 
 export type AbstractGeneratorFocusRequest<T> = {
   requestKey: string;
@@ -25,6 +25,7 @@ export type AbstractGeneratorProps<T> = GeneratorController<T> & {
   focusRequest?: AbstractGeneratorFocusRequest<T> | null;
   onActivationHandled?: (requestKey: string, didActivate: boolean) => void;
   onFocusRequestMatchChange?: (didMatch: boolean) => void;
+  onTreeChange?: (tree: GeneratorTree<T>) => void;
   optimisticSelection?: boolean;
   resetKey?: number | string;
 };
@@ -82,6 +83,7 @@ export function AbstractGenerator<T>({
   focusRequest = null,
   onActivationHandled,
   onFocusRequestMatchChange,
+  onTreeChange,
   optimisticSelection = true,
   renderCard,
   resetKey,
@@ -142,12 +144,20 @@ export function AbstractGenerator<T>({
     stableRowSignaturesRef.current = [];
 
     const guardedSetTree = createGuardedSetTree(lifecycleId, activeSelectionRef.current);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setRenderTreeOverride(null);
     setPlaceholderRowIndex(null);
     initTree(guardedSetTree);
   }, [createGuardedSetTree, initTree, resetKey]);
 
-  const resolvedTree: GeneratorTree<T> = renderTreeOverride ?? tree ?? [];
+  const resolvedTree: GeneratorTree<T> = useMemo(
+    () => renderTreeOverride ?? tree ?? [],
+    [renderTreeOverride, tree],
+  );
+
+  useEffect(() => {
+    onTreeChange?.(resolvedTree);
+  }, [onTreeChange, resolvedTree]);
 
   const generations = resolvedTree.map((row, generationIndex) => ({
     row,

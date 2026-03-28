@@ -218,6 +218,53 @@
   z-index: 21;
 }
 
+.bacon-connection-matchup {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--bacon-border-strong);
+  border-radius: 999px;
+  background: rgba(17, 12, 10, 0.92);
+  box-shadow: var(--bacon-shadow);
+}
+
+.bacon-connection-matchup-tile {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  background: rgba(43, 31, 25, 0.92);
+  color: var(--bacon-text);
+}
+
+.bacon-connection-matchup-image {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.bacon-connection-matchup-fallback {
+  padding: 4px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.04em;
+}
+
+.bacon-connection-matchup-vs {
+  color: var(--bacon-text-muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .bacon-connection-pill {
   box-sizing: border-box;
   display: block;
@@ -569,6 +616,8 @@
 }
 
 .bacon-bookmark-row-shell {
+  position: relative;
+  isolation: isolate;
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -689,6 +738,10 @@
   .bacon-connection-input {
     min-height: 44px;
     font-size: 0.92rem;
+  }
+
+  .bacon-connection-matchup {
+    display: none;
   }
 
   .bacon-connection-form {

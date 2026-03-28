@@ -28,6 +28,8 @@ import {
   createFallbackConnectionEntity,
   findConnectionPathBidirectional,
   getConnectionEdgeKey,
+  getMovieConnectionEntityKey,
+  getPersonConnectionEntityKey,
   hydrateConnectionEntityFromKey,
   hydrateConnectionEntityFromSearchRecord,
   type ConnectionEntity,
@@ -45,18 +47,36 @@ import {
   serializePathNodes,
 } from "./generators/cinenerdle2/hash";
 import {
+  getAllFilmRecords,
+  getAllPersonRecords,
   clearIndexedDb,
   estimateIndexedDbUsageBytes,
+  getFilmRecordByTitleAndYear,
   getAllSearchableConnectionEntities,
+  getFilmRecordsByPersonConnectionKey,
+  getPersonRecordById,
+  getPersonRecordByName,
+  getPersonRecordsByMovieKey,
 } from "./generators/cinenerdle2/indexed_db";
 import { resolveConnectionQuery } from "./generators/cinenerdle2/tmdb";
 import {
   formatMoviePathLabel,
+  getAssociatedPeopleFromMovieCredits,
+  getFilmKey,
+  getMovieKeyFromCredit,
+  getMoviePosterUrl,
+  getPersonProfileImageUrl,
+  getTmdbMovieCredits,
+  getValidTmdbEntityId,
+  normalizeName,
   normalizeWhitespace,
 } from "./generators/cinenerdle2/utils";
+import type { FilmRecord, PersonRecord } from "./generators/cinenerdle2/types";
+import type { CinenerdleCard } from "./generators/cinenerdle2/view_types";
 import "./styles/app_shell.css";
 
 type ConnectionSuggestion = ConnectionEntity & {
+  popularity: number;
   sortScore: number;
 };
 
@@ -98,6 +118,22 @@ type SelectedPathTarget =
     tmdbId: number | null;
   }
   | null;
+
+type YoungestSelectedCard = Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }>;
+
+type ConnectionMatchupPreviewEntity = {
+  key: string;
+  kind: "movie" | "person";
+  name: string;
+  imageUrl: string | null;
+  popularity: number;
+  tooltipText: string;
+};
+
+type ConnectionMatchupPreview = {
+  counterpart: ConnectionMatchupPreviewEntity;
+  spoiler: ConnectionMatchupPreviewEntity;
+};
 
 type ConnectionSearchRow = {
   id: string;
@@ -342,10 +378,11 @@ function getSelectedPathTooltipEntries(hashValue: string): string[] {
     );
 }
 
-function getSuggestionScore(query: string, label: string): number {
-  const normalizedQuery = normalizeWhitespace(query).toLowerCase();
-  const normalizedLabel = normalizeWhitespace(label).toLowerCase();
+function stripSearchDiacritics(value: string): string {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
 
+function getDirectSuggestionScore(normalizedQuery: string, normalizedLabel: string): number {
   if (!normalizedQuery || !normalizedLabel.includes(normalizedQuery)) {
     return -1;
   }
@@ -363,6 +400,483 @@ function getSuggestionScore(query: string, label: string): number {
   }
 
   return 100;
+}
+
+function getSuggestionScore(query: string, label: string): number {
+  const normalizedQuery = normalizeWhitespace(query).toLocaleLowerCase();
+  const normalizedLabel = normalizeWhitespace(label).toLocaleLowerCase();
+  const directScore = getDirectSuggestionScore(normalizedQuery, normalizedLabel);
+
+  if (directScore >= 0) {
+    return directScore;
+  }
+
+  const foldedQuery = stripSearchDiacritics(normalizedQuery);
+  if (foldedQuery !== normalizedQuery) {
+    return -1;
+  }
+
+  return getDirectSuggestionScore(
+    foldedQuery,
+    stripSearchDiacritics(normalizedLabel),
+  );
+}
+
+function getCardPersonTmdbId(
+  card: Extract<YoungestSelectedCard, { kind: "person" }>,
+): number | null {
+  const recordTmdbId = getValidTmdbEntityId(card.record?.tmdbId ?? card.record?.id);
+  if (recordTmdbId) {
+    return recordTmdbId;
+  }
+
+  const keyMatch = card.key.match(/^person:(\d+)$/);
+  return keyMatch ? getValidTmdbEntityId(keyMatch[1]) : null;
+}
+
+async function resolveSelectedMovieRecord(
+  card: Extract<YoungestSelectedCard, { kind: "movie" }>,
+): Promise<FilmRecord | null> {
+  return getFilmRecordByTitleAndYear(card.name, card.year);
+}
+
+async function resolveSelectedPersonRecord(
+  card: Extract<YoungestSelectedCard, { kind: "person" }>,
+): Promise<PersonRecord | null> {
+  const tmdbId = getCardPersonTmdbId(card);
+  if (tmdbId) {
+    const personRecord = await getPersonRecordById(tmdbId);
+    if (personRecord) {
+      return personRecord;
+    }
+  }
+
+  return getPersonRecordByName(card.name);
+}
+
+function getMovieRecordKey(movieRecord: FilmRecord): string {
+  return getMovieConnectionEntityKey(movieRecord.title, movieRecord.year);
+}
+
+function getPersonRecordKey(personRecord: PersonRecord): string {
+  return getPersonConnectionEntityKey(personRecord.name, personRecord.tmdbId ?? personRecord.id);
+}
+
+function getMoviePopularity(movieRecord: FilmRecord): number {
+  return movieRecord.popularity ?? 0;
+}
+
+function getPersonPopularity(personRecord: PersonRecord): number {
+  return personRecord.rawTmdbPerson?.popularity ?? 0;
+}
+
+function getMovieConnectedPersonLabels(movieRecord: FilmRecord): Map<string, string> {
+  const labelsByName = new Map<string, string>();
+
+  movieRecord.personConnectionKeys.forEach((personName) => {
+    const normalizedPersonName = normalizeName(personName);
+    const trimmedPersonName = normalizeWhitespace(personName);
+    if (normalizedPersonName && trimmedPersonName && !labelsByName.has(normalizedPersonName)) {
+      labelsByName.set(normalizedPersonName, trimmedPersonName);
+    }
+  });
+
+  getAssociatedPeopleFromMovieCredits(movieRecord).forEach((credit) => {
+    const normalizedPersonName = normalizeName(credit.name ?? "");
+    const trimmedPersonName = normalizeWhitespace(credit.name ?? "");
+    if (normalizedPersonName && trimmedPersonName) {
+      labelsByName.set(normalizedPersonName, trimmedPersonName);
+    }
+  });
+
+  return labelsByName;
+}
+
+function getPersonConnectedMovieLabels(personRecord: PersonRecord): Map<string, string> {
+  const labelsByMovieKey = new Map<string, string>();
+
+  personRecord.movieConnectionKeys.forEach((movieKey) => {
+    const normalizedMovieKey = normalizeWhitespace(movieKey).toLowerCase();
+    const trimmedMovieKey = normalizeWhitespace(movieKey);
+    if (normalizedMovieKey && trimmedMovieKey && !labelsByMovieKey.has(normalizedMovieKey)) {
+      labelsByMovieKey.set(normalizedMovieKey, trimmedMovieKey);
+    }
+  });
+
+  getTmdbMovieCredits(personRecord).forEach((credit) => {
+    const movieKey = getMovieKeyFromCredit(credit);
+    const movieTitle = normalizeWhitespace(formatMoviePathLabel(
+      credit.title ?? credit.original_title ?? "",
+      credit.release_date?.slice(0, 4) ?? "",
+    ));
+
+    if (movieKey && movieTitle) {
+      labelsByMovieKey.set(movieKey, movieTitle);
+    }
+  });
+
+  return labelsByMovieKey;
+}
+
+function isMovieConnectedToPerson(movieRecord: FilmRecord, personRecord: PersonRecord): boolean {
+  const personTmdbId = getValidTmdbEntityId(personRecord.tmdbId ?? personRecord.id);
+  const normalizedPersonName = normalizeName(personRecord.name);
+
+  if (
+    normalizedPersonName &&
+    movieRecord.personConnectionKeys.some((personName) => normalizeName(personName) === normalizedPersonName)
+  ) {
+    return true;
+  }
+
+  return getAssociatedPeopleFromMovieCredits(movieRecord).some((credit) => {
+    const creditTmdbId = getValidTmdbEntityId(credit.id);
+    if (personTmdbId && creditTmdbId) {
+      return personTmdbId === creditTmdbId;
+    }
+
+    return normalizeName(credit.name ?? "") === normalizedPersonName;
+  });
+}
+
+function isPersonConnectedToMovie(personRecord: PersonRecord, movieRecord: FilmRecord): boolean {
+  const targetMovieKey = getFilmKey(movieRecord.title, movieRecord.year);
+
+  if (personRecord.movieConnectionKeys.some((movieKey) => normalizeWhitespace(movieKey).toLowerCase() === targetMovieKey)) {
+    return true;
+  }
+
+  return getTmdbMovieCredits(personRecord).some((credit) => getMovieKeyFromCredit(credit) === targetMovieKey);
+}
+
+function compareMovieCandidates(
+  left: { count: number; movieRecord: FilmRecord },
+  right: { count: number; movieRecord: FilmRecord },
+): number {
+  if (right.count !== left.count) {
+    return right.count - left.count;
+  }
+
+  const popularityDifference = getMoviePopularity(right.movieRecord) - getMoviePopularity(left.movieRecord);
+  if (popularityDifference !== 0) {
+    return popularityDifference;
+  }
+
+  return getMovieRecordKey(left.movieRecord).localeCompare(getMovieRecordKey(right.movieRecord));
+}
+
+function comparePersonCandidates(
+  left: { count: number; personRecord: PersonRecord },
+  right: { count: number; personRecord: PersonRecord },
+): number {
+  if (right.count !== left.count) {
+    return right.count - left.count;
+  }
+
+  const popularityDifference = getPersonPopularity(right.personRecord) - getPersonPopularity(left.personRecord);
+  if (popularityDifference !== 0) {
+    return popularityDifference;
+  }
+
+  return getPersonRecordKey(left.personRecord).localeCompare(getPersonRecordKey(right.personRecord));
+}
+
+function comparePreviewEntities(
+  left: ConnectionMatchupPreviewEntity,
+  right: ConnectionMatchupPreviewEntity,
+): number {
+  if (right.popularity !== left.popularity) {
+    return right.popularity - left.popularity;
+  }
+
+  return left.key.localeCompare(right.key);
+}
+
+function formatPreviewPopularity(popularity: number): string {
+  return Number(popularity.toFixed(2)).toString();
+}
+
+function buildCounterpartTooltipText(
+  entityName: string,
+  popularity: number,
+  sharedConnectionLabels: string[],
+): string {
+  return [
+    entityName,
+    `Popularity: ${formatPreviewPopularity(popularity)}`,
+    ...sharedConnectionLabels,
+  ].join("\n");
+}
+
+function createPreviewEntityFromMovieRecord(
+  movieRecord: FilmRecord,
+  sharedConnectionLabels: string[] = [],
+): ConnectionMatchupPreviewEntity {
+  const movieName = formatMoviePathLabel(movieRecord.title, movieRecord.year);
+
+  return {
+    key: getMovieRecordKey(movieRecord),
+    kind: "movie",
+    name: movieName,
+    imageUrl: getMoviePosterUrl(movieRecord),
+    popularity: getMoviePopularity(movieRecord),
+    tooltipText: sharedConnectionLabels.length > 0
+      ? buildCounterpartTooltipText(
+        movieName,
+        getMoviePopularity(movieRecord),
+        sharedConnectionLabels,
+      )
+      : movieName,
+  };
+}
+
+function createPreviewEntityFromPersonRecord(
+  personRecord: PersonRecord,
+  sharedConnectionLabels: string[] = [],
+): ConnectionMatchupPreviewEntity {
+  return {
+    key: getPersonRecordKey(personRecord),
+    kind: "person",
+    name: personRecord.name,
+    imageUrl: getPersonProfileImageUrl(personRecord),
+    popularity: getPersonPopularity(personRecord),
+    tooltipText: sharedConnectionLabels.length > 0
+      ? buildCounterpartTooltipText(
+        personRecord.name,
+        getPersonPopularity(personRecord),
+        sharedConnectionLabels,
+      )
+      : personRecord.name,
+  };
+}
+
+function getPreviewFallbackText(name: string): string {
+  const words = normalizeWhitespace(name)
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2);
+
+  if (words.length === 0) {
+    return "?";
+  }
+
+  return words.map((word) => word[0]?.toUpperCase() ?? "").join("");
+}
+
+async function findMovieCounterpart(
+  movieRecord: FilmRecord,
+): Promise<{ movieRecord: FilmRecord; sharedConnectionLabels: string[] } | null> {
+  const movieKey = getMovieRecordKey(movieRecord);
+  const candidates = new Map<
+    string,
+    { count: number; movieRecord: FilmRecord; sharedConnectionLabels: Set<string> }
+  >();
+  const connectedPeople = Array.from(getMovieConnectedPersonLabels(movieRecord).entries());
+
+  await Promise.all(
+    connectedPeople.map(async ([personName, personLabel]) => {
+      const matchingMovies = await getFilmRecordsByPersonConnectionKey(personName);
+      const countedMovieKeys = new Set<string>();
+
+      matchingMovies.forEach((candidateMovie) => {
+        const candidateMovieKey = getMovieRecordKey(candidateMovie);
+        if (candidateMovieKey === movieKey || countedMovieKeys.has(candidateMovieKey)) {
+          return;
+        }
+
+        countedMovieKeys.add(candidateMovieKey);
+        const currentCandidate = candidates.get(candidateMovieKey);
+        if (currentCandidate) {
+          currentCandidate.count += 1;
+          currentCandidate.sharedConnectionLabels.add(personLabel);
+          if (getMoviePopularity(candidateMovie) > getMoviePopularity(currentCandidate.movieRecord)) {
+            currentCandidate.movieRecord = candidateMovie;
+          }
+          return;
+        }
+
+        candidates.set(candidateMovieKey, {
+          count: 1,
+          movieRecord: candidateMovie,
+          sharedConnectionLabels: new Set([personLabel]),
+        });
+      });
+    }),
+  );
+
+  const bestCandidate = [...candidates.values()]
+    .sort((left, right) =>
+      compareMovieCandidates(
+        {
+          count: left.count,
+          movieRecord: left.movieRecord,
+        },
+        {
+          count: right.count,
+          movieRecord: right.movieRecord,
+        },
+      ),
+    )[0];
+
+  if (!bestCandidate) {
+    return null;
+  }
+
+  return {
+    movieRecord: bestCandidate.movieRecord,
+    sharedConnectionLabels: [...bestCandidate.sharedConnectionLabels].sort((left, right) =>
+      left.localeCompare(right),
+    ),
+  };
+}
+
+async function findPersonCounterpart(
+  personRecord: PersonRecord,
+): Promise<{ personRecord: PersonRecord; sharedConnectionLabels: string[] } | null> {
+  const personKey = getPersonRecordKey(personRecord);
+  const candidates = new Map<
+    string,
+    { count: number; personRecord: PersonRecord; sharedConnectionLabels: Set<string> }
+  >();
+  const connectedMovieKeys = Array.from(getPersonConnectedMovieLabels(personRecord).entries());
+
+  await Promise.all(
+    connectedMovieKeys.map(async ([movieKey, movieLabel]) => {
+      const matchingPeople = await getPersonRecordsByMovieKey(movieKey);
+      const countedPersonKeys = new Set<string>();
+
+      matchingPeople.forEach((candidatePerson) => {
+        const candidatePersonKey = getPersonRecordKey(candidatePerson);
+        if (candidatePersonKey === personKey || countedPersonKeys.has(candidatePersonKey)) {
+          return;
+        }
+
+        countedPersonKeys.add(candidatePersonKey);
+        const currentCandidate = candidates.get(candidatePersonKey);
+        if (currentCandidate) {
+          currentCandidate.count += 1;
+          currentCandidate.sharedConnectionLabels.add(movieLabel);
+          if (getPersonPopularity(candidatePerson) > getPersonPopularity(currentCandidate.personRecord)) {
+            currentCandidate.personRecord = candidatePerson;
+          }
+          return;
+        }
+
+        candidates.set(candidatePersonKey, {
+          count: 1,
+          personRecord: candidatePerson,
+          sharedConnectionLabels: new Set([movieLabel]),
+        });
+      });
+    }),
+  );
+
+  const bestCandidate = [...candidates.values()]
+    .sort((left, right) =>
+      comparePersonCandidates(
+        {
+          count: left.count,
+          personRecord: left.personRecord,
+        },
+        {
+          count: right.count,
+          personRecord: right.personRecord,
+        },
+      ),
+    )[0];
+
+  if (!bestCandidate) {
+    return null;
+  }
+
+  return {
+    personRecord: bestCandidate.personRecord,
+    sharedConnectionLabels: [...bestCandidate.sharedConnectionLabels].sort((left, right) =>
+      left.localeCompare(right),
+    ),
+  };
+}
+
+async function findMostPopularDisconnectedPerson(
+  movieRecord: FilmRecord,
+): Promise<PersonRecord | null> {
+  const allPeople = await getAllPersonRecords();
+  const sortedPeople = [...allPeople].sort((left, right) =>
+    comparePreviewEntities(
+      createPreviewEntityFromPersonRecord(left),
+      createPreviewEntityFromPersonRecord(right),
+    ));
+
+  return sortedPeople.find((personRecord) => !isPersonConnectedToMovie(personRecord, movieRecord)) ?? null;
+}
+
+async function findMostPopularDisconnectedMovie(
+  personRecord: PersonRecord,
+): Promise<FilmRecord | null> {
+  const allFilms = await getAllFilmRecords();
+  const sortedFilms = [...allFilms].sort((left, right) =>
+    comparePreviewEntities(
+      createPreviewEntityFromMovieRecord(left),
+      createPreviewEntityFromMovieRecord(right),
+    ));
+
+  return sortedFilms.find((movieRecord) => !isMovieConnectedToPerson(movieRecord, personRecord)) ?? null;
+}
+
+async function resolveConnectionMatchupPreview(
+  youngestSelectedCard: YoungestSelectedCard | null,
+): Promise<ConnectionMatchupPreview | null> {
+  if (!youngestSelectedCard || youngestSelectedCard.kind === "cinenerdle") {
+    return null;
+  }
+
+  if (youngestSelectedCard.kind === "movie") {
+    const selectedMovieRecord = await resolveSelectedMovieRecord(youngestSelectedCard);
+    if (!selectedMovieRecord) {
+      return null;
+    }
+
+    const counterpartMovie = await findMovieCounterpart(selectedMovieRecord);
+    if (!counterpartMovie) {
+      return null;
+    }
+
+    const spoilerPerson = await findMostPopularDisconnectedPerson(counterpartMovie.movieRecord);
+    if (!spoilerPerson) {
+      return null;
+    }
+
+    return {
+      counterpart: createPreviewEntityFromMovieRecord(
+        counterpartMovie.movieRecord,
+        counterpartMovie.sharedConnectionLabels,
+      ),
+      spoiler: createPreviewEntityFromPersonRecord(spoilerPerson),
+    };
+  }
+
+  const selectedPersonRecord = await resolveSelectedPersonRecord(youngestSelectedCard);
+  if (!selectedPersonRecord) {
+    return null;
+  }
+
+  const counterpartPerson = await findPersonCounterpart(selectedPersonRecord);
+  if (!counterpartPerson) {
+    return null;
+  }
+
+  const spoilerMovie = await findMostPopularDisconnectedMovie(counterpartPerson.personRecord);
+  if (!spoilerMovie) {
+    return null;
+  }
+
+  return {
+    counterpart: createPreviewEntityFromPersonRecord(
+      counterpartPerson.personRecord,
+      counterpartPerson.sharedConnectionLabels,
+    ),
+    spoiler: createPreviewEntityFromMovieRecord(spoilerMovie),
+  };
 }
 
 function createPathNodeFromConnectionEntity(entity: ConnectionEntity) {
@@ -454,6 +968,9 @@ export default function AppX() {
   const [hashValue, setHashValue] = useState(() => initialLocationState.hash);
   const [resetVersion, setResetVersion] = useState(0);
   const [navigationVersion, setNavigationVersion] = useState(0);
+  const [youngestSelectedCard, setYoungestSelectedCard] = useState<YoungestSelectedCard | null>(null);
+  const [connectionMatchupPreview, setConnectionMatchupPreview] =
+    useState<ConnectionMatchupPreview | null>(null);
   const [copyStatus, setCopyStatus] = useState("");
   const [isSavingBookmark, setIsSavingBookmark] = useState(false);
   const [connectionQuery, setConnectionQuery] = useState("");
@@ -548,6 +1065,39 @@ export default function AppX() {
   }, [hashValue, isBookmarksView]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    if (isBookmarksView || !youngestSelectedCard || youngestSelectedCard.kind === "cinenerdle") {
+      setConnectionMatchupPreview(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setConnectionMatchupPreview(null);
+
+    void resolveConnectionMatchupPreview(youngestSelectedCard)
+      .then((nextPreview) => {
+        if (cancelled) {
+          return;
+        }
+
+        setConnectionMatchupPreview(nextPreview);
+      })
+      .catch((error) => {
+        console.error("bacondegrees420.resolveConnectionMatchupPreview", error);
+
+        if (!cancelled) {
+          setConnectionMatchupPreview(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isBookmarksView, youngestSelectedCard]);
+
+  useEffect(() => {
     const query = deferredConnectionQuery.trim();
     if (!query) {
       startTransition(() => {
@@ -576,6 +1126,12 @@ export default function AppX() {
             return right.sortScore - left.sortScore;
           }
 
+          const popularityDifference =
+            (right.record.popularity ?? 0) - (left.record.popularity ?? 0);
+          if (popularityDifference !== 0) {
+            return popularityDifference;
+          }
+
           if (left.record.type !== right.record.type) {
             return left.record.type === "person" ? -1 : 1;
           }
@@ -589,6 +1145,7 @@ export default function AppX() {
           const entity = await hydrateConnectionEntityFromSearchRecord(record);
           return {
             ...entity,
+            popularity: record.popularity ?? 0,
             sortScore: Math.max(
               sortScore,
               getSuggestionScore(query, entity.label),
@@ -601,6 +1158,10 @@ export default function AppX() {
         .sort((left, right) => {
           if (right.sortScore !== left.sortScore) {
             return right.sortScore - left.sortScore;
+          }
+
+          if (right.popularity !== left.popularity) {
+            return right.popularity - left.popularity;
           }
 
           if (left.kind !== right.kind) {
@@ -936,7 +1497,7 @@ export default function AppX() {
         excludedEdgeKeys: [],
       });
     },
-    [hashValue, runConnectionRowSearch],
+    [clearConnectionInputState, hashValue, runConnectionRowSearch],
   );
 
   const spawnAlternativeConnectionRow = useCallback(
@@ -1171,6 +1732,48 @@ export default function AppX() {
     [openConnectionRowsForEntity],
   );
 
+  function renderConnectionMatchupTile(entity: ConnectionMatchupPreviewEntity) {
+    return (
+      <span
+        aria-label={entity.name}
+        className="bacon-connection-matchup-tile"
+        title={entity.tooltipText}
+      >
+        {entity.imageUrl ? (
+          <img
+            alt=""
+            className="bacon-connection-matchup-image"
+            loading="lazy"
+            src={entity.imageUrl}
+          />
+        ) : (
+          <span className="bacon-connection-matchup-fallback">
+            {getPreviewFallbackText(entity.name)}
+          </span>
+        )}
+      </span>
+    );
+  }
+
+  function renderConnectionMatchupPreview() {
+    if (!connectionMatchupPreview) {
+      return null;
+    }
+
+    return (
+      <div
+        aria-label={`Suggested matchup: ${connectionMatchupPreview.counterpart.name} vs ${connectionMatchupPreview.spoiler.name}`}
+        className="bacon-connection-matchup"
+      >
+        {renderConnectionMatchupTile(connectionMatchupPreview.counterpart)}
+        <span aria-hidden="true" className="bacon-connection-matchup-vs">
+          vs
+        </span>
+        {renderConnectionMatchupTile(connectionMatchupPreview.spoiler)}
+      </div>
+    );
+  }
+
   function renderConnectionEntityCard(
     entity: ConnectionEntity,
     options: {
@@ -1401,6 +2004,7 @@ export default function AppX() {
                 </div>
               ) : null}
             </div>
+            {renderConnectionMatchupPreview()}
             <span
               className="bacon-connection-pill-wrap"
               onBlur={() => setIsSelectedPathTooltipVisible(false)}
@@ -1551,6 +2155,7 @@ export default function AppX() {
             navigationVersion={navigationVersion}
             onHighlightedConnectionEntitySelectionHandled={handleHighlightedConnectionEntitySelectionHandled}
             onHighlightedConnectionEntityYoungestGenerationMatchChange={setIsHighlightedConnectionEntityInYoungestGeneration}
+            onYoungestSelectedCardChange={setYoungestSelectedCard}
             onHashWrite={handleHashWrite}
             resetVersion={resetVersion}
           />

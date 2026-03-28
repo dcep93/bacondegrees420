@@ -67,6 +67,7 @@ function createSearchableConnectionEntityRecord(
   type: SearchableConnectionEntityRecord["type"],
   key: string,
   nameLower: string,
+  popularity = 0,
 ): SearchableConnectionEntityRecord | null {
   const normalizedNameLower =
     type === "person" ? normalizeName(nameLower) : normalizeTitle(nameLower);
@@ -79,6 +80,7 @@ function createSearchableConnectionEntityRecord(
     key,
     type,
     nameLower: normalizedNameLower,
+    popularity: Math.max(0, popularity),
   };
 }
 
@@ -89,16 +91,22 @@ function getMovieSearchableNameLower(title: string, year = ""): string {
 function createPersonSearchRecord(
   personName: string,
   personTmdbId?: number | string | null,
+  popularity = 0,
 ): SearchableConnectionEntityRecord | null {
   const normalizedName = normalizeName(personName);
   return createSearchableConnectionEntityRecord(
     "person",
     getConnectionPersonEntityKey(normalizedName, personTmdbId),
     normalizedName,
+    popularity,
   );
 }
 
-function createMovieSearchRecord(title: string, year = ""): SearchableConnectionEntityRecord | null {
+function createMovieSearchRecord(
+  title: string,
+  year = "",
+  popularity = 0,
+): SearchableConnectionEntityRecord | null {
   const normalizedTitle = normalizeTitle(title);
   if (!normalizedTitle) {
     return null;
@@ -108,6 +116,7 @@ function createMovieSearchRecord(title: string, year = ""): SearchableConnection
     "movie",
     getConnectionMovieEntityKey(normalizedTitle, year),
     getMovieSearchableNameLower(normalizedTitle, year),
+    popularity,
   );
 }
 
@@ -119,6 +128,7 @@ function collectSearchableConnectionEntitiesFromPersonRecord(
   const personRecordEntry = createPersonSearchRecord(
     personRecord.name,
     personRecord.tmdbId ?? personRecord.id,
+    personRecord.rawTmdbPerson?.popularity ?? 0,
   );
   if (personRecordEntry) {
     recordsByKey.set(personRecordEntry.key, personRecordEntry);
@@ -130,7 +140,11 @@ function collectSearchableConnectionEntitiesFromPersonRecord(
       return;
     }
 
-    const movieRecord = createMovieSearchRecord(title, getMovieYearFromCredit(credit));
+    const movieRecord = createMovieSearchRecord(
+      title,
+      getMovieYearFromCredit(credit),
+      credit.popularity ?? 0,
+    );
     if (movieRecord) {
       recordsByKey.set(movieRecord.key, movieRecord);
     }
@@ -145,7 +159,11 @@ function collectSearchableConnectionEntitiesFromFilmRecord(
   const recordsByKey = new Map<string, SearchableConnectionEntityRecord>();
   const coveredFallbackPersonNames = new Set<string>();
 
-  const movieRecord = createMovieSearchRecord(filmRecord.title, filmRecord.year);
+  const movieRecord = createMovieSearchRecord(
+    filmRecord.title,
+    filmRecord.year,
+    filmRecord.popularity ?? 0,
+  );
   if (movieRecord) {
     recordsByKey.set(movieRecord.key, movieRecord);
   }
@@ -153,8 +171,9 @@ function collectSearchableConnectionEntitiesFromFilmRecord(
   const upsertPersonName = (
     personName: string,
     personTmdbId?: number | string | null,
+    popularity = 0,
   ) => {
-    const personRecord = createPersonSearchRecord(personName, personTmdbId);
+    const personRecord = createPersonSearchRecord(personName, personTmdbId, popularity);
     if (personRecord) {
       recordsByKey.set(personRecord.key, personRecord);
       if (getValidTmdbEntityId(personTmdbId)) {
@@ -164,7 +183,7 @@ function collectSearchableConnectionEntitiesFromFilmRecord(
   };
 
   getAssociatedPeopleFromMovieCredits(filmRecord).forEach((credit) => {
-    upsertPersonName(credit.name ?? "", credit.id);
+    upsertPersonName(credit.name ?? "", credit.id, credit.popularity ?? 0);
   });
   getSnapshotConnectionLabels(filmRecord).forEach((personName) => {
     if (coveredFallbackPersonNames.has(normalizeName(personName))) {
@@ -329,13 +348,48 @@ async function upsertSearchableConnectionEntities(
   store: IDBObjectStore,
   records: SearchableConnectionEntityRecord[],
 ): Promise<void> {
-  const uniqueRecords = Array.from(
-    new Map(records.map((record) => [record.key, record])).values(),
-  );
+  const uniqueRecords = Array.from(records.reduce((recordsByKey, record) => {
+    const existingRecord = recordsByKey.get(record.key);
+
+    if (!existingRecord) {
+      recordsByKey.set(record.key, record);
+      return recordsByKey;
+    }
+
+    recordsByKey.set(record.key, {
+      ...existingRecord,
+      ...record,
+      popularity: Math.max(existingRecord.popularity ?? 0, record.popularity ?? 0),
+    });
+    return recordsByKey;
+  }, new Map<string, SearchableConnectionEntityRecord>()).values());
 
   for (const record of uniqueRecords) {
     await indexedDbRequestToPromise(store.put(record));
   }
+}
+
+function buildSearchableConnectionPopularityLookup(
+  personRecords: PersonRecord[],
+  filmRecords: FilmRecord[],
+): Map<string, number> {
+  const popularityByKey = new Map<string, number>();
+
+  personRecords.forEach((personRecord) => {
+    const popularity = personRecord.rawTmdbPerson?.popularity ?? 0;
+    const canonicalKey = getConnectionPersonEntityKey(personRecord.name, personRecord.tmdbId ?? personRecord.id);
+    const legacyKey = getConnectionPersonEntityKey(personRecord.name);
+    popularityByKey.set(canonicalKey, Math.max(popularityByKey.get(canonicalKey) ?? 0, popularity));
+    popularityByKey.set(legacyKey, Math.max(popularityByKey.get(legacyKey) ?? 0, popularity));
+  });
+
+  filmRecords.forEach((filmRecord) => {
+    const key = getConnectionMovieEntityKey(filmRecord.title, filmRecord.year);
+    const popularity = filmRecord.popularity ?? 0;
+    popularityByKey.set(key, Math.max(popularityByKey.get(key) ?? 0, popularity));
+  });
+
+  return popularityByKey;
 }
 
 export async function getPersonRecordByName(
@@ -378,6 +432,13 @@ export async function getPersonRecordsByMovieKey(
       store.index("movieConnectionKeys").getAll(movieKey),
     );
 
+    return records ?? [];
+  });
+}
+
+export async function getAllPersonRecords(): Promise<PersonRecord[]> {
+  return withStore(PEOPLE_STORE_NAME, "readonly", async (store) => {
+    const records = await indexedDbRequestToPromise<PersonRecord[]>(store.getAll());
     return records ?? [];
   });
 }
@@ -493,6 +554,13 @@ export async function getFilmRecordsByIds(
   });
 }
 
+export async function getAllFilmRecords(): Promise<FilmRecord[]> {
+  return withStore(FILMS_STORE_NAME, "readonly", async (store) => {
+    const records = await indexedDbRequestToPromise<FilmRecord[]>(store.getAll());
+    return records ?? [];
+  });
+}
+
 export async function getFilmRecordsByPersonConnectionKey(
   personName: string,
 ): Promise<FilmRecord[]> {
@@ -544,14 +612,37 @@ export async function getCinenerdleStarterFilmRecords(): Promise<FilmRecord[]> {
 export async function getAllSearchableConnectionEntities(): Promise<
   SearchableConnectionEntityRecord[]
 > {
-  return withStore(
-    SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME,
+  return withStores(
+    [
+      SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME,
+      PEOPLE_STORE_NAME,
+      FILMS_STORE_NAME,
+    ],
     "readonly",
-    async (store) => {
+    async (stores) => {
+      const searchStore = stores.get(SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME)!;
       const records = await indexedDbRequestToPromise<SearchableConnectionEntityRecord[]>(
-        store.getAll(),
+        searchStore.getAll(),
       );
-      return records ?? [];
+
+      const nextRecords = records ?? [];
+      if (nextRecords.every((record) => typeof record.popularity === "number")) {
+        return nextRecords;
+      }
+
+      const [personRecords, filmRecords] = await Promise.all([
+        indexedDbRequestToPromise<PersonRecord[]>(stores.get(PEOPLE_STORE_NAME)!.getAll()),
+        indexedDbRequestToPromise<FilmRecord[]>(stores.get(FILMS_STORE_NAME)!.getAll()),
+      ]);
+      const popularityByKey = buildSearchableConnectionPopularityLookup(
+        personRecords ?? [],
+        filmRecords ?? [],
+      );
+
+      return nextRecords.map((record) => ({
+        ...record,
+        popularity: record.popularity ?? popularityByKey.get(record.key) ?? 0,
+      }));
     },
   );
 }

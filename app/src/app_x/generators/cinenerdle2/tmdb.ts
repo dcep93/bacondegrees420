@@ -432,15 +432,18 @@ async function prefetchBestPersonForMovieRecord(
 
   for (const credit of candidateCredits) {
     const existingPersonRecord =
-      (credit.id ? await getPersonRecordById(credit.id) : null) ??
-      (credit.name ? await getPersonRecordByName(credit.name) : null);
+      credit.id
+        ? await getPersonRecordById(credit.id)
+        : credit.name
+          ? await getPersonRecordByName(credit.name)
+          : null;
 
     if (existingPersonRecord) {
       continue;
     }
 
     if (credit.name) {
-      await fetchAndCachePerson(credit.name, "prefetch");
+      await fetchAndCachePerson(credit.name, "prefetch", credit.id ?? null);
       return;
     }
   }
@@ -452,7 +455,7 @@ async function getLocalPersonRecordForCard(
 ): Promise<PersonRecord | null> {
   return (
     (personId ? await getPersonRecordById(personId) : null) ??
-    (personName ? await getPersonRecordByName(personName) : null)
+    (!personId && personName ? await getPersonRecordByName(personName) : null)
   );
 }
 

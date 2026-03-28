@@ -4,7 +4,7 @@ import {
   type AbstractGeneratorActivationRequest,
   type AbstractGeneratorFocusRequest,
 } from "../../components/abstract_generator";
-import type { GeneratorNode } from "../../types/generator";
+import type { GeneratorNode, GeneratorTree } from "../../types/generator";
 import type { ConnectionEntity } from "./connection_graph";
 import { useCinenerdleController } from "./controller";
 import { normalizeHashValue } from "./hash";
@@ -26,6 +26,9 @@ type Cinenerdle2Props = {
     didSelect: boolean,
   ) => void;
   onHighlightedConnectionEntityYoungestGenerationMatchChange?: (didMatch: boolean) => void;
+  onYoungestSelectedCardChange?: (
+    card: Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }> | null,
+  ) => void;
   onHashWrite: (nextHash: string, mode: "selection" | "navigation") => void;
   resetVersion: number;
 };
@@ -92,6 +95,23 @@ function applyHash(nextHash: string) {
   window.location.hash = normalizedHash.replace(/^#/, "");
 }
 
+function getYoungestSelectedCard(
+  tree: GeneratorTree<CinenerdleCard>,
+): Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }> | null {
+  for (let rowIndex = tree.length - 1; rowIndex >= 0; rowIndex -= 1) {
+    const selectedCard = tree[rowIndex]?.find((node) => node.selected)?.data ?? null;
+    if (
+      selectedCard?.kind === "cinenerdle" ||
+      selectedCard?.kind === "movie" ||
+      selectedCard?.kind === "person"
+    ) {
+      return selectedCard;
+    }
+  }
+
+  return null;
+}
+
 const Cinenerdle2 = memo(function Cinenerdle2({
   hashValue,
   highlightedConnectionEntity = null,
@@ -99,6 +119,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   navigationVersion,
   onHighlightedConnectionEntitySelectionHandled,
   onHighlightedConnectionEntityYoungestGenerationMatchChange,
+  onYoungestSelectedCardChange,
   onHashWrite,
   resetVersion,
 }: Cinenerdle2Props) {
@@ -166,6 +187,9 @@ const Cinenerdle2 = memo(function Cinenerdle2({
       initTree={controller.initTree}
       onActivationHandled={onHighlightedConnectionEntitySelectionHandled}
       onFocusRequestMatchChange={onHighlightedConnectionEntityYoungestGenerationMatchChange}
+      onTreeChange={(tree) => {
+        onYoungestSelectedCardChange?.(getYoungestSelectedCard(tree));
+      }}
       optimisticSelection={false}
       renderCard={controller.renderCard}
       resetKey={`${resetVersion}:${navigationVersion}:${normalizedHash}`}

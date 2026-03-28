@@ -157,15 +157,43 @@ function hasCachedTmdbSource(card: CinenerdleCard) {
   return false;
 }
 
+function summarizePersonRecordForDebug(
+  personRecord: PersonRecord | null,
+) {
+  if (!personRecord) {
+    return null;
+  }
+
+  return {
+    id: personRecord.id,
+    tmdbId: personRecord.tmdbId,
+    name: personRecord.name,
+    movieConnectionCount: personRecord.movieConnectionKeys.length,
+    hasMovieCredits: hasPersonMovieCredits(personRecord),
+  };
+}
+
+function summarizeCardForDebug(
+  card: CinenerdleCard | null | undefined,
+) {
+  if (!card) {
+    return null;
+  }
+
+  return {
+    key: card.key,
+    kind: card.kind,
+    name: card.name,
+    year: card.kind === "movie" ? card.year : "",
+    tmdbId: card.kind === "person" ? getPersonTmdbIdFromCard(card) : null,
+  };
+}
+
 function getSelectedPathNodes(tree: GeneratorTree<CinenerdleCard>): CinenerdlePathNode[] {
   return tree
     .map((row) => row.find((node) => node.selected)?.data ?? null)
     .filter((card): card is CinenerdleCard => card !== null)
     .map((card) => getPathNodeFromCard(card));
-}
-
-function createDebugStackTrace(message: string): string {
-  return new Error(message).stack ?? "";
 }
 
 function getPersonTmdbIdFromCard(
@@ -205,10 +233,21 @@ async function getLocalPersonRecord(
   personName: string,
   personTmdbId?: number | null,
 ): Promise<PersonRecord | null> {
-  return (
-    (personTmdbId ? await getPersonRecordById(personTmdbId) : null) ??
-    (personName ? await getPersonRecordByName(personName) : null)
-  );
+  const personRecordById = personTmdbId ? await getPersonRecordById(personTmdbId) : null;
+  const personRecordByName =
+    !personTmdbId && personName ? await getPersonRecordByName(personName) : null;
+  const resolvedPersonRecord = personRecordById ?? personRecordByName;
+
+  addCinenerdleDebugLog("personRecordLookup", {
+    requestedName: personName,
+    requestedTmdbId: personTmdbId ?? null,
+    matchedBy: personRecordById ? "tmdbId" : personRecordByName ? "name" : "none",
+    personRecordById: summarizePersonRecordForDebug(personRecordById),
+    personRecordByName: summarizePersonRecordForDebug(personRecordByName),
+    resolvedPersonRecord: summarizePersonRecordForDebug(resolvedPersonRecord),
+  });
+
+  return resolvedPersonRecord;
 }
 
 function getSelectedEntityPathNodes(hashValue: string): SelectedEntityPathNode[] {
@@ -288,6 +327,28 @@ async function buildSelectedPathHydrationTasks(
   return Array.from(tasksByKey.values()).sort((left, right) => left.index - right.index);
 }
 
+async function resolveSelectedPathNodesForHydration(
+  selectedPathNodes: SelectedEntityPathNode[],
+): Promise<SelectedEntityPathNode[]> {
+  const resolvedPathNodes: SelectedEntityPathNode[] = [];
+  let previousMovieCard: Extract<CinenerdleCard, { kind: "movie" }> | null = null;
+
+  for (const pathNode of selectedPathNodes) {
+    const resolvedPathNode: SelectedEntityPathNode =
+      pathNode.kind === "person" && previousMovieCard
+        ? await resolvePersonPathNodeFromMovieContext(pathNode, previousMovieCard)
+        : pathNode;
+
+    resolvedPathNodes.push(resolvedPathNode);
+    previousMovieCard =
+      resolvedPathNode.kind === "movie"
+        ? createUncachedMovieCard(resolvedPathNode.name, resolvedPathNode.year)
+        : null;
+  }
+
+  return resolvedPathNodes;
+}
+
 async function buildCorrectivePersonHydrationTasks(
   originalSelectedPathNodes: SelectedEntityPathNode[],
   tree: GeneratorTree<CinenerdleCard>,
@@ -359,10 +420,41 @@ async function resolvePersonPathNodeFromMovieContext(
   const shouldOverrideTmdbId =
     Boolean(resolvedTmdbId) &&
     (!pathNode.tmdbId || !matchingCreditIds.includes(pathNode.tmdbId));
-
-  return shouldOverrideTmdbId
+  const resolvedPathNode = shouldOverrideTmdbId
     ? createPathNode("person", pathNode.name, "", resolvedTmdbId)
     : pathNode;
+
+  addCinenerdleDebugLog("resolvePersonPathNodeFromMovieContext", {
+    pathNode: {
+      name: pathNode.name,
+      tmdbId: pathNode.tmdbId ?? null,
+    },
+    movieCard: summarizeCardForDebug(movieCard),
+    movieRecord: movieRecord
+      ? {
+        id: movieRecord.id,
+        tmdbId: movieRecord.tmdbId,
+        title: movieRecord.title,
+        year: movieRecord.year,
+      }
+      : null,
+    matchingCredits: matchingCredits.map((credit) => ({
+      id: getValidTmdbEntityId(credit.id),
+      name: credit.name ?? "",
+      popularity: credit.popularity ?? 0,
+      character: credit.character ?? "",
+      job: credit.job ?? "",
+    })),
+    matchingCreditIds,
+    resolvedTmdbId,
+    shouldOverrideTmdbId,
+    resolvedPathNode: {
+      name: resolvedPathNode.name,
+      tmdbId: resolvedPathNode.tmdbId ?? null,
+    },
+  });
+
+  return resolvedPathNode;
 }
 
 async function createDailyStarterRow() {
@@ -424,83 +516,41 @@ async function hydrateMissingSelectedPathItemsAndRedraw(
   readHash: () => string,
 ) {
   const initialHash = readHash();
-  const selectedPathNodes = getSelectedEntityPathNodes(initialHash);
-  if (selectedPathNodes.length === 0) {
+  const originalSelectedPathNodes = getSelectedEntityPathNodes(initialHash);
+  if (originalSelectedPathNodes.length === 0) {
     return;
   }
 
+  const selectedPathNodes = await resolveSelectedPathNodesForHydration(originalSelectedPathNodes);
   const hydrationTasks = await buildSelectedPathHydrationTasks(selectedPathNodes);
   if (hydrationTasks.length === 0) {
     return;
   }
 
-  addCinenerdleDebugLog("selectedPathPrefetchStart", {
-    hash: initialHash,
-    pathNodeCount: selectedPathNodes.length,
-    taskCount: hydrationTasks.length,
-    tasks: hydrationTasks.map((task) => ({
-      key: task.key,
-      kind: task.kind,
-      label: task.label,
-    })),
-  });
-
-  const hydrationResults = await Promise.allSettled(
+  await Promise.allSettled(
     hydrationTasks.map((task) => task.run()),
   );
   if (readHash() !== initialHash) {
-    addCinenerdleDebugLog("selectedPathPrefetchAborted", {
-      hash: initialHash,
-      reason: "hashChangedAfterBatch",
-    });
     return;
   }
-
-  addCinenerdleDebugLog("selectedPathPrefetchComplete", {
-    hash: initialHash,
-    taskCount: hydrationTasks.length,
-    fulfilledCount: hydrationResults.filter((result) => result.status === "fulfilled").length,
-    rejectedCount: hydrationResults.filter((result) => result.status === "rejected").length,
-  });
 
   let refreshedTree = await buildTreeFromHash(readHash());
   setTree(refreshedTree);
 
   const correctiveTasks = await buildCorrectivePersonHydrationTasks(
-    selectedPathNodes,
+    originalSelectedPathNodes,
     refreshedTree,
   );
   if (correctiveTasks.length === 0) {
     return;
   }
 
-  addCinenerdleDebugLog("selectedPathPrefetchCorrectionStart", {
-    hash: initialHash,
-    taskCount: correctiveTasks.length,
-    tasks: correctiveTasks.map((task) => ({
-      key: task.key,
-      kind: task.kind,
-      label: task.label,
-    })),
-  });
-
-  const correctiveResults = await Promise.allSettled(
+  await Promise.allSettled(
     correctiveTasks.map((task) => task.run()),
   );
   if (readHash() !== initialHash) {
-    addCinenerdleDebugLog("selectedPathPrefetchAborted", {
-      hash: initialHash,
-      reason: "hashChangedAfterCorrection",
-    });
     return;
   }
-
-  addCinenerdleDebugLog("selectedPathPrefetchCorrectionComplete", {
-    hash: initialHash,
-    taskCount: correctiveTasks.length,
-    fulfilledCount: correctiveResults.filter((result) => result.status === "fulfilled").length,
-    rejectedCount: correctiveResults.filter((result) => result.status === "rejected").length,
-  });
 
   refreshedTree = await buildTreeFromHash(readHash());
   setTree(refreshedTree);
@@ -556,15 +606,6 @@ async function buildChildRowForMovieCard(
     card.record ??
     (await getFilmRecordByTitleAndYear(card.name, card.year));
   if (!movieRecord) {
-    addCinenerdleDebugLog("movieChildrenMissing", {
-      reason: "movieRecordMissing",
-      movieName: card.name,
-      movieYear: card.year,
-      movieKey: card.key,
-      usedOverride: movieRecordOverride != null,
-      hadCardRecord: card.record != null,
-      stacktrace: createDebugStackTrace("cinenerdle movie children missing: movie record missing"),
-    });
     return null;
   }
 
@@ -575,8 +616,11 @@ async function buildChildRowForMovieCard(
         const personName = credit.name ?? "";
         const matchingFilms = await getFilmRecordsByPersonConnectionKey(personName);
         const cachedPersonRecord =
-          (credit.id ? await getPersonRecordById(credit.id) : null) ??
-          (personName ? await getPersonRecordByName(personName) : null);
+          credit.id
+            ? await getPersonRecordById(credit.id)
+            : personName
+              ? await getPersonRecordByName(personName)
+              : null;
         return [
           getPersonIdentityKey(personName, credit.id),
           {
@@ -613,20 +657,6 @@ async function buildChildRowForMovieCard(
       seenPeople.add(normalizedPersonName);
     });
   });
-
-  if (cards.length === 0) {
-    addCinenerdleDebugLog("movieChildrenMissing", {
-      reason: "childCardsEmpty",
-      movieName: card.name,
-      movieYear: card.year,
-      movieKey: card.key,
-      movieRecordId: movieRecord.id ?? null,
-      hasRawTmdbMovieCreditsResponse: movieRecord.rawTmdbMovieCreditsResponse != null,
-      tmdbCreditsCount: tmdbCredits.length,
-      snapshotPeople,
-      stacktrace: createDebugStackTrace("cinenerdle movie children missing: child cards empty"),
-    });
-  }
 
   return createRow(sortCardsByPopularity(cards));
 }
@@ -740,9 +770,7 @@ function findCardIndex(
     }
 
     if (pathNode.kind === "person" && node.data.kind === "person") {
-      const nodePersonTmdbId = getValidTmdbEntityId(
-        node.data.record?.tmdbId ?? node.data.record?.id,
-      );
+      const nodePersonTmdbId = getPersonTmdbIdFromCard(node.data);
 
       if (pathNode.tmdbId && nodePersonTmdbId) {
         return nodePersonTmdbId === pathNode.tmdbId;
@@ -767,6 +795,16 @@ async function buildTreeFromHash(
   hashValue: string,
 ): Promise<GeneratorTree<CinenerdleCard>> {
   const pathNodes = buildPathNodesFromSegments(parseHashSegments(hashValue));
+
+  addCinenerdleDebugLog("buildTreeFromHashStart", {
+    hashValue,
+    pathNodes: pathNodes.map((pathNode) => ({
+      kind: pathNode.kind,
+      name: "name" in pathNode ? pathNode.name : "",
+      year: "year" in pathNode ? pathNode.year : "",
+      tmdbId: "tmdbId" in pathNode ? pathNode.tmdbId ?? null : null,
+    })),
+  });
 
   if (pathNodes.length === 0) {
     return createCinenerdleRootTree();
@@ -806,6 +844,24 @@ async function buildTreeFromHash(
     let nextRow = lastRow;
     let selectedIndex = findCardIndex(lastRow, pathNode);
 
+    addCinenerdleDebugLog("buildTreeFromHashContinuationMatch", {
+      originalPathNode: {
+        kind: originalPathNode.kind,
+        name: originalPathNode.name,
+        year: originalPathNode.kind === "movie" ? originalPathNode.year : "",
+        tmdbId: originalPathNode.kind === "person" ? originalPathNode.tmdbId ?? null : null,
+      },
+      resolvedPathNode: {
+        kind: pathNode.kind,
+        name: pathNode.name,
+        year: pathNode.kind === "movie" ? pathNode.year : "",
+        tmdbId: pathNode.kind === "person" ? pathNode.tmdbId ?? null : null,
+      },
+      parentSelectedCard: summarizeCardForDebug(parentSelectedCard),
+      selectedIndex,
+      rowCandidates: lastRow.map((node) => summarizeCardForDebug(node.data)),
+    });
+
     if (selectedIndex >= 0) {
       nextRow = selectCardInRow(lastRow, selectedIndex);
       tree = [...tree.slice(0, -1), nextRow];
@@ -821,6 +877,18 @@ async function buildTreeFromHash(
     }
 
     const selectedCard = nextRow[selectedIndex]?.data;
+    addCinenerdleDebugLog("buildTreeFromHashSelectedCard", {
+      resolvedPathNode: {
+        kind: pathNode.kind,
+        name: pathNode.name,
+        year: pathNode.kind === "movie" ? pathNode.year : "",
+        tmdbId: pathNode.kind === "person" ? pathNode.tmdbId ?? null : null,
+      },
+      selectedIndex,
+      selectedCard: summarizeCardForDebug(selectedCard),
+      usedDisconnectedRow: selectedIndex === 0 && nextRow !== lastRow,
+    });
+
     if (!selectedCard) {
       break;
     }
