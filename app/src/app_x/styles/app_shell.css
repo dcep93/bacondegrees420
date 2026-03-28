@@ -356,6 +356,31 @@
   color: rgba(255, 247, 239, 0.82);
 }
 
+.bacon-connection-arrow-break {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+}
+
+.bacon-connection-arrow-break-line {
+  width: 10px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.78;
+}
+
+.bacon-connection-arrow-break-slash {
+  line-height: 1;
+  transform: translateY(-0.5px);
+  margin-left: -1px;
+  margin-right: -1px;
+}
+
+.bacon-connection-arrow-break-head {
+  line-height: 1;
+}
+
 .bacon-connection-arrow-button {
   border: 1px solid var(--bacon-border-strong);
   background: rgba(26, 19, 15, 0.96);

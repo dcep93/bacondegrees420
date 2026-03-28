@@ -873,7 +873,13 @@ export default function AppX() {
                 onCardClick: () => navigateToConnectionEntity(connectionSession.left),
                 onNameClick: () => navigateToConnectionEntity(connectionSession.left),
               })}
-              <span className="bacon-connection-arrow bacon-connection-arrow-static">→</span>
+              <span className="bacon-connection-arrow bacon-connection-arrow-static">
+                <span className="bacon-connection-arrow-break" aria-hidden="true">
+                  <span className="bacon-connection-arrow-break-line" />
+                  <span className="bacon-connection-arrow-break-slash">/</span>
+                  <span className="bacon-connection-arrow-break-head">→</span>
+                </span>
+              </span>
               {renderConnectionEntityCard(connectionSession.right, {
                 onCardClick: () => navigateToConnectionEntity(connectionSession.right),
                 onNameClick: () => navigateToConnectionEntity(connectionSession.right),
