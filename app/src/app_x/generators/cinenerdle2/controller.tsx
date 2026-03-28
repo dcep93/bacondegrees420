@@ -37,7 +37,6 @@ import {
   getSnapshotPeopleByRole,
   getUniqueSortedTmdbMovieCredits,
   getValidTmdbEntityId,
-  isAllowedBfsTmdbMovieCredit,
   normalizeName,
   normalizeTitle,
 } from "./utils";
@@ -568,9 +567,7 @@ async function buildChildRowForPersonCard(
     return null;
   }
 
-  const movieCredits = getUniqueSortedTmdbMovieCredits(personRecord).filter(
-    isAllowedBfsTmdbMovieCredit,
-  );
+  const movieCredits = getUniqueSortedTmdbMovieCredits(personRecord);
   const filmRecordsById = await getFilmRecordsByIds(
     movieCredits.map((credit) => credit.id),
   );
