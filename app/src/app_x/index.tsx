@@ -197,14 +197,24 @@ function clearHash() {
   );
 }
 
+function createPathNodeFromConnectionEntity(entity: ConnectionEntity) {
+  if (entity.kind === "cinenerdle") {
+    return createPathNode("cinenerdle", "cinenerdle");
+  }
+
+  if (entity.kind === "movie") {
+    return createPathNode("movie", entity.name, entity.year);
+  }
+
+  return createPathNode("person", entity.name);
+}
+
 function serializeConnectionEntityHash(entity: ConnectionEntity): string {
-  return serializePathNodes([
-    entity.kind === "cinenerdle"
-      ? createPathNode("cinenerdle", "cinenerdle")
-      : entity.kind === "movie"
-        ? createPathNode("movie", entity.name, entity.year)
-        : createPathNode("person", entity.name),
-  ]);
+  return serializePathNodes([createPathNodeFromConnectionEntity(entity)]);
+}
+
+function serializeConnectionPathHash(path: ConnectionEntity[]): string {
+  return serializePathNodes(path.map((entity) => createPathNodeFromConnectionEntity(entity)));
 }
 
 function createSearchingConnectionRow(
@@ -458,6 +468,13 @@ export default function AppX() {
   const navigateToConnectionEntity = useCallback(
     (entity: ConnectionEntity) => {
       navigateToHash(serializeConnectionEntityHash(entity), "navigation");
+    },
+    [navigateToHash],
+  );
+
+  const navigateToConnectionPath = useCallback(
+    (path: ConnectionEntity[]) => {
+      navigateToHash(serializeConnectionPathHash(path), "navigation");
     },
     [navigateToHash],
   );
@@ -921,6 +938,7 @@ export default function AppX() {
                     const edgeKey = nextEntity
                       ? getConnectionEdgeKey(entity.key, nextEntity.key)
                       : "";
+                    const isLeftmostNode = index === 0;
                     const isMiddleNode = index > 0 && index < row.path.length - 1;
                     const isNodeDimmed = row.childDisallowedNodeKeys.includes(entity.key);
                     const isEdgeDimmed = row.childDisallowedEdgeKeys.includes(edgeKey);
@@ -936,7 +954,9 @@ export default function AppX() {
                                 nodeKey: entity.key,
                               })
                             : undefined,
-                          onNameClick: () => navigateToConnectionEntity(entity),
+                          onNameClick: isLeftmostNode
+                            ? () => navigateToConnectionPath([...row.path].reverse())
+                            : () => navigateToConnectionEntity(entity),
                         })}
                         {nextEntity ? (
                           <button
