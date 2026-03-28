@@ -31,13 +31,14 @@
 
 .bacon-title-bar {
   position: relative;
-  z-index: 10;
+  z-index: 30;
   box-sizing: border-box;
   width: 100%;
   min-height: 88px;
   padding: 18px 24px;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 18px;
   border-bottom: 1px solid var(--bacon-border);
   background: rgba(10, 8, 7, 0.34);
@@ -100,6 +101,8 @@
   margin-left: auto;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 10px;
 }
 
@@ -764,6 +767,8 @@
   }
 
   .bacon-title-actions {
+    width: 100%;
+    margin-left: 0;
     gap: 8px;
   }
 
@@ -787,10 +792,6 @@
   .bacon-connection-input {
     min-height: 44px;
     font-size: 0.92rem;
-  }
-
-  .bacon-connection-matchup {
-    display: none;
   }
 
   .bacon-connection-form {

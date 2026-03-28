@@ -2083,6 +2083,7 @@ export default function AppX() {
           BaconDegrees420
         </h1>
         <div className="bacon-title-actions">
+          {renderConnectionMatchupPreview()}
           {copyStatus ? <span className="bacon-copy-status">{copyStatus}</span> : null}
           <button
             aria-label="Save bookmark"
@@ -2154,7 +2155,6 @@ export default function AppX() {
                 </div>
               ) : null}
             </div>
-            {renderConnectionMatchupPreview()}
             <span
               className="bacon-connection-pill-wrap"
               onBlur={() => setIsSelectedPathTooltipVisible(false)}

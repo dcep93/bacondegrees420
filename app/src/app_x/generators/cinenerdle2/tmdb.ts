@@ -21,6 +21,7 @@ import {
   buildFilmRecord,
   buildPersonRecord,
   chooseBestMovieSearchResult,
+  pickBestPersonRecord,
   withDerivedFilmFields,
 } from "./records";
 import type {
@@ -431,12 +432,10 @@ async function prefetchBestPersonForMovieRecord(
   ].sort((left, right) => (right.popularity ?? 0) - (left.popularity ?? 0));
 
   for (const credit of candidateCredits) {
-    const existingPersonRecord =
-      credit.id
-        ? await getPersonRecordById(credit.id)
-        : credit.name
-          ? await getPersonRecordByName(credit.name)
-          : null;
+    const existingPersonRecord = pickBestPersonRecord(
+      credit.id ? await getPersonRecordById(credit.id) : null,
+      credit.name ? await getPersonRecordByName(credit.name) : null,
+    );
 
     if (existingPersonRecord) {
       continue;
@@ -453,9 +452,9 @@ async function getLocalPersonRecordForCard(
   personName: string,
   personId?: number | null,
 ): Promise<PersonRecord | null> {
-  return (
-    (personId ? await getPersonRecordById(personId) : null) ??
-    (!personId && personName ? await getPersonRecordByName(personName) : null)
+  return pickBestPersonRecord(
+    personId ? await getPersonRecordById(personId) : null,
+    personName ? await getPersonRecordByName(personName) : null,
   );
 }
 

@@ -32,6 +32,7 @@ import {
   prepareSelectedMovie,
   prepareSelectedPerson,
 } from "./tmdb";
+import { pickBestPersonRecord } from "./records";
 import type { FilmRecord, PersonRecord } from "./types";
 import {
   getAssociatedPeopleFromMovieCredits,
@@ -214,9 +215,8 @@ async function getLocalPersonRecord(
   personTmdbId?: number | null,
 ): Promise<PersonRecord | null> {
   const personRecordById = personTmdbId ? await getPersonRecordById(personTmdbId) : null;
-  const personRecordByName =
-    !personTmdbId && personName ? await getPersonRecordByName(personName) : null;
-  return personRecordById ?? personRecordByName;
+  const personRecordByName = personName ? await getPersonRecordByName(personName) : null;
+  return pickBestPersonRecord(personRecordById, personRecordByName);
 }
 
 function getSelectedEntityPathNodes(hashValue: string): SelectedEntityPathNode[] {
@@ -567,12 +567,10 @@ async function buildChildRowForMovieCard(
       tmdbCredits.map(async (credit) => {
         const personName = credit.name ?? "";
         const matchingFilms = await getFilmRecordsByPersonConnectionKey(personName);
-        const cachedPersonRecord =
-          credit.id
-            ? await getPersonRecordById(credit.id)
-            : personName
-              ? await getPersonRecordByName(personName)
-              : null;
+        const cachedPersonRecord = pickBestPersonRecord(
+          credit.id ? await getPersonRecordById(credit.id) : null,
+          personName ? await getPersonRecordByName(personName) : null,
+        );
 
         if (shouldLogPersonCase && normalizeName(personName) === "andy weir") {
           logProjectHailMaryPersonDebug("tmdb_credit_resolution", {

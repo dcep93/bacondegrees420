@@ -17,6 +17,36 @@ import {
   normalizeTitle,
 } from "./utils";
 
+function getPersonRecordQualityScore(personRecord: PersonRecord | null): number {
+  if (!personRecord) {
+    return -1;
+  }
+
+  let score = 0;
+
+  if (personRecord.rawTmdbPerson?.profile_path) {
+    score += 8;
+  }
+
+  if (personRecord.rawTmdbPerson) {
+    score += 4;
+  }
+
+  if (personRecord.rawTmdbMovieCreditsResponse) {
+    score += 2;
+  }
+
+  if (personRecord.savedAt) {
+    score += 1;
+  }
+
+  if (getValidTmdbEntityId(personRecord.tmdbId ?? personRecord.id)) {
+    score += 1;
+  }
+
+  return score;
+}
+
 export function withDerivedPersonFields(personRecord: PersonRecord): PersonRecord {
   const tmdbMovieKeys = getAllowedConnectedTmdbMovieCredits(personRecord).map((credit) =>
     getMovieKeyFromCredit(credit),
@@ -153,6 +183,28 @@ export function chooseBestFilmRecord(
         return (right.popularity ?? 0) - (left.popularity ?? 0);
       })[0] ?? null
   );
+}
+
+export function pickBestPersonRecord(
+  ...records: Array<PersonRecord | null | undefined>
+): PersonRecord | null {
+  return records
+    .filter((record): record is PersonRecord => Boolean(record))
+    .sort((left, right) => {
+      const qualityDifference =
+        getPersonRecordQualityScore(right) - getPersonRecordQualityScore(left);
+      if (qualityDifference !== 0) {
+        return qualityDifference;
+      }
+
+      const popularityDifference =
+        (right.rawTmdbPerson?.popularity ?? 0) - (left.rawTmdbPerson?.popularity ?? 0);
+      if (popularityDifference !== 0) {
+        return popularityDifference;
+      }
+
+      return left.name.localeCompare(right.name);
+    })[0] ?? null;
 }
 
 export function buildPersonRecord(

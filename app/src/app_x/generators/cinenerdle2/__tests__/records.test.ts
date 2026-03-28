@@ -3,6 +3,7 @@ import {
   buildFilmRecord,
   buildPersonRecord,
   chooseBestFilmRecord,
+  pickBestPersonRecord,
   chooseBestMovieSearchResult,
   withDerivedFilmFields,
   withDerivedPersonFields,
@@ -358,5 +359,31 @@ describe("buildPersonRecord", () => {
       rawTmdbMovieCreditsResponse: movieCreditsResponse,
       savedAt: "2026-03-28T08:00:00.000Z",
     });
+  });
+});
+
+describe("pickBestPersonRecord", () => {
+  it("prefers the richer matching record with a profile image", () => {
+    const staleRecord = makePersonRecord({
+      id: 1352085,
+      tmdbId: 1352085,
+      name: "Andy Weir",
+      rawTmdbMovieCreditsResponse: { crew: [] },
+    });
+    const richerRecord = makePersonRecord({
+      id: 1352085,
+      tmdbId: 1352085,
+      name: "Andy Weir",
+      rawTmdbPerson: makeTmdbPersonSearchResult({
+        id: 1352085,
+        name: "Andy Weir",
+        profile_path: "/andy-weir.jpg",
+        popularity: 2,
+      }),
+      rawTmdbMovieCreditsResponse: { crew: [] },
+      savedAt: "2026-03-28T12:00:00.000Z",
+    });
+
+    expect(pickBestPersonRecord(staleRecord, richerRecord)).toEqual(richerRecord);
   });
 });
