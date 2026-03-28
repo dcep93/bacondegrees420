@@ -69,6 +69,16 @@ type CinenerdleControllerOptions = {
   writeHash: (nextHash: string, mode?: "selection" | "navigation") => void;
 };
 
+type SelectedEntityPathNode = Extract<CinenerdlePathNode, { kind: "movie" | "person" }>;
+
+type SelectedPathHydrationTask = {
+  key: string;
+  kind: SelectedEntityPathNode["kind"];
+  index: number;
+  label: string;
+  run: () => Promise<FilmRecord | PersonRecord | null>;
+};
+
 function createNode(data: CinenerdleCard, selected = false): GeneratorNode<CinenerdleCard> {
   return {
     selected,
@@ -170,30 +180,6 @@ function getPersonTmdbIdFromCard(
   return keyMatch ? getValidTmdbEntityId(keyMatch[1]) : null;
 }
 
-function getMovieTmdbIdFromCard(
-  card: Extract<CinenerdleCard, { kind: "movie" }>,
-): number | null {
-  const recordTmdbId = getValidTmdbEntityId(card.record?.tmdbId ?? card.record?.id);
-  if (recordTmdbId) {
-    return recordTmdbId;
-  }
-
-  const keyMatch = card.key.match(/^movie:(\d+)$/);
-  return keyMatch ? getValidTmdbEntityId(keyMatch[1]) : null;
-}
-
-function isCardFullyInDb(card: CinenerdleCard): boolean {
-  if (card.kind === "movie") {
-    return hasMovieCredits(card.record);
-  }
-
-  if (card.kind === "person") {
-    return hasPersonMovieCredits(card.record);
-  }
-
-  return true;
-}
-
 function getPathNodeFromCard(card: CinenerdleCard): CinenerdlePathNode {
   if (card.kind === "cinenerdle") {
     return createPathNode("cinenerdle", "cinenerdle");
@@ -225,56 +211,130 @@ async function getLocalPersonRecord(
   );
 }
 
-function maybePromoteSelectedPersonCard(
-  card: Extract<CinenerdleCard, { kind: "person" }>,
-  personRecord: PersonRecord | null,
-): CinenerdleCard {
-  if (
-    isCardFullyInDb(card) ||
-    getPersonTmdbIdFromCard(card) ||
-    !getValidTmdbEntityId(personRecord?.tmdbId ?? personRecord?.id)
-  ) {
-    return card;
-  }
-
-  return personRecord ? createPersonRootCard(personRecord, card.name) : card;
-}
-
-function maybePromoteSelectedMovieCard(
-  card: Extract<CinenerdleCard, { kind: "movie" }>,
-  movieRecord: FilmRecord | null,
-): CinenerdleCard {
-  if (
-    isCardFullyInDb(card) ||
-    getMovieTmdbIdFromCard(card) ||
-    !getValidTmdbEntityId(movieRecord?.tmdbId ?? movieRecord?.id)
-  ) {
-    return card;
-  }
-
-  return movieRecord ? createMovieRootCard(movieRecord, card.name) : card;
-}
-
-function replaceCardInTree(
-  tree: GeneratorTree<CinenerdleCard>,
-  row: number,
-  col: number,
-  nextCard: CinenerdleCard,
-): GeneratorTree<CinenerdleCard> {
-  return tree.map((currentRow, currentRowIndex) =>
-    currentRowIndex === row
-      ? currentRow.map((node, currentColIndex) =>
-          currentColIndex === col
-            ? {
-                ...node,
-                data: nextCard,
-              }
-            : node,
-        )
-      : currentRow,
+function getSelectedEntityPathNodes(hashValue: string): SelectedEntityPathNode[] {
+  return buildPathNodesFromSegments(parseHashSegments(hashValue)).filter(
+    (pathNode): pathNode is SelectedEntityPathNode =>
+      pathNode.kind === "movie" || pathNode.kind === "person",
   );
 }
 
+function getMoviePathNodeHydrationKey(
+  pathNode: Extract<SelectedEntityPathNode, { kind: "movie" }>,
+): string {
+  return `movie:${normalizeTitle(pathNode.name)}:${pathNode.year}`;
+}
+
+function didResolvedPersonIdentityChange(
+  originalPathNode: Extract<SelectedEntityPathNode, { kind: "person" }>,
+  resolvedPathNode: Extract<SelectedEntityPathNode, { kind: "person" }>,
+): boolean {
+  return (
+    normalizeName(originalPathNode.name) !== normalizeName(resolvedPathNode.name) ||
+    getValidTmdbEntityId(originalPathNode.tmdbId) !== getValidTmdbEntityId(resolvedPathNode.tmdbId)
+  );
+}
+
+async function buildSelectedPathHydrationTasks(
+  selectedPathNodes: SelectedEntityPathNode[],
+): Promise<SelectedPathHydrationTask[]> {
+  const tasksByKey = new Map<string, SelectedPathHydrationTask>();
+
+  await Promise.all(
+    selectedPathNodes.map(async (pathNode, index) => {
+      if (pathNode.kind === "person") {
+        const existingPersonRecord = await getLocalPersonRecord(pathNode.name, pathNode.tmdbId);
+        if (hasPersonMovieCredits(existingPersonRecord)) {
+          return;
+        }
+
+        const taskKey = getPersonIdentityKey(pathNode.name, pathNode.tmdbId);
+        if (tasksByKey.has(taskKey)) {
+          return;
+        }
+
+        tasksByKey.set(taskKey, {
+          key: taskKey,
+          kind: "person",
+          index,
+          label: pathNode.name,
+          run: () => prepareSelectedPerson(pathNode.name, pathNode.tmdbId),
+        });
+        return;
+      }
+
+      const existingMovieRecord = await getFilmRecordByTitleAndYear(
+        pathNode.name,
+        pathNode.year,
+      );
+      if (hasMovieCredits(existingMovieRecord)) {
+        return;
+      }
+
+      const taskKey = getMoviePathNodeHydrationKey(pathNode);
+      if (tasksByKey.has(taskKey)) {
+        return;
+      }
+
+      tasksByKey.set(taskKey, {
+        key: taskKey,
+        kind: "movie",
+        index,
+        label: pathNode.year ? `${pathNode.name} (${pathNode.year})` : pathNode.name,
+        run: () => prepareSelectedMovie(pathNode.name, pathNode.year),
+      });
+    }),
+  );
+
+  return Array.from(tasksByKey.values()).sort((left, right) => left.index - right.index);
+}
+
+async function buildCorrectivePersonHydrationTasks(
+  originalSelectedPathNodes: SelectedEntityPathNode[],
+  tree: GeneratorTree<CinenerdleCard>,
+): Promise<SelectedPathHydrationTask[]> {
+  const resolvedSelectedPathNodes = getSelectedPathNodes(tree).filter(
+    (pathNode): pathNode is SelectedEntityPathNode =>
+      pathNode.kind === "movie" || pathNode.kind === "person",
+  );
+  const tasksByKey = new Map<string, SelectedPathHydrationTask>();
+
+  await Promise.all(
+    resolvedSelectedPathNodes.map(async (resolvedPathNode, index) => {
+      const originalPathNode = originalSelectedPathNodes[index];
+      if (
+        !originalPathNode ||
+        originalPathNode.kind !== "person" ||
+        resolvedPathNode.kind !== "person" ||
+        !didResolvedPersonIdentityChange(originalPathNode, resolvedPathNode)
+      ) {
+        return;
+      }
+
+      const existingResolvedPersonRecord = await getLocalPersonRecord(
+        resolvedPathNode.name,
+        resolvedPathNode.tmdbId,
+      );
+      if (hasPersonMovieCredits(existingResolvedPersonRecord)) {
+        return;
+      }
+
+      const taskKey = getPersonIdentityKey(resolvedPathNode.name, resolvedPathNode.tmdbId);
+      if (tasksByKey.has(taskKey)) {
+        return;
+      }
+
+      tasksByKey.set(taskKey, {
+        key: taskKey,
+        kind: "person",
+        index,
+        label: resolvedPathNode.name,
+        run: () => prepareSelectedPerson(resolvedPathNode.name, resolvedPathNode.tmdbId),
+      });
+    }),
+  );
+
+  return Array.from(tasksByKey.values()).sort((left, right) => left.index - right.index);
+}
 async function resolvePersonPathNodeFromMovieContext(
   pathNode: Extract<CinenerdlePathNode, { kind: "person" }>,
   movieCard: Extract<CinenerdleCard, { kind: "movie" }> | null,
@@ -364,57 +424,86 @@ async function hydrateMissingSelectedPathItemsAndRedraw(
   readHash: () => string,
 ) {
   const initialHash = readHash();
-  const selectedPathNodes = buildPathNodesFromSegments(parseHashSegments(initialHash)).filter(
-    (pathNode): pathNode is Extract<CinenerdlePathNode, { kind: "movie" | "person" }> =>
-      pathNode.kind === "movie" || pathNode.kind === "person",
-  );
-
-  for (const [pathNodeIndex, originalPathNode] of selectedPathNodes.entries()) {
-    if (readHash() !== initialHash) {
-      return;
-    }
-
-    const previousPathNode = selectedPathNodes[pathNodeIndex - 1] ?? null;
-    const movieContextCard: Extract<CinenerdleCard, { kind: "movie" }> | null =
-      previousPathNode && previousPathNode.kind === "movie"
-        ? (createUncachedMovieCard(previousPathNode.name, previousPathNode.year) as Extract<
-            CinenerdleCard,
-            { kind: "movie" }
-          >)
-        : null;
-    const pathNode: Extract<CinenerdlePathNode, { kind: "movie" | "person" }> =
-      originalPathNode.kind === "person"
-        ? await resolvePersonPathNodeFromMovieContext(originalPathNode, movieContextCard)
-        : originalPathNode;
-
-    if (pathNode.kind === "person") {
-      const existingPersonRecord = await getLocalPersonRecord(pathNode.name, pathNode.tmdbId);
-      if (hasPersonMovieCredits(existingPersonRecord)) {
-        continue;
-      }
-
-      const fetchedPersonRecord = await prepareSelectedPerson(pathNode.name, pathNode.tmdbId);
-      if (!fetchedPersonRecord) {
-        continue;
-      }
-    } else {
-      const existingMovieRecord = await getFilmRecordByTitleAndYear(
-        pathNode.name,
-        pathNode.year,
-      );
-      if (hasMovieCredits(existingMovieRecord)) {
-        continue;
-      }
-
-      const fetchedMovieRecord = await prepareSelectedMovie(pathNode.name, pathNode.year);
-      if (!fetchedMovieRecord) {
-        continue;
-      }
-    }
-
-    const refreshedTree = await buildTreeFromHash(readHash());
-    setTree(refreshedTree);
+  const selectedPathNodes = getSelectedEntityPathNodes(initialHash);
+  if (selectedPathNodes.length === 0) {
+    return;
   }
+
+  const hydrationTasks = await buildSelectedPathHydrationTasks(selectedPathNodes);
+  if (hydrationTasks.length === 0) {
+    return;
+  }
+
+  addCinenerdleDebugLog("selectedPathPrefetchStart", {
+    hash: initialHash,
+    pathNodeCount: selectedPathNodes.length,
+    taskCount: hydrationTasks.length,
+    tasks: hydrationTasks.map((task) => ({
+      key: task.key,
+      kind: task.kind,
+      label: task.label,
+    })),
+  });
+
+  const hydrationResults = await Promise.allSettled(
+    hydrationTasks.map((task) => task.run()),
+  );
+  if (readHash() !== initialHash) {
+    addCinenerdleDebugLog("selectedPathPrefetchAborted", {
+      hash: initialHash,
+      reason: "hashChangedAfterBatch",
+    });
+    return;
+  }
+
+  addCinenerdleDebugLog("selectedPathPrefetchComplete", {
+    hash: initialHash,
+    taskCount: hydrationTasks.length,
+    fulfilledCount: hydrationResults.filter((result) => result.status === "fulfilled").length,
+    rejectedCount: hydrationResults.filter((result) => result.status === "rejected").length,
+  });
+
+  let refreshedTree = await buildTreeFromHash(readHash());
+  setTree(refreshedTree);
+
+  const correctiveTasks = await buildCorrectivePersonHydrationTasks(
+    selectedPathNodes,
+    refreshedTree,
+  );
+  if (correctiveTasks.length === 0) {
+    return;
+  }
+
+  addCinenerdleDebugLog("selectedPathPrefetchCorrectionStart", {
+    hash: initialHash,
+    taskCount: correctiveTasks.length,
+    tasks: correctiveTasks.map((task) => ({
+      key: task.key,
+      kind: task.kind,
+      label: task.label,
+    })),
+  });
+
+  const correctiveResults = await Promise.allSettled(
+    correctiveTasks.map((task) => task.run()),
+  );
+  if (readHash() !== initialHash) {
+    addCinenerdleDebugLog("selectedPathPrefetchAborted", {
+      hash: initialHash,
+      reason: "hashChangedAfterCorrection",
+    });
+    return;
+  }
+
+  addCinenerdleDebugLog("selectedPathPrefetchCorrectionComplete", {
+    hash: initialHash,
+    taskCount: correctiveTasks.length,
+    fulfilledCount: correctiveResults.filter((result) => result.status === "fulfilled").length,
+    rejectedCount: correctiveResults.filter((result) => result.status === "rejected").length,
+  });
+
+  refreshedTree = await buildTreeFromHash(readHash());
+  setTree(refreshedTree);
 }
 
 async function buildChildRowForPersonCard(
