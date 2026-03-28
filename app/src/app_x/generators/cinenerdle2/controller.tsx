@@ -1111,6 +1111,10 @@ function renderDbInfoCard(viewModel: Extract<CinenerdleCardViewModel, { kind: "d
     event.preventDefault();
     event.stopPropagation();
 
+    if (!import.meta.env.DEV) {
+      return;
+    }
+
     if (!navigator.clipboard?.writeText) {
       return;
     }

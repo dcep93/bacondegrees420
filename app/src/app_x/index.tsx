@@ -24,7 +24,7 @@ import {
 import { BookmarkPreviewCardView } from "./components/bookmark_preview_card";
 import Cinenerdle2 from "./generators/cinenerdle2";
 import { buildBookmarkPreviewCardsFromHash } from "./generators/cinenerdle2/controller";
-import { copyCinenerdleDebugLogToClipboard } from "./generators/cinenerdle2/debug";
+import { copyCinenerdleIndexedDbSnapshotToClipboard } from "./generators/cinenerdle2/debug";
 import {
   createCinenerdleConnectionEntity,
   createFallbackConnectionEntity,
@@ -1339,15 +1339,21 @@ export default function AppX() {
       );
 
       if (!confirmed) {
-        return copyCinenerdleDebugLogToClipboard()
-          .then((entryCount) => {
-            setCopyStatus(`Debug log copied (${entryCount})`);
+        if (!import.meta.env.DEV) {
+          return;
+        }
+
+        return copyCinenerdleIndexedDbSnapshotToClipboard()
+          .then(({ peopleCount, filmCount, searchableConnectionEntityCount }) => {
+            setCopyStatus(
+              `DB copied (${peopleCount} people, ${filmCount} films, ${searchableConnectionEntityCount} search)`,
+            );
           })
           .catch((error: unknown) => {
             setCopyStatus(
               error instanceof Error && error.message
                 ? error.message
-                : "Debug copy failed",
+                : "DB copy failed",
             );
           });
       }
