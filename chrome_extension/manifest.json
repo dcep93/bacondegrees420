@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "BaconDegrees420 Alert",
+  "version": "1.0.0",
+  "description": "Alerts when Cinenerdle Battle is open.",
+  "icons": {
+    "16": "favicon.svg.png",
+    "32": "favicon.svg.png",
+    "48": "favicon.svg.png",
+    "128": "favicon.svg.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.cinenerdle2.app/battle*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
