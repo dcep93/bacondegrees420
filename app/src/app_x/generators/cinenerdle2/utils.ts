@@ -168,6 +168,12 @@ export function getUniqueSortedTmdbMovieCredits(
     .sort((left, right) => (right.popularity ?? 0) - (left.popularity ?? 0));
 }
 
+export function getAllowedConnectedTmdbMovieCredits(
+  personRecord: PersonRecord | null,
+): TmdbMovieCredit[] {
+  return getTmdbMovieCredits(personRecord).filter(isAllowedBfsTmdbMovieCredit);
+}
+
 function isAllowedConnectionCrewJob(job: string | undefined): boolean {
   const normalizedJob = normalizeName(job ?? "");
 

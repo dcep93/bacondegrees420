@@ -47,6 +47,15 @@ describe("withDerivedPersonFields", () => {
               release_date: "1995-12-15",
               creditType: undefined,
               character: undefined,
+              job: "Costumer",
+            }),
+            makeMovieCredit({
+              id: 4,
+              title: "The Insider",
+              release_date: "1999-11-05",
+              creditType: undefined,
+              character: undefined,
+              job: "Director",
             }),
           ],
         },
@@ -59,6 +68,7 @@ describe("withDerivedPersonFields", () => {
     expect(personRecord.movieConnectionKeys).toEqual([
       "heat (1995)",
       "insomnia (2002)",
+      "the insider (1999)",
     ]);
   });
 
@@ -105,6 +115,14 @@ describe("withDerivedFilmFields", () => {
               name: "Michael Mann",
               creditType: undefined,
               character: undefined,
+              job: "Director",
+            }),
+            makePersonCredit({
+              id: 4,
+              name: "Mark Avery",
+              creditType: undefined,
+              character: undefined,
+              job: "Costumer",
             }),
           ],
         },
@@ -130,6 +148,7 @@ describe("withDerivedFilmFields", () => {
       "val kilmer",
       "elliot goldenthal",
     ]);
+    expect(filmRecord.personConnectionKeys).not.toContain("mark avery");
     expect(filmRecord.isCinenerdleDailyStarter).toBe(1);
   });
 

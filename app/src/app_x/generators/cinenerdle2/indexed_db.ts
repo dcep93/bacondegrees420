@@ -15,12 +15,12 @@ import {
   formatMoviePathLabel,
   getValidTmdbEntityId,
   getAssociatedPeopleFromMovieCredits,
+  getAllowedConnectedTmdbMovieCredits,
   getMovieCreditPersonPopularityLookup,
   getFilmKey,
   getMovieTitleFromCredit,
   getMovieYearFromCredit,
   getSnapshotConnectionLabels,
-  getTmdbMovieCredits,
   normalizeName,
   normalizeTitle,
 } from "./utils";
@@ -135,7 +135,7 @@ function collectSearchableConnectionEntitiesFromPersonRecord(
     recordsByKey.set(personRecordEntry.key, personRecordEntry);
   }
 
-  getTmdbMovieCredits(personRecord).forEach((credit) => {
+  getAllowedConnectedTmdbMovieCredits(personRecord).forEach((credit) => {
     const title = getMovieTitleFromCredit(credit);
     if (!title) {
       return;

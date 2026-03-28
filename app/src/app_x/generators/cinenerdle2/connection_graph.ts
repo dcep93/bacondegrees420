@@ -13,13 +13,13 @@ import type {
   SearchableConnectionEntityRecord,
 } from "./types";
 import {
+  getAllowedConnectedTmdbMovieCredits,
   formatMoviePathLabel,
   getAssociatedPeopleFromMovieCredits,
   getFilmKey,
   getMovieTitleFromCredit,
   getMovieYearFromCredit,
   getSnapshotConnectionLabels,
-  getTmdbMovieCredits,
   getValidTmdbEntityId,
   normalizeName,
   normalizeTitle,
@@ -245,7 +245,7 @@ function findOriginalMovieInPeople(
   movieLookupKey: string,
 ): { title: string; year: string } | null {
   for (const personRecord of personRecords) {
-    const creditMatch = getTmdbMovieCredits(personRecord).find((credit) => {
+    const creditMatch = getAllowedConnectedTmdbMovieCredits(personRecord).find((credit) => {
       const title = getMovieTitleFromCredit(credit);
       if (!title) {
         return false;
@@ -460,7 +460,7 @@ async function getNeighborKeysForEntityKey(entityKey: string): Promise<string[]>
     const popularityByKey = new Map<string, number>();
     const moviePopularityByLookupKey = new Map<string, number>();
 
-    getTmdbMovieCredits(personRecord).forEach((credit) => {
+    getAllowedConnectedTmdbMovieCredits(personRecord).forEach((credit) => {
       const title = getMovieTitleFromCredit(credit);
       if (!title) {
         return;

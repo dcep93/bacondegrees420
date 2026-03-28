@@ -5,11 +5,12 @@ import type {
   TmdbPersonSearchResult,
 } from "./types";
 import {
+  getAssociatedPeopleFromMovieCredits,
+  getAllowedConnectedTmdbMovieCredits,
   getCinenerdleMovieId,
   getCinenerdlePersonId,
   getMovieKeyFromCredit,
   getSnapshotConnectionLabels,
-  getTmdbMovieCredits,
   getValidTmdbEntityId,
   getFilmKey,
   normalizeName,
@@ -17,7 +18,7 @@ import {
 } from "./utils";
 
 export function withDerivedPersonFields(personRecord: PersonRecord): PersonRecord {
-  const tmdbMovieKeys = getTmdbMovieCredits(personRecord).map((credit) =>
+  const tmdbMovieKeys = getAllowedConnectedTmdbMovieCredits(personRecord).map((credit) =>
     getMovieKeyFromCredit(credit),
   );
 
@@ -39,8 +40,7 @@ export function withDerivedPersonFields(personRecord: PersonRecord): PersonRecor
 }
 
 export function withDerivedFilmFields(filmRecord: FilmRecord): FilmRecord {
-  const credits = filmRecord.rawTmdbMovieCreditsResponse ?? {};
-  const tmdbPeople = [...(credits.cast ?? []), ...(credits.crew ?? [])]
+  const tmdbPeople = getAssociatedPeopleFromMovieCredits(filmRecord)
     .map((credit) => normalizeName(credit.name ?? ""))
     .filter(Boolean);
   const starterPeople = getSnapshotConnectionLabels(filmRecord).map(normalizeName);
