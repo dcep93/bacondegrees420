@@ -21,7 +21,6 @@ import {
 } from "./generators/cinenerdle2/connection_graph";
 import { CINENERDLE_ICON_URL, TMDB_ICON_URL } from "./generators/cinenerdle2/constants";
 import {
-  addCinenerdleDebugLog,
   copyCinenerdleDebugLogToClipboard,
 } from "./generators/cinenerdle2/debug";
 import {
@@ -338,78 +337,6 @@ export default function AppX() {
     document.title = getDocumentTitle(hashValue);
   }, [hashValue]);
 
-  const logConnectionLayoutSnapshot = useCallback((reason: string) => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    function measureElement(element: Element | null) {
-      if (!(element instanceof HTMLElement)) {
-        return null;
-      }
-
-      const computedStyle = window.getComputedStyle(element);
-      const rect = element.getBoundingClientRect();
-      const width = computedStyle.width;
-      const minWidth = computedStyle.minWidth;
-      const maxWidth = computedStyle.maxWidth;
-      const flexBasis = computedStyle.flexBasis;
-      let likelyConstraint = "";
-
-      if (width !== "auto" && minWidth === width) {
-        likelyConstraint = `width/min-width fixed at ${width}`;
-      } else if (flexBasis !== "auto" && flexBasis === width) {
-        likelyConstraint = `flex-basis matches width at ${width}`;
-      } else if (maxWidth !== "none" && maxWidth === width) {
-        likelyConstraint = `max-width matches width at ${width}`;
-      }
-
-      return {
-        className: element.className,
-        text: element.textContent?.trim().replace(/\s+/g, " ").slice(0, 120) ?? "",
-        rectWidth: Number(rect.width.toFixed(2)),
-        offsetWidth: element.offsetWidth,
-        clientWidth: element.clientWidth,
-        scrollWidth: element.scrollWidth,
-        width,
-        minWidth,
-        maxWidth,
-        flex: computedStyle.flex,
-        flexBasis,
-        boxSizing: computedStyle.boxSizing,
-        paddingLeft: computedStyle.paddingLeft,
-        paddingRight: computedStyle.paddingRight,
-        borderLeftWidth: computedStyle.borderLeftWidth,
-        borderRightWidth: computedStyle.borderRightWidth,
-        whiteSpace: computedStyle.whiteSpace,
-        overflowX: computedStyle.overflowX,
-        likelyConstraint,
-      };
-    }
-
-    const connectionBar = connectionBarRef.current;
-    const pillElement = connectionBar?.querySelector(".bacon-connection-pill") ?? null;
-    const nodeElements = Array.from(
-      document.querySelectorAll(".bacon-connection-node"),
-    ).slice(0, 6);
-
-    addCinenerdleDebugLog("connectionLayout.snapshot", {
-      reason,
-      viewport: {
-        innerWidth: window.innerWidth,
-        innerHeight: window.innerHeight,
-        devicePixelRatio: window.devicePixelRatio,
-      },
-      connectionBar: measureElement(connectionBar),
-      connectionForm: measureElement(connectionBar?.querySelector(".bacon-connection-form") ?? null),
-      connectionPill: measureElement(pillElement),
-      connectionNodes: nodeElements.map((element, index) => ({
-        index,
-        ...measureElement(element),
-      })),
-    });
-  }, []);
-
   useEffect(() => {
     const query = connectionQuery.trim();
     if (!query) {
@@ -504,7 +431,6 @@ export default function AppX() {
   }
 
   function handleCopyLogs() {
-    logConnectionLayoutSnapshot("copy-request");
     void copyCinenerdleDebugLogToClipboard()
       .then((count) => {
         setCopyStatus(`${count} logs copied`);
@@ -514,16 +440,6 @@ export default function AppX() {
         void error;
       });
   }
-
-  useEffect(() => {
-    const frameId = window.requestAnimationFrame(() => {
-      logConnectionLayoutSnapshot("connection-layout-render");
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [connectionSession, highestGenerationSelectedLabel, logConnectionLayoutSnapshot]);
 
   const handleHashWrite = useCallback(
     (nextHash: string, mode: "selection" | "navigation") => {
