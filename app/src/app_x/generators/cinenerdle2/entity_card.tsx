@@ -203,7 +203,7 @@ export function CinenerdleEntityCard({
   className?: string;
   onCardClick?: (event: MouseEvent<HTMLElement>) => void;
   onCardKeyDown?: (event: KeyboardEvent<HTMLElement>) => void;
-  onTitleClick?: () => void;
+  onTitleClick?: (event: MouseEvent<HTMLElement>) => void;
   role?: AriaRole;
   tabIndex?: number;
   titleElement?: "button" | "p";
@@ -247,7 +247,7 @@ export function CinenerdleEntityCard({
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              onTitleClick();
+              onTitleClick(event);
             }}
             type="button"
           >
@@ -260,7 +260,7 @@ export function CinenerdleEntityCard({
               ? (event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                onTitleClick();
+                onTitleClick(event);
               }
               : undefined}
           >

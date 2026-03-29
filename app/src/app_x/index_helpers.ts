@@ -18,6 +18,18 @@ export function getBookmarkPreviewCardHash(bookmarkHash: string, previewCardInde
   return serializePathNodes(pathNodes.slice(0, previewCardIndex + 1));
 }
 
+export function getBookmarkPreviewCardRootHash(bookmarkHash: string, previewCardIndex: number): string {
+  const normalizedHash = normalizeHashValue(bookmarkHash);
+  const pathNodes = buildPathNodesFromSegments(parseHashSegments(normalizedHash));
+  const previewPathNode = pathNodes[previewCardIndex];
+
+  if (!previewPathNode) {
+    return normalizedHash;
+  }
+
+  return serializePathNodes([previewPathNode]);
+}
+
 export function getSelectedPathTooltipEntries(hashValue: string): string[] {
   const pathNodes = buildPathNodesFromSegments(parseHashSegments(hashValue)).filter(
     (pathNode) =>

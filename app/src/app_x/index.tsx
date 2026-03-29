@@ -79,6 +79,7 @@ import {
 } from "./connection_matchup_preview";
 import {
   getBookmarkPreviewCardHash,
+  getBookmarkPreviewCardRootHash,
   getSelectedPathTooltipEntries,
 } from "./index_helpers";
 import "./styles/app_shell.css";
@@ -1122,6 +1123,23 @@ export default function AppX() {
     });
   }
 
+  function handleOpenBookmarkPreviewCardAsRootInNewTab(
+    bookmark: BookmarkEntry,
+    previewCardIndex: number,
+  ) {
+    const previewCard = bookmark.previewCards[previewCardIndex];
+    if (!previewCard || !isBookmarkPreviewCardSelectable(previewCard)) {
+      return;
+    }
+
+    const previewCardRootHash = getBookmarkPreviewCardRootHash(bookmark.hash, previewCardIndex);
+    window.open(
+      buildLocationHref(appLocation.basePathname, previewCardRootHash),
+      "_blank",
+      "noopener,noreferrer",
+    );
+  }
+
   function handleToggleBookmarkPreviewCard(bookmarkId: string, previewCardIndex: number) {
     setBookmarks((currentBookmarks) =>
       toggleBookmarkPreviewCardSelection(currentBookmarks, bookmarkId, previewCardIndex)
@@ -1733,7 +1751,14 @@ export default function AppX() {
                       >
                         <CinenerdleEntityCard
                           card={createBookmarkPreviewCardViewModel(card, isSelected)}
-                          onTitleClick={() => handleLoadBookmarkPreviewCard(bookmark, cardIndex)}
+                          onTitleClick={(event) => {
+                            if (event.metaKey || event.ctrlKey) {
+                              handleOpenBookmarkPreviewCardAsRootInNewTab(bookmark, cardIndex);
+                              return;
+                            }
+
+                            handleLoadBookmarkPreviewCard(bookmark, cardIndex);
+                          }}
                         />
                       </button>
                     );

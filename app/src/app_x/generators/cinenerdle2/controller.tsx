@@ -1065,6 +1065,7 @@ function renderCinenerdleCard(
 
   const rootHash = serializePathNodes([getPathNodeFromCard(card)]);
   const isCinenerdleLaunchCard = card.kind === "cinenerdle";
+  const rootHref = `${window.location.pathname}${window.location.search}${rootHash}`;
 
   function handleCinenerdleCardClick(event: MouseEvent<HTMLElement>) {
     if (!isCinenerdleLaunchCard) {
@@ -1080,9 +1081,14 @@ function renderCinenerdleCard(
     <CinenerdleEntityCard
       card={viewModel}
       onCardClick={handleCinenerdleCardClick}
-      onTitleClick={() => {
+      onTitleClick={(event) => {
         if (isCinenerdleLaunchCard) {
           window.open("https://www.cinenerdle2.app/battle", "_blank", "noopener,noreferrer");
+          return;
+        }
+
+        if (event.metaKey || event.ctrlKey) {
+          window.open(rootHref, "_blank", "noopener,noreferrer");
           return;
         }
 

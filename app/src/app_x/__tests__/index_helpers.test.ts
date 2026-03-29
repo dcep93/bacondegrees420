@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   getBookmarkPreviewCardHash,
+  getBookmarkPreviewCardRootHash,
   getSelectedPathTooltipEntries,
 } from "../index_helpers";
 
@@ -35,5 +36,14 @@ describe("index hash helpers", () => {
         3,
       ),
     ).toBe("#cinenerdle|First+Man+(2018)|Kyle+Chandler|");
+  });
+
+  it("derives a root hash for a bookmark preview card", () => {
+    expect(
+      getBookmarkPreviewCardRootHash(
+        "#cinenerdle|First+Man+(2018)|Kyle+Chandler||Tom+Hanks",
+        2,
+      ),
+    ).toBe("#person|Kyle+Chandler");
   });
 });
