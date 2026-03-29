@@ -335,7 +335,6 @@ async function saveSyncedBookmarksData(bookmarks) {
 
   await removeStorageSync(keysToRemove);
   await setStorageSync(nextStorageRecord);
-  logStorageUsage();
   return normalizedBookmarks;
 }
 
