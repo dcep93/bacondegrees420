@@ -100,7 +100,7 @@ describe("connection autocomplete ranking", () => {
     expect(rankedKeys[0]).toBe("person:connected");
   });
 
-  it("keeps connected suggestions ordered by popularity, then score, then kind, then label", () => {
+  it("keeps connected suggestions ordered by score, then popularity, then kind, then label", () => {
     const suggestions = [
       makeSuggestion({
         key: "movie:alphabetical-last",
@@ -137,14 +137,14 @@ describe("connection autocomplete ranking", () => {
     ];
 
     expect([...suggestions].sort(compareRankedConnectionSuggestions).map((item) => item.key)).toEqual([
-      "movie:high-popularity",
       "movie:high-score",
       "person:alphabetical-first",
       "movie:alphabetical-last",
+      "movie:high-popularity",
     ]);
   });
 
-  it("falls back to the previous ordering when no suggestions are directly connected", () => {
+  it("orders disconnected suggestions by score before popularity", () => {
     const suggestions = [
       makeSuggestion({
         key: "movie:low-popularity",
@@ -177,10 +177,42 @@ describe("connection autocomplete ranking", () => {
     ];
 
     expect([...suggestions].sort(compareRankedConnectionSuggestions).map((item) => item.key)).toEqual([
-      "movie:high-popularity",
+      "movie:low-popularity",
       "person:tiebreak-person",
       "movie:tiebreak-movie",
-      "movie:low-popularity",
+      "movie:high-popularity",
+    ]);
+  });
+
+  it("keeps an exact movie match ahead of more popular partial matches", () => {
+    const suggestions = [
+      makeSuggestion({
+        key: "movie:beau-is-afraid",
+        kind: "movie",
+        label: "Beau Is Afraid",
+        popularity: 18,
+        sortScore: 400,
+      }),
+      makeSuggestion({
+        key: "person:beau-bridges",
+        kind: "person",
+        label: "Beau Bridges",
+        popularity: 70,
+        sortScore: 300,
+      }),
+      makeSuggestion({
+        key: "movie:beautiful-mind",
+        kind: "movie",
+        label: "A Beautiful Mind",
+        popularity: 88,
+        sortScore: 200,
+      }),
+    ];
+
+    expect([...suggestions].sort(compareRankedConnectionSuggestions).map((item) => item.key)).toEqual([
+      "movie:beau-is-afraid",
+      "person:beau-bridges",
+      "movie:beautiful-mind",
     ]);
   });
 });

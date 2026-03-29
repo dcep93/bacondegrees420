@@ -44,6 +44,7 @@ import {
 } from "./generators/cinenerdle2/constants";
 import { buildBookmarkPreviewCardsFromHash } from "./generators/cinenerdle2/controller";
 import {
+  addCinenerdleDebugLog,
   copyCinenerdleDebugLogToClipboard,
   copyCinenerdleIndexedDbSnapshotToClipboard,
 } from "./generators/cinenerdle2/debug";
@@ -971,6 +972,25 @@ export default function AppX() {
           .values())
           .sort(compareRankedConnectionSuggestions)
           .slice(0, 12);
+
+        addCinenerdleDebugLog("app.connectionAutocomplete.rankedRows", {
+          query,
+          requestId,
+          rawCandidates: candidateRecords.slice(0, 12).map((item) => ({
+            key: item.record.key,
+            label: item.record.nameLower,
+            popularity: item.record.popularity ?? 0,
+            sortScore: item.sortScore,
+            isConnectedToYoungestSelection: item.isConnectedToYoungestSelection,
+          })),
+          suggestions: nextSuggestions.map((suggestion) => ({
+            key: suggestion.key,
+            label: suggestion.label,
+            popularity: suggestion.popularity,
+            sortScore: suggestion.sortScore,
+            isConnectedToYoungestSelection: suggestion.isConnectedToYoungestSelection,
+          })),
+        });
 
         if (autocompleteRequestIdRef.current !== requestId) {
           return nextSuggestions;
