@@ -8,6 +8,7 @@ type BaseRenderableCinenerdleEntityCard = {
   subtitle: string;
   subtitleDetail: string;
   popularity: number;
+  popularitySource: string | null;
   connectionCount: number | null;
   sources: CardSource[];
   status: CardStatus | null;
@@ -115,6 +116,30 @@ function renderStatusChip(card: RenderableCinenerdleEntityCard) {
   );
 }
 
+function renderPopularityChip(card: RenderableCinenerdleEntityCard) {
+  const chip = renderHeatChip("Popularity", card.popularity, 100);
+  if (!chip) {
+    return null;
+  }
+
+  if (!card.popularitySource) {
+    return chip;
+  }
+
+  return (
+    <span
+      aria-label={`Popularity ${formatHeatMetricValue("Popularity", card.popularity)}. ${card.popularitySource}`}
+      className="cinenerdle-card-chip-tooltip-anchor"
+      tabIndex={0}
+    >
+      {chip}
+      <span className="cinenerdle-card-inline-tooltip" role="tooltip">
+        {card.popularitySource}
+      </span>
+    </span>
+  );
+}
+
 function renderFooter(card: RenderableCinenerdleEntityCard) {
   const hasTopLeftContent =
     typeof card.connectionCount === "number" || card.sources.length > 0;
@@ -172,9 +197,7 @@ function renderFooter(card: RenderableCinenerdleEntityCard) {
         ) : (
           <div className="cinenerdle-card-footer-spacer" />
         )}
-        {card.kind === "cinenerdle"
-          ? null
-          : renderHeatChip("Popularity", card.popularity, 100)}
+        {card.kind === "cinenerdle" ? null : renderPopularityChip(card)}
       </div>
       {shouldRenderBottomRow ? (
         <div className="cinenerdle-card-footer-bottom">

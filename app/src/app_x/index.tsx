@@ -37,6 +37,8 @@ import {
   createFallbackConnectionEntity,
   findConnectionPathBidirectional,
   getConnectionEdgeKey,
+  getMovieConnectionEntityKey,
+  getPersonConnectionEntityKey,
   hydrateConnectionEntityFromKey,
   hydrateConnectionEntityFromSearchRecord,
   type ConnectionEntity,
@@ -62,10 +64,19 @@ import {
   clearIndexedDb,
   estimateIndexedDbUsageBytes,
   getAllSearchableConnectionEntities,
+  getFilmRecordByTitleAndYear,
+  getPersonRecordById,
+  getPersonRecordByName,
 } from "./generators/cinenerdle2/indexed_db";
 import {
   formatMoviePathLabel,
+  getAssociatedPeopleFromMovieCredits,
+  getSnapshotConnectionLabels,
+  getTmdbMovieCredits,
+  getValidTmdbEntityId,
+  normalizeName,
   normalizeWhitespace,
+  parseMoviePathLabel,
 } from "./generators/cinenerdle2/utils";
 import {
   isBookmarkPreviewCardSelectable,
@@ -86,6 +97,7 @@ import "./styles/app_shell.css";
 
 type ConnectionSuggestion = ConnectionEntity & {
   popularity: number;
+  isConnectedToYoungestSelection: boolean;
   sortScore: number;
 };
 
@@ -359,6 +371,84 @@ function getHighestGenerationSelectedLabel(hashValue: string): string {
   }
 
   return selectedPathTarget.name;
+}
+
+async function resolveYoungestSelectedPersonRecord(
+  card: Extract<YoungestSelectedCard, { kind: "person" }>,
+) {
+  const tmdbId = getValidTmdbEntityId(card.record?.tmdbId ?? card.record?.id ?? null);
+  if (tmdbId) {
+    const personRecord = await getPersonRecordById(tmdbId);
+    if (personRecord) {
+      return personRecord;
+    }
+  }
+
+  return getPersonRecordByName(card.name);
+}
+
+async function getDirectConnectionKeysForYoungestSelectedCard(
+  card: YoungestSelectedCard | null,
+): Promise<string[]> {
+  if (!card || card.kind === "cinenerdle") {
+    return [];
+  }
+
+  if (card.kind === "movie") {
+    const movieRecord = await getFilmRecordByTitleAndYear(card.name, card.year);
+    if (!movieRecord) {
+      return [];
+    }
+
+    const personKeys = new Set<string>();
+
+    movieRecord.personConnectionKeys.forEach((personName) => {
+      if (normalizeName(personName)) {
+        personKeys.add(getPersonConnectionEntityKey(personName));
+      }
+    });
+
+    getSnapshotConnectionLabels(movieRecord).forEach((personName) => {
+      if (normalizeName(personName)) {
+        personKeys.add(getPersonConnectionEntityKey(personName));
+      }
+    });
+
+    getAssociatedPeopleFromMovieCredits(movieRecord).forEach((credit) => {
+      const personName = credit.name ?? "";
+      const personTmdbId = getValidTmdbEntityId(credit.id);
+      if (personTmdbId || normalizeName(personName)) {
+        personKeys.add(getPersonConnectionEntityKey(personName, personTmdbId));
+      }
+    });
+
+    return [...personKeys];
+  }
+
+  const personRecord = await resolveYoungestSelectedPersonRecord(card);
+  if (!personRecord) {
+    return [];
+  }
+
+  const movieKeys = new Set<string>();
+
+  personRecord.movieConnectionKeys.forEach((movieKey) => {
+    const parsedMovie = parseMoviePathLabel(movieKey);
+    if (parsedMovie.name) {
+      movieKeys.add(getMovieConnectionEntityKey(parsedMovie.name, parsedMovie.year));
+    }
+  });
+
+  getTmdbMovieCredits(personRecord).forEach((credit) => {
+    const movieName = credit.title ?? credit.original_title ?? "";
+    if (movieName) {
+      movieKeys.add(
+        getMovieConnectionEntityKey(movieName, credit.release_date?.slice(0, 4) ?? ""),
+      );
+    }
+  });
+
+  return [...movieKeys];
 }
 
 function stripSearchDiacritics(value: string): string {
@@ -645,6 +735,7 @@ export default function AppX() {
   const [isResolvingConnection, setIsResolvingConnection] = useState(false);
   const [connectionSuggestions, setConnectionSuggestions] = useState<ConnectionSuggestion[]>([]);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
+  const [youngestSelectedConnectionKeys, setYoungestSelectedConnectionKeys] = useState<string[]>([]);
   const [connectionSession, setConnectionSession] = useState<ConnectionSession | null>(null);
   const [highlightedConnectionEntitySelectionRequest, setHighlightedConnectionEntitySelectionRequest] =
     useState<HighlightedConnectionEntitySelectionRequest | null>(null);
@@ -672,6 +763,7 @@ export default function AppX() {
   const selectedPathTooltipEntries = getSelectedPathTooltipEntries(hashValue);
   const highlightedConnectionEntity =
     selectedSuggestionIndex >= 0 ? connectionSuggestions[selectedSuggestionIndex] ?? null : null;
+  const youngestSelectedCardKey = youngestSelectedCard?.key ?? "";
 
   useEffect(() => {
     if (!import.meta.env.DEV) {
@@ -865,6 +957,7 @@ export default function AppX() {
 
     const requestId = autocompleteRequestIdRef.current + 1;
     autocompleteRequestIdRef.current = requestId;
+    const directConnectionKeys = new Set(youngestSelectedConnectionKeys);
 
     void getAllSearchableConnectionEntities().then(async (searchRecords) => {
       if (autocompleteRequestIdRef.current !== requestId) {
@@ -878,14 +971,20 @@ export default function AppX() {
         }))
         .filter((item) => item.sortScore >= 0)
         .sort((left, right) => {
-          if (right.sortScore !== left.sortScore) {
-            return right.sortScore - left.sortScore;
-          }
-
           const popularityDifference =
             (right.record.popularity ?? 0) - (left.record.popularity ?? 0);
           if (popularityDifference !== 0) {
             return popularityDifference;
+          }
+
+          const rightIsConnected = directConnectionKeys.has(right.record.key) ? 1 : 0;
+          const leftIsConnected = directConnectionKeys.has(left.record.key) ? 1 : 0;
+          if (rightIsConnected !== leftIsConnected) {
+            return rightIsConnected - leftIsConnected;
+          }
+
+          if (right.sortScore !== left.sortScore) {
+            return right.sortScore - left.sortScore;
           }
 
           if (left.record.type !== right.record.type) {
@@ -902,6 +1001,7 @@ export default function AppX() {
           return {
             ...entity,
             popularity: record.popularity ?? 0,
+            isConnectedToYoungestSelection: directConnectionKeys.has(record.key),
             sortScore: Math.max(
               sortScore,
               getSuggestionScore(query, entity.label),
@@ -912,12 +1012,16 @@ export default function AppX() {
         .map((entity) => [entity.key, entity] as const))
         .values())
         .sort((left, right) => {
-          if (right.sortScore !== left.sortScore) {
-            return right.sortScore - left.sortScore;
-          }
-
           if (right.popularity !== left.popularity) {
             return right.popularity - left.popularity;
+          }
+
+          if (left.isConnectedToYoungestSelection !== right.isConnectedToYoungestSelection) {
+            return Number(right.isConnectedToYoungestSelection) - Number(left.isConnectedToYoungestSelection);
+          }
+
+          if (right.sortScore !== left.sortScore) {
+            return right.sortScore - left.sortScore;
           }
 
           if (left.kind !== right.kind) {
@@ -937,7 +1041,7 @@ export default function AppX() {
         setSelectedSuggestionIndex(nextSuggestions.length > 0 ? 0 : -1);
       });
     });
-  }, [deferredConnectionQuery]);
+  }, [deferredConnectionQuery, youngestSelectedConnectionKeys]);
 
   function handleReset() {
     bookmarksReturnHashRef.current = "";
@@ -1216,6 +1320,30 @@ export default function AppX() {
     setConnectionSuggestions([]);
     setSelectedSuggestionIndex(-1);
   }, []);
+
+  useEffect(() => {
+    clearConnectionInputState();
+  }, [clearConnectionInputState, youngestSelectedCardKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void getDirectConnectionKeysForYoungestSelectedCard(youngestSelectedCard)
+      .then((nextKeys) => {
+        if (!cancelled) {
+          setYoungestSelectedConnectionKeys(nextKeys);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setYoungestSelectedConnectionKeys([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [youngestSelectedCard]);
 
   const hasFoundConnectionRow =
     connectionSession?.rows.some((row) => row.status === "found" && row.path.length > 0) ?? false;

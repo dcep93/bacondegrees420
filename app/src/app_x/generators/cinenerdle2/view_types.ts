@@ -42,6 +42,7 @@ type BaseCard = {
   key: string;
   name: string;
   popularity: number;
+  popularitySource: string | null;
   imageUrl: string | null;
   subtitle: string;
   subtitleDetail: string;
@@ -90,6 +91,7 @@ type BaseCardViewModel = {
   subtitle: string;
   subtitleDetail: string;
   popularity: number;
+  popularitySource: string | null;
   connectionCount: number | null;
   sources: CardSource[];
   status: CardStatus | null;

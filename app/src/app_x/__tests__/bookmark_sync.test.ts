@@ -37,6 +37,7 @@ function createBookmark(overrides: Partial<BookmarkEntry> = {}): BookmarkEntry {
         subtitle: "Movie",
         subtitleDetail: "1999",
         popularity: 99,
+        popularitySource: "TMDb movie popularity from the cached movie record.",
         connectionCount: 12,
         sources: [],
         status: null,

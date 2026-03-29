@@ -22,6 +22,34 @@ import {
   normalizeTitle,
 } from "./utils";
 
+function getMoviePopularitySource(record: FilmRecord | null | undefined): string {
+  if (record?.rawTmdbMovie) {
+    return "TMDb movie popularity from the cached movie record.";
+  }
+
+  if (typeof record?.popularity === "number" && record.popularity > 0) {
+    return "Stored movie popularity from the local cache.";
+  }
+
+  if (record?.rawCinenerdleDailyStarter) {
+    return "Cinenerdle daily starter fallback. No TMDb movie popularity is cached yet.";
+  }
+
+  return "Popularity is unavailable, so this card falls back to 0.";
+}
+
+function getPersonPopularitySource(record: PersonRecord | null | undefined): string {
+  if (record?.rawTmdbPerson) {
+    return "TMDb person popularity from the cached person record.";
+  }
+
+  if (record) {
+    return "Person details are cached, but no TMDb popularity is available yet.";
+  }
+
+  return "Popularity is unavailable, so this card falls back to 0.";
+}
+
 function getFallbackPersonSubtitle(role: string): string {
   switch (normalizeName(role)) {
     case "cast":
@@ -174,6 +202,7 @@ export function createCinenerdleRootCard(connectionCount: number | null): Cinene
     kind: "cinenerdle",
     name: "cinenerdle",
     popularity: 0,
+    popularitySource: "Cinenerdle root cards do not have a popularity score.",
     imageUrl: CINENERDLE_ICON_URL,
     subtitle: "Daily starters",
     subtitleDetail: "Open today’s board",
@@ -243,6 +272,7 @@ export function createDailyStarterMovieCard(filmRecord: FilmRecord): CinenerdleC
     name: filmRecord.title,
     year: filmRecord.year,
     popularity: filmRecord.popularity,
+    popularitySource: getMoviePopularitySource(filmRecord),
     imageUrl: getMoviePosterUrl(filmRecord),
     subtitle: filmRecord.year || "Movie",
     subtitleDetail: (starter?.genres ?? []).slice(0, 2).join(" • "),
@@ -275,6 +305,7 @@ export function createPersonRootCard(
     kind: "person",
     name: personName,
     popularity: personRecord.rawTmdbPerson?.popularity ?? 0,
+    popularitySource: getPersonPopularitySource(personRecord),
     imageUrl: getPersonProfileImageUrl(personRecord),
     subtitle: "",
     subtitleDetail: "",
@@ -298,6 +329,7 @@ export function createMovieRootCard(
     name: title,
     year,
     popularity: movieRecord.popularity,
+    popularitySource: getMoviePopularitySource(movieRecord),
     imageUrl: getMoviePosterUrl(movieRecord),
     subtitle: year || "Movie",
     subtitleDetail: "",
@@ -346,6 +378,7 @@ export function createRootDatabaseInfoCard(
     kind: "dbinfo",
     name: "Database Info",
     popularity: 0,
+    popularitySource: null,
     imageUrl: null,
     subtitle: summaryLine,
     subtitleDetail: record ? "IndexedDB record" : "Not cached yet",
@@ -412,6 +445,14 @@ export function createMovieAssociationCard(
     credit.creditType === "cast"
       ? `${year || "Movie"} • Cast as`
       : `${year || "Movie"} • ${credit.job?.trim() || credit.department?.trim() || "Crew"}`;
+  const popularitySource =
+    credit.popularity !== null && credit.popularity !== undefined
+      ? "TMDb movie popularity from this person's movie credit."
+      : resolvedFilmRecord?.rawTmdbMovie
+        ? "TMDb movie popularity from the cached movie record."
+        : resolvedFilmRecord
+          ? "Stored movie popularity from the local cache."
+          : "Popularity is unavailable, so this card falls back to 0.";
 
   return {
     key: getMovieCardKey(title, year, resolvedFilmRecord?.id ?? credit.id),
@@ -423,6 +464,7 @@ export function createMovieAssociationCard(
       resolvedFilmRecord?.rawTmdbMovie?.popularity ??
       resolvedFilmRecord?.popularity ??
       0,
+    popularitySource,
     imageUrl:
       getPosterUrl(credit.poster_path) ?? getMoviePosterUrl(resolvedFilmRecord),
     subtitle,
@@ -452,12 +494,18 @@ export function createPersonAssociationCard(
   const subtitle = isCastCredit
     ? "Cast as"
     : credit.job?.trim() || credit.department?.trim() || "Crew";
+  const popularitySource = personRecord?.rawTmdbPerson
+    ? "TMDb person popularity from the cached person record."
+    : credit.popularity !== null && credit.popularity !== undefined
+      ? "TMDb person popularity from this movie credit."
+      : "Popularity is unavailable, so this card falls back to 0.";
 
   return {
     key: getPersonCardKey(personName, credit.id),
     kind: "person",
     name: personName,
     popularity: personRecord?.rawTmdbPerson?.popularity ?? credit.popularity ?? 0,
+    popularitySource,
     imageUrl:
       getPersonProfileImageUrl(personRecord) ??
       getPosterUrl(credit.profile_path, "w300_and_h450_face"),
@@ -481,6 +529,7 @@ export function createCinenerdleOnlyPersonCard(
     kind: "person",
     name: displayName,
     popularity: 0,
+    popularitySource: "Cinenerdle starter-only fallback. No TMDb person popularity is cached yet.",
     imageUrl: null,
     subtitle: getFallbackPersonSubtitle(role),
     subtitleDetail: "",
@@ -507,6 +556,7 @@ export function createSnapshotPersonCard(
     kind: "person",
     name: displayName,
     popularity: personRecord.rawTmdbPerson?.popularity ?? 0,
+    popularitySource: getPersonPopularitySource(personRecord),
     imageUrl: getPersonProfileImageUrl(personRecord),
     subtitle: getFallbackPersonSubtitle(role),
     subtitleDetail: "",

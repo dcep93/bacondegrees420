@@ -8,6 +8,7 @@ type BaseBookmarkPreviewCard = {
   subtitle: string;
   subtitleDetail: string;
   popularity: number;
+  popularitySource: string | null;
   connectionCount: number | null;
   sources: CardSource[];
   status: CardStatus | null;
@@ -80,6 +81,7 @@ export function createBookmarkPreviewCard(
       subtitle: "",
       subtitleDetail: "",
       popularity: 0,
+      popularitySource: null,
       connectionCount: null,
       sources: [],
       status: null,
@@ -94,6 +96,7 @@ export function createBookmarkPreviewCard(
     subtitle: card.subtitle,
     subtitleDetail: card.subtitleDetail,
     popularity: card.popularity,
+    popularitySource: card.popularitySource,
     connectionCount: card.connectionCount,
     sources: getRenderableSources(card),
     status: card.status,

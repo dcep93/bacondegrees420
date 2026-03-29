@@ -34,6 +34,13 @@ function sanitizeSelectedPreviewCardIndices(
   ).sort((left, right) => left - right);
 }
 
+function normalizeBookmarkPreviewCard(card: BookmarkPreviewCard): BookmarkPreviewCard {
+  return {
+    ...card,
+    popularitySource: card.popularitySource ?? null,
+  };
+}
+
 function isBookmarkPreviewCard(value: unknown): value is BookmarkPreviewCard {
   if (!value || typeof value !== "object") {
     return false;
@@ -47,6 +54,11 @@ function isBookmarkPreviewCard(value: unknown): value is BookmarkPreviewCard {
     typeof candidate.subtitle === "string" &&
     typeof candidate.subtitleDetail === "string" &&
     typeof candidate.popularity === "number" &&
+    (
+      candidate.popularitySource === undefined ||
+      candidate.popularitySource === null ||
+      typeof candidate.popularitySource === "string"
+    ) &&
     (candidate.connectionCount === null || typeof candidate.connectionCount === "number") &&
     Array.isArray(candidate.sources) &&
     typeof candidate.hasCachedTmdbSource === "boolean"
@@ -77,12 +89,15 @@ export function isBookmarkEntry(value: unknown): value is BookmarkEntry {
 }
 
 export function normalizeBookmarkEntry(bookmark: BookmarkEntry): BookmarkEntry {
+  const previewCards = bookmark.previewCards.map(normalizeBookmarkPreviewCard);
+
   return {
     ...bookmark,
     hash: normalizeHashValue(bookmark.hash),
     label: bookmark.label.trim(),
+    previewCards,
     selectedPreviewCardIndices: sanitizeSelectedPreviewCardIndices(
-      bookmark.previewCards,
+      previewCards,
       bookmark.selectedPreviewCardIndices,
     ),
   };
