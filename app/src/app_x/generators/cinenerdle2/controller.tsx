@@ -93,10 +93,16 @@ type ConnectionPopularityLookups = {
   popularityByPersonName: Map<string, number>;
 };
 
+type TreeBuildRuntime = {
+  connectionPopularityLookups?: ConnectionPopularityLookups;
+  searchableConnectionEntitiesPromise?: Promise<SearchableConnectionEntityRecord[]>;
+};
+
 const connectionPopularityLookupsCache = new WeakMap<
   SearchableConnectionEntityRecord[],
   ConnectionPopularityLookups
 >();
+const inFlightTreeBuilds = new Map<string, Promise<GeneratorTree<CinenerdleCard>>>();
 
 function createBreakCard(): Extract<CinenerdleCard, { kind: "break" }> {
   return {
@@ -193,6 +199,42 @@ function getConnectionPopularityLookups(
   };
   connectionPopularityLookupsCache.set(searchableConnectionEntities, nextLookups);
   return nextLookups;
+}
+
+async function getSearchableConnectionEntitiesForTreeBuild(
+  runtime?: TreeBuildRuntime,
+): Promise<SearchableConnectionEntityRecord[]> {
+  if (!runtime) {
+    return getAllSearchableConnectionEntities();
+  }
+
+  if (!runtime.searchableConnectionEntitiesPromise) {
+    runtime.searchableConnectionEntitiesPromise = getAllSearchableConnectionEntities();
+  }
+
+  return runtime.searchableConnectionEntitiesPromise;
+}
+
+async function getConnectionPopularityLookupsForTreeBuild(
+  runtime?: TreeBuildRuntime,
+): Promise<ConnectionPopularityLookups> {
+  if (runtime?.connectionPopularityLookups) {
+    return runtime.connectionPopularityLookups;
+  }
+
+  const searchableConnectionEntities = await getSearchableConnectionEntitiesForTreeBuild(runtime);
+  const lookups = getConnectionPopularityLookups(searchableConnectionEntities);
+  if (runtime) {
+    runtime.connectionPopularityLookups = lookups;
+  }
+  return lookups;
+}
+
+function getTreeBuildCacheKey(
+  hashValue: string,
+  dailyStarterSource: NonNullable<BuildTreeOptions["dailyStarterSource"]>,
+): string {
+  return `${dailyStarterSource}:${hashValue}`;
 }
 
 function getSelectedCard(tree: GeneratorTree<CinenerdleCard>, rowIndex: number) {
@@ -632,6 +674,7 @@ async function hydrateMissingSelectedPathItemsAndRedraw(
 async function buildChildRowForPersonCard(
   card: Extract<CinenerdleCard, { kind: "person" }>,
   personRecordOverride?: PersonRecord | null,
+  runtime?: TreeBuildRuntime,
 ): Promise<GeneratorNode<CinenerdleCard>[] | null> {
   return measureAsync(
     "controller.buildChildRowForPersonCard",
@@ -648,9 +691,8 @@ async function buildChildRowForPersonCard(
       const filmRecordsById = await getFilmRecordsByIds(
         movieCredits.map((credit) => credit.id),
       );
-      const searchableConnectionEntities = await getAllSearchableConnectionEntities();
-      const { popularityByPersonName } = getConnectionPopularityLookups(
-        searchableConnectionEntities,
+      const { popularityByPersonName } = await getConnectionPopularityLookupsForTreeBuild(
+        runtime,
       );
       const connectionCounts = await getPersonRecordCountsByMovieKeys(
         movieCredits.map((credit) => getMovieKeyFromCredit(credit)),
@@ -699,6 +741,7 @@ async function buildChildRowForPersonCard(
 async function buildChildRowForMovieCard(
   card: Extract<CinenerdleCard, { kind: "movie" }>,
   movieRecordOverride?: FilmRecord | null,
+  runtime?: TreeBuildRuntime,
 ): Promise<GeneratorNode<CinenerdleCard>[] | null> {
   return measureAsync(
     "controller.buildChildRowForMovieCard",
@@ -715,9 +758,8 @@ async function buildChildRowForMovieCard(
       const filmConnectionCounts = await getFilmRecordCountsByPersonConnectionKeys(
         tmdbCredits.map((credit) => credit.name ?? ""),
       );
-      const searchableConnectionEntities = await getAllSearchableConnectionEntities();
-      const { popularityByMovieKey } = getConnectionPopularityLookups(
-        searchableConnectionEntities,
+      const { popularityByMovieKey } = await getConnectionPopularityLookupsForTreeBuild(
+        runtime,
       );
       const personDetails = new Map(
         await Promise.all(
@@ -786,15 +828,16 @@ async function buildChildRowForCard(
     personRecord?: PersonRecord | null;
     movieRecord?: FilmRecord | null;
   },
+  runtime?: TreeBuildRuntime,
 ): Promise<GeneratorNode<CinenerdleCard>[] | null> {
   let childRow: GeneratorNode<CinenerdleCard>[] | null = null;
 
   if (card.kind === "cinenerdle") {
     childRow = await createDailyStarterRow();
   } else if (card.kind === "person") {
-    childRow = await buildChildRowForPersonCard(card, options?.personRecord);
+    childRow = await buildChildRowForPersonCard(card, options?.personRecord, runtime);
   } else if (card.kind === "movie") {
-    childRow = await buildChildRowForMovieCard(card, options?.movieRecord);
+    childRow = await buildChildRowForMovieCard(card, options?.movieRecord, runtime);
   }
 
   return childRow;
@@ -802,6 +845,7 @@ async function buildChildRowForCard(
 
 async function createCinenerdleRootTree(
   options?: Pick<BuildTreeOptions, "dailyStarterSource">,
+  runtime?: TreeBuildRuntime,
 ): Promise<GeneratorTree<CinenerdleCard>> {
   const starterRow = await createDailyStarterRow(options);
   const starterCount = starterRow?.length ?? 0;
@@ -819,9 +863,10 @@ async function createCinenerdleRootTree(
 async function createRootTreeFromPathNode(
   pathNode: Extract<CinenerdlePathNode, { kind: "cinenerdle" | "movie" | "person" }>,
   options?: Pick<BuildTreeOptions, "dailyStarterSource">,
+  runtime?: TreeBuildRuntime,
 ): Promise<GeneratorTree<CinenerdleCard> | null> {
   if (pathNode.kind === "cinenerdle") {
-    return createCinenerdleRootTree(options);
+    return createCinenerdleRootTree(options, runtime);
   }
 
   if (pathNode.kind === "person") {
@@ -831,7 +876,7 @@ async function createRootTreeFromPathNode(
       : createCinenerdleOnlyPersonCard(pathNode.name, "database only");
 
     const tree: GeneratorTree<CinenerdleCard> = [[createNode(rootCard, true)]];
-    const childRow = await buildChildRowForCard(rootCard);
+    const childRow = await buildChildRowForCard(rootCard, undefined, runtime);
 
     if (childRow && childRow.length > 0) {
       tree.push(childRow);
@@ -845,7 +890,7 @@ async function createRootTreeFromPathNode(
     ? createMovieRootCard(movieRecord, pathNode.name)
     : createUncachedMovieCard(pathNode.name, pathNode.year);
   const tree: GeneratorTree<CinenerdleCard> = [[createNode(rootCard, true)]];
-  const childRow = await buildChildRowForCard(rootCard);
+  const childRow = await buildChildRowForCard(rootCard, undefined, runtime);
 
   if (childRow && childRow.length > 0) {
     tree.push(childRow);
@@ -924,24 +969,36 @@ export async function buildTreeFromHash(
   hashValue: string,
   options?: BuildTreeOptions,
 ): Promise<GeneratorTree<CinenerdleCard>> {
-  return measureAsync(
+  const dailyStarterSource = options?.dailyStarterSource ?? "network";
+  const cacheKey = getTreeBuildCacheKey(hashValue, dailyStarterSource);
+  const cachedPromise = inFlightTreeBuilds.get(cacheKey);
+  if (cachedPromise) {
+    return cachedPromise;
+  }
+
+  const runtime: TreeBuildRuntime = {};
+  let treeBuildPromise: Promise<GeneratorTree<CinenerdleCard>>;
+  treeBuildPromise = measureAsync(
     "controller.buildTreeFromHash",
     async () => {
       const pathNodes = buildPathNodesFromSegments(parseHashSegments(hashValue));
-      const dailyStarterSource = options?.dailyStarterSource ?? "network";
 
       if (pathNodes.length === 0) {
-        return createCinenerdleRootTree({ dailyStarterSource });
+        return createCinenerdleRootTree({ dailyStarterSource }, runtime);
       }
 
       const [rootNode, ...continuationPathNodes] = pathNodes;
       if (!rootNode || rootNode.kind === "break") {
-        return createCinenerdleRootTree({ dailyStarterSource });
+        return createCinenerdleRootTree({ dailyStarterSource }, runtime);
       }
 
-      const rootTree = await createRootTreeFromPathNode(rootNode, { dailyStarterSource });
+      const rootTree = await createRootTreeFromPathNode(
+        rootNode,
+        { dailyStarterSource },
+        runtime,
+      );
       if (!rootTree) {
-        return createCinenerdleRootTree({ dailyStarterSource });
+        return createCinenerdleRootTree({ dailyStarterSource }, runtime);
       }
 
       let tree = rootTree;
@@ -1023,7 +1080,7 @@ export async function buildTreeFromHash(
           break;
         }
 
-        const childRow = await buildChildRowForCard(selectedCard);
+        const childRow = await buildChildRowForCard(selectedCard, undefined, runtime);
         if (childRow && childRow.length > 0) {
           tree = [...tree, childRow];
         }
@@ -1042,6 +1099,13 @@ export async function buildTreeFromHash(
       }),
     },
   );
+  treeBuildPromise = treeBuildPromise.finally(() => {
+    if (inFlightTreeBuilds.get(cacheKey) === treeBuildPromise) {
+      inFlightTreeBuilds.delete(cacheKey);
+    }
+  });
+  inFlightTreeBuilds.set(cacheKey, treeBuildPromise);
+  return treeBuildPromise;
 }
 
 export async function buildBookmarkPreviewCardsFromHash(
