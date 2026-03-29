@@ -664,12 +664,30 @@ export default function AppX() {
   const connectionBarRef = useRef<HTMLElement | null>(null);
   const connectionInputWrapRef = useRef<HTMLDivElement | null>(null);
   const connectionDropdownRef = useRef<HTMLDivElement | null>(null);
+  const titleRef = useRef<HTMLHeadingElement | null>(null);
   const deferredConnectionQuery = useDeferredValue(connectionQuery);
   const isBookmarksView = appLocation.viewMode === "bookmarks";
   const highestGenerationSelectedLabel = getHighestGenerationSelectedLabel(hashValue);
   const selectedPathTooltipEntries = getSelectedPathTooltipEntries(hashValue);
   const highlightedConnectionEntity =
     selectedSuggestionIndex >= 0 ? connectionSuggestions[selectedSuggestionIndex] ?? null : null;
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) {
+      return;
+    }
+
+    const titleElement = titleRef.current;
+    if (!titleElement) {
+      return;
+    }
+
+    titleElement.style.cursor = "pointer";
+
+    return () => {
+      titleElement.style.removeProperty("cursor");
+    };
+  }, []);
 
   useEffect(() => {
     connectionSessionRef.current = connectionSession;
@@ -1742,7 +1760,8 @@ export default function AppX() {
         </button>
         <h1
           className="bacon-title"
-          onClick={handleTitleDebugCopy}
+          onClick={import.meta.env.DEV ? handleTitleDebugCopy : undefined}
+          ref={titleRef}
           title={import.meta.env.DEV ? "Copy debug log" : undefined}
         >
           BaconDegrees420
