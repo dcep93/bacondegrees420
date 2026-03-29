@@ -86,6 +86,31 @@ describe("withDerivedPersonFields", () => {
     expect(personRecord.tmdbId).toBe(444);
     expect(personRecord.movieConnectionKeys).toEqual([]);
   });
+
+  it("drops stale producer-only movie connections when tmdb movie credits are available", () => {
+    const personRecord = withDerivedPersonFields(
+      makePersonRecord({
+        id: 444,
+        tmdbId: 444,
+        name: "Producer Person",
+        movieConnectionKeys: ["heat (1995)"],
+        rawTmdbMovieCreditsResponse: {
+          cast: [],
+          crew: [
+            makeMovieCredit({
+              id: 3,
+              title: "Heat",
+              release_date: "1995-12-15",
+              creditType: undefined,
+              job: "Producer",
+            }),
+          ],
+        },
+      }),
+    );
+
+    expect(personRecord.movieConnectionKeys).toEqual([]);
+  });
 });
 
 describe("withDerivedFilmFields", () => {

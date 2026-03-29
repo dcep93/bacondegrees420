@@ -352,12 +352,28 @@ describe("prefetchBestConnectionForYoungestSelectedCard", () => {
 });
 
 describe("resolveConnectionQuery", () => {
+  const fetchMock = vi.fn();
+
   beforeEach(() => {
     Object.values(indexedDbMock).forEach((mock) => mock.mockReset());
     Object.values(connectionGraphMock).forEach((mock) => mock.mockReset());
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("localStorage", createLocalStorageMock());
+    localStorage.setItem(TMDB_API_KEY_STORAGE_KEY, "test-key");
     indexedDbMock.getAllSearchableConnectionEntities.mockResolvedValue([]);
     indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(null);
     indexedDbMock.getPersonRecordByName.mockResolvedValue(null);
+    fetchMock.mockImplementation(async (input: string | URL | Request) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      const pathname = new URL(url).pathname;
+
+      if (pathname === "/3/search/person" || pathname === "/3/search/movie") {
+        return createJsonResponse({ results: [] });
+      }
+
+      throw new Error(`Unexpected fetch ${pathname}`);
+    });
   });
 
   it("treats cinenerdle as a direct connection target", async () => {
@@ -369,5 +385,30 @@ describe("resolveConnectionQuery", () => {
     expect(indexedDbMock.getAllSearchableConnectionEntities).not.toHaveBeenCalled();
     expect(indexedDbMock.getFilmRecordByTitleAndYear).not.toHaveBeenCalled();
     expect(indexedDbMock.getPersonRecordByName).not.toHaveBeenCalled();
+  });
+
+  it("does not resolve a producer-only cached person as a valid connection target", async () => {
+    indexedDbMock.getPersonRecordByName.mockResolvedValue(
+      makePersonRecord({
+        id: 44,
+        tmdbId: 44,
+        name: "Producer Person",
+        movieConnectionKeys: ["heat (1995)"],
+        rawTmdbMovieCreditsResponse: {
+          cast: [],
+          crew: [
+            makeMovieCredit({
+              id: 3,
+              title: "Heat",
+              release_date: "1995-12-15",
+              creditType: undefined,
+              job: "Producer",
+            }),
+          ],
+        },
+      }),
+    );
+
+    await expect(resolveConnectionQuery("Producer Person")).resolves.toBeNull();
   });
 });

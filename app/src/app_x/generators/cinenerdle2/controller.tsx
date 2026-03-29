@@ -34,7 +34,7 @@ import {
   prepareSelectedPerson,
 } from "./tmdb";
 import { CinenerdleBreakBar, CinenerdleEntityCard } from "./entity_card";
-import { pickBestPersonRecord } from "./records";
+import { getResolvedPersonMovieConnectionKeys, pickBestPersonRecord } from "./records";
 import type { FilmRecord, PersonRecord, SearchableConnectionEntityRecord } from "./types";
 import { measureAsync } from "../../perf";
 import {
@@ -1237,7 +1237,7 @@ function getParentMovieRankForPerson(
   }
 
   const parentMovieKey = getFilmKey(parentMovieRecord.title, parentMovieRecord.year);
-  const linkedMovieKeys = Array.from(new Set(personRecord.movieConnectionKeys.filter(Boolean)));
+  const linkedMovieKeys = getResolvedPersonMovieConnectionKeys(personRecord);
   if (!linkedMovieKeys.includes(parentMovieKey)) {
     return null;
   }

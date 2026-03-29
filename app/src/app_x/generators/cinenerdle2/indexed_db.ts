@@ -5,7 +5,11 @@ import {
   PEOPLE_STORE_NAME,
   SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME,
 } from "./constants";
-import { chooseBestFilmRecord, withDerivedFilmFields } from "./records";
+import {
+  chooseBestFilmRecord,
+  getResolvedPersonMovieConnectionKeys,
+  withDerivedFilmFields,
+} from "./records";
 import type {
   FilmRecord,
   PersonRecord,
@@ -314,14 +318,17 @@ function collectSearchableConnectionEntitiesFromPersonRecord(
   personRecord: PersonRecord,
 ): SearchableConnectionEntityRecord[] {
   const recordsByKey = new Map<string, SearchableConnectionEntityRecord>();
+  const movieConnectionKeys = getResolvedPersonMovieConnectionKeys(personRecord);
 
-  const personRecordEntry = createPersonSearchRecord(
-    personRecord.name,
-    personRecord.tmdbId ?? personRecord.id,
-    personRecord.rawTmdbPerson?.popularity ?? 0,
-  );
-  if (personRecordEntry) {
-    recordsByKey.set(personRecordEntry.key, personRecordEntry);
+  if (movieConnectionKeys.length > 0) {
+    const personRecordEntry = createPersonSearchRecord(
+      personRecord.name,
+      personRecord.tmdbId ?? personRecord.id,
+      personRecord.rawTmdbPerson?.popularity ?? 0,
+    );
+    if (personRecordEntry) {
+      recordsByKey.set(personRecordEntry.key, personRecordEntry);
+    }
   }
 
   getAllowedConnectedTmdbMovieCredits(personRecord).forEach((credit) => {
@@ -779,13 +786,19 @@ export async function savePersonRecord(personRecord: PersonRecord): Promise<void
             searchRecords,
           );
 
-          if (
-            canonicalSearchRecord &&
-            legacySearchRecord &&
-            canonicalSearchRecord.key !== legacySearchRecord.key
-          ) {
+          const searchableEntitiesStore =
+            stores.get(SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME)!;
+          const searchRecordKeys = new Set(searchRecords.map((record) => record.key));
+
+          if (canonicalSearchRecord && !searchRecordKeys.has(canonicalSearchRecord.key)) {
             await indexedDbRequestToPromise(
-              stores.get(SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME)!.delete(legacySearchRecord.key),
+              searchableEntitiesStore.delete(canonicalSearchRecord.key),
+            );
+          }
+
+          if (legacySearchRecord && !searchRecordKeys.has(legacySearchRecord.key)) {
+            await indexedDbRequestToPromise(
+              searchableEntitiesStore.delete(legacySearchRecord.key),
             );
           }
         },
@@ -794,11 +807,10 @@ export async function savePersonRecord(personRecord: PersonRecord): Promise<void
       cachePersonRecord(personRecord);
       personCountByMovieKeyCache.clear();
       cacheSearchableConnectionEntities(searchRecords);
-      if (
-        canonicalSearchRecord &&
-        legacySearchRecord &&
-        canonicalSearchRecord.key !== legacySearchRecord.key
-      ) {
+      if (canonicalSearchRecord && !searchRecords.some((record) => record.key === canonicalSearchRecord.key)) {
+        removeCachedSearchableConnectionEntity(canonicalSearchRecord.key);
+      }
+      if (legacySearchRecord && !searchRecords.some((record) => record.key === legacySearchRecord.key)) {
         removeCachedSearchableConnectionEntity(legacySearchRecord.key);
       }
 

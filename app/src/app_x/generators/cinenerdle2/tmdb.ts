@@ -22,6 +22,7 @@ import {
   buildFilmRecord,
   buildPersonRecord,
   chooseBestMovieSearchResult,
+  getResolvedPersonMovieConnectionKeys,
   pickBestPersonRecord,
   withDerivedFilmFields,
 } from "./records";
@@ -762,6 +763,16 @@ function isExactMovieMatch(
   );
 }
 
+function getValidConnectionPersonRecord(personRecord: PersonRecord | null): PersonRecord | null {
+  if (!personRecord) {
+    return null;
+  }
+
+  return getResolvedPersonMovieConnectionKeys(personRecord).length > 0
+    ? personRecord
+    : null;
+}
+
 function pickBestConnectionTarget(
   query: string,
   movieName: string,
@@ -864,7 +875,9 @@ export async function resolveConnectionQuery(
 
       const parsedMovie = parseMoviePathLabel(normalizedQuery);
       const searchRecords = await getAllSearchableConnectionEntities();
-      const exactPersonRecord = await getPersonRecordByName(normalizedQuery);
+      const exactPersonRecord = getValidConnectionPersonRecord(
+        await getPersonRecordByName(normalizedQuery),
+      );
       const exactMovieRecord = await getFilmRecordByTitleAndYear(
         parsedMovie.name,
         parsedMovie.year,
@@ -935,7 +948,7 @@ export async function resolveConnectionQuery(
           };
         }
 
-        if (personEntity) {
+        if (personEntity && personEntity.connectionCount > 0) {
           return {
             kind: "person",
             name: personEntity.name,
@@ -953,7 +966,7 @@ export async function resolveConnectionQuery(
         normalizedQuery,
         parsedMovie.name,
         parsedMovie.year,
-        fetchedPersonRecord,
+        getValidConnectionPersonRecord(fetchedPersonRecord),
         fetchedFilmRecord,
       );
 

@@ -1013,6 +1013,9 @@ export default function AppX() {
         const nextSuggestions = Array.from(new Map((await Promise.all(
           candidateRecords.map(async ({ record, sortScore }) => {
             const entity = await hydrateConnectionEntityFromSearchRecord(record);
+            if (entity.connectionCount <= 0) {
+              return null;
+            }
             return {
               ...entity,
               popularity: record.popularity ?? 0,
@@ -1024,6 +1027,7 @@ export default function AppX() {
             };
           }),
         ))
+          .filter((entity): entity is ConnectionSuggestion => entity !== null)
           .map((entity) => [entity.key, entity] as const))
           .values())
           .sort((left, right) => {
@@ -1517,45 +1521,48 @@ export default function AppX() {
         return;
       }
 
-      if (
-        exclusion.kind === "node" &&
-        parentRow.childDisallowedNodeKeys.includes(exclusion.nodeKey)
-      ) {
+      const isAlreadyDisallowed =
+        exclusion.kind === "node"
+          ? parentRow.childDisallowedNodeKeys.includes(exclusion.nodeKey)
+          : parentRow.childDisallowedEdgeKeys.includes(exclusion.edgeKey);
+      if (isAlreadyDisallowed) {
+        const toggledRow = currentSession.rows.find(
+          (row) =>
+            row.parentRowId === parentRowId &&
+            matchesConnectionExclusion(row.sourceExclusion, exclusion),
+        );
+
+        const rowsToRemove = toggledRow
+          ? collectConnectionRowFamilyIds(currentSession.rows, toggledRow.id)
+          : new Set<string>();
+        const nextSession: ConnectionSession = {
+          ...currentSession,
+          rows: currentSession.rows
+            .filter((row) => !rowsToRemove.has(row.id))
+            .map((row) =>
+              row.id === parentRowId
+                ? {
+                  ...row,
+                  childDisallowedNodeKeys:
+                    exclusion.kind === "node"
+                      ? row.childDisallowedNodeKeys.filter(
+                        (nodeKey) => nodeKey !== exclusion.nodeKey,
+                      )
+                      : row.childDisallowedNodeKeys,
+                  childDisallowedEdgeKeys:
+                    exclusion.kind === "edge"
+                      ? row.childDisallowedEdgeKeys.filter(
+                        (edgeKey) => edgeKey !== exclusion.edgeKey,
+                      )
+                      : row.childDisallowedEdgeKeys,
+                }
+                : row,
+            ),
+        };
+
+        connectionSessionRef.current = nextSession;
+        setConnectionSession(nextSession);
         return;
-      }
-
-      if (exclusion.kind === "edge") {
-        const isAlreadyDisallowed = parentRow.childDisallowedEdgeKeys.includes(exclusion.edgeKey);
-        if (isAlreadyDisallowed) {
-          const toggledRow = currentSession.rows.find(
-            (row) =>
-              row.parentRowId === parentRowId &&
-              matchesConnectionExclusion(row.sourceExclusion, exclusion),
-          );
-
-          const rowsToRemove = toggledRow
-            ? collectConnectionRowFamilyIds(currentSession.rows, toggledRow.id)
-            : new Set<string>();
-          const nextSession: ConnectionSession = {
-            ...currentSession,
-            rows: currentSession.rows
-              .filter((row) => !rowsToRemove.has(row.id))
-              .map((row) =>
-                row.id === parentRowId
-                  ? {
-                    ...row,
-                    childDisallowedEdgeKeys: row.childDisallowedEdgeKeys.filter(
-                      (edgeKey) => edgeKey !== exclusion.edgeKey,
-                    ),
-                  }
-                  : row,
-              ),
-          };
-
-          connectionSessionRef.current = nextSession;
-          setConnectionSession(nextSession);
-          return;
-        }
       }
 
       const rowId = `connection-row-${connectionRowIdRef.current + 1}`;

@@ -46,11 +46,25 @@ function getPersonRecordQualityScore(personRecord: PersonRecord | null): number 
   return score;
 }
 
-export function withDerivedPersonFields(personRecord: PersonRecord): PersonRecord {
-  const tmdbMovieKeys = getAllowedConnectedTmdbMovieCredits(personRecord).map((credit) =>
-    getMovieKeyFromCredit(credit),
-  );
+export function getResolvedPersonMovieConnectionKeys(
+  personRecord: PersonRecord | null,
+): string[] {
+  if (!personRecord) {
+    return [];
+  }
 
+  const tmdbMovieKeys = getAllowedConnectedTmdbMovieCredits(personRecord)
+    .map((credit) => getMovieKeyFromCredit(credit))
+    .filter(Boolean);
+
+  if (personRecord.rawTmdbMovieCreditsResponse) {
+    return Array.from(new Set(tmdbMovieKeys));
+  }
+
+  return Array.from(new Set(personRecord.movieConnectionKeys.filter(Boolean)));
+}
+
+export function withDerivedPersonFields(personRecord: PersonRecord): PersonRecord {
   return {
     ...personRecord,
     tmdbId:
@@ -59,12 +73,7 @@ export function withDerivedPersonFields(personRecord: PersonRecord): PersonRecor
       getValidTmdbEntityId(personRecord.id),
     lookupKey: getCinenerdlePersonId(personRecord.name),
     nameLower: normalizeName(personRecord.name),
-    movieConnectionKeys: Array.from(
-      new Set([
-        ...personRecord.movieConnectionKeys,
-        ...tmdbMovieKeys,
-      ]),
-    ),
+    movieConnectionKeys: getResolvedPersonMovieConnectionKeys(personRecord),
   };
 }
 

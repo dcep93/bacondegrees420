@@ -19,6 +19,7 @@ vi.mock("../indexed_db", () => indexedDbMock);
 import {
   createCinenerdleConnectionEntity,
   createConnectionEntityFromMovieRecord,
+  createConnectionEntityFromPersonRecord,
   findConnectionPathBidirectional,
 } from "../connection_graph";
 
@@ -98,6 +99,47 @@ describe("findConnectionPathBidirectional", () => {
     const result = await findConnectionPathBidirectional(
       createConnectionEntityFromMovieRecord(adAstra),
       createConnectionEntityFromMovieRecord(gravity),
+    );
+
+    expect(result.status).toBe("not_found");
+    expect(result.path).toEqual([]);
+  });
+
+  it("does not allow a producer-only person record to connect through stale movie keys", async () => {
+    const heat = makeFilmRecord({
+      title: "Heat",
+      year: "1995",
+    });
+    const producerOnlyPerson = {
+      id: 44,
+      tmdbId: 44,
+      name: "Producer Person",
+      nameLower: "producer person",
+      lookupKey: "producer person",
+      movieConnectionKeys: ["heat (1995)"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [
+          {
+            id: 10,
+            title: "Heat",
+            release_date: "1995-12-15",
+            job: "Producer",
+          },
+        ],
+      },
+    };
+
+    indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(
+      async (title: string, year: string) =>
+        title === "heat" && year === "1995" ? heat : null,
+    );
+    indexedDbMock.getPersonRecordById.mockResolvedValue(producerOnlyPerson);
+    indexedDbMock.getFilmRecordsByPersonConnectionKey.mockResolvedValue([]);
+
+    const result = await findConnectionPathBidirectional(
+      createConnectionEntityFromPersonRecord(producerOnlyPerson),
+      createConnectionEntityFromMovieRecord(heat),
     );
 
     expect(result.status).toBe("not_found");

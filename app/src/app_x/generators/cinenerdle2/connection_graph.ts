@@ -12,6 +12,7 @@ import type {
   PersonRecord,
   SearchableConnectionEntityRecord,
 } from "./types";
+import { getResolvedPersonMovieConnectionKeys } from "./records";
 import {
   getAllowedConnectedTmdbMovieCredits,
   formatMoviePathLabel,
@@ -91,6 +92,8 @@ export function createConnectionEntityFromMovieRecord(movieRecord: FilmRecord): 
 }
 
 export function createConnectionEntityFromPersonRecord(personRecord: PersonRecord): ConnectionEntity {
+  const movieConnectionKeys = getResolvedPersonMovieConnectionKeys(personRecord);
+
   return {
     key: getPersonConnectionEntityKey(personRecord.name, personRecord.tmdbId ?? personRecord.id),
     kind: "person",
@@ -98,7 +101,7 @@ export function createConnectionEntityFromPersonRecord(personRecord: PersonRecor
     year: "",
     tmdbId: getValidTmdbEntityId(personRecord.tmdbId ?? personRecord.id),
     label: personRecord.name,
-    connectionCount: Math.max(personRecord.movieConnectionKeys.length, 1),
+    connectionCount: movieConnectionKeys.length,
     hasCachedTmdbSource: hasCachedTmdbSourceForPersonRecord(personRecord),
   };
 }
@@ -464,7 +467,7 @@ async function getNeighborKeysForEntityKey(entityKey: string): Promise<string[]>
       );
     });
 
-    personRecord?.movieConnectionKeys.forEach((movieKey) => {
+    getResolvedPersonMovieConnectionKeys(personRecord).forEach((movieKey) => {
       const connectionMovieKey = getMovieConnectionEntityKeyFromLookupKey(movieKey);
       movieKeys.add(connectionMovieKey);
       setPopularityScore(
