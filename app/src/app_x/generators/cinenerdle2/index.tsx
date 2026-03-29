@@ -106,6 +106,9 @@ function hasLoadedPath(hashValue: string): boolean {
   return buildPathNodesFromSegments(parseHashSegments(hashValue)).length > 1;
 }
 
+let pendingInitialPathLoadSnap =
+  typeof window !== "undefined" && hasLoadedPath(window.location.hash);
+
 function snapScrollToPageBottom() {
   if (typeof window === "undefined") {
     return;
@@ -199,7 +202,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
 }: Cinenerdle2Props) {
   const normalizedHash = normalizeHashValue(hashValue);
   const hashRef = useRef(normalizedHash);
-  const shouldSnapToBottomAfterLoadRef = useRef(hasLoadedPath(normalizedHash));
+  const shouldSnapToBottomAfterLoadRef = useRef(pendingInitialPathLoadSnap);
   const pendingDataRefreshFrameRef = useRef<number | null>(null);
   const lastYoungestSelectedCardRef = useRef<
     Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }> | null
@@ -245,10 +248,6 @@ const Cinenerdle2 = memo(function Cinenerdle2({
       window.removeEventListener(CINENERDLE_RECORDS_UPDATED_EVENT, handleRecordsUpdated);
     };
   }, []);
-
-  useEffect(() => {
-    shouldSnapToBottomAfterLoadRef.current = hasLoadedPath(hashRef.current);
-  }, [navigationVersion]);
 
   const readHash = useCallback(() => hashRef.current, [hashRef]);
   const writeHash = useCallback(
@@ -322,6 +321,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
       onTreeChange={(tree) => {
         if (shouldSnapToBottomAfterLoadRef.current && tree.length > 0) {
           shouldSnapToBottomAfterLoadRef.current = false;
+          pendingInitialPathLoadSnap = false;
           snapScrollToPageBottom();
         }
 
