@@ -19,7 +19,6 @@ import {
   getFilmKey,
   getMovieTitleFromCredit,
   getMovieYearFromCredit,
-  getSnapshotConnectionLabels,
   getValidTmdbEntityId,
   normalizeName,
   normalizeTitle,
@@ -226,14 +225,6 @@ function findOriginalPersonNameInFilms(
 
     if (creditMatch?.name?.trim()) {
       return creditMatch.name.trim();
-    }
-
-    const starterMatch = getSnapshotConnectionLabels(filmRecord).find(
-      (personName) => normalizeName(personName) === personNameLower,
-    );
-
-    if (starterMatch?.trim()) {
-      return starterMatch.trim();
     }
   }
 
@@ -573,6 +564,8 @@ export async function findConnectionPathBidirectional(
   const excludedEdgeKeys = options?.excludedEdgeKeys ?? new Set<string>();
   const startKey = startEntity.key;
   const endKey = endEntity.key;
+  const cinenerdleKey = getCinenerdleConnectionEntityKey();
+  const cinenerdleAllowedAsEndpoint = startKey === cinenerdleKey || endKey === cinenerdleKey;
   const neighborCache = new Map<string, Promise<string[]>>();
   const entityCache = new Map<string, Promise<ConnectionEntity>>();
   const popularityCache = new Map<string, Promise<number>>();
@@ -681,6 +674,10 @@ export async function findConnectionPathBidirectional(
       const neighborKeys = await getNeighborKeys(currentKey);
 
       for (const neighborKey of neighborKeys) {
+        if (neighborKey === cinenerdleKey && !cinenerdleAllowedAsEndpoint) {
+          continue;
+        }
+
         if (excludedNodeKeys.has(neighborKey)) {
           continue;
         }

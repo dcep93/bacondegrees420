@@ -8,7 +8,6 @@ import type {
 } from "./types";
 import type { CinenerdleCard, DbInfoSummaryItem } from "./view_types";
 import {
-  buildPeopleByRoleFromStarter,
   formatFallbackPersonDisplayName,
   getCinenerdleMovieId,
   getMovieCardKey,
@@ -246,26 +245,12 @@ export function createDailyStarterFilmRecord(
     titleYear: getCinenerdleMovieId(title, year),
     popularity: 0,
     rawCinenerdleDailyStarter: starter,
-    starterPeopleByRole: buildPeopleByRoleFromStarter(starter),
     isCinenerdleDailyStarter: 1,
-    personConnectionKeys: Array.from(
-      new Set(
-        [
-          ...(starter.cast ?? []),
-          ...(starter.directors ?? []),
-          ...(starter.writers ?? []),
-          ...(starter.composers ?? []),
-        ]
-          .map((name) => normalizeName(name))
-          .filter(Boolean),
-      ),
-    ),
+    personConnectionKeys: [],
   };
 }
 
 export function createDailyStarterMovieCard(filmRecord: FilmRecord): CinenerdleCard {
-  const starter = filmRecord.rawCinenerdleDailyStarter;
-
   return {
     key: getMovieCardKey(filmRecord.title, filmRecord.year, filmRecord.id),
     kind: "movie",
@@ -275,7 +260,7 @@ export function createDailyStarterMovieCard(filmRecord: FilmRecord): CinenerdleC
     popularitySource: getMoviePopularitySource(filmRecord),
     imageUrl: getMoviePosterUrl(filmRecord),
     subtitle: filmRecord.year || "Movie",
-    subtitleDetail: (starter?.genres ?? []).slice(0, 2).join(" • "),
+    subtitleDetail: "",
     connectionCount: Math.max(filmRecord.personConnectionKeys.length, 1),
     sources: [
       {
@@ -537,35 +522,5 @@ export function createCinenerdleOnlyPersonCard(
     sources: [{ iconUrl: CINENERDLE_ICON_URL, label: "Cinenerdle" }],
     status: null,
     record: null,
-  };
-}
-
-export function createSnapshotPersonCard(
-  personName: string,
-  role: string,
-  personRecord: PersonRecord | null = null,
-): CinenerdleCard {
-  if (!personRecord) {
-    return createCinenerdleOnlyPersonCard(personName, role);
-  }
-
-  const displayName = personRecord.name || formatFallbackPersonDisplayName(personName);
-
-  return {
-    key: getPersonCardKey(displayName, personRecord.id),
-    kind: "person",
-    name: displayName,
-    popularity: personRecord.rawTmdbPerson?.popularity ?? 0,
-    popularitySource: getPersonPopularitySource(personRecord),
-    imageUrl: getPersonProfileImageUrl(personRecord),
-    subtitle: getFallbackPersonSubtitle(role),
-    subtitleDetail: "",
-    connectionCount: Math.max(personRecord.movieConnectionKeys.length, 1),
-    sources: [
-      { iconUrl: TMDB_ICON_URL, label: "TMDb" },
-      { iconUrl: CINENERDLE_ICON_URL, label: "Cinenerdle" },
-    ],
-    status: null,
-    record: personRecord,
   };
 }

@@ -49,6 +49,11 @@ import {
 
 export type ConnectionTarget =
   | {
+      kind: "cinenerdle";
+      name: "cinenerdle";
+      year: "";
+    }
+  | {
       kind: "person";
       name: string;
       tmdbId: number | null;
@@ -71,13 +76,7 @@ function mergeStarterDataIntoFilmRecord(
     ...filmRecord,
     rawCinenerdleDailyStarter:
       starterFilm.rawCinenerdleDailyStarter ?? filmRecord.rawCinenerdleDailyStarter,
-    starterPeopleByRole:
-      starterFilm.starterPeopleByRole ?? filmRecord.starterPeopleByRole,
     isCinenerdleDailyStarter: 1,
-    personConnectionKeys: [
-      ...filmRecord.personConnectionKeys,
-      ...starterFilm.personConnectionKeys,
-    ],
   });
 }
 
@@ -689,6 +688,14 @@ export async function resolveConnectionQuery(
   const normalizedQuery = normalizeWhitespace(query);
   if (!normalizedQuery) {
     return null;
+  }
+
+  if (normalizeTitle(normalizedQuery) === "cinenerdle") {
+    return {
+      kind: "cinenerdle",
+      name: "cinenerdle",
+      year: "",
+    };
   }
 
   const parsedMovie = parseMoviePathLabel(normalizedQuery);

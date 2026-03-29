@@ -1,8 +1,6 @@
 import { TMDB_POSTER_BASE_URL } from "./constants";
 import type {
-  CinenerdleDailyStarter,
   FilmRecord,
-  PeopleByRole,
   PersonRecord,
   TmdbMovieCredit,
   TmdbMovieCreditsResponse,
@@ -134,10 +132,7 @@ export function getPersonProfileImageUrl(personRecord: PersonRecord | null) {
 }
 
 export function getMoviePosterUrl(movieRecord: FilmRecord | null) {
-  return (
-    movieRecord?.rawCinenerdleDailyStarter?.posterUrl ??
-    getPosterUrl(movieRecord?.rawTmdbMovie?.poster_path ?? null)
-  );
+  return getPosterUrl(movieRecord?.rawTmdbMovie?.poster_path ?? null);
 }
 
 export function getTmdbMovieCredits(personRecord: PersonRecord | null): TmdbMovieCredit[] {
@@ -226,18 +221,48 @@ export function getAssociatedPeopleFromMovieCredits(
   const credits: TmdbMovieCreditsResponse =
     movieRecord?.rawTmdbMovieCreditsResponse ?? {};
   const seenPeople = new Set<string>();
-  const candidates = [
-    ...(credits.cast ?? []).map((credit) => ({
+  const castQueue = [...(credits.cast ?? [])]
+    .filter(isAllowedMoviePersonCredit)
+    .map((credit) => ({
       ...credit,
       creditType: "cast" as const,
-    })),
-    ...(credits.crew ?? [])
-      .filter(isAllowedMoviePersonCredit)
-      .map((credit) => ({
-        ...credit,
-        creditType: "crew" as const,
-      })),
-  ];
+    }))
+    .sort((left, right) => left.order - right.order);
+  const crewQueue = (credits.crew ?? [])
+    .filter(isAllowedMoviePersonCredit)
+    .map((credit) => ({
+      ...credit,
+      creditType: "crew" as const,
+    }));
+  const candidates: TmdbPersonCredit[] = [];
+  let castIndex = 0;
+  let crewIndex = 0;
+
+  while (castIndex < castQueue.length || crewIndex < crewQueue.length) {
+    if (castIndex >= castQueue.length) {
+      candidates.push(crewQueue[crewIndex]);
+      crewIndex += 1;
+      continue;
+    }
+
+    if (crewIndex >= crewQueue.length) {
+      candidates.push(castQueue[castIndex]);
+      castIndex += 1;
+      continue;
+    }
+
+    const castHead = castQueue[castIndex];
+    const crewHead = crewQueue[crewIndex];
+
+    if ((castHead.popularity ?? 0) >= (crewHead.popularity ?? 0)) {
+      candidates.push(castHead);
+      castIndex += 1;
+      continue;
+    }
+
+    candidates.push(crewHead);
+    crewIndex += 1;
+  }
 
   return candidates
     .filter((credit) => {
@@ -252,65 +277,5 @@ export function getAssociatedPeopleFromMovieCredits(
 
       seenPeople.add(personIdentity);
       return true;
-    })
-    .sort((left, right) => (right.popularity ?? 0) - (left.popularity ?? 0));
-}
-
-export function getMovieCreditPersonPopularityLookup(
-  movieRecord: FilmRecord | null,
-): Map<string, number> {
-  const credits: TmdbMovieCreditsResponse =
-    movieRecord?.rawTmdbMovieCreditsResponse ?? {};
-  const popularityByName = new Map<string, number>();
-
-  [...(credits.cast ?? []), ...(credits.crew ?? [])].forEach((credit) => {
-    const normalizedName = normalizeName(credit.name ?? "");
-    if (!normalizedName) {
-      return;
-    }
-
-    popularityByName.set(
-      normalizedName,
-      Math.max(popularityByName.get(normalizedName) ?? 0, credit.popularity ?? 0),
-    );
-  });
-
-  return popularityByName;
-}
-
-export function createEmptyPeopleByRole(): PeopleByRole {
-  return {
-    cast: [],
-    directors: [],
-    writers: [],
-    composers: [],
-  };
-}
-
-export function buildPeopleByRoleFromStarter(
-  starter: CinenerdleDailyStarter | null | undefined,
-): PeopleByRole {
-  return {
-    cast: starter?.cast?.filter(Boolean) ?? [],
-    directors: starter?.directors?.filter(Boolean) ?? [],
-    writers: starter?.writers?.filter(Boolean) ?? [],
-    composers: starter?.composers?.filter(Boolean) ?? [],
-  };
-}
-
-export function getSnapshotPeopleByRole(
-  filmRecord: FilmRecord | null,
-): PeopleByRole {
-  return filmRecord?.starterPeopleByRole ?? createEmptyPeopleByRole();
-}
-
-export function getSnapshotConnectionLabels(filmRecord: FilmRecord | null): string[] {
-  const peopleByRole = getSnapshotPeopleByRole(filmRecord);
-
-  return [
-    ...peopleByRole.cast,
-    ...peopleByRole.directors,
-    ...peopleByRole.writers,
-    ...peopleByRole.composers,
-  ];
+    });
 }

@@ -9,7 +9,6 @@ import {
   createMovieRootCard,
   createPersonAssociationCard,
   createPersonRootCard,
-  createSnapshotPersonCard,
 } from "./cards";
 import { ESCAPE_LABEL, TMDB_ICON_URL } from "./constants";
 import {
@@ -46,7 +45,6 @@ import {
   getAssociatedPeopleFromMovieCredits,
   getFilmKey,
   getMovieKeyFromCredit,
-  getSnapshotPeopleByRole,
   getUniqueSortedTmdbMovieCredits,
   getValidTmdbEntityId,
   normalizeName,
@@ -799,69 +797,7 @@ async function buildChildRowForMovieCard(
         };
     },
   );
-  const seenPeople = new Set(cards.map((personCard) => normalizeName(personCard.name)));
-  const snapshotPeople = getSnapshotPeopleByRole(movieRecord);
-  const snapshotPersonRecords = new Map(
-    await Promise.all(
-      Array.from(
-        new Set(
-          Object.values(snapshotPeople)
-            .flat()
-            .map((personName) => normalizeName(personName))
-            .filter(Boolean),
-        ),
-      ).map(async (normalizedPersonName) => {
-        const snapshotPersonName = Object.values(snapshotPeople)
-          .flat()
-          .find((personName) => normalizeName(personName) === normalizedPersonName);
-        const personRecord =
-          snapshotPersonName ? await getPersonRecordByName(snapshotPersonName) : null;
-        return [normalizedPersonName, personRecord] as const;
-      }),
-    ),
-  );
-
-  const snapshotCards = await Promise.all(
-    (
-      Object.entries(snapshotPeople) as Array<
-        [keyof typeof snapshotPeople, string[]]
-      >
-    ).flatMap(([role, people]) =>
-      people.map(async (personName) => {
-        const normalizedPersonName = normalizeName(personName);
-        if (seenPeople.has(normalizedPersonName)) {
-          return null;
-        }
-
-        const snapshotPersonRecord = snapshotPersonRecords.get(normalizedPersonName) ?? null;
-        const snapshotCard = createSnapshotPersonCard(
-          personName,
-          role,
-          snapshotPersonRecord,
-        );
-        const connectionRank = getParentMovieRankForPerson(
-          movieRecord,
-          snapshotPersonRecord,
-          popularityByMovieKey,
-        );
-        seenPeople.add(normalizedPersonName);
-
-        return connectionRank === null
-          ? snapshotCard
-          : {
-            ...snapshotCard,
-            connectionRank,
-          };
-      }),
-    ),
-  );
-
-  cards.push(
-    ...snapshotCards.filter((snapshotCard): snapshotCard is Exclude<typeof snapshotCard, null> =>
-      snapshotCard !== null),
-  );
-
-  return createRow(sortCardsByPopularity(cards));
+  return createRow(cards);
 }
 
 async function buildChildRowForCard(

@@ -28,7 +28,10 @@ const connectionGraphMock = vi.hoisted(() => ({
 vi.mock("../indexed_db", () => indexedDbMock);
 vi.mock("../connection_graph", () => connectionGraphMock);
 
-import { prefetchBestConnectionForYoungestSelectedCard } from "../tmdb";
+import {
+  prefetchBestConnectionForYoungestSelectedCard,
+  resolveConnectionQuery,
+} from "../tmdb";
 
 function createJsonResponse(body: unknown): Response {
   return {
@@ -345,5 +348,26 @@ describe("prefetchBestConnectionForYoungestSelectedCard", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(indexedDbMock.saveFilmRecord).not.toHaveBeenCalled();
     expect(indexedDbMock.savePersonRecord).not.toHaveBeenCalled();
+  });
+});
+
+describe("resolveConnectionQuery", () => {
+  beforeEach(() => {
+    Object.values(indexedDbMock).forEach((mock) => mock.mockReset());
+    Object.values(connectionGraphMock).forEach((mock) => mock.mockReset());
+    indexedDbMock.getAllSearchableConnectionEntities.mockResolvedValue([]);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(null);
+    indexedDbMock.getPersonRecordByName.mockResolvedValue(null);
+  });
+
+  it("treats cinenerdle as a direct connection target", async () => {
+    await expect(resolveConnectionQuery(" cinenerdle ")).resolves.toEqual({
+      kind: "cinenerdle",
+      name: "cinenerdle",
+      year: "",
+    });
+    expect(indexedDbMock.getAllSearchableConnectionEntities).not.toHaveBeenCalled();
+    expect(indexedDbMock.getFilmRecordByTitleAndYear).not.toHaveBeenCalled();
+    expect(indexedDbMock.getPersonRecordByName).not.toHaveBeenCalled();
   });
 });

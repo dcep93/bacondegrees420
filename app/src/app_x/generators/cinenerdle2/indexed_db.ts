@@ -16,11 +16,9 @@ import {
   getValidTmdbEntityId,
   getAssociatedPeopleFromMovieCredits,
   getAllowedConnectedTmdbMovieCredits,
-  getMovieCreditPersonPopularityLookup,
   getFilmKey,
   getMovieTitleFromCredit,
   getMovieYearFromCredit,
-  getSnapshotConnectionLabels,
   normalizeName,
   normalizeTitle,
 } from "./utils";
@@ -298,8 +296,6 @@ function collectSearchableConnectionEntitiesFromFilmRecord(
   filmRecord: FilmRecord,
 ): SearchableConnectionEntityRecord[] {
   const recordsByKey = new Map<string, SearchableConnectionEntityRecord>();
-  const coveredFallbackPersonNames = new Set<string>();
-  const movieCreditPopularityByName = getMovieCreditPersonPopularityLookup(filmRecord);
 
   const movieRecord = createMovieSearchRecord(
     filmRecord.title,
@@ -318,30 +314,11 @@ function collectSearchableConnectionEntitiesFromFilmRecord(
     const personRecord = createPersonSearchRecord(personName, personTmdbId, popularity);
     if (personRecord) {
       recordsByKey.set(personRecord.key, personRecord);
-      if (getValidTmdbEntityId(personTmdbId)) {
-        coveredFallbackPersonNames.add(normalizeName(personName));
-      }
     }
   };
 
   getAssociatedPeopleFromMovieCredits(filmRecord).forEach((credit) => {
     upsertPersonName(credit.name ?? "", credit.id, credit.popularity ?? 0);
-  });
-  getSnapshotConnectionLabels(filmRecord).forEach((personName) => {
-    const normalizedPersonName = normalizeName(personName);
-    if (coveredFallbackPersonNames.has(normalizedPersonName)) {
-      return;
-    }
-
-    upsertPersonName(personName, null, movieCreditPopularityByName.get(normalizedPersonName) ?? 0);
-  });
-  filmRecord.personConnectionKeys.forEach((personName) => {
-    const normalizedPersonName = normalizeName(personName);
-    if (coveredFallbackPersonNames.has(normalizedPersonName)) {
-      return;
-    }
-
-    upsertPersonName(personName, null, movieCreditPopularityByName.get(normalizedPersonName) ?? 0);
   });
 
   return Array.from(recordsByKey.values());

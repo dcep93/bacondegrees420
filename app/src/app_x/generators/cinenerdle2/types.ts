@@ -47,6 +47,7 @@ export type TmdbPersonCredit = {
   name?: string;
   profile_path?: string | null;
   popularity?: number;
+  order: number;
   known_for_department?: string;
   creditType?: "cast" | "crew";
   character?: string;
@@ -69,13 +70,6 @@ export type TmdbSearchResponse<T> = {
   results?: T[];
   total_pages?: number;
   total_results?: number;
-};
-
-export type PeopleByRole = {
-  cast: string[];
-  directors: string[];
-  writers: string[];
-  composers: string[];
 };
 
 export type PersonRecord = {
@@ -105,7 +99,6 @@ export type FilmRecord = {
   rawTmdbMovieSearchResponse?: TmdbSearchResponse<TmdbMovieSearchResult>;
   rawTmdbMovieCreditsResponse?: TmdbMovieCreditsResponse;
   rawCinenerdleDailyStarter?: CinenerdleDailyStarter;
-  starterPeopleByRole?: PeopleByRole;
   isCinenerdleDailyStarter?: 0 | 1;
   tmdbSavedAt?: string;
   tmdbCreditsSavedAt?: string;

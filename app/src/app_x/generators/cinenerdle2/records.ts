@@ -10,7 +10,6 @@ import {
   getCinenerdleMovieId,
   getCinenerdlePersonId,
   getMovieKeyFromCredit,
-  getSnapshotConnectionLabels,
   getValidTmdbEntityId,
   getFilmKey,
   normalizeName,
@@ -73,10 +72,17 @@ export function withDerivedFilmFields(filmRecord: FilmRecord): FilmRecord {
   const tmdbPeople = getAssociatedPeopleFromMovieCredits(filmRecord)
     .map((credit) => normalizeName(credit.name ?? ""))
     .filter(Boolean);
-  const starterPeople = getSnapshotConnectionLabels(filmRecord).map(normalizeName);
   const isCinenerdleDailyStarter =
     filmRecord.isCinenerdleDailyStarter ??
     (filmRecord.rawCinenerdleDailyStarter ? 1 : 0);
+  const personConnectionKeys = filmRecord.rawTmdbMovieCreditsResponse
+    ? tmdbPeople
+    : Array.from(
+      new Set([
+        ...filmRecord.personConnectionKeys,
+        ...tmdbPeople,
+      ]),
+    );
 
   return {
     ...filmRecord,
@@ -87,13 +93,7 @@ export function withDerivedFilmFields(filmRecord: FilmRecord): FilmRecord {
     lookupKey: getCinenerdleMovieId(filmRecord.title, filmRecord.year),
     titleLower: normalizeTitle(filmRecord.title),
     titleYear: getFilmKey(filmRecord.title, filmRecord.year),
-    personConnectionKeys: Array.from(
-      new Set([
-        ...filmRecord.personConnectionKeys,
-        ...tmdbPeople,
-        ...starterPeople,
-      ]),
-    ),
+    personConnectionKeys,
     isCinenerdleDailyStarter,
   };
 }
@@ -120,7 +120,6 @@ export function buildFilmRecord(
     personConnectionKeys: existingFilmRecord?.personConnectionKeys ?? [],
     rawTmdbMovie: tmdbFilm,
     rawCinenerdleDailyStarter: existingFilmRecord?.rawCinenerdleDailyStarter,
-    starterPeopleByRole: existingFilmRecord?.starterPeopleByRole,
     isCinenerdleDailyStarter:
       existingFilmRecord?.isCinenerdleDailyStarter ??
       (existingFilmRecord?.rawCinenerdleDailyStarter ? 1 : 0),

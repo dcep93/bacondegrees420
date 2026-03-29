@@ -197,6 +197,7 @@ describe("serializePathNodes", () => {
       "#cinenerdle|Interstellar+(2014)|Jessica+Chastain|Molly's+Game+(2017)|Idris+Elba|Avengers:+Infinity+War+(2018)",
     );
   });
+
 });
 
 describe("normalizeHashValue", () => {
