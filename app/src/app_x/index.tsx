@@ -90,7 +90,7 @@ import {
   getBookmarkPreviewCardRootHash,
   getSelectedPathTooltipEntries,
 } from "./index_helpers";
-import { logPerfSinceMark, measureAsync } from "./perf";
+import { measureAsync } from "./perf";
 import "./styles/app_shell.css";
 
 type ConnectionSuggestion = ConnectionEntity & {
@@ -169,7 +169,6 @@ type AppLocationState = {
 };
 
 const BOOKMARKS_PATH_SUFFIX = "/bookmarks";
-let hasLoggedAppXMount = false;
 
 function normalizePathname(pathname: string): string {
   const trimmedPathname = pathname.trim() || "/";
@@ -797,18 +796,6 @@ export default function AppX() {
   const youngestSelectedCardKey = youngestSelectedCard?.key ?? "";
 
   useEffect(() => {
-    if (hasLoggedAppXMount) {
-      return;
-    }
-
-    hasLoggedAppXMount = true;
-    logPerfSinceMark("AppX mounted", "app-bootstrap", {
-      hash: initialLocationState.hash,
-      viewMode: initialLocationState.viewMode,
-    });
-  }, [initialLocationState.hash, initialLocationState.viewMode]);
-
-  useEffect(() => {
     if (!import.meta.env.DEV) {
       return;
     }
@@ -828,6 +815,21 @@ export default function AppX() {
   useEffect(() => {
     connectionSessionRef.current = connectionSession;
   }, [connectionSession]);
+
+  useEffect(() => {
+    if (selectedSuggestionIndex < 0) {
+      return;
+    }
+
+    const dropdownElement = connectionDropdownRef.current;
+    const selectedOption =
+      dropdownElement?.querySelector<HTMLButtonElement>(".bacon-connection-option-selected") ??
+      null;
+
+    selectedOption?.scrollIntoView({
+      block: "nearest",
+    });
+  }, [selectedSuggestionIndex, connectionSuggestions.length]);
 
   useEffect(() => {
     if (window.location.hash === hashValue) {

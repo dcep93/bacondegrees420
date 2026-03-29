@@ -38,10 +38,11 @@ import { pickBestPersonRecord } from "./records";
 import type { FilmRecord, PersonRecord, SearchableConnectionEntityRecord } from "./types";
 import { measureAsync } from "../../perf";
 import {
+  formatMoviePathLabel,
+  getAssociatedMoviesFromPersonCredits,
   getAssociatedPeopleFromMovieCredits,
   getFilmKey,
   getMovieKeyFromCredit,
-  getUniqueSortedTmdbMovieCredits,
   getValidTmdbEntityId,
   normalizeName,
   normalizeTitle,
@@ -687,9 +688,11 @@ async function buildChildRowForPersonCard(
         return null;
       }
 
-      const movieCredits = getUniqueSortedTmdbMovieCredits(personRecord);
+      const movieCredits = getAssociatedMoviesFromPersonCredits(personRecord);
       const filmRecordsById = await getFilmRecordsByIds(
-        movieCredits.map((credit) => credit.id),
+        movieCredits
+          .map((credit) => credit.id)
+          .filter((creditId): creditId is number => typeof creditId === "number"),
       );
       const { popularityByPersonName } = await getConnectionPopularityLookupsForTreeBuild(
         runtime,
@@ -698,32 +701,30 @@ async function buildChildRowForPersonCard(
         movieCredits.map((credit) => getMovieKeyFromCredit(credit)),
       );
       const parentPersonRecord = personRecord;
+      const connectionParentLabel = card.name;
 
       return createRow(
-        sortCardsByPopularity(
-          movieCredits.map((credit) => {
-            const movieRecord = (credit.id ? filmRecordsById.get(credit.id) : null) ?? null;
-            const movieCard = createMovieAssociationCard(
-              credit,
-              movieRecord,
-              movieRecord
-                ? Math.max(movieRecord.personConnectionKeys.length, 1)
-                : Math.max(connectionCounts.get(getMovieKeyFromCredit(credit)) ?? 0, 1),
-            );
+        movieCredits.map((credit, index) => {
+          const movieRecord = (credit.id ? filmRecordsById.get(credit.id) : null) ?? null;
+          const movieCard = createMovieAssociationCard(
+            credit,
+            movieRecord,
+            movieRecord
+              ? Math.max(movieRecord.personConnectionKeys.length, 1)
+              : Math.max(connectionCounts.get(getMovieKeyFromCredit(credit)) ?? 0, 1),
+          );
 
-            const connectionRank = getParentPersonRankForMovie(
+          return {
+            ...movieCard,
+            connectionRank: getParentPersonRankForMovie(
               movieRecord,
               parentPersonRecord,
               popularityByPersonName,
-            );
-            return connectionRank === null
-              ? movieCard
-              : {
-                ...movieCard,
-                connectionRank,
-              };
-          }),
-        ),
+            ),
+            connectionOrder: index + 1,
+            connectionParentLabel,
+          };
+        }),
       );
     },
     {
@@ -791,23 +792,22 @@ async function buildChildRowForMovieCard(
         ),
       );
 
-      const cards = tmdbCredits.map((credit) =>
-        {
-          const personDetail = personDetails.get(getPersonIdentityKey(credit.name ?? "", credit.id));
-          const personCard = createPersonAssociationCard(
-            credit,
-            personDetail?.connectionCount ?? 1,
-            personDetail?.personRecord ?? null,
-          );
+      const connectionParentLabel = formatMoviePathLabel(card.name, card.year);
+      const cards = tmdbCredits.map((credit, index) => {
+        const personDetail = personDetails.get(getPersonIdentityKey(credit.name ?? "", credit.id));
+        const personCard = createPersonAssociationCard(
+          credit,
+          personDetail?.connectionCount ?? 1,
+          personDetail?.personRecord ?? null,
+        );
 
-          return personDetail?.connectionRank === null || personDetail?.connectionRank === undefined
-            ? personCard
-            : {
-              ...personCard,
-              connectionRank: personDetail.connectionRank,
-            };
-        },
-      );
+        return {
+          ...personCard,
+          connectionRank: personDetail?.connectionRank ?? null,
+          connectionOrder: index + 1,
+          connectionParentLabel,
+        };
+      });
       return createRow(cards);
     },
     {
@@ -1280,6 +1280,8 @@ function createCardViewModel(
     popularitySource: card.popularitySource,
     connectionCount: card.connectionCount,
     connectionRank: card.connectionRank ?? null,
+    connectionOrder: card.connectionOrder ?? null,
+    connectionParentLabel: card.connectionParentLabel ?? null,
     sources: getRenderableSources(card),
     status: card.status,
     isSelected: options.isSelected,

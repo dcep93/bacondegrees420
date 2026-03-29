@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  formatMoviePathLabel,
+  getAssociatedMoviesFromPersonCredits,
+  getAssociatedPeopleFromMovieCredits,
+} from "../utils";
+import {
   makeFilmRecord,
   makeMovieCredit,
   makePersonCredit,
@@ -233,12 +238,18 @@ describe("buildBookmarkPreviewCardsFromHash", () => {
     indexedDbMock.getPersonRecordByName.mockResolvedValue(null);
 
     const tree = await buildTreeFromHash("#film|Heat+(1995)");
+    const childCards = tree[1]?.map((node) => node.data) ?? [];
+    const expectedNames = getAssociatedPeopleFromMovieCredits(heatRecord).map(
+      (credit) => credit.name,
+    );
 
-    expect(tree[1]?.map((node) => node.data.name)).toEqual([
-      "Robert De Niro",
-      "Aaron Sorkin",
-      "Michael Mann",
-      "Al Pacino",
+    expect(childCards.map((card) => card.name)).toEqual(expectedNames);
+    expect(childCards.map((card) => card.connectionOrder)).toEqual([1, 2, 3, 4]);
+    expect(childCards.map((card) => card.connectionParentLabel)).toEqual([
+      formatMoviePathLabel("Heat", "1995"),
+      formatMoviePathLabel("Heat", "1995"),
+      formatMoviePathLabel("Heat", "1995"),
+      formatMoviePathLabel("Heat", "1995"),
     ]);
   });
 
@@ -300,6 +311,96 @@ describe("buildTreeFromHash", () => {
     indexedDbMock.getPersonRecordsByMovieKey.mockResolvedValue([]);
     tmdbMock.fetchCinenerdleDailyStarterMovies.mockResolvedValue([]);
     tmdbMock.hydrateCinenerdleDailyStarterMovies.mockResolvedValue(undefined);
+  });
+
+  it("keeps person child rows in the dual-merge sequence and assigns connection order from that sequence", async () => {
+    const heatRecord = makeFilmRecord({
+      id: 101,
+      tmdbId: 101,
+      title: "Heat",
+      year: "1995",
+      popularity: 70,
+      personConnectionKeys: ["al pacino", "robert de niro"],
+    });
+    const theInsiderRecord = makeFilmRecord({
+      id: 102,
+      tmdbId: 102,
+      title: "The Insider",
+      year: "1999",
+      popularity: 40,
+      personConnectionKeys: ["al pacino", "russell crowe"],
+    });
+    const insomniaRecord = makeFilmRecord({
+      id: 103,
+      tmdbId: 103,
+      title: "Insomnia",
+      year: "2002",
+      popularity: 60,
+      personConnectionKeys: ["al pacino", "hilary swank"],
+    });
+    const alPacinoRecord = makePersonRecord({
+      id: 1,
+      tmdbId: 1,
+      name: "Al Pacino",
+      movieConnectionKeys: [
+        "heat (1995)",
+        "the insider (1999)",
+        "insomnia (2002)",
+      ],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({
+            id: 101,
+            title: "Heat",
+            release_date: "1995-12-15",
+            popularity: 70,
+          }),
+          makeMovieCredit({
+            id: 102,
+            title: "The Insider",
+            release_date: "1999-11-05",
+            popularity: 40,
+          }),
+        ],
+        crew: [
+          makeMovieCredit({
+            id: 103,
+            title: "Insomnia",
+            release_date: "2002-05-24",
+            popularity: 60,
+            creditType: undefined,
+            character: undefined,
+            job: "Director",
+          }),
+        ],
+      },
+    });
+
+    indexedDbMock.getPersonRecordById.mockResolvedValue(alPacinoRecord);
+    indexedDbMock.getPersonRecordByName.mockImplementation(async (personName: string) =>
+      personName === "Al Pacino" ? alPacinoRecord : null,
+    );
+    indexedDbMock.getFilmRecordsByIds.mockResolvedValue(
+      new Map([
+        [101, heatRecord],
+        [102, theInsiderRecord],
+        [103, insomniaRecord],
+      ]),
+    );
+
+    const tree = await buildTreeFromHash("#person|Al+Pacino");
+    const childCards = tree[1]?.map((node) => node.data) ?? [];
+    const expectedNames = getAssociatedMoviesFromPersonCredits(alPacinoRecord).map(
+      (credit) => credit.title,
+    );
+
+    expect(childCards.map((card) => card.name)).toEqual(expectedNames);
+    expect(childCards.map((card) => card.connectionOrder)).toEqual([1, 2, 3]);
+    expect(childCards.map((card) => card.connectionParentLabel)).toEqual([
+      "Al Pacino",
+      "Al Pacino",
+      "Al Pacino",
+    ]);
   });
 
   it("inserts a separator row and starts a disconnected branch after an escape", async () => {

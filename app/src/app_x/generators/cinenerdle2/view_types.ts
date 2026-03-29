@@ -44,6 +44,8 @@ type BaseCard = {
   popularity: number;
   popularitySource: string | null;
   connectionRank?: number | null;
+  connectionOrder?: number | null;
+  connectionParentLabel?: string | null;
   imageUrl: string | null;
   subtitle: string;
   subtitleDetail: string;
@@ -95,6 +97,8 @@ type BaseCardViewModel = {
   popularitySource: string | null;
   connectionCount: number | null;
   connectionRank: number | null;
+  connectionOrder: number | null;
+  connectionParentLabel: string | null;
   sources: CardSource[];
   status: CardStatus | null;
   isSelected: boolean;

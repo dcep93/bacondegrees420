@@ -184,6 +184,60 @@ export function getUniqueSortedTmdbMovieCredits(
     .sort((left, right) => (right.popularity ?? 0) - (left.popularity ?? 0));
 }
 
+export function getAssociatedMoviesFromPersonCredits(
+  personRecord: PersonRecord | null,
+): TmdbMovieCredit[] {
+  const credits: TmdbPersonMovieCreditsResponse =
+    personRecord?.rawTmdbMovieCreditsResponse ?? {};
+  const seenIds = new Set<number>();
+  const castQueue = (credits.cast ?? []).map((credit) => ({
+    ...credit,
+    creditType: "cast" as const,
+  }));
+  const crewQueue = (credits.crew ?? []).map((credit) => ({
+    ...credit,
+    creditType: "crew" as const,
+  }));
+  const candidates: TmdbMovieCredit[] = [];
+  let castIndex = 0;
+  let crewIndex = 0;
+
+  while (castIndex < castQueue.length || crewIndex < crewQueue.length) {
+    if (castIndex >= castQueue.length) {
+      candidates.push(crewQueue[crewIndex]);
+      crewIndex += 1;
+      continue;
+    }
+
+    if (crewIndex >= crewQueue.length) {
+      candidates.push(castQueue[castIndex]);
+      castIndex += 1;
+      continue;
+    }
+
+    const castHead = castQueue[castIndex];
+    const crewHead = crewQueue[crewIndex];
+
+    if ((castHead.popularity ?? 0) >= (crewHead.popularity ?? 0)) {
+      candidates.push(castHead);
+      castIndex += 1;
+      continue;
+    }
+
+    candidates.push(crewHead);
+    crewIndex += 1;
+  }
+
+  return candidates.filter((credit) => {
+    if (!credit.id || seenIds.has(credit.id)) {
+      return false;
+    }
+
+    seenIds.add(credit.id);
+    return true;
+  });
+}
+
 export function getAllowedConnectedTmdbMovieCredits(
   personRecord: PersonRecord | null,
 ): TmdbMovieCredit[] {

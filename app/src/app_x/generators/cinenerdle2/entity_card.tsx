@@ -1,5 +1,4 @@
 import type { AriaRole, CSSProperties, KeyboardEvent, MouseEvent } from "react";
-import FancyTooltip from "../../components/fancy_tooltip";
 import type { CardSource, CardStatus } from "./view_types";
 
 type BaseRenderableCinenerdleEntityCard = {
@@ -12,6 +11,8 @@ type BaseRenderableCinenerdleEntityCard = {
   popularitySource: string | null;
   connectionCount: number | null;
   connectionRank: number | null;
+  connectionOrder: number | null;
+  connectionParentLabel: string | null;
   sources: CardSource[];
   status: CardStatus | null;
   hasCachedTmdbSource: boolean;
@@ -142,8 +143,62 @@ function renderPopularityChip(card: RenderableCinenerdleEntityCard) {
   );
 }
 
+function getConnectionBadgeText(card: RenderableCinenerdleEntityCard) {
+  if (typeof card.connectionCount !== "number") {
+    return null;
+  }
+
+  if (
+    typeof card.connectionRank === "number" &&
+    typeof card.connectionOrder === "number"
+  ) {
+    return `${card.connectionRank} - ${card.connectionOrder} / ${card.connectionCount}`;
+  }
+
+  if (typeof card.connectionRank === "number") {
+    return `${card.connectionRank} / ${card.connectionCount}`;
+  }
+
+  return String(card.connectionCount);
+}
+
+function renderConnectionBadge(card: RenderableCinenerdleEntityCard) {
+  const badgeText = getConnectionBadgeText(card);
+  if (!badgeText) {
+    return null;
+  }
+
+  const tooltipText =
+    typeof card.connectionCount === "number" &&
+    typeof card.connectionRank === "number" &&
+    typeof card.connectionOrder === "number" &&
+    card.connectionParentLabel
+      ? `${card.name} has ${card.connectionCount} connections\nordered ${card.connectionOrder} for ${card.connectionParentLabel}\nrank ${card.connectionRank} by popularity`
+      : null;
+
+  const badge = <span className="cinenerdle-card-count">{badgeText}</span>;
+  if (!tooltipText) {
+    return badge;
+  }
+
+  return (
+    <span
+      aria-label={tooltipText}
+      className="cinenerdle-card-chip-tooltip-anchor"
+      tabIndex={0}
+    >
+      {badge}
+      <span className="cinenerdle-card-inline-tooltip" role="tooltip">
+        {tooltipText}
+      </span>
+    </span>
+  );
+}
+
 function renderFooter(card: RenderableCinenerdleEntityCard) {
-  const shouldRenderTopLeftContent = card.hasCachedTmdbSource;
+  const connectionBadge = card.hasCachedTmdbSource
+    ? renderConnectionBadge(card)
+    : null;
   const statusChip = renderStatusChip(card);
   const voteCountChip =
     card.kind === "movie"
@@ -167,33 +222,9 @@ function renderFooter(card: RenderableCinenerdleEntityCard) {
   return (
     <footer className="cinenerdle-card-footer">
       <div className="cinenerdle-card-footer-top">
-        {shouldRenderTopLeftContent ? (
+        {connectionBadge ? (
           <div className="cinenerdle-card-footer-left">
-            {typeof card.connectionCount === "number" ? (
-              <span className="cinenerdle-card-count">
-                {typeof card.connectionRank === "number"
-                  ? `${card.connectionRank} / ${card.connectionCount}`
-                  : card.connectionCount}
-              </span>
-            ) : null}
-            {card.sources.length > 0 ? (
-              <div className="cinenerdle-card-sources">
-                {card.sources.map((source) => (
-                  <FancyTooltip
-                    content={source.label}
-                    key={`${source.iconUrl}:${source.label}`}
-                    placement="top-center"
-                  >
-                    <img
-                      alt={source.label}
-                      aria-label={source.label}
-                      className="cinenerdle-card-source-icon"
-                      src={source.iconUrl}
-                    />
-                  </FancyTooltip>
-                ))}
-              </div>
-            ) : null}
+            {connectionBadge}
           </div>
         ) : (
           <div className="cinenerdle-card-footer-spacer" />

@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   AbstractGenerator,
   type AbstractGeneratorActivationRequest,
@@ -13,10 +13,10 @@ export {
   type RenderableCinenerdleEntityCard,
 } from "./entity_card";
 import { buildPathNodesFromSegments, normalizeHashValue, parseHashSegments } from "./hash";
+import { CINENERDLE_RECORDS_UPDATED_EVENT } from "./indexed_db";
 import { primeTmdbApiKeyOnInit } from "./tmdb";
 import { getValidTmdbEntityId, normalizeName, normalizeTitle } from "./utils";
 import type { CinenerdleCard } from "./view_types";
-import { logPerfSinceMark } from "../../perf";
 import "../../styles/cinenerdle2.css";
 
 type Cinenerdle2Props = {
@@ -186,8 +186,6 @@ function areYoungestSelectedCardsEqual(
   return normalizeName(left.name) === normalizeName(right.name);
 }
 
-let hasLoggedCinenerdleMount = false;
-
 const Cinenerdle2 = memo(function Cinenerdle2({
   hashValue,
   highlightedConnectionEntity = null,
@@ -205,22 +203,25 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   const lastYoungestSelectedCardRef = useRef<
     Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }> | null
   >(null);
+  const [recordsRefreshVersion, setRecordsRefreshVersion] = useState(0);
 
   useLayoutEffect(() => {
     hashRef.current = normalizedHash;
   }, [normalizedHash]);
 
   useEffect(() => {
-    if (!hasLoggedCinenerdleMount) {
-      hasLoggedCinenerdleMount = true;
-      logPerfSinceMark("Cinenerdle2 mounted", "app-bootstrap", {
-        hash: normalizedHash,
-      });
-    }
-  }, [normalizedHash]);
+    primeTmdbApiKeyOnInit();
+  }, []);
 
   useEffect(() => {
-    primeTmdbApiKeyOnInit();
+    function handleRecordsUpdated() {
+      setRecordsRefreshVersion((version) => version + 1);
+    }
+
+    window.addEventListener(CINENERDLE_RECORDS_UPDATED_EVENT, handleRecordsUpdated);
+    return () => {
+      window.removeEventListener(CINENERDLE_RECORDS_UPDATED_EVENT, handleRecordsUpdated);
+    };
   }, []);
 
   const readHash = useCallback(() => hashRef.current, [hashRef]);
@@ -281,7 +282,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
       cardButtonClassName: "generator-card-button-row-break",
     };
   }, []);
-  const generatorResetKey = `${resetVersion}:${navigationVersion}`;
+  const generatorResetKey = `${resetVersion}:${navigationVersion}:${recordsRefreshVersion}`;
 
   return (
     <AbstractGenerator

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { TMDB_POSTER_BASE_URL } from "../constants";
 import {
+  getAssociatedMoviesFromPersonCredits,
   formatFallbackPersonDisplayName,
   formatMoviePathLabel,
   getAssociatedPeopleFromMovieCredits,
@@ -167,6 +168,7 @@ describe("tmdb credit aggregation", () => {
 
   it("returns an empty list when a person record has no TMDb credits", () => {
     expect(getTmdbMovieCredits(null)).toEqual([]);
+    expect(getAssociatedMoviesFromPersonCredits(makePersonRecord())).toEqual([]);
     expect(getUniqueSortedTmdbMovieCredits(makePersonRecord())).toEqual([]);
   });
 
@@ -220,6 +222,101 @@ describe("tmdb credit aggregation", () => {
     });
 
     expect(getUniqueSortedTmdbMovieCredits(personRecord).map((credit) => credit.id)).toEqual([6, 5]);
+  });
+
+  it("preserves cast queue order when dual-merging person movie credits", () => {
+    const personRecord = makePersonRecord({
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({ id: 1, title: "First Cast", popularity: 90 }),
+          makeMovieCredit({ id: 2, title: "Second Cast", popularity: 40 }),
+        ],
+        crew: [],
+      },
+    });
+
+    expect(getAssociatedMoviesFromPersonCredits(personRecord).map((credit) => credit.title)).toEqual([
+      "First Cast",
+      "Second Cast",
+    ]);
+  });
+
+  it("preserves crew queue order when dual-merging person movie credits", () => {
+    const personRecord = makePersonRecord({
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [
+          makeMovieCredit({ id: 1, title: "First Crew", popularity: 90, creditType: undefined }),
+          makeMovieCredit({ id: 2, title: "Second Crew", popularity: 40, creditType: undefined }),
+        ],
+      },
+    });
+
+    expect(getAssociatedMoviesFromPersonCredits(personRecord).map((credit) => credit.title)).toEqual([
+      "First Crew",
+      "Second Crew",
+    ]);
+  });
+
+  it("merges person movie cast and crew credits by head popularity", () => {
+    const personRecord = makePersonRecord({
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({ id: 1, title: "Cast High", popularity: 80 }),
+          makeMovieCredit({ id: 2, title: "Cast Low", popularity: 20 }),
+        ],
+        crew: [
+          makeMovieCredit({ id: 3, title: "Crew Mid", popularity: 50, creditType: undefined }),
+          makeMovieCredit({ id: 4, title: "Crew Low", popularity: 10, creditType: undefined }),
+        ],
+      },
+    });
+
+    expect(getAssociatedMoviesFromPersonCredits(personRecord).map((credit) => credit.title)).toEqual([
+      "Cast High",
+      "Crew Mid",
+      "Cast Low",
+      "Crew Low",
+    ]);
+  });
+
+  it("prefers cast when person movie cast and crew heads tie on popularity", () => {
+    const personRecord = makePersonRecord({
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({ id: 1, title: "Cast Head", popularity: 60 }),
+        ],
+        crew: [
+          makeMovieCredit({ id: 2, title: "Crew Head", popularity: 60, creditType: undefined }),
+        ],
+      },
+    });
+
+    expect(getAssociatedMoviesFromPersonCredits(personRecord).map((credit) => credit.title)).toEqual([
+      "Cast Head",
+      "Crew Head",
+    ]);
+  });
+
+  it("dedupes and filters person movie credits without disturbing the dual-merge sequence", () => {
+    const personRecord = makePersonRecord({
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({ id: 1, title: "Keep Cast", popularity: 80 }),
+          makeMovieCredit({ id: 1, title: "Duplicate Cast", popularity: 70 }),
+          makeMovieCredit({ id: undefined, title: "Missing Id", popularity: 60 }),
+        ],
+        crew: [
+          makeMovieCredit({ id: 2, title: "Keep Crew", popularity: 75, creditType: undefined }),
+          makeMovieCredit({ id: 1, title: "Duplicate Crew", popularity: 74, creditType: undefined }),
+        ],
+      },
+    });
+
+    expect(getAssociatedMoviesFromPersonCredits(personRecord).map((credit) => credit.title)).toEqual([
+      "Keep Cast",
+      "Keep Crew",
+    ]);
   });
 
   it("merges cast order with crew response order while preserving dedupe and filtering", () => {
