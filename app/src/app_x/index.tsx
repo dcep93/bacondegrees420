@@ -14,13 +14,16 @@ import {
 import {
   createBookmarkId,
   loadBookmarks,
+  mergeMissingBookmarks,
   moveBookmarkEntry,
   removeBookmarkEntry,
+  saveBookmarks,
   toggleBookmarkPreviewCardSelection,
   upsertBookmarkEntry,
   type AppViewMode,
   type BookmarkEntry,
 } from "./bookmarks";
+import { getSyncedBookmarks, setSyncedBookmarks } from "./bookmark_sync";
 import { BookmarkPreviewCardView } from "./components/bookmark_preview_card";
 import Cinenerdle2 from "./generators/cinenerdle2";
 import {
@@ -634,6 +637,7 @@ export default function AppX() {
     useState<ConnectionMatchupPreview | null>(null);
   const [copyStatus, setCopyStatus] = useState("");
   const [isSavingBookmark, setIsSavingBookmark] = useState(false);
+  const [isBookmarkSyncReady, setIsBookmarkSyncReady] = useState(false);
   const [connectionQuery, setConnectionQuery] = useState("");
   const [isResolvingConnection, setIsResolvingConnection] = useState(false);
   const [connectionSuggestions, setConnectionSuggestions] = useState<ConnectionSuggestion[]>([]);
@@ -649,6 +653,7 @@ export default function AppX() {
   const connectionSessionRef = useRef<ConnectionSession | null>(null);
   const pendingHashWriteRef = useRef<PendingHashWrite | null>(null);
   const lastSyncedHashRef = useRef(normalizeHashValue(initialLocationState.hash));
+  const lastBookmarkSyncSnapshotRef = useRef("");
   const bookmarksReturnHashRef = useRef(normalizeHashValue(initialLocationState.hash));
   const autocompleteRequestIdRef = useRef(0);
   const connectionSessionIdRef = useRef(0);
@@ -729,6 +734,49 @@ export default function AppX() {
       window.clearTimeout(timeoutId);
     };
   }, [copyStatus]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void getSyncedBookmarks()
+      .then((syncedBookmarks) => {
+        if (cancelled) {
+          return;
+        }
+
+        setBookmarks((currentBookmarks) => {
+          const nextBookmarks = mergeMissingBookmarks(currentBookmarks, syncedBookmarks);
+          if (JSON.stringify(nextBookmarks) !== JSON.stringify(currentBookmarks)) {
+            saveBookmarks(nextBookmarks);
+          }
+          return nextBookmarks;
+        });
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) {
+          setIsBookmarkSyncReady(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isBookmarkSyncReady) {
+      return;
+    }
+
+    const nextSnapshot = JSON.stringify(bookmarks);
+    if (lastBookmarkSyncSnapshotRef.current === nextSnapshot) {
+      return;
+    }
+
+    lastBookmarkSyncSnapshotRef.current = nextSnapshot;
+    void setSyncedBookmarks(bookmarks).catch(() => {});
+  }, [bookmarks, isBookmarkSyncReady]);
 
   useEffect(() => {
     connectionSessionRef.current = null;

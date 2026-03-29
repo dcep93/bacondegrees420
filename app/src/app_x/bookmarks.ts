@@ -1,7 +1,7 @@
 import type { BookmarkPreviewCard } from "./components/bookmark_preview";
 import { normalizeHashValue } from "./generators/cinenerdle2/hash";
 
-const BOOKMARKS_STORAGE_KEY = "bacondegrees420.bookmarks.v1";
+export const BOOKMARKS_STORAGE_KEY = "bacondegrees420.bookmarks.v1";
 
 export type AppViewMode = "generator" | "bookmarks";
 
@@ -46,7 +46,7 @@ function isBookmarkPreviewCard(value: unknown): value is BookmarkPreviewCard {
   );
 }
 
-function isBookmarkEntry(value: unknown): value is BookmarkEntry {
+export function isBookmarkEntry(value: unknown): value is BookmarkEntry {
   if (!value || typeof value !== "object") {
     return false;
   }
@@ -69,7 +69,7 @@ function isBookmarkEntry(value: unknown): value is BookmarkEntry {
   );
 }
 
-function normalizeBookmarkEntry(bookmark: BookmarkEntry): BookmarkEntry {
+export function normalizeBookmarkEntry(bookmark: BookmarkEntry): BookmarkEntry {
   return {
     ...bookmark,
     hash: normalizeHashValue(bookmark.hash),
@@ -79,6 +79,20 @@ function normalizeBookmarkEntry(bookmark: BookmarkEntry): BookmarkEntry {
       bookmark.selectedPreviewCardIndices,
     ),
   };
+}
+
+export function normalizeBookmarkEntries(value: unknown): BookmarkEntry[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter(isBookmarkEntry)
+    .map((bookmark) => normalizeBookmarkEntry({
+      ...bookmark,
+      selectedPreviewCardIndices: bookmark.selectedPreviewCardIndices ?? [],
+    }))
+    .filter((bookmark) => bookmark.label && bookmark.previewCards.length > 0);
 }
 
 export function createBookmarkId() {
@@ -96,25 +110,38 @@ export function loadBookmarks(): BookmarkEntry[] {
       return [];
     }
 
-    const parsedBookmarks = JSON.parse(rawBookmarks);
-    if (!Array.isArray(parsedBookmarks)) {
-      return [];
-    }
-
-    return parsedBookmarks
-      .filter(isBookmarkEntry)
-      .map((bookmark) => normalizeBookmarkEntry({
-        ...bookmark,
-        selectedPreviewCardIndices: bookmark.selectedPreviewCardIndices ?? [],
-      }))
-      .filter((bookmark) => bookmark.label && bookmark.previewCards.length > 0);
+    return normalizeBookmarkEntries(JSON.parse(rawBookmarks));
   } catch (error) {
     return [];
   }
 }
 
 export function saveBookmarks(bookmarks: BookmarkEntry[]) {
-  localStorage.setItem(BOOKMARKS_STORAGE_KEY, JSON.stringify(bookmarks));
+  localStorage.setItem(BOOKMARKS_STORAGE_KEY, JSON.stringify(normalizeBookmarkEntries(bookmarks)));
+}
+
+export function mergeMissingBookmarks(
+  currentBookmarks: BookmarkEntry[],
+  incomingBookmarks: unknown,
+): BookmarkEntry[] {
+  const normalizedCurrentBookmarks = normalizeBookmarkEntries(currentBookmarks);
+  const existingHashes = new Set(
+    normalizedCurrentBookmarks.map((bookmark) => bookmark.hash),
+  );
+  const missingBookmarks = normalizeBookmarkEntries(incomingBookmarks).filter((bookmark) => {
+    if (existingHashes.has(bookmark.hash)) {
+      return false;
+    }
+
+    existingHashes.add(bookmark.hash);
+    return true;
+  });
+
+  if (missingBookmarks.length === 0) {
+    return normalizedCurrentBookmarks;
+  }
+
+  return [...normalizedCurrentBookmarks, ...missingBookmarks];
 }
 
 export function upsertBookmarkEntry(

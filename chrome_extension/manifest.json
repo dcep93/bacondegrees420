@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "BaconDegrees420 Sync",
+  "version": "1.0.0",
+  "description": "Sync BaconDegrees420 bookmarks through chrome.storage.sync.",
+  "permissions": ["storage"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://localhost:*/*",
+        "https://bacondegrees420.web.app/*",
+        "https://www.cinenerdle2.app/*"
+      ],
+      "js": ["content.js"]
+    }
+  ]
+}
