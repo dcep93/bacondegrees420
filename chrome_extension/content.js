@@ -54,7 +54,6 @@ if (
   window.location.hostname === "localhost" ||
   window.location.hostname === "bacondegrees420.web.app"
 ) {
-  console.log("BaconDegrees420 content script loaded", window.location.href);
   markBridgeReady();
 
   window.addEventListener("message", (event) => {
@@ -65,9 +64,7 @@ if (
     chrome.runtime.sendMessage(
       {
         type: event.data.action,
-        requestId: event.data.requestId,
         bookmarks: event.data.bookmarks,
-        url: window.location.href,
       },
       (response) => {
         if (chrome.runtime.lastError) {
@@ -89,19 +86,5 @@ if (
         });
       },
     );
-  });
-
-  chrome.runtime.sendMessage(
-    {
-      type: "bridge:content-script-loaded",
-      url: window.location.href,
-    },
-    () => {
-      void chrome.runtime.lastError;
-    },
-  );
-
-  chrome.runtime.sendMessage({ type: "bridge:ping" }, () => {
-    void chrome.runtime.lastError;
   });
 }

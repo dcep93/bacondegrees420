@@ -25,7 +25,6 @@ import {
 } from "./bookmarks";
 import {
   getSyncedBookmarks,
-  isBookmarkExtensionBridgeDetected,
   setSyncedBookmarks,
 } from "./bookmark_sync";
 import { BookmarkPreviewCardView } from "./components/bookmark_preview_card";
@@ -741,10 +740,6 @@ export default function AppX() {
 
   useEffect(() => {
     let cancelled = false;
-
-    if (!isBookmarkExtensionBridgeDetected()) {
-      console.warn("BaconDegrees420 bookmark extension bridge not detected on this page");
-    }
 
     void getSyncedBookmarks()
       .then((syncedBookmarks) => {

@@ -5,8 +5,6 @@ const BOOKMARKS_DIRECTORY_STORAGE_KEY = `${BOOKMARKS_STORAGE_KEY}.directory.v3`;
 const BOOKMARK_CHUNK_STORAGE_KEY_PREFIX = `${BOOKMARKS_STORAGE_KEY}.chunk.v3.`;
 const BOOKMARK_CHUNK_SIZE = 6000;
 
-console.log("BaconDegrees420 background service worker loaded");
-
 function normalizeHashValue(hash) {
   if (typeof hash !== "string") {
     return "";
@@ -295,9 +293,6 @@ function loadSyncedBookmarks(callback) {
 }
 
 async function saveSyncedBookmarksData(bookmarks) {
-  console.log("BaconDegrees420 saveSyncedBookmarksData starting", {
-    bookmarkCount: Array.isArray(bookmarks) ? bookmarks.length : null,
-  });
   const normalizedBookmarks = normalizeBookmarkEntries(bookmarks);
   const currentStorageRecord = await getStorageSync(null);
   const jsonString = JSON.stringify(normalizedBookmarks);
@@ -340,12 +335,6 @@ async function saveSyncedBookmarksData(bookmarks) {
 
   await removeStorageSync(keysToRemove);
   await setStorageSync(nextStorageRecord);
-  console.log("BaconDegrees420 saveSyncedBookmarksData finished", {
-    bookmarkCount: normalizedBookmarks.length,
-    jsonLength: jsonString.length,
-    compressedLength: compressedPayload.length,
-    chunkCount: nextChunkKeys.length,
-  });
   logStorageUsage();
   return normalizedBookmarks;
 }
@@ -412,9 +401,6 @@ async function migrateLegacySyncedBookmarksIfNeeded() {
   }
 
   await saveSyncedBookmarksData(bookmarks);
-  console.log(
-    `BaconDegrees420 migrated chrome.storage.sync bookmark format from ${storageFormat} to v3`,
-  );
 }
 
 function logStorageUsage() {
@@ -437,23 +423,7 @@ function logStorageUsage() {
   });
 }
 
-function pingBridge(callback) {
-  console.log("BaconDegrees420 background received bridge ping");
-  migrateLegacySyncedBookmarksIfNeeded()
-    .catch((error) => {
-      console.error(
-        "Failed to migrate BaconDegrees420 synced bookmarks during bridge ping",
-        error instanceof Error ? error.message : error,
-      );
-    })
-    .finally(() => {
-      logStorageUsage();
-      callback({ ok: true });
-    });
-}
-
 chrome.runtime.onInstalled.addListener(() => {
-  console.log("BaconDegrees420 extension installed or reloaded");
   void migrateLegacySyncedBookmarksIfNeeded()
     .catch((error) => {
       console.error(
@@ -477,13 +447,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return false;
   }
 
-  console.log("BaconDegrees420 background onMessage", {
-    type: message.type,
-    bookmarkCount: Array.isArray(message.bookmarks) ? message.bookmarks.length : null,
-    url: typeof message.url === "string" ? message.url : null,
-    requestId: typeof message.requestId === "string" ? message.requestId : null,
-  });
-
   if (message.type === "bookmarks:get") {
     loadSyncedBookmarks(sendResponse);
     return true;
@@ -492,16 +455,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === "bookmarks:set") {
     sendResponse({ accepted: true });
     saveSyncedBookmarks(message.bookmarks);
-    return false;
-  }
-
-  if (message.type === "bridge:ping") {
-    pingBridge(sendResponse);
-    return true;
-  }
-
-  if (message.type === "bridge:content-script-loaded") {
-    sendResponse({ ok: true });
     return false;
   }
 
