@@ -140,7 +140,7 @@ type ConnectionMatchupPreview = {
 
 const CONNECTION_MATCHUP_TOOLTIP_KEY = "matchup";
 const CONNECTION_MATCHUP_SPOILER_EXPLANATION =
-  "is not in best-connected";
+  "-/-> best-connected";
 
 type ConnectionSearchRow = {
   id: string;

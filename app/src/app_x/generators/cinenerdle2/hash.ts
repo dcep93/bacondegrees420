@@ -81,6 +81,9 @@ function serializeHashSegment(segment: string): string {
   return encodeURIComponent(segment.trim().replace(/\s+/g, " ")).replace(
     /%20/g,
     "+",
+  ).replace(
+    /%3A/gi,
+    ":",
   );
 }
 

@@ -182,6 +182,21 @@ describe("serializePathNodes", () => {
       ]),
     ).toBe("#person|Kenneth+Collard+%2F+Jr.|L.A.+Confidential+(1997)");
   });
+
+  it("keeps colons readable in canonical movie labels", () => {
+    expect(
+      serializePathNodes([
+        createPathNode("cinenerdle", "cinenerdle"),
+        createPathNode("movie", "Interstellar", "2014"),
+        createPathNode("person", "Jessica Chastain"),
+        createPathNode("movie", "Molly's Game", "2017"),
+        createPathNode("person", "Idris Elba"),
+        createPathNode("movie", "Avengers: Infinity War", "2018"),
+      ]),
+    ).toBe(
+      "#cinenerdle|Interstellar+(2014)|Jessica+Chastain|Molly's+Game+(2017)|Idris+Elba|Avengers:+Infinity+War+(2018)",
+    );
+  });
 });
 
 describe("normalizeHashValue", () => {
@@ -203,5 +218,15 @@ describe("normalizeHashValue", () => {
     expect(
       serializePathNodes(buildPathNodesFromSegments(parseHashSegments(hashValue))),
     ).toBe(hashValue);
+  });
+
+  it("canonicalizes encoded colons back to readable colons", () => {
+    expect(
+      normalizeHashValue(
+        "#cinenerdle|Interstellar+(2014)|Jessica+Chastain|Molly's+Game+(2017)|Idris+Elba|Avengers%3A+Infinity+War+(2018)",
+      ),
+    ).toBe(
+      "#cinenerdle|Interstellar+(2014)|Jessica+Chastain|Molly's+Game+(2017)|Idris+Elba|Avengers:+Infinity+War+(2018)",
+    );
   });
 });
