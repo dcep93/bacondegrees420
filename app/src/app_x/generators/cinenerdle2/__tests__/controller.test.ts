@@ -8,6 +8,7 @@ import {
 } from "./factories";
 
 const indexedDbMock = vi.hoisted(() => ({
+  getAllSearchableConnectionEntities: vi.fn(),
   getFilmRecordCountsByPersonConnectionKeys: vi.fn(),
   getFilmRecordByTitleAndYear: vi.fn(),
   getFilmRecordsByIds: vi.fn(),
@@ -49,6 +50,7 @@ describe("buildBookmarkPreviewCardsFromHash", () => {
     Object.values(indexedDbMock).forEach((mock) => mock.mockReset());
     Object.values(tmdbMock).forEach((mock) => mock.mockReset());
 
+    indexedDbMock.getAllSearchableConnectionEntities.mockResolvedValue([]);
     indexedDbMock.getFilmRecordsByIds.mockResolvedValue(new Map());
     indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(new Map());
     indexedDbMock.getPersonRecordCountsByMovieKeys.mockResolvedValue(new Map());
@@ -250,6 +252,7 @@ describe("buildTreeFromHash", () => {
     Object.values(indexedDbMock).forEach((mock) => mock.mockReset());
     Object.values(tmdbMock).forEach((mock) => mock.mockReset());
 
+    indexedDbMock.getAllSearchableConnectionEntities.mockResolvedValue([]);
     indexedDbMock.getFilmRecordsByIds.mockResolvedValue(new Map());
     indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(new Map());
     indexedDbMock.getPersonRecordCountsByMovieKeys.mockResolvedValue(new Map());

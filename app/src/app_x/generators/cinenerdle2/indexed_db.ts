@@ -33,6 +33,136 @@ const REQUIRED_OBJECT_STORE_NAMES = [
 
 export const CINENERDLE_RECORDS_UPDATED_EVENT = "cinenerdle:records-updated";
 
+const personRecordByIdCache = new Map<number, PersonRecord>();
+const personRecordByNameCache = new Map<string, PersonRecord>();
+const filmRecordByIdCache = new Map<string, FilmRecord>();
+const filmRecordQueryCache = new Map<string, FilmRecord | null>();
+const personCountByMovieKeyCache = new Map<string, number>();
+const filmCountByPersonNameCache = new Map<string, number>();
+const searchableConnectionEntityByKeyCache = new Map<string, SearchableConnectionEntityRecord>();
+let allSearchableConnectionEntitiesCache: SearchableConnectionEntityRecord[] | null = null;
+
+function getFilmCacheIdKey(id: number | string): string {
+  return String(id);
+}
+
+function getFilmQueryCacheKey(title: string, year = ""): string {
+  const normalizedTitle = normalizeTitle(title);
+  return year
+    ? `title-year:${normalizedTitle}:${year.trim()}`
+    : `title:${normalizedTitle}`;
+}
+
+function clearInMemoryIndexedDbCaches(): void {
+  personRecordByIdCache.clear();
+  personRecordByNameCache.clear();
+  filmRecordByIdCache.clear();
+  filmRecordQueryCache.clear();
+  personCountByMovieKeyCache.clear();
+  filmCountByPersonNameCache.clear();
+  searchableConnectionEntityByKeyCache.clear();
+  allSearchableConnectionEntitiesCache = null;
+}
+
+function cachePersonRecord(personRecord: PersonRecord | null | undefined): void {
+  if (!personRecord) {
+    return;
+  }
+
+  const recordId = getValidTmdbEntityId(personRecord.id);
+  const recordTmdbId = getValidTmdbEntityId(personRecord.tmdbId);
+  const normalizedName = normalizeName(personRecord.name);
+
+  if (recordId) {
+    personRecordByIdCache.set(recordId, personRecord);
+  }
+
+  if (recordTmdbId) {
+    personRecordByIdCache.set(recordTmdbId, personRecord);
+  }
+
+  if (normalizedName) {
+    personRecordByNameCache.set(normalizedName, personRecord);
+  }
+}
+
+function cacheFilmRecord(filmRecord: FilmRecord | null | undefined): void {
+  if (!filmRecord) {
+    return;
+  }
+
+  if (filmRecord.id !== null && filmRecord.id !== undefined && filmRecord.id !== "") {
+    filmRecordByIdCache.set(getFilmCacheIdKey(filmRecord.id), filmRecord);
+  }
+
+  if (
+    filmRecord.tmdbId !== null &&
+    filmRecord.tmdbId !== undefined
+  ) {
+    filmRecordByIdCache.set(getFilmCacheIdKey(filmRecord.tmdbId), filmRecord);
+  }
+
+  const normalizedTitle = normalizeTitle(filmRecord.title);
+  if (!normalizedTitle) {
+    return;
+  }
+
+  filmRecordQueryCache.set(
+    getFilmQueryCacheKey(normalizedTitle, filmRecord.year),
+    filmRecord,
+  );
+}
+
+function cacheSearchableConnectionEntities(
+  records: SearchableConnectionEntityRecord[],
+): void {
+  if (records.length === 0) {
+    return;
+  }
+
+  const cachedRecordsByKey = new Map<string, SearchableConnectionEntityRecord>();
+  if (allSearchableConnectionEntitiesCache) {
+    allSearchableConnectionEntitiesCache.forEach((record) => {
+      cachedRecordsByKey.set(record.key, record);
+    });
+  }
+
+  records.forEach((record) => {
+    const existingRecord =
+      cachedRecordsByKey.get(record.key) ??
+      searchableConnectionEntityByKeyCache.get(record.key);
+    const nextRecord = existingRecord
+      ? {
+        ...existingRecord,
+        ...record,
+        popularity: Math.max(existingRecord.popularity ?? 0, record.popularity ?? 0),
+      }
+      : record;
+
+    searchableConnectionEntityByKeyCache.set(nextRecord.key, nextRecord);
+    cachedRecordsByKey.set(nextRecord.key, nextRecord);
+  });
+
+  if (allSearchableConnectionEntitiesCache) {
+    allSearchableConnectionEntitiesCache = Array.from(cachedRecordsByKey.values());
+  }
+}
+
+function removeCachedSearchableConnectionEntity(key: string): void {
+  if (!key) {
+    return;
+  }
+
+  searchableConnectionEntityByKeyCache.delete(key);
+  if (!allSearchableConnectionEntitiesCache) {
+    return;
+  }
+
+  allSearchableConnectionEntitiesCache = allSearchableConnectionEntitiesCache.filter(
+    (record) => record.key !== key,
+  );
+}
+
 function dispatchCinenerdleRecordsUpdated(): void {
   if (typeof window === "undefined") {
     return;
@@ -409,12 +539,24 @@ function buildSearchableConnectionPopularityLookup(
 export async function getPersonRecordByName(
   personName: string,
 ): Promise<PersonRecord | null> {
+  const normalizedPersonName = normalizeName(personName);
+  if (!normalizedPersonName) {
+    return null;
+  }
+
+  const cachedRecord = personRecordByNameCache.get(normalizedPersonName);
+  if (cachedRecord) {
+    return cachedRecord;
+  }
+
   return withStore(PEOPLE_STORE_NAME, "readonly", async (store) => {
     const personRecord = await indexedDbRequestToPromise<PersonRecord | undefined>(
-      store.index("nameLower").get(normalizeName(personName)),
+      store.index("nameLower").get(normalizedPersonName),
     );
 
-    return personRecord ?? null;
+    const resolvedRecord = personRecord ?? null;
+    cachePersonRecord(resolvedRecord);
+    return resolvedRecord;
   });
 }
 
@@ -425,12 +567,19 @@ export async function getPersonRecordById(
     return null;
   }
 
+  const cachedRecord = personRecordByIdCache.get(id);
+  if (cachedRecord) {
+    return cachedRecord;
+  }
+
   return withStore(PEOPLE_STORE_NAME, "readonly", async (store) => {
     const record = await indexedDbRequestToPromise<PersonRecord | undefined>(
       store.get(id),
     );
 
-    return record ?? null;
+    const resolvedRecord = record ?? null;
+    cachePersonRecord(resolvedRecord);
+    return resolvedRecord;
   });
 }
 
@@ -459,16 +608,35 @@ export async function getPersonRecordCountsByMovieKeys(
     return new Map();
   }
 
+  const resolvedCounts = new Map<string, number>();
+  const missingMovieKeys = uniqueMovieKeys.filter((movieKey) => {
+    if (!personCountByMovieKeyCache.has(movieKey)) {
+      return true;
+    }
+
+    resolvedCounts.set(movieKey, personCountByMovieKeyCache.get(movieKey) ?? 0);
+    return false;
+  });
+
+  if (missingMovieKeys.length === 0) {
+    return resolvedCounts;
+  }
+
   return withStore(PEOPLE_STORE_NAME, "readonly", async (store) => {
     const movieConnectionIndex = store.index("movieConnectionKeys");
     const entries = await Promise.all(
-      uniqueMovieKeys.map(async (movieKey) => [
+      missingMovieKeys.map(async (movieKey) => [
         movieKey,
         await indexedDbRequestToPromise<number>(movieConnectionIndex.count(movieKey)),
       ] as const),
     );
 
-    return new Map(entries);
+    entries.forEach(([movieKey, count]) => {
+      personCountByMovieKeyCache.set(movieKey, count);
+      resolvedCounts.set(movieKey, count);
+    });
+
+    return resolvedCounts;
   });
 }
 
@@ -511,6 +679,17 @@ export async function savePersonRecord(personRecord: PersonRecord): Promise<void
     },
   );
 
+  cachePersonRecord(personRecord);
+  personCountByMovieKeyCache.clear();
+  cacheSearchableConnectionEntities(searchRecords);
+  if (
+    canonicalSearchRecord &&
+    legacySearchRecord &&
+    canonicalSearchRecord.key !== legacySearchRecord.key
+  ) {
+    removeCachedSearchableConnectionEntity(legacySearchRecord.key);
+  }
+
   dispatchCinenerdleRecordsUpdated();
 }
 
@@ -521,12 +700,20 @@ export async function getFilmRecordById(
     return null;
   }
 
+  const cacheKey = getFilmCacheIdKey(id);
+  const cachedRecord = filmRecordByIdCache.get(cacheKey);
+  if (cachedRecord) {
+    return cachedRecord;
+  }
+
   return withStore(FILMS_STORE_NAME, "readonly", async (store) => {
     const record = await indexedDbRequestToPromise<FilmRecord | undefined>(
       store.get(id),
     );
 
-    return record ?? null;
+    const resolvedRecord = record ?? null;
+    cacheFilmRecord(resolvedRecord);
+    return resolvedRecord;
   });
 }
 
@@ -549,18 +736,29 @@ export async function getFilmRecordByTitleAndYear(
     return null;
   }
 
+  const queryCacheKey = getFilmQueryCacheKey(normalizedTitle, year);
+  if (filmRecordQueryCache.has(queryCacheKey)) {
+    return filmRecordQueryCache.get(queryCacheKey) ?? null;
+  }
+
   if (year) {
     return withStore(FILMS_STORE_NAME, "readonly", async (store) => {
       const exactRecords = await indexedDbRequestToPromise<FilmRecord[]>(
         store.index("titleYear").getAll(getFilmKey(normalizedTitle, year)),
       );
 
-      return chooseBestFilmRecord(exactRecords ?? [], normalizedTitle, year);
+      const resolvedRecord = chooseBestFilmRecord(exactRecords ?? [], normalizedTitle, year);
+      cacheFilmRecord(resolvedRecord);
+      filmRecordQueryCache.set(queryCacheKey, resolvedRecord);
+      return resolvedRecord;
     });
   }
 
   const records = await getFilmRecordsByTitle(normalizedTitle);
-  return chooseBestFilmRecord(records, normalizedTitle, year);
+  const resolvedRecord = chooseBestFilmRecord(records, normalizedTitle, year);
+  filmRecordQueryCache.set(queryCacheKey, resolvedRecord);
+  cacheFilmRecord(resolvedRecord);
+  return resolvedRecord;
 }
 
 export async function getFilmRecordsByIds(
@@ -574,9 +772,24 @@ export async function getFilmRecordsByIds(
     return new Map();
   }
 
+  const resolvedRecords = new Map<number | string, FilmRecord>();
+  const missingIds = uniqueIds.filter((id) => {
+    const cachedRecord = filmRecordByIdCache.get(getFilmCacheIdKey(id));
+    if (!cachedRecord) {
+      return true;
+    }
+
+    resolvedRecords.set(id, cachedRecord);
+    return false;
+  });
+
+  if (missingIds.length === 0) {
+    return resolvedRecords;
+  }
+
   return withStore(FILMS_STORE_NAME, "readonly", async (store) => {
     const entries = await Promise.all(
-      uniqueIds.map(async (id) => {
+      missingIds.map(async (id) => {
         const record = await indexedDbRequestToPromise<FilmRecord | undefined>(
           store.get(id),
         );
@@ -584,11 +797,16 @@ export async function getFilmRecordsByIds(
       }),
     );
 
-    return new Map(
-      entries.filter(
+    entries
+      .filter(
         (entry): entry is [number | string, FilmRecord] => entry !== null,
-      ),
-    );
+      )
+      .forEach(([id, record]) => {
+        cacheFilmRecord(record);
+        resolvedRecords.set(id, record);
+      });
+
+    return resolvedRecords;
   });
 }
 
@@ -630,16 +848,35 @@ export async function getFilmRecordCountsByPersonConnectionKeys(
     return new Map();
   }
 
+  const resolvedCounts = new Map<string, number>();
+  const missingNames = normalizedNames.filter((personName) => {
+    if (!filmCountByPersonNameCache.has(personName)) {
+      return true;
+    }
+
+    resolvedCounts.set(personName, filmCountByPersonNameCache.get(personName) ?? 0);
+    return false;
+  });
+
+  if (missingNames.length === 0) {
+    return resolvedCounts;
+  }
+
   return withStore(FILMS_STORE_NAME, "readonly", async (store) => {
     const personConnectionIndex = store.index("personConnectionKeys");
     const entries = await Promise.all(
-      normalizedNames.map(async (personName) => [
+      missingNames.map(async (personName) => [
         personName,
         await indexedDbRequestToPromise<number>(personConnectionIndex.count(personName)),
       ] as const),
     );
 
-    return new Map(entries);
+    entries.forEach(([personName, count]) => {
+      filmCountByPersonNameCache.set(personName, count);
+      resolvedCounts.set(personName, count);
+    });
+
+    return resolvedCounts;
   });
 }
 
@@ -678,6 +915,10 @@ export async function getCinenerdleStarterFilmRecords(): Promise<FilmRecord[]> {
 export async function getAllSearchableConnectionEntities(): Promise<
   SearchableConnectionEntityRecord[]
 > {
+  if (allSearchableConnectionEntitiesCache) {
+    return allSearchableConnectionEntitiesCache;
+  }
+
   return withStores(
     [
       SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME,
@@ -693,6 +934,10 @@ export async function getAllSearchableConnectionEntities(): Promise<
 
       const nextRecords = records ?? [];
       if (nextRecords.every((record) => typeof record.popularity === "number")) {
+        allSearchableConnectionEntitiesCache = nextRecords;
+        nextRecords.forEach((record) => {
+          searchableConnectionEntityByKeyCache.set(record.key, record);
+        });
         return nextRecords;
       }
 
@@ -705,10 +950,15 @@ export async function getAllSearchableConnectionEntities(): Promise<
         filmRecords ?? [],
       );
 
-      return nextRecords.map((record) => ({
+      const resolvedRecords = nextRecords.map((record) => ({
         ...record,
         popularity: record.popularity ?? popularityByKey.get(record.key) ?? 0,
       }));
+      allSearchableConnectionEntitiesCache = resolvedRecords;
+      resolvedRecords.forEach((record) => {
+        searchableConnectionEntityByKeyCache.set(record.key, record);
+      });
+      return resolvedRecords;
     },
   );
 }
@@ -754,6 +1004,11 @@ export async function getSearchableConnectionEntityByKey(
     return null;
   }
 
+  const cachedRecord = searchableConnectionEntityByKeyCache.get(key);
+  if (cachedRecord) {
+    return cachedRecord;
+  }
+
   return withStore(
     SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME,
     "readonly",
@@ -761,7 +1016,11 @@ export async function getSearchableConnectionEntityByKey(
       const record = await indexedDbRequestToPromise<
         SearchableConnectionEntityRecord | undefined
       >(store.get(key));
-      return record ?? null;
+      const resolvedRecord = record ?? null;
+      if (resolvedRecord) {
+        searchableConnectionEntityByKeyCache.set(resolvedRecord.key, resolvedRecord);
+      }
+      return resolvedRecord;
     },
   );
 }
@@ -806,6 +1065,8 @@ export async function clearIndexedDb(): Promise<void> {
   } finally {
     database.close();
   }
+
+  clearInMemoryIndexedDbCaches();
 }
 
 export async function saveFilmRecord(filmRecord: FilmRecord): Promise<void> {
@@ -835,6 +1096,13 @@ export async function saveFilmRecords(filmRecords: FilmRecord[]): Promise<void> 
       );
     },
   );
+
+  filmRecordQueryCache.clear();
+  filmCountByPersonNameCache.clear();
+  filmRecords.forEach((filmRecord) => {
+    cacheFilmRecord(filmRecord);
+  });
+  cacheSearchableConnectionEntities(searchRecords);
 
   dispatchCinenerdleRecordsUpdated();
 }
