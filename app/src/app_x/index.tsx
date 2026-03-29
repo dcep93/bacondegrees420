@@ -648,6 +648,21 @@ function renderTooltipEntries(
   ];
 }
 
+function getReversedTooltipEntries(tooltipEntries: string[]): string[] {
+  const titleEntry = tooltipEntries[0];
+  if (!titleEntry) {
+    return [...tooltipEntries].reverse();
+  }
+
+  const popularityEntry = tooltipEntries[1];
+  const hasPopularityEntry = typeof getTooltipPopularity(popularityEntry ?? "") === "number";
+  const remainingEntries = hasPopularityEntry ? tooltipEntries.slice(2) : tooltipEntries.slice(1);
+
+  return hasPopularityEntry
+    ? [titleEntry, popularityEntry as string, ...remainingEntries.reverse()]
+    : [titleEntry, ...remainingEntries.reverse()];
+}
+
 function createPathNodeFromConnectionEntity(entity: ConnectionEntity) {
   if (entity.kind === "cinenerdle") {
     return createPathNode("cinenerdle", "cinenerdle");
@@ -1722,6 +1737,7 @@ export default function AppX() {
     const counterpartTooltipEntries = getTooltipEntries(
       connectionMatchupPreview.counterpart.tooltipText,
     );
+    const reversedCounterpartTooltipEntries = getReversedTooltipEntries(counterpartTooltipEntries);
 
     return (
       <div
@@ -1732,7 +1748,7 @@ export default function AppX() {
         onClick={(event) => handleTooltipClick(event, [
           connectionMatchupPreview.spoiler.name,
           CONNECTION_MATCHUP_SPOILER_EXPLANATION,
-          ...counterpartTooltipEntries,
+          ...reversedCounterpartTooltipEntries,
         ])}
         onFocus={() => setVisibleConnectionMatchupTooltipKey(CONNECTION_MATCHUP_TOOLTIP_KEY)}
         onMouseDown={preventTooltipMouseFocus}
@@ -1755,7 +1771,10 @@ export default function AppX() {
             <span className="bacon-connection-pill-tooltip-entry">
               {CONNECTION_MATCHUP_SPOILER_EXPLANATION}
             </span>
-            {renderTooltipEntries(counterpartTooltipEntries, connectionMatchupPreview.counterpart.key)}
+            {renderTooltipEntries(
+              reversedCounterpartTooltipEntries,
+              connectionMatchupPreview.counterpart.key,
+            )}
           </span>
         ) : null}
       </div>
