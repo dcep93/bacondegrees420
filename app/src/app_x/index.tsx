@@ -27,8 +27,10 @@ import {
   getSyncedBookmarks,
   setSyncedBookmarks,
 } from "./bookmark_sync";
-import { BookmarkPreviewCardView } from "./components/bookmark_preview_card";
-import Cinenerdle2 from "./generators/cinenerdle2";
+import Cinenerdle2, {
+  CinenerdleEntityCard,
+  type RenderableCinenerdleEntityCard,
+} from "./generators/cinenerdle2";
 import {
   createCinenerdleConnectionEntity,
   createFallbackConnectionEntity,
@@ -232,6 +234,24 @@ function getBookmarkPreviewCardHash(bookmarkHash: string, previewCardIndex: numb
   }
 
   return serializePathNodes(pathNodes.slice(0, previewCardIndex + 1));
+}
+
+function createBookmarkPreviewCardViewModel(
+  card: BookmarkEntry["previewCards"][number],
+  isSelected: boolean,
+): RenderableCinenerdleEntityCard {
+  const sharedFields = {
+    ...card,
+    isSelected,
+    isLocked: false,
+    isAncestorSelected: false,
+  };
+
+  if (card.kind === "movie") {
+    return sharedFields;
+  }
+
+  return sharedFields;
 }
 
 function isEditableKeyboardTarget(target: EventTarget | null): boolean {
@@ -1676,13 +1696,21 @@ export default function AppX() {
               <div className="bacon-bookmark-row-body">
                 <div className="bacon-bookmark-card-row">
                   {bookmark.previewCards.map((card, cardIndex) => (
-                    <BookmarkPreviewCardView
-                      card={card}
-                      isSelected={bookmark.selectedPreviewCardIndices.includes(cardIndex)}
+                    <button
+                      aria-pressed={bookmark.selectedPreviewCardIndices.includes(cardIndex)}
+                      className="generator-card-button"
                       key={`${bookmark.id}:${cardIndex}:${card.key}`}
-                      onNameClick={() => handleLoadBookmarkPreviewCard(bookmark, cardIndex)}
-                      onToggleSelected={() => handleToggleBookmarkPreviewCard(bookmark.id, cardIndex)}
-                    />
+                      onClick={() => handleToggleBookmarkPreviewCard(bookmark.id, cardIndex)}
+                      type="button"
+                    >
+                      <CinenerdleEntityCard
+                        card={createBookmarkPreviewCardViewModel(
+                          card,
+                          bookmark.selectedPreviewCardIndices.includes(cardIndex),
+                        )}
+                        onTitleClick={() => handleLoadBookmarkPreviewCard(bookmark, cardIndex)}
+                      />
+                    </button>
                   ))}
                 </div>
               </div>

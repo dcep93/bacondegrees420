@@ -1,5 +1,33 @@
-import type { CSSProperties, KeyboardEvent } from "react";
-import type { BookmarkPreviewCard } from "./bookmark_preview";
+import type { AriaRole, CSSProperties, KeyboardEvent, MouseEvent } from "react";
+import type { CardSource, CardStatus } from "./view_types";
+
+type BaseRenderableCinenerdleEntityCard = {
+  kind: "cinenerdle" | "person" | "movie";
+  name: string;
+  imageUrl: string | null;
+  subtitle: string;
+  subtitleDetail: string;
+  popularity: number;
+  connectionCount: number | null;
+  sources: CardSource[];
+  status: CardStatus | null;
+  hasCachedTmdbSource: boolean;
+  isSelected: boolean;
+  isLocked?: boolean;
+  isAncestorSelected?: boolean;
+};
+
+type RenderableMovieCard = BaseRenderableCinenerdleEntityCard & {
+  kind: "movie";
+  voteAverage: number | null;
+  voteCount: number | null;
+};
+
+type RenderableNonMovieCard = BaseRenderableCinenerdleEntityCard & {
+  kind: "cinenerdle" | "person";
+};
+
+export type RenderableCinenerdleEntityCard = RenderableMovieCard | RenderableNonMovieCard;
 
 function clampNumber(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -13,7 +41,7 @@ function formatHeatMetricValue(label: "Popularity" | "Votes" | "Rating", value: 
   return value;
 }
 
-function createHeatChipStyle(value: number, maxValue: number) {
+function createHeatChipStyle(value: number, maxValue: number): CSSProperties {
   const normalizedValue = clampNumber(value / maxValue, 0, 1);
   const hue = 210 - normalizedValue * 210;
   const backgroundLightness = 20 + normalizedValue * 12;
@@ -50,7 +78,7 @@ function renderHeatChip(
   );
 }
 
-function renderStatusChip(card: BookmarkPreviewCard) {
+function renderStatusChip(card: RenderableCinenerdleEntityCard) {
   if (!card.status?.text) {
     return null;
   }
@@ -64,7 +92,7 @@ function renderStatusChip(card: BookmarkPreviewCard) {
   );
 }
 
-function renderFooter(card: BookmarkPreviewCard) {
+function renderFooter(card: RenderableCinenerdleEntityCard) {
   const hasTopLeftContent =
     typeof card.connectionCount === "number" || card.sources.length > 0;
   const statusChip = renderStatusChip(card);
@@ -75,16 +103,17 @@ function renderFooter(card: BookmarkPreviewCard) {
   const ratingChip =
     card.kind === "movie"
       ? renderHeatChip(
-          "Rating",
-          card.voteAverage,
-          10,
-          "cinenerdle-card-chip",
-          typeof card.voteCount === "number" && Number.isFinite(card.voteCount)
-            ? { marginLeft: "auto" }
-            : undefined,
-        )
+        "Rating",
+        card.voteAverage,
+        10,
+        "cinenerdle-card-chip",
+        typeof card.voteCount === "number" && Number.isFinite(card.voteCount)
+          ? { marginLeft: "auto" }
+          : undefined,
+      )
       : null;
-  const shouldRenderBottomRow = card.kind === "movie" || Boolean(statusChip);
+  const shouldRenderBottomRow =
+    card.kind === "movie" || Boolean(statusChip);
 
   return (
     <footer className="cinenerdle-card-footer">
@@ -135,48 +164,43 @@ function renderFooter(card: BookmarkPreviewCard) {
   );
 }
 
-export function BookmarkPreviewCardView({
+export function CinenerdleEntityCard({
   card,
-  isSelected = false,
-  onNameClick,
-  onToggleSelected,
+  ariaPressed,
+  className,
+  onCardClick,
+  onCardKeyDown,
+  onTitleClick,
+  role,
+  tabIndex,
+  titleElement = "p",
 }: {
-  card: BookmarkPreviewCard;
-  isSelected?: boolean;
-  onNameClick?: () => void;
-  onToggleSelected?: () => void;
+  card: RenderableCinenerdleEntityCard;
+  ariaPressed?: boolean;
+  className?: string;
+  onCardClick?: (event: MouseEvent<HTMLElement>) => void;
+  onCardKeyDown?: (event: KeyboardEvent<HTMLElement>) => void;
+  onTitleClick?: () => void;
+  role?: AriaRole;
+  tabIndex?: number;
+  titleElement?: "button" | "p";
 }) {
-  const isToggleable = typeof onToggleSelected === "function";
-
-  function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
-    if (!isToggleable) {
-      return;
-    }
-
-    if (event.target !== event.currentTarget) {
-      return;
-    }
-
-    if (event.key !== "Enter" && event.key !== " ") {
-      return;
-    }
-
-    event.preventDefault();
-    onToggleSelected();
-  }
-
   return (
     <article
-      aria-pressed={isToggleable ? isSelected : undefined}
+      aria-pressed={ariaPressed}
       className={[
         "cinenerdle-card",
-        "bacon-bookmark-card",
-        isSelected ? "cinenerdle-card-selected" : "",
-      ].filter(Boolean).join(" ")}
-      onClick={isToggleable ? onToggleSelected : undefined}
-      onKeyDown={isToggleable ? handleKeyDown : undefined}
-      role={isToggleable ? "button" : undefined}
-      tabIndex={isToggleable ? 0 : undefined}
+        card.isSelected ? "cinenerdle-card-selected" : "",
+        card.isLocked ? "cinenerdle-card-locked" : "",
+        card.isAncestorSelected ? "cinenerdle-card-ancestor-selected" : "",
+        className ?? "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      onClick={onCardClick}
+      onKeyDown={onCardKeyDown}
+      role={role}
+      tabIndex={tabIndex}
     >
       <div className="cinenerdle-card-image-shell">
         {card.imageUrl ? (
@@ -194,20 +218,31 @@ export function BookmarkPreviewCardView({
       </div>
 
       <div className="cinenerdle-card-copy">
-        {onNameClick ? (
+        {onTitleClick && titleElement === "button" ? (
           <button
             className="cinenerdle-card-title"
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              onNameClick();
+              onTitleClick();
             }}
             type="button"
           >
             {card.name}
           </button>
         ) : (
-          <p className="cinenerdle-card-title">{card.name}</p>
+          <p
+            className="cinenerdle-card-title"
+            onClick={onTitleClick
+              ? (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onTitleClick();
+              }
+              : undefined}
+          >
+            {card.name}
+          </p>
         )}
         <div className="cinenerdle-card-copy-spacer" />
         <div className="cinenerdle-card-secondary">

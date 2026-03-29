@@ -1,4 +1,4 @@
-import { useMemo, type CSSProperties, type MouseEvent } from "react";
+import { useMemo, type MouseEvent } from "react";
 import { createBookmarkPreviewCard, type BookmarkPreviewCard } from "../../components/bookmark_preview";
 import type { GeneratorController, GeneratorNode, GeneratorTree } from "../../types/generator";
 import {
@@ -32,6 +32,7 @@ import {
   prepareSelectedMovie,
   prepareSelectedPerson,
 } from "./tmdb";
+import { CinenerdleEntityCard } from "./entity_card";
 import { pickBestPersonRecord } from "./records";
 import type { FilmRecord, PersonRecord } from "./types";
 import {
@@ -821,31 +822,6 @@ export async function buildBookmarkPreviewCardsFromHash(
     .map((card) => createBookmarkPreviewCard(card));
 }
 
-function clampNumber(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}
-
-function formatHeatMetricValue(label: "Popularity" | "Votes" | "Rating", value: number) {
-  if (label === "Popularity" || label === "Rating") {
-    return Number(value.toFixed(2));
-  }
-
-  return value;
-}
-
-function createHeatChipStyle(value: number, maxValue: number): CSSProperties {
-  const normalizedValue = clampNumber(value / maxValue, 0, 1);
-  const hue = 210 - normalizedValue * 210;
-  const backgroundLightness = 20 + normalizedValue * 12;
-  const borderLightness = 34 + normalizedValue * 18;
-
-  return {
-    backgroundColor: `hsl(${hue} 55% ${backgroundLightness}%)`,
-    border: `1px solid hsl(${hue} 70% ${borderLightness}%)`,
-    color: "#eff6ff",
-  };
-}
-
 function getSelectedAncestorCards(
   tree: GeneratorTree<CinenerdleCard>,
   row: number,
@@ -934,121 +910,6 @@ function createCardViewModel(
   };
 }
 
-function renderHeatChip(
-  label: "Popularity" | "Votes" | "Rating",
-  value: number | null | undefined,
-  maxValue: number,
-  className = "cinenerdle-card-chip",
-  style?: CSSProperties,
-) {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return null;
-  }
-
-  return (
-    <span
-      className={className}
-      style={{
-        ...createHeatChipStyle(value, maxValue),
-        ...style,
-      }}
-    >
-      {`${label} ${formatHeatMetricValue(label, value)}`}
-    </span>
-  );
-}
-
-function renderStatusChip(viewModel: CinenerdleCardViewModel) {
-  if (!viewModel.status?.text) {
-    return null;
-  }
-
-  return (
-    <span
-      className={`cinenerdle-card-chip cinenerdle-card-status cinenerdle-card-status-${viewModel.status.tone}`}
-    >
-      {viewModel.status.text}
-    </span>
-  );
-}
-
-function renderFooter(viewModel: CinenerdleCardViewModel) {
-  if (viewModel.kind === "dbinfo") {
-    return null;
-  }
-
-  const hasTopLeftContent =
-    typeof viewModel.connectionCount === "number" || viewModel.sources.length > 0;
-  const statusChip = renderStatusChip(viewModel);
-  const voteCountChip =
-    viewModel.kind === "movie"
-      ? renderHeatChip("Votes", viewModel.voteCount, 20000)
-      : null;
-  const ratingChip =
-    viewModel.kind === "movie"
-      ? renderHeatChip(
-        "Rating",
-        viewModel.voteAverage,
-        10,
-        "cinenerdle-card-chip",
-        typeof viewModel.voteCount === "number" &&
-          Number.isFinite(viewModel.voteCount)
-          ? { marginLeft: "auto" }
-          : undefined,
-      )
-      : null;
-  const shouldRenderBottomRow =
-    viewModel.kind === "movie" || Boolean(statusChip);
-
-  return (
-    <footer className="cinenerdle-card-footer">
-      <div className="cinenerdle-card-footer-top">
-        {hasTopLeftContent ? (
-          <div className="cinenerdle-card-footer-left">
-            {typeof viewModel.connectionCount === "number" ? (
-              <span className="cinenerdle-card-count">{viewModel.connectionCount}</span>
-            ) : null}
-            {viewModel.sources.length > 0 ? (
-              <div className="cinenerdle-card-sources">
-                {viewModel.sources.map((source) => (
-                  <img
-                    alt={source.label}
-                    aria-label={source.label}
-                    className="cinenerdle-card-source-icon"
-                    key={`${source.iconUrl}:${source.label}`}
-                    src={source.iconUrl}
-                    style={
-                      viewModel.hasCachedTmdbSource
-                        ? undefined
-                        : {
-                          filter: "grayscale(1)",
-                          opacity: 0.9,
-                        }
-                    }
-                    title={source.label}
-                  />
-                ))}
-              </div>
-            ) : null}
-          </div>
-        ) : (
-          <div className="cinenerdle-card-footer-spacer" />
-        )}
-        {viewModel.kind === "cinenerdle"
-          ? null
-          : renderHeatChip("Popularity", viewModel.popularity, 100)}
-      </div>
-      {shouldRenderBottomRow ? (
-        <div className="cinenerdle-card-footer-bottom">
-          {voteCountChip}
-          {ratingChip}
-          {statusChip}
-        </div>
-      ) : null}
-    </footer>
-  );
-}
-
 function renderDbInfoCard(viewModel: Extract<CinenerdleCardViewModel, { kind: "dbinfo" }>) {
   function handleCopy(event: MouseEvent<HTMLElement>) {
     event.preventDefault();
@@ -1129,59 +990,19 @@ function renderCinenerdleCard(
     window.open("https://www.cinenerdle2.app/battle", "_blank", "noopener,noreferrer");
   }
 
-  function handleTitleClick(event: MouseEvent<HTMLParagraphElement>) {
-    event.preventDefault();
-    event.stopPropagation();
-
-    if (isCinenerdleLaunchCard) {
-      window.open("https://www.cinenerdle2.app/battle", "_blank", "noopener,noreferrer");
-      return;
-    }
-
-    writeHash(rootHash, "navigation");
-  }
-
   return (
-    <article
-      onClick={handleCinenerdleCardClick}
-      className={[
-        "cinenerdle-card",
-        viewModel.isSelected ? "cinenerdle-card-selected" : "",
-        viewModel.isLocked ? "cinenerdle-card-locked" : "",
-        viewModel.isAncestorSelected ? "cinenerdle-card-ancestor-selected" : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
-    >
-      <div className="cinenerdle-card-image-shell">
-        {viewModel.imageUrl ? (
-          <img
-            alt={viewModel.name}
-            className="cinenerdle-card-image"
-            loading="lazy"
-            src={viewModel.imageUrl}
-          />
-        ) : (
-          <div className="cinenerdle-card-image cinenerdle-card-image-fallback">
-            {viewModel.name}
-          </div>
-        )}
-      </div>
+    <CinenerdleEntityCard
+      card={viewModel}
+      onCardClick={handleCinenerdleCardClick}
+      onTitleClick={() => {
+        if (isCinenerdleLaunchCard) {
+          window.open("https://www.cinenerdle2.app/battle", "_blank", "noopener,noreferrer");
+          return;
+        }
 
-      <div className="cinenerdle-card-copy">
-        <p className="cinenerdle-card-title" onClick={handleTitleClick}>
-          {viewModel.name}
-        </p>
-        <div className="cinenerdle-card-copy-spacer" />
-        <div className="cinenerdle-card-secondary">
-          <p className="cinenerdle-card-subtitle">{viewModel.subtitle}</p>
-          {viewModel.subtitleDetail ? (
-            <p className="cinenerdle-card-detail">{viewModel.subtitleDetail}</p>
-          ) : null}
-        </div>
-        {renderFooter(viewModel)}
-      </div>
-    </article>
+        writeHash(rootHash, "navigation");
+      }}
+    />
   );
 }
 
