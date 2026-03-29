@@ -12,7 +12,7 @@ export {
   CinenerdleEntityCard,
   type RenderableCinenerdleEntityCard,
 } from "./entity_card";
-import { normalizeHashValue } from "./hash";
+import { buildPathNodesFromSegments, normalizeHashValue, parseHashSegments } from "./hash";
 import { primeTmdbApiKeyOnInit } from "./tmdb";
 import { getValidTmdbEntityId, normalizeName, normalizeTitle } from "./utils";
 import type { CinenerdleCard } from "./view_types";
@@ -100,6 +100,28 @@ function applyHash(nextHash: string) {
   window.location.hash = normalizedHash.replace(/^#/, "");
 }
 
+function hasLoadedPath(hashValue: string): boolean {
+  return buildPathNodesFromSegments(parseHashSegments(hashValue)).length > 1;
+}
+
+function snapScrollToPageBottom() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      const scrollingElement = document.scrollingElement ?? document.documentElement;
+      const maxScrollTop = Math.max(0, scrollingElement.scrollHeight - window.innerHeight);
+
+      window.scrollTo({
+        top: maxScrollTop,
+        behavior: "auto",
+      });
+    });
+  });
+}
+
 function getYoungestSelectedCard(
   tree: GeneratorTree<CinenerdleCard>,
 ): Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }> | null {
@@ -173,6 +195,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
 }: Cinenerdle2Props) {
   const normalizedHash = normalizeHashValue(hashValue);
   const hashRef = useRef(normalizedHash);
+  const shouldSnapToBottomAfterLoadRef = useRef(hasLoadedPath(normalizedHash));
   const lastYoungestSelectedCardRef = useRef<
     Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }> | null
   >(null);
@@ -184,6 +207,10 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   useEffect(() => {
     primeTmdbApiKeyOnInit();
   }, []);
+
+  useEffect(() => {
+    shouldSnapToBottomAfterLoadRef.current = hasLoadedPath(normalizedHash);
+  }, [navigationVersion]);
 
   const readHash = useCallback(() => hashRef.current, []);
   const writeHash = useCallback(
@@ -255,6 +282,11 @@ const Cinenerdle2 = memo(function Cinenerdle2({
       onActivationHandled={onHighlightedConnectionEntitySelectionHandled}
       onFocusRequestMatchChange={onHighlightedConnectionEntityYoungestGenerationMatchChange}
       onTreeChange={(tree) => {
+        if (shouldSnapToBottomAfterLoadRef.current && tree.length > 0) {
+          shouldSnapToBottomAfterLoadRef.current = false;
+          snapScrollToPageBottom();
+        }
+
         const nextYoungestSelectedCard = getYoungestSelectedCard(tree);
         if (areYoungestSelectedCardsEqual(
           lastYoungestSelectedCardRef.current,
