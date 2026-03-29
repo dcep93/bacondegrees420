@@ -3,6 +3,7 @@
   "name": "BaconDegrees420 Sync",
   "version": "1.0.0",
   "description": "Sync BaconDegrees420 bookmarks through chrome.storage.sync.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApyZqEbljmjLk8zL4xBrIoDu4PqOBywVFiymy9jz4D+LQ5RG0hsHEpGzRXRcEyGPistejPGlbfUCYrV3rN42pJpeMFZ9iT4dD02xUS/VF1St0G+WJJicXNqpSorRknjWRXVnW1UrL8EcWKkt9P4qy/EN80FtVBmV3vP+odfJkUV4Juixwb2+Dg0rqts153X5Uj9leqho0ZGMOFFMCa4X4sHU0i4V8uJLUsGtu4hdNl11yY2XIc7okwRs6pj6hOHiCnd/3ljF0KUrD7G1kNMh2PzyFi/A/ggxxwTkIA66aFus0NNVbdG/xglwDN9Utcw3e53JZjfe44z5TOEBkZIgsTQIDAQAB",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -18,17 +19,25 @@
     }
   },
   "permissions": ["storage"],
+  "host_permissions": [
+    "http://localhost/*",
+    "https://localhost/*",
+    "https://bacondegrees420.web.app/*",
+    "https://www.cinenerdle2.app/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },
   "content_scripts": [
     {
       "matches": [
-        "http://localhost:*/*",
+        "http://localhost/*",
+        "https://localhost/*",
         "https://bacondegrees420.web.app/*",
         "https://www.cinenerdle2.app/*"
       ],
-      "js": ["content.js"]
+      "js": ["content.js"],
+      "run_at": "document_start"
     }
   ]
 }

@@ -23,7 +23,11 @@ import {
   type AppViewMode,
   type BookmarkEntry,
 } from "./bookmarks";
-import { getSyncedBookmarks, setSyncedBookmarks } from "./bookmark_sync";
+import {
+  getSyncedBookmarks,
+  isBookmarkExtensionBridgeDetected,
+  setSyncedBookmarks,
+} from "./bookmark_sync";
 import { BookmarkPreviewCardView } from "./components/bookmark_preview_card";
 import Cinenerdle2 from "./generators/cinenerdle2";
 import {
@@ -738,6 +742,10 @@ export default function AppX() {
   useEffect(() => {
     let cancelled = false;
 
+    if (!isBookmarkExtensionBridgeDetected()) {
+      console.warn("BaconDegrees420 bookmark extension bridge not detected on this page");
+    }
+
     void getSyncedBookmarks()
       .then((syncedBookmarks) => {
         if (cancelled) {
@@ -752,7 +760,9 @@ export default function AppX() {
           return nextBookmarks;
         });
       })
-      .catch(() => {})
+      .catch((error) => {
+        console.error("Failed to load BaconDegrees420 synced bookmarks", error);
+      })
       .finally(() => {
         if (!cancelled) {
           setIsBookmarkSyncReady(true);
@@ -775,7 +785,9 @@ export default function AppX() {
     }
 
     lastBookmarkSyncSnapshotRef.current = nextSnapshot;
-    void setSyncedBookmarks(bookmarks).catch(() => {});
+    void setSyncedBookmarks(bookmarks).catch((error) => {
+      console.error("Failed to save BaconDegrees420 synced bookmarks", error);
+    });
   }, [bookmarks, isBookmarkSyncReady]);
 
   useEffect(() => {
@@ -1672,7 +1684,7 @@ export default function AppX() {
                     <BookmarkPreviewCardView
                       card={card}
                       isSelected={bookmark.selectedPreviewCardIndices.includes(cardIndex)}
-                      key={card.key}
+                      key={`${bookmark.id}:${cardIndex}:${card.key}`}
                       onNameClick={() => handleLoadBookmarkPreviewCard(bookmark, cardIndex)}
                       onToggleSelected={() => handleToggleBookmarkPreviewCard(bookmark.id, cardIndex)}
                     />

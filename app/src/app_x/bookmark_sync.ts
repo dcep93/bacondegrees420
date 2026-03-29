@@ -6,9 +6,12 @@ import {
 const REQUEST_MESSAGE_TYPE = "BACONDEGREES_EXTENSION_REQUEST";
 const RESPONSE_MESSAGE_TYPE = "BACONDEGREES_EXTENSION_RESPONSE";
 const ERROR_MESSAGE_TYPE = "BACONDEGREES_EXTENSION_ERROR";
+const READY_MESSAGE_TYPE = "BACONDEGREES_EXTENSION_BRIDGE_READY";
 const MESSAGE_SOURCE = "bacondegrees-extension-bridge";
+const BRIDGE_DATASET_KEY = "bacondegreesExtensionBridge";
 const REQUEST_TIMEOUT_MS = 3000;
 const MAX_REQUEST_ATTEMPTS = 2;
+const BRIDGE_READY_TIMEOUT_MS = 1000;
 
 type ExtensionRequestAction = "bookmarks:get" | "bookmarks:set";
 
@@ -34,6 +37,11 @@ type ExtensionErrorMessage = {
   type: typeof ERROR_MESSAGE_TYPE;
   requestId: string;
   error?: string;
+};
+
+type ExtensionReadyMessage = {
+  source: typeof MESSAGE_SOURCE;
+  type: typeof READY_MESSAGE_TYPE;
 };
 
 function createRequestId() {
@@ -76,6 +84,15 @@ function isErrorMessage(
   );
 }
 
+function isReadyMessage(value: unknown): value is ExtensionReadyMessage {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Partial<ExtensionReadyMessage>;
+  return candidate.source === MESSAGE_SOURCE && candidate.type === READY_MESSAGE_TYPE;
+}
+
 function postExtensionRequest(message: ExtensionRequestMessage) {
   return new Promise<ExtensionResponseMessage["payload"]>((resolve, reject) => {
     const timeoutId = window.setTimeout(() => {
@@ -90,10 +107,6 @@ function postExtensionRequest(message: ExtensionRequestMessage) {
     }
 
     function handleMessage(event: MessageEvent<unknown>) {
-      if (event.source !== window) {
-        return;
-      }
-
       const nextMessage = event.data;
 
       if (isResponseMessage(nextMessage, message.requestId)) {
@@ -111,7 +124,7 @@ function postExtensionRequest(message: ExtensionRequestMessage) {
     }
 
     window.addEventListener("message", handleMessage);
-    window.postMessage(message, window.location.origin);
+    window.postMessage(message, "*");
   });
 }
 
@@ -134,7 +147,48 @@ async function postExtensionRequestWithRetry(message: ExtensionRequestMessage) {
     : new Error("Bookmark extension unavailable");
 }
 
+export function isBookmarkExtensionBridgeDetected() {
+  return typeof document !== "undefined" &&
+    document.documentElement?.dataset[BRIDGE_DATASET_KEY] === "ready";
+}
+
+async function waitForBookmarkExtensionBridge() {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  if (isBookmarkExtensionBridgeDetected()) {
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      window.removeEventListener("message", handleMessage);
+      reject(new Error("Bookmark extension unavailable"));
+    }, BRIDGE_READY_TIMEOUT_MS);
+
+    function finish(callback: () => void) {
+      window.clearTimeout(timeoutId);
+      window.removeEventListener("message", handleMessage);
+      callback();
+    }
+
+    function handleMessage(event: MessageEvent<unknown>) {
+      if (isReadyMessage(event.data)) {
+        finish(resolve);
+      }
+    }
+
+    window.addEventListener("message", handleMessage);
+
+    if (isBookmarkExtensionBridgeDetected()) {
+      finish(resolve);
+    }
+  });
+}
+
 export async function getSyncedBookmarks(): Promise<BookmarkEntry[]> {
+  await waitForBookmarkExtensionBridge();
   const payload = await postExtensionRequestWithRetry({
     source: MESSAGE_SOURCE,
     type: REQUEST_MESSAGE_TYPE,
@@ -146,6 +200,7 @@ export async function getSyncedBookmarks(): Promise<BookmarkEntry[]> {
 }
 
 export async function setSyncedBookmarks(bookmarks: BookmarkEntry[]): Promise<void> {
+  await waitForBookmarkExtensionBridge();
   await postExtensionRequestWithRetry({
     source: MESSAGE_SOURCE,
     type: REQUEST_MESSAGE_TYPE,
