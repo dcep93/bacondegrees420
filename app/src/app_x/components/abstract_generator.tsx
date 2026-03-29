@@ -177,9 +177,11 @@ export function AbstractGenerator<T>({
     generationIndex: number,
     cardIndex: number,
     options?: {
+      alignment?: "center" | "start";
       behavior?: ScrollBehavior;
     },
   ) => {
+    const alignment = options?.alignment ?? "center";
     const behavior = options?.behavior ?? "smooth";
     const row = resolvedTree[generationIndex];
     const targetNode = row?.[cardIndex];
@@ -205,9 +207,17 @@ export function AbstractGenerator<T>({
           maxScrollLeft,
         ),
       );
+      const trackPaddingLeft = Number.parseFloat(window.getComputedStyle(rowElement).paddingLeft) || 0;
+      const startAlignedScrollLeft = Math.max(
+        0,
+        Math.min(
+          targetCard.offsetLeft - trackPaddingLeft,
+          maxScrollLeft,
+        ),
+      );
 
       rowElement.scrollTo({
-        left: centeredScrollLeft,
+        left: alignment === "start" ? startAlignedScrollLeft : centeredScrollLeft,
         behavior,
       });
       return;
@@ -217,7 +227,7 @@ export function AbstractGenerator<T>({
       targetCard.scrollIntoView({
         behavior,
         block: "nearest",
-        inline: "center",
+        inline: alignment,
       });
       return;
     }
@@ -252,7 +262,8 @@ export function AbstractGenerator<T>({
     const nextStableRowSignatures = resolvedTree.map((row) => getRowSignature(row));
     const previousStableRowSignatures = stableRowSignaturesRef.current;
     stableRowSignaturesRef.current = nextStableRowSignatures;
-    const generationIndexesToScroll: number[] = [];
+    const selectedGenerationIndexesToScroll: number[] = [];
+    const unselectedGenerationIndexesToReveal: number[] = [];
 
     for (let generationIndex = 0; generationIndex < resolvedTree.length; generationIndex += 1) {
       const row = resolvedTree[generationIndex];
@@ -260,21 +271,46 @@ export function AbstractGenerator<T>({
       const rowChanged =
         previousStableRowSignatures[generationIndex] !== nextStableRowSignatures[generationIndex];
 
-      if (hasSelection && rowChanged) {
-        generationIndexesToScroll.push(generationIndex);
+      if (!rowChanged) {
+        continue;
+      }
+
+      if (hasSelection) {
+        selectedGenerationIndexesToScroll.push(generationIndex);
+        continue;
+      }
+
+      if ((row?.length ?? 0) > 0) {
+        unselectedGenerationIndexesToReveal.push(generationIndex);
       }
     }
 
-    if (generationIndexesToScroll.length === 0) {
+    if (
+      selectedGenerationIndexesToScroll.length === 0 &&
+      unselectedGenerationIndexesToReveal.length === 0
+    ) {
       return;
     }
 
-    generationIndexesToScroll.forEach((generationIndex) => {
+    selectedGenerationIndexesToScroll.forEach((generationIndex) => {
       handleScrollToSelected(generationIndex, {
         behavior: "auto",
       });
     });
-  }, [handleScrollToSelected, placeholderRowIndex, renderTreeOverride, resolvedTree]);
+
+    unselectedGenerationIndexesToReveal.forEach((generationIndex) => {
+      scrollToCardIndex(generationIndex, 0, {
+        alignment: "start",
+        behavior: "auto",
+      });
+    });
+  }, [
+    handleScrollToSelected,
+    placeholderRowIndex,
+    renderTreeOverride,
+    resolvedTree,
+    scrollToCardIndex,
+  ]);
 
   const handleCardSelect = useCallback((row: number, col: number) => {
     if (tree === null) {
