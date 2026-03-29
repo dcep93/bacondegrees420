@@ -45,6 +45,7 @@ export type ConnectionMatchupPreviewEntity = {
 export type ConnectionMatchupPreview = {
   counterpart: ConnectionMatchupPreviewEntity;
   spoiler: ConnectionMatchupPreviewEntity;
+  spoilerExplanation?: string;
 };
 
 function summarizeYoungestSelectedCard(
@@ -386,6 +387,44 @@ function createPreviewEntityFromPersonRecord(
   };
 }
 
+function createPreviewEntityFromSelectedMovie(
+  card: Extract<YoungestSelectedCard, { kind: "movie" }>,
+  movieRecord: FilmRecord | null,
+): ConnectionMatchupPreviewEntity {
+  if (movieRecord) {
+    return createPreviewEntityFromMovieRecord(movieRecord);
+  }
+
+  const movieName = formatMoviePathLabel(card.name, card.year);
+
+  return {
+    key: card.key,
+    kind: "movie",
+    name: movieName,
+    imageUrl: card.imageUrl,
+    popularity: card.popularity,
+    tooltipText: movieName,
+  };
+}
+
+function createPreviewEntityFromSelectedPerson(
+  card: Extract<YoungestSelectedCard, { kind: "person" }>,
+  personRecord: PersonRecord | null,
+): ConnectionMatchupPreviewEntity {
+  if (personRecord) {
+    return createPreviewEntityFromPersonRecord(personRecord);
+  }
+
+  return {
+    key: card.key,
+    kind: "person",
+    name: card.name,
+    imageUrl: card.imageUrl,
+    popularity: card.popularity,
+    tooltipText: card.name,
+  };
+}
+
 async function findMovieCounterpart(
   movieRecord: FilmRecord,
 ): Promise<{ movieRecord: FilmRecord; sharedConnectionLabels: string[] } | null> {
@@ -682,11 +721,23 @@ export async function resolveConnectionMatchupPreview(
         counterpartMovie.movieRecord,
       );
       if (!spoilerPerson) {
+        const preview = {
+          counterpart: createPreviewEntityFromMovieRecord(
+            counterpartMovie.movieRecord,
+            counterpartMovie.sharedConnectionLabels,
+          ),
+          spoiler: createPreviewEntityFromSelectedMovie(
+            youngestSelectedCard,
+            selectedMovieRecord,
+          ),
+          spoilerExplanation: "selected",
+        };
         addCinenerdleDebugLog("connectionMatchupPreview.resolve.movie.noSpoiler", {
           selectedCard: selectedCardSummary,
           counterpartMovieKey: getMovieRecordKey(counterpartMovie.movieRecord),
+          fallback: "selectedCard",
         });
-        return null;
+        return preview;
       }
 
       const preview = {
@@ -726,11 +777,23 @@ export async function resolveConnectionMatchupPreview(
       counterpartPerson.personRecord,
     );
     if (!spoilerMovie) {
+      const preview = {
+        counterpart: createPreviewEntityFromPersonRecord(
+          counterpartPerson.personRecord,
+          counterpartPerson.sharedConnectionLabels,
+        ),
+        spoiler: createPreviewEntityFromSelectedPerson(
+          youngestSelectedCard,
+          selectedPersonRecord,
+        ),
+        spoilerExplanation: "selected",
+      };
       addCinenerdleDebugLog("connectionMatchupPreview.resolve.person.noSpoiler", {
         selectedCard: selectedCardSummary,
         counterpartPersonKey: getPersonRecordKey(counterpartPerson.personRecord),
+        fallback: "selectedCard",
       });
-      return null;
+      return preview;
     }
 
     const preview = {

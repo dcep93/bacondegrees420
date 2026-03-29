@@ -1797,7 +1797,7 @@ export default function AppX() {
           currentKey === CONNECTION_MATCHUP_TOOLTIP_KEY ? null : currentKey)}
         onClick={(event) => handleTooltipClick(event, [
           connectionMatchupPreview.spoiler.name,
-          CONNECTION_MATCHUP_SPOILER_EXPLANATION,
+          connectionMatchupPreview.spoilerExplanation ?? CONNECTION_MATCHUP_SPOILER_EXPLANATION,
           ...reversedCounterpartTooltipEntries,
         ])}
         onFocus={() => setVisibleConnectionMatchupTooltipKey(CONNECTION_MATCHUP_TOOLTIP_KEY)}
@@ -1819,7 +1819,7 @@ export default function AppX() {
               {connectionMatchupPreview.spoiler.name}
             </span>
             <span className="bacon-connection-pill-tooltip-entry">
-              {CONNECTION_MATCHUP_SPOILER_EXPLANATION}
+              {connectionMatchupPreview.spoilerExplanation ?? CONNECTION_MATCHUP_SPOILER_EXPLANATION}
             </span>
             {renderTooltipEntries(
               reversedCounterpartTooltipEntries,

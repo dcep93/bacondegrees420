@@ -351,6 +351,99 @@ describe("resolveConnectionMatchupPreview", () => {
     expect(preview?.spoiler.name).toBe("Low Exclusive");
   });
 
+  it("falls back to the selected movie when no exclusive spoiler exists", async () => {
+    const avengersEndgame = makeFilmRecord({
+      id: "avengers-endgame-2019",
+      tmdbId: 299534,
+      title: "Avengers: Endgame",
+      year: "2019",
+      popularity: 95,
+      personConnectionKeys: ["robert downey jr", "chris evans"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          { id: 3223, name: "Robert Downey Jr.", order: 0, popularity: 90 },
+          { id: 16828, name: "Chris Evans", order: 1, popularity: 85 },
+        ],
+        crew: [],
+      },
+    });
+    const avengersInfinityWar = makeFilmRecord({
+      id: "avengers-infinity-war-2018",
+      tmdbId: 299536,
+      title: "Avengers: Infinity War",
+      year: "2018",
+      popularity: 94,
+      personConnectionKeys: ["robert downey jr", "chris evans"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          { id: 3223, name: "Robert Downey Jr.", order: 0, popularity: 90 },
+          { id: 16828, name: "Chris Evans", order: 1, popularity: 85 },
+        ],
+        crew: [],
+      },
+    });
+    const people = [
+      makePersonRecord({
+        id: 3223,
+        tmdbId: 3223,
+        name: "Robert Downey Jr.",
+        movieConnectionKeys: ["avengers: endgame (2019)", "avengers: infinity war (2018)"],
+        rawTmdbPerson: { id: 3223, name: "Robert Downey Jr.", popularity: 90 },
+      }),
+      makePersonRecord({
+        id: 16828,
+        tmdbId: 16828,
+        name: "Chris Evans",
+        movieConnectionKeys: ["avengers: endgame (2019)", "avengers: infinity war (2018)"],
+        rawTmdbPerson: { id: 16828, name: "Chris Evans", popularity: 85 },
+      }),
+    ];
+
+    indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (title: string, year: string) =>
+      [avengersEndgame, avengersInfinityWar].find(
+        (film) => film.title === title && film.year === year,
+      ) ?? null,
+    );
+    indexedDbMock.getFilmRecordsByPersonConnectionKey.mockImplementation(async (personName: string) =>
+      [avengersEndgame, avengersInfinityWar].filter((film) =>
+        Array.isArray(film.personConnectionKeys) &&
+        film.personConnectionKeys.some(
+          (candidate) => typeof candidate === "string" && normalizeName(candidate) === normalizeName(personName),
+        ),
+      ),
+    );
+    indexedDbMock.getPersonRecordById.mockImplementation(async (id: number) =>
+      people.find((person) => person.id === id || person.tmdbId === id) ?? null,
+    );
+    indexedDbMock.getPersonRecordByName.mockImplementation(async (name: string) =>
+      people.find((person) => normalizeName(person.name) === normalizeName(name)) ?? null,
+    );
+    indexedDbMock.getAllPersonRecords.mockResolvedValue(people);
+
+    const preview = await resolveConnectionMatchupPreview({
+      key: "movie:299534",
+      kind: "movie",
+      name: "Avengers: Endgame",
+      year: "2019",
+      popularity: 95,
+      popularitySource: null,
+      imageUrl: null,
+      subtitle: "",
+      subtitleDetail: "",
+      connectionCount: null,
+      sources: [],
+      status: null,
+      voteAverage: null,
+      voteCount: null,
+      record: null,
+    });
+
+    expect(preview).not.toBeNull();
+    expect(preview?.counterpart.name).toBe("Avengers: Infinity War (2018)");
+    expect(preview?.spoiler.name).toBe("Avengers: Endgame (2019)");
+    expect(preview?.spoilerExplanation).toBe("selected");
+  });
+
   it("sorts shared movie connections in person counterpart tooltips by popularity", async () => {
     const memento = makeFilmRecord({
       id: "memento-2000",
