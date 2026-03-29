@@ -166,27 +166,6 @@ export function mergeMissingBookmarks(
   return [...normalizedCurrentBookmarks, ...missingBookmarks];
 }
 
-export function mergeSyncedBookmarks(
-  currentBookmarks: BookmarkEntry[],
-  incomingBookmarks: unknown,
-): BookmarkEntry[] {
-  const normalizedCurrentBookmarks = normalizeBookmarkEntries(currentBookmarks);
-  const normalizedIncomingBookmarks = normalizeBookmarkEntries(incomingBookmarks);
-
-  if (normalizedIncomingBookmarks.length === 0) {
-    return normalizedCurrentBookmarks;
-  }
-
-  const syncedHashes = new Set(
-    normalizedIncomingBookmarks.map((bookmark) => bookmark.hash),
-  );
-  const localOnlyBookmarks = normalizedCurrentBookmarks.filter(
-    (bookmark) => !syncedHashes.has(bookmark.hash),
-  );
-
-  return [...normalizedIncomingBookmarks, ...localOnlyBookmarks];
-}
-
 export function upsertBookmarkEntry(
   currentBookmarks: BookmarkEntry[],
   nextBookmark: BookmarkEntry,
