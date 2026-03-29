@@ -55,6 +55,13 @@
   scroll-behavior: smooth;
 }
 
+.generator-row-track:not(.generator-row-track-break)::before,
+.generator-row-track:not(.generator-row-track-break)::after {
+  content: "";
+  flex: 0 0 100%;
+  pointer-events: none;
+}
+
 .generator-row-break {
   min-height: 64px;
   align-items: center;
