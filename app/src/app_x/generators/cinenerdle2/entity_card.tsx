@@ -1,4 +1,4 @@
-import type { AriaRole, CSSProperties, KeyboardEvent, MouseEvent } from "react";
+import { useEffect, useState, type AriaRole, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import type { CardSource, CardStatus } from "./view_types";
 
 type BaseRenderableCinenerdleEntityCard = {
@@ -119,6 +119,69 @@ function renderStatusChip(card: RenderableCinenerdleEntityCard) {
   );
 }
 
+function InlineTooltipAnchor({
+  ariaLabel,
+  children,
+  tooltipText,
+}: {
+  ariaLabel: string;
+  children: ReactNode;
+  tooltipText: string;
+}) {
+  const [isHovered, setIsHovered] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
+  const [dismissedByClick, setDismissedByClick] = useState(false);
+
+  useEffect(() => {
+    if (!isHovered && !isFocused) {
+      return undefined;
+    }
+
+    const handleDocumentClick = () => {
+      setDismissedByClick(true);
+    };
+
+    document.addEventListener("click", handleDocumentClick, true);
+    return () => {
+      document.removeEventListener("click", handleDocumentClick, true);
+    };
+  }, [isFocused, isHovered]);
+
+  const isTooltipVisible = (isHovered || isFocused) && !dismissedByClick;
+
+  return (
+    <span
+      aria-label={ariaLabel}
+      className="cinenerdle-card-chip-tooltip-anchor"
+      data-tooltip-visible={isTooltipVisible ? "true" : "false"}
+      onBlur={() => {
+        setIsFocused(false);
+        setDismissedByClick(false);
+      }}
+      onFocus={() => {
+        setIsFocused(true);
+        setDismissedByClick(false);
+      }}
+      onMouseEnter={() => {
+        setIsHovered(true);
+        setDismissedByClick(false);
+      }}
+      onMouseLeave={() => {
+        setIsHovered(false);
+        if (!isFocused) {
+          setDismissedByClick(false);
+        }
+      }}
+      tabIndex={0}
+    >
+      {children}
+      <span className="cinenerdle-card-inline-tooltip" role="tooltip">
+        {tooltipText}
+      </span>
+    </span>
+  );
+}
+
 function renderPopularityChip(card: RenderableCinenerdleEntityCard) {
   const chip = renderHeatChip("Popularity", card.popularity, 100);
   if (!chip) {
@@ -130,16 +193,12 @@ function renderPopularityChip(card: RenderableCinenerdleEntityCard) {
   }
 
   return (
-    <span
-      aria-label={`Popularity ${formatHeatMetricValue("Popularity", card.popularity)}. ${card.popularitySource}`}
-      className="cinenerdle-card-chip-tooltip-anchor"
-      tabIndex={0}
+    <InlineTooltipAnchor
+      ariaLabel={`Popularity ${formatHeatMetricValue("Popularity", card.popularity)}. ${card.popularitySource}`}
+      tooltipText={card.popularitySource}
     >
       {chip}
-      <span className="cinenerdle-card-inline-tooltip" role="tooltip">
-        {card.popularitySource}
-      </span>
-    </span>
+    </InlineTooltipAnchor>
   );
 }
 
@@ -182,16 +241,12 @@ function renderConnectionBadge(card: RenderableCinenerdleEntityCard) {
   }
 
   return (
-    <span
-      aria-label={tooltipText}
-      className="cinenerdle-card-chip-tooltip-anchor"
-      tabIndex={0}
+    <InlineTooltipAnchor
+      ariaLabel={tooltipText}
+      tooltipText={tooltipText}
     >
       {badge}
-      <span className="cinenerdle-card-inline-tooltip" role="tooltip">
-        {tooltipText}
-      </span>
-    </span>
+    </InlineTooltipAnchor>
   );
 }
 

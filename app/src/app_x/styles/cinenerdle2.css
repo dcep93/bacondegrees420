@@ -216,9 +216,7 @@
     transform 120ms ease;
 }
 
-.cinenerdle-card-chip-tooltip-anchor:hover .cinenerdle-card-inline-tooltip,
-.cinenerdle-card-chip-tooltip-anchor:focus-visible .cinenerdle-card-inline-tooltip,
-.cinenerdle-card-chip-tooltip-anchor:focus-within .cinenerdle-card-inline-tooltip {
+.cinenerdle-card-chip-tooltip-anchor[data-tooltip-visible="true"] .cinenerdle-card-inline-tooltip {
   opacity: 1;
   transform: translateY(0);
 }

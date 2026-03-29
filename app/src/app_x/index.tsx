@@ -1360,6 +1360,28 @@ export default function AppX() {
   }, [clearConnectionInputState, youngestSelectedCardKey]);
 
   useEffect(() => {
+    function handleDocumentClick(event: globalThis.MouseEvent) {
+      const inputWrapElement = connectionInputWrapRef.current;
+      const target = event.target;
+
+      if (
+        inputWrapElement &&
+        target instanceof Node &&
+        inputWrapElement.contains(target)
+      ) {
+        return;
+      }
+
+      clearConnectionInputState();
+    }
+
+    document.addEventListener("click", handleDocumentClick);
+    return () => {
+      document.removeEventListener("click", handleDocumentClick);
+    };
+  }, [clearConnectionInputState]);
+
+  useEffect(() => {
     let cancelled = false;
 
     void getDirectConnectionKeysForYoungestSelectedCard(youngestSelectedCard)
@@ -2182,31 +2204,27 @@ export default function AppX() {
                               : () => navigateToConnectionEntity(entity),
                           })}
                           {nextEntity ? (
-                            <FancyTooltip
-                              content={isEdgeDimmed ? "Reconnect this edge" : "Disconnect this edge"}
+                            <button
+                              className={[
+                                "bacon-connection-arrow",
+                                "bacon-connection-arrow-button",
+                                isEdgeDimmed
+                                  ? "bacon-connection-arrow-disconnected"
+                                  : "bacon-connection-arrow-connected",
+                              ]
+                                .filter(Boolean)
+                                .join(" ")}
+                              aria-pressed={isEdgeDimmed}
+                              onClick={() =>
+                                spawnAlternativeConnectionRow(row.id, {
+                                  kind: "edge",
+                                  edgeKey,
+                                })
+                              }
+                              type="button"
                             >
-                              <button
-                                className={[
-                                  "bacon-connection-arrow",
-                                  "bacon-connection-arrow-button",
-                                  isEdgeDimmed
-                                    ? "bacon-connection-arrow-disconnected"
-                                    : "bacon-connection-arrow-connected",
-                                ]
-                                  .filter(Boolean)
-                                  .join(" ")}
-                                aria-pressed={isEdgeDimmed}
-                                onClick={() =>
-                                  spawnAlternativeConnectionRow(row.id, {
-                                    kind: "edge",
-                                    edgeKey,
-                                  })
-                                }
-                                type="button"
-                              >
-                                →
-                              </button>
-                            </FancyTooltip>
+                              →
+                            </button>
                           ) : null}
                         </Fragment>
                       );
