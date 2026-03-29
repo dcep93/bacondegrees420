@@ -238,6 +238,30 @@ export function AbstractGenerator<T>({
     });
   }, [resolvedTree]);
 
+  const scrollPastLeadingSpacer = useCallback((
+    generationIndex: number,
+    options?: {
+      behavior?: ScrollBehavior;
+    },
+  ) => {
+    const behavior = options?.behavior ?? "smooth";
+    const rowElement = rowRefs.current[generationIndex];
+
+    if (!rowElement) {
+      return;
+    }
+
+    const computedStyle = window.getComputedStyle(rowElement);
+    const paddingLeft = Number.parseFloat(computedStyle.paddingLeft) || 0;
+    const paddingRight = Number.parseFloat(computedStyle.paddingRight) || 0;
+    const leadingSpacerWidth = Math.max(0, rowElement.clientWidth - paddingLeft - paddingRight);
+
+    rowElement.scrollTo({
+      left: leadingSpacerWidth,
+      behavior,
+    });
+  }, []);
+
   const handleScrollToSelected = useCallback((
     generationIndex: number,
     options?: {
@@ -299,8 +323,7 @@ export function AbstractGenerator<T>({
     });
 
     unselectedGenerationIndexesToReveal.forEach((generationIndex) => {
-      scrollToCardIndex(generationIndex, 0, {
-        alignment: "start",
+      scrollPastLeadingSpacer(generationIndex, {
         behavior: "auto",
       });
     });
@@ -309,6 +332,7 @@ export function AbstractGenerator<T>({
     placeholderRowIndex,
     renderTreeOverride,
     resolvedTree,
+    scrollPastLeadingSpacer,
     scrollToCardIndex,
   ]);
 
