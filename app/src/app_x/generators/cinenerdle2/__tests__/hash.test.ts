@@ -229,4 +229,14 @@ describe("normalizeHashValue", () => {
       "#cinenerdle|Interstellar+(2014)|Jessica+Chastain|Molly's+Game+(2017)|Idris+Elba|Avengers:+Infinity+War+(2018)",
     );
   });
+
+  it("rewrites known skewed Star Wars movie titles to the TMDb title in cinenerdle hashes", () => {
+    expect(
+      normalizeHashValue(
+        "#cinenerdle|Return+of+the+Jedi+(1983)|James+Earl+Jones|Star+Wars:+Episode+VI+-+Return+of+the+Jedi+(1983)|James+Earl+Jones|Star+Wars:+Episode+V+-+The+Empire+Strikes+Back+(1980)",
+      ),
+    ).toBe(
+      "#cinenerdle|Return+of+the+Jedi+(1983)|James+Earl+Jones|Return+of+the+Jedi+(1983)|James+Earl+Jones|The+Empire+Strikes+Back+(1980)",
+    );
+  });
 });

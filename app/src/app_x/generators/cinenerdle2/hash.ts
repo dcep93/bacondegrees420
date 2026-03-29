@@ -1,4 +1,5 @@
 import type { CinenerdlePathNode } from "./view_types";
+import { normalizeKnownMovieTitleSkew } from "./known_skew";
 import {
   formatMoviePathLabel,
   getValidTmdbEntityId,
@@ -91,6 +92,12 @@ function serializePersonPathLabel(name: string): string {
   return normalizeWhitespace(name);
 }
 
+function parseMoviePathNode(label: string): Extract<CinenerdlePathNode, { kind: "movie" }> {
+  const movie = parseMoviePathLabel(label);
+  const normalizedMovie = normalizeKnownMovieTitleSkew(movie.name, movie.year);
+  return createPathNode("movie", normalizedMovie.name, normalizedMovie.year);
+}
+
 function parsePersonPathLabel(label: string): {
   kind: "person";
   name: string;
@@ -171,8 +178,7 @@ export function buildPathNodesFromSegments(segments: string[]): CinenerdlePathNo
       }
 
       if (nextKind === "movie") {
-        const movie = parseMoviePathLabel(segment);
-        pathNodes.push(createPathNode("movie", movie.name, movie.year));
+        pathNodes.push(parseMoviePathNode(segment));
         nextKind = "person";
         return;
       }
@@ -203,11 +209,7 @@ export function buildPathNodesFromSegments(segments: string[]): CinenerdlePathNo
           "",
           parsePersonPathLabel(rootValue).tmdbId,
         )
-      : createPathNode(
-          "movie",
-          parseMoviePathLabel(rootValue).name,
-          parseMoviePathLabel(rootValue).year,
-        );
+      : parseMoviePathNode(rootValue);
   const pathNodes: CinenerdlePathNode[] = [rootNode];
 
   let nextKind = getNextEntityKind(rootNode.kind);
@@ -219,8 +221,7 @@ export function buildPathNodesFromSegments(segments: string[]): CinenerdlePathNo
     }
 
     if (nextKind === "movie") {
-      const movie = parseMoviePathLabel(segment);
-      pathNodes.push(createPathNode("movie", movie.name, movie.year));
+      pathNodes.push(parseMoviePathNode(segment));
       nextKind = "person";
       return;
     }

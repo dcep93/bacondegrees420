@@ -336,7 +336,6 @@ describe("resolveConnectionMatchupPreview", () => {
       key: "person:525",
       kind: "person",
       name: "Christopher Nolan",
-      year: "",
       popularity: 0,
       imageUrl: null,
       subtitle: "",

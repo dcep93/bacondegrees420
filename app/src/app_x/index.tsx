@@ -44,7 +44,6 @@ import {
 } from "./generators/cinenerdle2/connection_graph";
 import {
   CINENERDLE_ICON_URL,
-  ESCAPE_LABEL,
   TMDB_ICON_URL,
 } from "./generators/cinenerdle2/constants";
 import { buildBookmarkPreviewCardsFromHash } from "./generators/cinenerdle2/controller";
@@ -196,12 +195,13 @@ function readAppLocationState(): AppLocationState {
   const viewMode: AppViewMode = pathname === getBookmarksPathname(basePathname)
     ? "bookmarks"
     : "generator";
+  const normalizedHash = normalizeHashValue(window.location.hash);
 
   return {
     viewMode,
     pathname,
     basePathname,
-    hash: window.location.hash,
+    hash: normalizedHash,
   };
 }
 
@@ -674,6 +674,18 @@ export default function AppX() {
   useEffect(() => {
     connectionSessionRef.current = connectionSession;
   }, [connectionSession]);
+
+  useEffect(() => {
+    if (window.location.hash === hashValue) {
+      return;
+    }
+
+    window.history.replaceState(
+      null,
+      "",
+      buildLocationHref(appLocation.pathname, hashValue),
+    );
+  }, [appLocation.pathname, hashValue]);
 
   useEffect(() => {
     function syncHashState(nextHash: string) {
