@@ -20,6 +20,7 @@ import {
 } from "./hash";
 import {
   getAllSearchableConnectionEntities,
+  getCinenerdleStarterFilmRecords,
   getFilmRecordByTitleAndYear,
   getFilmRecordCountsByPersonConnectionKeys,
   getFilmRecordsByIds,
@@ -87,6 +88,10 @@ type SelectedPathHydrationTask = {
   index: number;
   label: string;
   run: () => Promise<FilmRecord | PersonRecord | null>;
+};
+
+type BuildTreeOptions = {
+  dailyStarterSource?: "cache" | "network";
 };
 
 function getDebugDurationMs(startTime: number): number {
@@ -467,9 +472,8 @@ async function resolvePersonPathNodeFromMovieContext(
     : pathNode;
 }
 
-async function createDailyStarterRow() {
-  const starterFilms = await fetchCinenerdleDailyStarterMovies();
-  const hydratedStarterFilms = await Promise.all(
+async function hydrateStarterFilmsWithCachedRecords(starterFilms: FilmRecord[]) {
+  return Promise.all(
     starterFilms.map(async (starterFilm) => {
       const cachedFilmRecord = await getFilmRecordByTitleAndYear(
         starterFilm.title,
@@ -493,6 +497,19 @@ async function createDailyStarterRow() {
       };
     }),
   );
+}
+
+async function createDailyStarterRow(
+  options?: Pick<BuildTreeOptions, "dailyStarterSource">,
+) {
+  const starterFilms =
+    options?.dailyStarterSource === "cache"
+      ? await getCinenerdleStarterFilmRecords()
+      : await fetchCinenerdleDailyStarterMovies();
+  const hydratedStarterFilms =
+    options?.dailyStarterSource === "cache"
+      ? starterFilms
+      : await hydrateStarterFilmsWithCachedRecords(starterFilms);
 
   if (hydratedStarterFilms.length === 0) {
     return null;
@@ -876,8 +893,10 @@ async function buildChildRowForCard(
   return childRow;
 }
 
-async function createCinenerdleRootTree(): Promise<GeneratorTree<CinenerdleCard>> {
-  const starterRow = await createDailyStarterRow();
+async function createCinenerdleRootTree(
+  options?: Pick<BuildTreeOptions, "dailyStarterSource">,
+): Promise<GeneratorTree<CinenerdleCard>> {
+  const starterRow = await createDailyStarterRow(options);
   const starterCount = starterRow?.length ?? 0;
   const tree: GeneratorTree<CinenerdleCard> = [
     [createNode(createCinenerdleRootCard(Math.max(starterCount, 1)), true)],
@@ -892,9 +911,10 @@ async function createCinenerdleRootTree(): Promise<GeneratorTree<CinenerdleCard>
 
 async function createRootTreeFromPathNode(
   pathNode: Extract<CinenerdlePathNode, { kind: "cinenerdle" | "movie" | "person" }>,
+  options?: Pick<BuildTreeOptions, "dailyStarterSource">,
 ): Promise<GeneratorTree<CinenerdleCard> | null> {
   if (pathNode.kind === "cinenerdle") {
-    return createCinenerdleRootTree();
+    return createCinenerdleRootTree(options);
   }
 
   if (pathNode.kind === "person") {
@@ -995,9 +1015,11 @@ function selectCardInRow(
 
 export async function buildTreeFromHash(
   hashValue: string,
+  options?: BuildTreeOptions,
 ): Promise<GeneratorTree<CinenerdleCard>> {
   const buildStart = getCinenerdleDebugNow();
   const pathNodes = buildPathNodesFromSegments(parseHashSegments(hashValue));
+  const dailyStarterSource = options?.dailyStarterSource ?? "network";
   const finalizeTreeBuild = (
     tree: GeneratorTree<CinenerdleCard>,
     reason: string,
@@ -1013,21 +1035,39 @@ export async function buildTreeFromHash(
   };
 
   if (pathNodes.length === 0) {
-    return finalizeTreeBuild(await createCinenerdleRootTree(), "empty hash");
+    return finalizeTreeBuild(
+      await createCinenerdleRootTree({ dailyStarterSource }),
+      dailyStarterSource === "cache" ? "empty hash cache" : "empty hash",
+    );
   }
 
   const [rootNode, ...continuationPathNodes] = pathNodes;
   if (!rootNode || rootNode.kind === "break") {
-    return finalizeTreeBuild(await createCinenerdleRootTree(), "invalid root");
+    return finalizeTreeBuild(
+      await createCinenerdleRootTree({ dailyStarterSource }),
+      dailyStarterSource === "cache" ? "invalid root cache" : "invalid root",
+    );
   }
 
-  const rootTree = await createRootTreeFromPathNode(rootNode);
+  const rootTree = await createRootTreeFromPathNode(rootNode, { dailyStarterSource });
   if (!rootTree) {
-    return finalizeTreeBuild(await createCinenerdleRootTree(), "missing root record");
+    return finalizeTreeBuild(
+      await createCinenerdleRootTree({ dailyStarterSource }),
+      dailyStarterSource === "cache" ? "missing root record cache" : "missing root record",
+    );
   }
 
   let tree = rootTree;
   let shouldStartDisconnectedBranch = false;
+
+  if (
+    dailyStarterSource === "cache" &&
+    rootNode.kind === "cinenerdle" &&
+    tree.length < 2 &&
+    continuationPathNodes.length > 0
+  ) {
+    return finalizeTreeBuild(tree, "cache-only cinenerdle root");
+  }
 
   for (const originalPathNode of continuationPathNodes) {
     if (originalPathNode.kind === "break") {
@@ -1425,6 +1465,27 @@ export function useCinenerdleController({
           });
 
           try {
+            try {
+              const cachedTree = await buildTreeFromHash(initialHash, {
+                dailyStarterSource: "cache",
+              });
+              setTree(cachedTree);
+              addCinenerdleDebugLog("cinenerdle init cached tree ready", {
+                durationMs: getDebugDurationMs(initStart),
+                hash: initialHash,
+                tree: getTreeDebugSummary(cachedTree),
+              });
+            } catch (error: unknown) {
+              addCinenerdleDebugLog("cinenerdle init cached tree unavailable", {
+                durationMs: getDebugDurationMs(initStart),
+                hash: initialHash,
+                error:
+                  error instanceof Error && error.message
+                    ? error.message
+                    : String(error),
+              });
+            }
+
             const nextTree = await buildTreeFromHash(readHash());
             setTree(nextTree);
             addCinenerdleDebugLog("cinenerdle init tree ready", {

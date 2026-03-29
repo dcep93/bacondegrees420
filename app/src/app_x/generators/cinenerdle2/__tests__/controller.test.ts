@@ -9,6 +9,7 @@ import {
 
 const indexedDbMock = vi.hoisted(() => ({
   getAllSearchableConnectionEntities: vi.fn(),
+  getCinenerdleStarterFilmRecords: vi.fn(),
   getFilmRecordCountsByPersonConnectionKeys: vi.fn(),
   getFilmRecordByTitleAndYear: vi.fn(),
   getFilmRecordsByIds: vi.fn(),
@@ -51,6 +52,7 @@ describe("buildBookmarkPreviewCardsFromHash", () => {
     Object.values(tmdbMock).forEach((mock) => mock.mockReset());
 
     indexedDbMock.getAllSearchableConnectionEntities.mockResolvedValue([]);
+    indexedDbMock.getCinenerdleStarterFilmRecords.mockResolvedValue([]);
     indexedDbMock.getFilmRecordsByIds.mockResolvedValue(new Map());
     indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(new Map());
     indexedDbMock.getPersonRecordCountsByMovieKeys.mockResolvedValue(new Map());
@@ -253,6 +255,7 @@ describe("buildTreeFromHash", () => {
     Object.values(tmdbMock).forEach((mock) => mock.mockReset());
 
     indexedDbMock.getAllSearchableConnectionEntities.mockResolvedValue([]);
+    indexedDbMock.getCinenerdleStarterFilmRecords.mockResolvedValue([]);
     indexedDbMock.getFilmRecordsByIds.mockResolvedValue(new Map());
     indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(new Map());
     indexedDbMock.getPersonRecordCountsByMovieKeys.mockResolvedValue(new Map());
@@ -347,5 +350,49 @@ describe("buildTreeFromHash", () => {
         name: "Tom Hanks",
       }),
     );
+  });
+
+  it("builds the cinenerdle root from cached starter records without fetching starters", async () => {
+    const firstManRecord = makeFilmRecord({
+      id: "first-man-2018",
+      title: "First Man",
+      year: "2018",
+      popularity: 22,
+      rawCinenerdleDailyStarter: {
+        title: "First Man (2018)",
+      },
+      isCinenerdleDailyStarter: 1,
+    });
+
+    indexedDbMock.getCinenerdleStarterFilmRecords.mockResolvedValue([firstManRecord]);
+
+    const tree = await buildTreeFromHash("#cinenerdle", {
+      dailyStarterSource: "cache",
+    });
+
+    expect(tmdbMock.fetchCinenerdleDailyStarterMovies).not.toHaveBeenCalled();
+    expect(tree).toHaveLength(2);
+    expect(tree[0]?.[0]?.data).toEqual(
+      expect.objectContaining({
+        kind: "cinenerdle",
+      }),
+    );
+    expect(tree[1]?.[0]?.data).toEqual(
+      expect.objectContaining({
+        kind: "movie",
+        name: "First Man",
+      }),
+    );
+  });
+
+  it("keeps a cache-only cinenerdle init on the root card until starters are available locally", async () => {
+    const tree = await buildTreeFromHash("#cinenerdle|First+Man+(2018)", {
+      dailyStarterSource: "cache",
+    });
+
+    expect(tmdbMock.fetchCinenerdleDailyStarterMovies).not.toHaveBeenCalled();
+    expect(tree.map((row) => row.find((node) => node.selected)?.data.kind ?? null)).toEqual([
+      "cinenerdle",
+    ]);
   });
 });
