@@ -1,4 +1,5 @@
 import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { addCinenerdleDebugLog, getCinenerdleDebugNow } from "../generators/cinenerdle2/debug";
 import "../styles/abstract_generator.css";
 import type {
   GeneratorController,
@@ -76,6 +77,19 @@ function getRowSignature<T>(row: GeneratorNode<T>[]): string {
     .join("|");
 }
 
+function getYoungestSelectedNodeKey<T>(tree: GeneratorTree<T>): string | null {
+  for (let rowIndex = tree.length - 1; rowIndex >= 0; rowIndex -= 1) {
+    const row = tree[rowIndex];
+    const selectedIndex = row?.findIndex((node) => node.selected) ?? -1;
+
+    if (selectedIndex >= 0 && row) {
+      return getDataKey(row[selectedIndex].data, selectedIndex);
+    }
+  }
+
+  return null;
+}
+
 export function AbstractGenerator<T>({
   activationRequest = null,
   initTree,
@@ -130,7 +144,16 @@ export function AbstractGenerator<T>({
               return prevTree;
             }
 
-            return typeof nextTree === "function" ? nextTree(prevTree) : nextTree;
+            const resolvedNextTree = typeof nextTree === "function" ? nextTree(prevTree) : nextTree;
+            addCinenerdleDebugLog("abstract-generator:set-tree:apply", {
+              lifecycleId,
+              selectionId,
+              previousRowCount: prevTree?.length ?? 0,
+              nextRowCount: resolvedNextTree?.length ?? 0,
+              previousYoungestSelectedKey: prevTree ? getYoungestSelectedNodeKey(prevTree) : null,
+              nextYoungestSelectedKey: resolvedNextTree ? getYoungestSelectedNodeKey(resolvedNextTree) : null,
+            });
+            return resolvedNextTree;
           });
         });
       },
@@ -142,12 +165,20 @@ export function AbstractGenerator<T>({
     activeLifecycleRef.current = lifecycleId;
     activeSelectionRef.current = 0;
     stableRowSignaturesRef.current = [];
+    addCinenerdleDebugLog("abstract-generator:init-effect:start", {
+      lifecycleId,
+      resetKey: resetKey ?? null,
+    });
 
     const guardedSetTree = createGuardedSetTree(lifecycleId, activeSelectionRef.current);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setRenderTreeOverride(null);
-    setPlaceholderRowIndex(null);
     initTree(guardedSetTree);
+
+    return () => {
+      addCinenerdleDebugLog("abstract-generator:init-effect:cleanup", {
+        lifecycleId,
+        resetKey: resetKey ?? null,
+      });
+    };
   }, [createGuardedSetTree, initTree, resetKey]);
 
   const resolvedTree: GeneratorTree<T> = useMemo(
@@ -158,6 +189,17 @@ export function AbstractGenerator<T>({
   useEffect(() => {
     onTreeChange?.(resolvedTree);
   }, [onTreeChange, resolvedTree]);
+
+  useEffect(() => {
+    addCinenerdleDebugLog("abstract-generator:render-committed", {
+      lifecycleId: activeLifecycleRef.current,
+      selectionId: activeSelectionRef.current,
+      rowCount: resolvedTree.length,
+      youngestSelectedKey: getYoungestSelectedNodeKey(resolvedTree),
+      hasRenderOverride: renderTreeOverride !== null,
+      placeholderRowIndex,
+    });
+  }, [placeholderRowIndex, renderTreeOverride, resolvedTree]);
 
   const generations = resolvedTree.map((row, generationIndex) => ({
     row,
@@ -280,7 +322,16 @@ export function AbstractGenerator<T>({
     }
     const removedDescendantRows = tree.length > row + 1;
     const nextSelectionId = activeSelectionRef.current + 1;
+    const selectionStartedAtMs = getCinenerdleDebugNow();
     activeSelectionRef.current = nextSelectionId;
+    addCinenerdleDebugLog("abstract-generator:card-select", {
+      row,
+      col,
+      removedDescendantRows,
+      selectionId: nextSelectionId,
+      selectedKey: getDataKey(selectedRow[col].data, col),
+      treeDepth: tree.length,
+    });
 
     const normalizedTree = tree
       .slice(0, row + 1)
@@ -311,6 +362,12 @@ export function AbstractGenerator<T>({
     );
 
     schedulePostSelectionWork(() => {
+      addCinenerdleDebugLog("abstract-generator:post-selection-work", {
+        row,
+        col,
+        selectionId: nextSelectionId,
+        elapsedMs: Number((getCinenerdleDebugNow() - selectionStartedAtMs).toFixed(2)),
+      });
       afterCardSelected({
         row,
         col,

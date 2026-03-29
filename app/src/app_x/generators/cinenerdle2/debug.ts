@@ -12,6 +12,14 @@ type CinenerdleDebugEntry = {
 
 const cinenerdleDebugEntries: CinenerdleDebugEntry[] = [];
 
+export function getCinenerdleDebugNow(): number {
+  if (typeof performance !== "undefined" && typeof performance.now === "function") {
+    return performance.now();
+  }
+
+  return Date.now();
+}
+
 function canUseDomClipboardFallback(): boolean {
   return typeof document !== "undefined" && typeof document.createElement === "function";
 }

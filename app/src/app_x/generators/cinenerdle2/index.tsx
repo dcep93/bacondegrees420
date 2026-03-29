@@ -7,6 +7,7 @@ import {
 import type { GeneratorNode, GeneratorTree } from "../../types/generator";
 import type { ConnectionEntity } from "./connection_graph";
 import { useCinenerdleController } from "./controller";
+import { addCinenerdleDebugLog } from "./debug";
 import { normalizeHashValue } from "./hash";
 import { primeTmdbApiKeyOnInit } from "./tmdb";
 import { getValidTmdbEntityId, normalizeName, normalizeTitle } from "./utils";
@@ -112,6 +113,63 @@ function getYoungestSelectedCard(
   return null;
 }
 
+function getDebugYoungestSelectedCardLabel(
+  card: Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }> | null,
+): string | null {
+  if (!card) {
+    return null;
+  }
+
+  if (card.kind === "movie") {
+    return `${card.name} (${card.year})`;
+  }
+
+  return card.name;
+}
+
+function areYoungestSelectedCardsEqual(
+  left: Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }> | null,
+  right: Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }> | null,
+): boolean {
+  if (left === right) {
+    return true;
+  }
+
+  if (!left || !right || left.kind !== right.kind) {
+    return false;
+  }
+
+  if (left.kind === "cinenerdle" && right.kind === "cinenerdle") {
+    return true;
+  }
+
+  if (left.key === right.key) {
+    return true;
+  }
+
+  if (left.kind === "movie" && right.kind === "movie") {
+    const leftTmdbId = getCardTmdbEntityId(left);
+    const rightTmdbId = getCardTmdbEntityId(right);
+
+    if (leftTmdbId !== null && rightTmdbId !== null) {
+      return leftTmdbId === rightTmdbId;
+    }
+
+    return (
+      normalizeTitle(left.name) === normalizeTitle(right.name) &&
+      left.year.trim() === right.year.trim()
+    );
+  }
+
+  const leftTmdbId = getCardTmdbEntityId(left);
+  const rightTmdbId = getCardTmdbEntityId(right);
+  if (leftTmdbId !== null && rightTmdbId !== null) {
+    return leftTmdbId === rightTmdbId;
+  }
+
+  return normalizeName(left.name) === normalizeName(right.name);
+}
+
 const Cinenerdle2 = memo(function Cinenerdle2({
   hashValue,
   highlightedConnectionEntity = null,
@@ -125,6 +183,9 @@ const Cinenerdle2 = memo(function Cinenerdle2({
 }: Cinenerdle2Props) {
   const normalizedHash = normalizeHashValue(hashValue);
   const hashRef = useRef(normalizedHash);
+  const lastYoungestSelectedCardRef = useRef<
+    Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }> | null
+  >(null);
 
   useLayoutEffect(() => {
     hashRef.current = normalizedHash;
@@ -178,6 +239,16 @@ const Cinenerdle2 = memo(function Cinenerdle2({
         matchesHighlightedConnectionEntity(node.data, highlightedConnectionEntitySelectionRequest.entity),
     };
   }, [highlightedConnectionEntitySelectionRequest]);
+  const generatorResetKey = `${resetVersion}:${navigationVersion}:${normalizedHash}`;
+
+  useEffect(() => {
+    addCinenerdleDebugLog("cinenerdle:generator-props", {
+      normalizedHash,
+      navigationVersion,
+      resetVersion,
+      generatorResetKey,
+    });
+  }, [generatorResetKey, navigationVersion, normalizedHash, resetVersion]);
 
   return (
     <AbstractGenerator
@@ -188,11 +259,27 @@ const Cinenerdle2 = memo(function Cinenerdle2({
       onActivationHandled={onHighlightedConnectionEntitySelectionHandled}
       onFocusRequestMatchChange={onHighlightedConnectionEntityYoungestGenerationMatchChange}
       onTreeChange={(tree) => {
-        onYoungestSelectedCardChange?.(getYoungestSelectedCard(tree));
+        const nextYoungestSelectedCard = getYoungestSelectedCard(tree);
+        addCinenerdleDebugLog("cinenerdle:tree-change", {
+          rowCount: tree.length,
+          youngestSelectedCard: getDebugYoungestSelectedCardLabel(nextYoungestSelectedCard),
+        });
+        if (areYoungestSelectedCardsEqual(
+          lastYoungestSelectedCardRef.current,
+          nextYoungestSelectedCard,
+        )) {
+          addCinenerdleDebugLog("cinenerdle:youngest-selected-unchanged", {
+            youngestSelectedCard: getDebugYoungestSelectedCardLabel(nextYoungestSelectedCard),
+          });
+          return;
+        }
+
+        lastYoungestSelectedCardRef.current = nextYoungestSelectedCard;
+        onYoungestSelectedCardChange?.(nextYoungestSelectedCard);
       }}
-      optimisticSelection={false}
+      optimisticSelection
       renderCard={controller.renderCard}
-      resetKey={`${resetVersion}:${navigationVersion}:${normalizedHash}`}
+      resetKey={generatorResetKey}
     />
   );
 });
