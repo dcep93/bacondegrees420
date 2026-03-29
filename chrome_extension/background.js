@@ -1,4 +1,6 @@
 const BOOKMARKS_STORAGE_KEY = "bacondegrees420.bookmarks.v1";
+const BOOKMARKS_INDEX_STORAGE_KEY = `${BOOKMARKS_STORAGE_KEY}.index.v2`;
+const BOOKMARK_ENTRY_STORAGE_KEY_PREFIX = `${BOOKMARKS_STORAGE_KEY}.entry.v2.`;
 
 function normalizeHashValue(hash) {
   if (typeof hash !== "string") {
@@ -93,6 +95,110 @@ function normalizeBookmarkEntries(value) {
     .filter((bookmark) => bookmark.label && bookmark.previewCards.length > 0);
 }
 
+function getBookmarkEntryStorageKey(bookmarkId) {
+  return `${BOOKMARK_ENTRY_STORAGE_KEY_PREFIX}${bookmarkId}`;
+}
+
+function getBookmarkIds(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return Array.from(new Set(value.filter((bookmarkId) => typeof bookmarkId === "string" && bookmarkId)));
+}
+
+function getBookmarksFromChunkedStorage(storageRecord) {
+  if (!(BOOKMARKS_INDEX_STORAGE_KEY in storageRecord)) {
+    return null;
+  }
+
+  const bookmarkIds = getBookmarkIds(storageRecord[BOOKMARKS_INDEX_STORAGE_KEY]);
+  return normalizeBookmarkEntries(
+    bookmarkIds.map((bookmarkId) => storageRecord[getBookmarkEntryStorageKey(bookmarkId)]),
+  );
+}
+
+function loadSyncedBookmarks(callback) {
+  chrome.storage.sync.get(null, (storageRecord) => {
+    if (chrome.runtime.lastError) {
+      callback({
+        error: chrome.runtime.lastError.message || "Failed to load synced bookmarks",
+      });
+      return;
+    }
+
+    const chunkedBookmarks = getBookmarksFromChunkedStorage(storageRecord);
+    if (chunkedBookmarks !== null) {
+      callback({ bookmarks: chunkedBookmarks });
+      return;
+    }
+
+    callback({
+      bookmarks: normalizeBookmarkEntries(storageRecord[BOOKMARKS_STORAGE_KEY]),
+    });
+  });
+}
+
+function saveSyncedBookmarks(bookmarks, callback) {
+  const normalizedBookmarks = normalizeBookmarkEntries(bookmarks);
+
+  chrome.storage.sync.get([BOOKMARKS_INDEX_STORAGE_KEY], (storageRecord) => {
+    if (chrome.runtime.lastError) {
+      callback({
+        error: chrome.runtime.lastError.message || "Failed to inspect synced bookmarks",
+      });
+      return;
+    }
+
+    const previousBookmarkIds = getBookmarkIds(storageRecord[BOOKMARKS_INDEX_STORAGE_KEY]);
+    const nextBookmarkIds = normalizedBookmarks.map((bookmark) => bookmark.id);
+    const nextStorageRecord = {
+      [BOOKMARKS_INDEX_STORAGE_KEY]: nextBookmarkIds,
+    };
+
+    normalizedBookmarks.forEach((bookmark) => {
+      nextStorageRecord[getBookmarkEntryStorageKey(bookmark.id)] = bookmark;
+    });
+
+    const keysToRemove = Array.from(new Set([
+      BOOKMARKS_STORAGE_KEY,
+      ...previousBookmarkIds
+        .filter((bookmarkId) => !nextBookmarkIds.includes(bookmarkId))
+        .map((bookmarkId) => getBookmarkEntryStorageKey(bookmarkId)),
+    ]));
+
+    const persistNextStorageRecord = () => {
+      chrome.storage.sync.set(nextStorageRecord, () => {
+        if (chrome.runtime.lastError) {
+          callback({
+            error: chrome.runtime.lastError.message || "Failed to save synced bookmarks",
+          });
+          return;
+        }
+
+        logStorageUsage();
+        callback({ bookmarks: normalizedBookmarks });
+      });
+    };
+
+    if (keysToRemove.length === 0) {
+      persistNextStorageRecord();
+      return;
+    }
+
+    chrome.storage.sync.remove(keysToRemove, () => {
+      if (chrome.runtime.lastError) {
+        callback({
+          error: chrome.runtime.lastError.message || "Failed to prune synced bookmarks",
+        });
+        return;
+      }
+
+      persistNextStorageRecord();
+    });
+  });
+}
+
 function logStorageUsage() {
   chrome.storage.sync.getBytesInUse(null, (bytesInUse) => {
     if (chrome.runtime.lastError) {
@@ -122,34 +228,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message.type === "bookmarks:get") {
-    chrome.storage.sync.get([BOOKMARKS_STORAGE_KEY], (result) => {
-      if (chrome.runtime.lastError) {
-        sendResponse({
-          error: chrome.runtime.lastError.message || "Failed to load synced bookmarks",
-        });
-        return;
-      }
-
-      sendResponse({
-        bookmarks: normalizeBookmarkEntries(result[BOOKMARKS_STORAGE_KEY]),
-      });
-    });
+    loadSyncedBookmarks(sendResponse);
     return true;
   }
 
   if (message.type === "bookmarks:set") {
-    const normalizedBookmarks = normalizeBookmarkEntries(message.bookmarks);
-    chrome.storage.sync.set({ [BOOKMARKS_STORAGE_KEY]: normalizedBookmarks }, () => {
-      if (chrome.runtime.lastError) {
-        sendResponse({
-          error: chrome.runtime.lastError.message || "Failed to save synced bookmarks",
-        });
-        return;
-      }
-
-      logStorageUsage();
-      sendResponse({ bookmarks: normalizedBookmarks });
-    });
+    saveSyncedBookmarks(message.bookmarks, sendResponse);
     return true;
   }
 

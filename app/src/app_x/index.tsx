@@ -14,7 +14,7 @@ import {
 import {
   createBookmarkId,
   loadBookmarks,
-  mergeMissingBookmarks,
+  mergeSyncedBookmarks,
   moveBookmarkEntry,
   removeBookmarkEntry,
   saveBookmarks,
@@ -745,7 +745,7 @@ export default function AppX() {
         }
 
         setBookmarks((currentBookmarks) => {
-          const nextBookmarks = mergeMissingBookmarks(currentBookmarks, syncedBookmarks);
+          const nextBookmarks = mergeSyncedBookmarks(currentBookmarks, syncedBookmarks);
           if (JSON.stringify(nextBookmarks) !== JSON.stringify(currentBookmarks)) {
             saveBookmarks(nextBookmarks);
           }

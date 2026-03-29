@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   bookmarkSyncMessageSource,
   bookmarkSyncMessageTypes,
@@ -85,6 +85,7 @@ const originalWindow = globalThis.window;
 
 describe("bookmark_sync", () => {
   afterEach(() => {
+    vi.useRealTimers();
     Object.defineProperty(globalThis, "window", {
       configurable: true,
       value: originalWindow,
@@ -117,13 +118,18 @@ describe("bookmark_sync", () => {
   });
 
   it("times out when no extension bridge responds", async () => {
+    vi.useFakeTimers();
     const fakeWindow = createFakeWindow();
     Object.defineProperty(globalThis, "window", {
       configurable: true,
       value: fakeWindow,
     });
 
-    await expect(getSyncedBookmarks()).rejects.toThrow("Bookmark extension unavailable");
+    const pendingBookmarks = expect(getSyncedBookmarks()).rejects.toThrow(
+      "Bookmark extension unavailable",
+    );
+    await vi.advanceTimersByTimeAsync(6000);
+    await pendingBookmarks;
   });
 
   it("ignores unrelated messages before resolving the matching response", async () => {

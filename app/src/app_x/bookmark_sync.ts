@@ -7,7 +7,8 @@ const REQUEST_MESSAGE_TYPE = "BACONDEGREES_EXTENSION_REQUEST";
 const RESPONSE_MESSAGE_TYPE = "BACONDEGREES_EXTENSION_RESPONSE";
 const ERROR_MESSAGE_TYPE = "BACONDEGREES_EXTENSION_ERROR";
 const MESSAGE_SOURCE = "bacondegrees-extension-bridge";
-const REQUEST_TIMEOUT_MS = 500;
+const REQUEST_TIMEOUT_MS = 3000;
+const MAX_REQUEST_ATTEMPTS = 2;
 
 type ExtensionRequestAction = "bookmarks:get" | "bookmarks:set";
 
@@ -114,11 +115,30 @@ function postExtensionRequest(message: ExtensionRequestMessage) {
   });
 }
 
+async function postExtensionRequestWithRetry(message: ExtensionRequestMessage) {
+  let lastError: unknown = null;
+
+  for (let attempt = 0; attempt < MAX_REQUEST_ATTEMPTS; attempt += 1) {
+    try {
+      return await postExtensionRequest({
+        ...message,
+        requestId: createRequestId(),
+      });
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Bookmark extension unavailable");
+}
+
 export async function getSyncedBookmarks(): Promise<BookmarkEntry[]> {
-  const payload = await postExtensionRequest({
+  const payload = await postExtensionRequestWithRetry({
     source: MESSAGE_SOURCE,
     type: REQUEST_MESSAGE_TYPE,
-    requestId: createRequestId(),
+    requestId: "",
     action: "bookmarks:get",
   });
 
@@ -126,10 +146,10 @@ export async function getSyncedBookmarks(): Promise<BookmarkEntry[]> {
 }
 
 export async function setSyncedBookmarks(bookmarks: BookmarkEntry[]): Promise<void> {
-  await postExtensionRequest({
+  await postExtensionRequestWithRetry({
     source: MESSAGE_SOURCE,
     type: REQUEST_MESSAGE_TYPE,
-    requestId: createRequestId(),
+    requestId: "",
     action: "bookmarks:set",
     bookmarks: normalizeBookmarkEntries(bookmarks),
   });

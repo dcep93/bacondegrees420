@@ -3,6 +3,7 @@ import {
   BOOKMARKS_STORAGE_KEY,
   loadBookmarks,
   mergeMissingBookmarks,
+  mergeSyncedBookmarks,
   saveBookmarks,
   type BookmarkEntry,
 } from "../bookmarks";
@@ -125,6 +126,42 @@ describe("bookmarks", () => {
     expect(mergeMissingBookmarks(localBookmarks, remoteBookmarks)).toEqual([
       localBookmarks[0],
       remoteBookmarks[1],
+    ]);
+  });
+
+  it("prefers synced bookmark order while preserving local-only bookmarks", () => {
+    const localBookmarks = [
+      createBookmark({
+        id: "local-only",
+        hash: KEANU_HASH,
+        label: "Keanu Reeves",
+        previewCards: [
+          createPreviewCard({
+            key: "person:keanu-reeves",
+            kind: "person",
+            name: "Keanu Reeves",
+            subtitle: "Person",
+            subtitleDetail: "Actor",
+          }),
+        ],
+      }),
+      createBookmark({
+        id: "local-matrix",
+        hash: MATRIX_HASH,
+        label: "Local Matrix",
+      }),
+    ];
+    const remoteBookmarks = [
+      createBookmark({
+        id: "remote-matrix",
+        hash: MATRIX_HASH,
+        label: "Remote Matrix",
+      }),
+    ];
+
+    expect(mergeSyncedBookmarks(localBookmarks, remoteBookmarks)).toEqual([
+      remoteBookmarks[0],
+      localBookmarks[0],
     ]);
   });
 
