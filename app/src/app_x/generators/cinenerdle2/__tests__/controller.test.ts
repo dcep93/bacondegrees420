@@ -1,9 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  formatMoviePathLabel,
-  getAssociatedMoviesFromPersonCredits,
-  getAssociatedPeopleFromMovieCredits,
-} from "../utils";
+import { formatMoviePathLabel } from "../utils";
 import {
   makeFilmRecord,
   makeMovieCredit,
@@ -197,7 +193,7 @@ describe("buildBookmarkPreviewCardsFromHash", () => {
     );
   });
 
-  it("keeps movie child rows in the TMDb cast-order and crew-order merge sequence", async () => {
+  it("keeps movie child rows in the alternating dual-merge sequence", async () => {
     const heatRecord = makeFilmRecord({
       id: "heat-1995",
       tmdbId: 50,
@@ -239,11 +235,13 @@ describe("buildBookmarkPreviewCardsFromHash", () => {
 
     const tree = await buildTreeFromHash("#film|Heat+(1995)");
     const childCards = tree[1]?.map((node) => node.data) ?? [];
-    const expectedNames = getAssociatedPeopleFromMovieCredits(heatRecord).map(
-      (credit) => credit.name,
-    );
 
-    expect(childCards.map((card) => card.name)).toEqual(expectedNames);
+    expect(childCards.map((card) => card.name)).toEqual([
+      "Robert De Niro",
+      "Michael Mann",
+      "Aaron Sorkin",
+      "Al Pacino",
+    ]);
     expect(childCards.map((card) => card.connectionOrder)).toEqual([1, 2, 3, 4]);
     expect(childCards.map((card) => card.connectionParentLabel)).toEqual([
       formatMoviePathLabel("Heat", "1995"),
@@ -313,7 +311,7 @@ describe("buildTreeFromHash", () => {
     tmdbMock.hydrateCinenerdleDailyStarterMovies.mockResolvedValue(undefined);
   });
 
-  it("keeps person child rows in the dual-merge sequence and assigns connection order from that sequence", async () => {
+  it("keeps person child rows in the alternating dual-merge sequence and assigns connection order from that sequence", async () => {
     const heatRecord = makeFilmRecord({
       id: 101,
       tmdbId: 101,
@@ -338,6 +336,14 @@ describe("buildTreeFromHash", () => {
       popularity: 60,
       personConnectionKeys: ["al pacino", "hilary swank"],
     });
+    const seaOfLoveRecord = makeFilmRecord({
+      id: 104,
+      tmdbId: 104,
+      title: "Sea of Love",
+      year: "1989",
+      popularity: 90,
+      personConnectionKeys: ["al pacino", "ellen barkin"],
+    });
     const alPacinoRecord = makePersonRecord({
       id: 1,
       tmdbId: 1,
@@ -346,6 +352,7 @@ describe("buildTreeFromHash", () => {
         "heat (1995)",
         "the insider (1999)",
         "insomnia (2002)",
+        "sea of love (1989)",
       ],
       rawTmdbMovieCreditsResponse: {
         cast: [
@@ -372,6 +379,15 @@ describe("buildTreeFromHash", () => {
             character: undefined,
             job: "Director",
           }),
+          makeMovieCredit({
+            id: 104,
+            title: "Sea of Love",
+            release_date: "1989-09-15",
+            popularity: 90,
+            creditType: undefined,
+            character: undefined,
+            job: "Writer",
+          }),
         ],
       },
     });
@@ -385,18 +401,22 @@ describe("buildTreeFromHash", () => {
         [101, heatRecord],
         [102, theInsiderRecord],
         [103, insomniaRecord],
+        [104, seaOfLoveRecord],
       ]),
     );
 
     const tree = await buildTreeFromHash("#person|Al+Pacino");
     const childCards = tree[1]?.map((node) => node.data) ?? [];
-    const expectedNames = getAssociatedMoviesFromPersonCredits(alPacinoRecord).map(
-      (credit) => credit.title,
-    );
 
-    expect(childCards.map((card) => card.name)).toEqual(expectedNames);
-    expect(childCards.map((card) => card.connectionOrder)).toEqual([1, 2, 3]);
+    expect(childCards.map((card) => card.name)).toEqual([
+      "Heat",
+      "Sea of Love",
+      "Insomnia",
+      "The Insider",
+    ]);
+    expect(childCards.map((card) => card.connectionOrder)).toEqual([1, 2, 3, 4]);
     expect(childCards.map((card) => card.connectionParentLabel)).toEqual([
+      "Al Pacino",
       "Al Pacino",
       "Al Pacino",
       "Al Pacino",

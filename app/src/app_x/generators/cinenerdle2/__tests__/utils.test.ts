@@ -258,29 +258,31 @@ describe("tmdb credit aggregation", () => {
     ]);
   });
 
-  it("merges person movie cast and crew credits by head popularity", () => {
+  it("alternates ordered turns with global popularity turns when merging person movie credits", () => {
     const personRecord = makePersonRecord({
       rawTmdbMovieCreditsResponse: {
         cast: [
-          makeMovieCredit({ id: 1, title: "Cast High", popularity: 80 }),
-          makeMovieCredit({ id: 2, title: "Cast Low", popularity: 20 }),
+          makeMovieCredit({ id: 1, title: "Cast Head", popularity: 80 }),
+          makeMovieCredit({ id: 2, title: "Cast Tail", popularity: 20 }),
         ],
         crew: [
-          makeMovieCredit({ id: 3, title: "Crew Mid", popularity: 50, creditType: undefined }),
-          makeMovieCredit({ id: 4, title: "Crew Low", popularity: 10, creditType: undefined }),
+          makeMovieCredit({ id: 3, title: "Crew Head", popularity: 50, creditType: undefined }),
+          makeMovieCredit({ id: 4, title: "Crew High", popularity: 90, creditType: undefined }),
+          makeMovieCredit({ id: 5, title: "Crew Tail", popularity: 10, creditType: undefined }),
         ],
       },
     });
 
     expect(getAssociatedMoviesFromPersonCredits(personRecord).map((credit) => credit.title)).toEqual([
-      "Cast High",
-      "Crew Mid",
-      "Cast Low",
-      "Crew Low",
+      "Cast Head",
+      "Crew High",
+      "Crew Head",
+      "Cast Tail",
+      "Crew Tail",
     ]);
   });
 
-  it("prefers cast when person movie cast and crew heads tie on popularity", () => {
+  it("prefers cast when ordered turns tie on popularity for person movie credits", () => {
     const personRecord = makePersonRecord({
       rawTmdbMovieCreditsResponse: {
         cast: [
@@ -295,6 +297,50 @@ describe("tmdb credit aggregation", () => {
     expect(getAssociatedMoviesFromPersonCredits(personRecord).map((credit) => credit.title)).toEqual([
       "Cast Head",
       "Crew Head",
+    ]);
+  });
+
+  it("prefers cast when global-popularity turns tie for person movie credits", () => {
+    const personRecord = makePersonRecord({
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({ id: 1, title: "Ordered Winner", popularity: 90 }),
+          makeMovieCredit({ id: 2, title: "Cast Global Tie", popularity: 60 }),
+        ],
+        crew: [
+          makeMovieCredit({ id: 3, title: "Crew Head", popularity: 10, creditType: undefined }),
+          makeMovieCredit({ id: 4, title: "Crew Global Tie", popularity: 60, creditType: undefined }),
+        ],
+      },
+    });
+
+    expect(getAssociatedMoviesFromPersonCredits(personRecord).map((credit) => credit.title)).toEqual([
+      "Ordered Winner",
+      "Cast Global Tie",
+      "Crew Head",
+      "Crew Global Tie",
+    ]);
+  });
+
+  it("keeps earlier queue position when global-popularity ties within a queue", () => {
+    const personRecord = makePersonRecord({
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({ id: 1, title: "Cast Head", popularity: 95 }),
+          makeMovieCredit({ id: 2, title: "Cast Tail", popularity: 5 }),
+        ],
+        crew: [
+          makeMovieCredit({ id: 3, title: "Crew Earlier", popularity: 90, creditType: undefined }),
+          makeMovieCredit({ id: 4, title: "Crew Later", popularity: 90, creditType: undefined }),
+        ],
+      },
+    });
+
+    expect(getAssociatedMoviesFromPersonCredits(personRecord).map((credit) => credit.title)).toEqual([
+      "Cast Head",
+      "Crew Earlier",
+      "Crew Later",
+      "Cast Tail",
     ]);
   });
 
@@ -319,7 +365,7 @@ describe("tmdb credit aggregation", () => {
     ]);
   });
 
-  it("merges cast order with crew response order while preserving dedupe and filtering", () => {
+  it("alternates ordered turns with global popularity turns for movie credits while preserving filtering", () => {
     const filmRecord = makeFilmRecord({
       rawTmdbMovieCreditsResponse: {
         cast: [
@@ -366,30 +412,20 @@ describe("tmdb credit aggregation", () => {
             department: "Production",
             popularity: 100,
           }),
-          makePersonCredit({
-            id: 1,
-            name: "Al Pacino",
-            order: 96,
-            creditType: undefined,
-            character: undefined,
-            job: "Writer",
-            department: "Writing",
-            popularity: 100,
-          }),
         ],
       },
     });
 
     expect(getAssociatedPeopleFromMovieCredits(filmRecord).map((credit) => credit.name)).toEqual([
       "Robert De Niro",
-      "Aaron Sorkin",
       "Michael Mann",
+      "Aaron Sorkin",
       "Al Pacino",
       "Kenneth Collard",
     ]);
   });
 
-  it("prefers cast when cast and crew heads tie on popularity", () => {
+  it("prefers cast when ordered turns tie on popularity for movie credits", () => {
     const filmRecord = makeFilmRecord({
       rawTmdbMovieCreditsResponse: {
         cast: [

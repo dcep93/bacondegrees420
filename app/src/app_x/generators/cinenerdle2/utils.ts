@@ -184,6 +184,62 @@ export function getUniqueSortedTmdbMovieCredits(
     .sort((left, right) => (right.popularity ?? 0) - (left.popularity ?? 0));
 }
 
+type DualMergeCredit = {
+  popularity?: number;
+};
+
+function getMostPopularQueueIndex<T extends DualMergeCredit>(queue: T[]): number {
+  let bestIndex = 0;
+  let bestPopularity = queue[0]?.popularity ?? 0;
+
+  for (let index = 1; index < queue.length; index += 1) {
+    const popularity = queue[index]?.popularity ?? 0;
+    if (popularity > bestPopularity) {
+      bestIndex = index;
+      bestPopularity = popularity;
+    }
+  }
+
+  return bestIndex;
+}
+
+function mergeAlternatingDualQueues<T extends DualMergeCredit>(
+  castQueue: T[],
+  crewQueue: T[],
+): T[] {
+  const remainingCast = [...castQueue];
+  const remainingCrew = [...crewQueue];
+  const merged: T[] = [];
+  let useOrderedTurn = true;
+
+  while (remainingCast.length > 0 || remainingCrew.length > 0) {
+    if (remainingCast.length === 0) {
+      merged.push(...remainingCrew);
+      break;
+    }
+
+    if (remainingCrew.length === 0) {
+      merged.push(...remainingCast);
+      break;
+    }
+
+    const castIndex = useOrderedTurn ? 0 : getMostPopularQueueIndex(remainingCast);
+    const crewIndex = useOrderedTurn ? 0 : getMostPopularQueueIndex(remainingCrew);
+    const castPopularity = remainingCast[castIndex]?.popularity ?? 0;
+    const crewPopularity = remainingCrew[crewIndex]?.popularity ?? 0;
+
+    if (castPopularity >= crewPopularity) {
+      merged.push(remainingCast.splice(castIndex, 1)[0]);
+    } else {
+      merged.push(remainingCrew.splice(crewIndex, 1)[0]);
+    }
+
+    useOrderedTurn = !useOrderedTurn;
+  }
+
+  return merged;
+}
+
 export function getAssociatedMoviesFromPersonCredits(
   personRecord: PersonRecord | null,
 ): TmdbMovieCredit[] {
@@ -198,35 +254,7 @@ export function getAssociatedMoviesFromPersonCredits(
     ...credit,
     creditType: "crew" as const,
   }));
-  const candidates: TmdbMovieCredit[] = [];
-  let castIndex = 0;
-  let crewIndex = 0;
-
-  while (castIndex < castQueue.length || crewIndex < crewQueue.length) {
-    if (castIndex >= castQueue.length) {
-      candidates.push(crewQueue[crewIndex]);
-      crewIndex += 1;
-      continue;
-    }
-
-    if (crewIndex >= crewQueue.length) {
-      candidates.push(castQueue[castIndex]);
-      castIndex += 1;
-      continue;
-    }
-
-    const castHead = castQueue[castIndex];
-    const crewHead = crewQueue[crewIndex];
-
-    if ((castHead.popularity ?? 0) >= (crewHead.popularity ?? 0)) {
-      candidates.push(castHead);
-      castIndex += 1;
-      continue;
-    }
-
-    candidates.push(crewHead);
-    crewIndex += 1;
-  }
+  const candidates = mergeAlternatingDualQueues(castQueue, crewQueue);
 
   return candidates.filter((credit) => {
     if (!credit.id || seenIds.has(credit.id)) {
@@ -288,35 +316,7 @@ export function getAssociatedPeopleFromMovieCredits(
       ...credit,
       creditType: "crew" as const,
     }));
-  const candidates: TmdbPersonCredit[] = [];
-  let castIndex = 0;
-  let crewIndex = 0;
-
-  while (castIndex < castQueue.length || crewIndex < crewQueue.length) {
-    if (castIndex >= castQueue.length) {
-      candidates.push(crewQueue[crewIndex]);
-      crewIndex += 1;
-      continue;
-    }
-
-    if (crewIndex >= crewQueue.length) {
-      candidates.push(castQueue[castIndex]);
-      castIndex += 1;
-      continue;
-    }
-
-    const castHead = castQueue[castIndex];
-    const crewHead = crewQueue[crewIndex];
-
-    if ((castHead.popularity ?? 0) >= (crewHead.popularity ?? 0)) {
-      candidates.push(castHead);
-      castIndex += 1;
-      continue;
-    }
-
-    candidates.push(crewHead);
-    crewIndex += 1;
-  }
+  const candidates = mergeAlternatingDualQueues(castQueue, crewQueue);
 
   return candidates
     .filter((credit) => {
