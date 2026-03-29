@@ -1971,21 +1971,23 @@ export default function AppX() {
         {copyStatus ? <span className="bacon-copy-status">{copyStatus}</span> : null}
         <div className="bacon-title-actions">
           {renderConnectionMatchupPreview()}
-          <FancyTooltip content={isSavingBookmark ? "Saving bookmark..." : "Save bookmark"}>
-            <button
-              aria-label="Save bookmark"
-              className="bacon-title-action-icon-button"
-              disabled={isSavingBookmark}
-              onClick={handleSaveBookmark}
-              type="button"
-            >
-              💾
-            </button>
-          </FancyTooltip>
+          {!isBookmarksView ? (
+            <FancyTooltip content={isSavingBookmark ? "Saving bookmark..." : "Save bookmark"}>
+              <button
+                aria-label="Save bookmark"
+                className="bacon-title-action-icon-button"
+                disabled={isSavingBookmark}
+                onClick={handleSaveBookmark}
+                type="button"
+              >
+                💾
+              </button>
+            </FancyTooltip>
+          ) : null}
           <FancyTooltip
             anchorProps={{
               onFocus: () => setIsBookmarksTooltipSuppressed(false),
-              onMouseLeave: () => setIsBookmarksTooltipSuppressed(false),
+              onMouseEnter: () => setIsBookmarksTooltipSuppressed(false),
             }}
             content={
               isBookmarksTooltipSuppressed
