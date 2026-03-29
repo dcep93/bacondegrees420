@@ -7,7 +7,6 @@ import {
 import type { GeneratorNode, GeneratorTree } from "../../types/generator";
 import type { ConnectionEntity } from "./connection_graph";
 import { useCinenerdleController } from "./controller";
-import { addCinenerdleDebugLog } from "./debug";
 import { normalizeHashValue } from "./hash";
 import { primeTmdbApiKeyOnInit } from "./tmdb";
 import { getValidTmdbEntityId, normalizeName, normalizeTitle } from "./utils";
@@ -111,20 +110,6 @@ function getYoungestSelectedCard(
   }
 
   return null;
-}
-
-function getDebugYoungestSelectedCardLabel(
-  card: Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }> | null,
-): string | null {
-  if (!card) {
-    return null;
-  }
-
-  if (card.kind === "movie") {
-    return `${card.name} (${card.year})`;
-  }
-
-  return card.name;
 }
 
 function areYoungestSelectedCardsEqual(
@@ -241,15 +226,6 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   }, [highlightedConnectionEntitySelectionRequest]);
   const generatorResetKey = `${resetVersion}:${navigationVersion}`;
 
-  useEffect(() => {
-    addCinenerdleDebugLog("cinenerdle:generator-props", {
-      normalizedHash,
-      navigationVersion,
-      resetVersion,
-      generatorResetKey,
-    });
-  }, [generatorResetKey, navigationVersion, normalizedHash, resetVersion]);
-
   return (
     <AbstractGenerator
       activationRequest={activationRequest}
@@ -260,17 +236,10 @@ const Cinenerdle2 = memo(function Cinenerdle2({
       onFocusRequestMatchChange={onHighlightedConnectionEntityYoungestGenerationMatchChange}
       onTreeChange={(tree) => {
         const nextYoungestSelectedCard = getYoungestSelectedCard(tree);
-        addCinenerdleDebugLog("cinenerdle:tree-change", {
-          rowCount: tree.length,
-          youngestSelectedCard: getDebugYoungestSelectedCardLabel(nextYoungestSelectedCard),
-        });
         if (areYoungestSelectedCardsEqual(
           lastYoungestSelectedCardRef.current,
           nextYoungestSelectedCard,
         )) {
-          addCinenerdleDebugLog("cinenerdle:youngest-selected-unchanged", {
-            youngestSelectedCard: getDebugYoungestSelectedCardLabel(nextYoungestSelectedCard),
-          });
           return;
         }
 

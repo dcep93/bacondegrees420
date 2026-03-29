@@ -32,7 +32,6 @@ import {
   prepareSelectedMovie,
   prepareSelectedPerson,
 } from "./tmdb";
-import { addCinenerdleDebugLog, getCinenerdleDebugNow } from "./debug";
 import { pickBestPersonRecord } from "./records";
 import type { FilmRecord, PersonRecord } from "./types";
 import {
@@ -120,18 +119,6 @@ function sortCardsByPopularity(cards: CinenerdleCard[]) {
 
 function getSelectedCard(tree: GeneratorTree<CinenerdleCard>, rowIndex: number) {
   return tree[rowIndex]?.find((node) => node.selected)?.data ?? null;
-}
-
-function getDebugCardLabel(card: CinenerdleCard | null): string | null {
-  if (!card) {
-    return null;
-  }
-
-  if (card.kind === "movie") {
-    return `${card.name} (${card.year})`;
-  }
-
-  return card.name;
 }
 
 function hasMovieCredits(
@@ -1206,21 +1193,9 @@ export function useCinenerdleController({
     () => ({
       initTree(setTree) {
         void (async () => {
-          const hashValue = readHash();
-          const startedAtMs = getCinenerdleDebugNow();
-          addCinenerdleDebugLog("cinenerdle:init-tree:start", {
-            hash: hashValue,
-          });
-
           try {
-            const nextTree = await buildTreeFromHash(hashValue);
+            const nextTree = await buildTreeFromHash(readHash());
             setTree(nextTree);
-            addCinenerdleDebugLog("cinenerdle:init-tree:resolved", {
-              hash: hashValue,
-              elapsedMs: Number((getCinenerdleDebugNow() - startedAtMs).toFixed(2)),
-              rowCount: nextTree.length,
-              youngestSelectedCard: getDebugCardLabel(getSelectedCard(nextTree, nextTree.length - 1)),
-            });
             void hydrateMissingSelectedPathItemsAndRedraw(setTree, readHash).catch(() => { });
             if (isCinenerdleRootTree(nextTree)) {
               void hydrateDailyStartersAndRedraw(setTree, readHash).catch(() => { });
@@ -1228,11 +1203,6 @@ export function useCinenerdleController({
           } catch {
             const fallbackTree = await createCinenerdleRootTree();
             setTree(fallbackTree);
-            addCinenerdleDebugLog("cinenerdle:init-tree:fallback", {
-              hash: hashValue,
-              elapsedMs: Number((getCinenerdleDebugNow() - startedAtMs).toFixed(2)),
-              rowCount: fallbackTree.length,
-            });
             void hydrateMissingSelectedPathItemsAndRedraw(setTree, readHash).catch(() => { });
             if (isCinenerdleRootTree(fallbackTree)) {
               void hydrateDailyStartersAndRedraw(setTree, readHash).catch(() => { });
@@ -1244,11 +1214,6 @@ export function useCinenerdleController({
         const selectedPathNodes = getSelectedPathNodes(tree);
         const nextHash = serializePathNodes(selectedPathNodes);
         const selectedCard = getSelectedCard(tree, tree.length - 1);
-        addCinenerdleDebugLog("cinenerdle:selection:write-hash", {
-          nextHash,
-          pathLength: selectedPathNodes.length,
-          youngestSelectedCard: getDebugCardLabel(selectedCard),
-        });
 
         if (
           selectedCard &&
@@ -1256,26 +1221,39 @@ export function useCinenerdleController({
             selectedCard.kind === "movie" ||
             selectedCard.kind === "person")
         ) {
-          const startedAtMs = getCinenerdleDebugNow();
-          addCinenerdleDebugLog("cinenerdle:selection:child-row:start", {
-            selectedCard: getDebugCardLabel(selectedCard),
-          });
-
           void buildChildRowForCard(selectedCard)
-            .then((childRow) => {
-              setTree(childRow && childRow.length > 0 ? [...tree, childRow] : tree);
-              addCinenerdleDebugLog("cinenerdle:selection:child-row:resolved", {
-                selectedCard: getDebugCardLabel(selectedCard),
-                childRowCount: childRow?.length ?? 0,
-                elapsedMs: Number((getCinenerdleDebugNow() - startedAtMs).toFixed(2)),
-              });
+            .then(async (childRow) => {
+              let resolvedChildRow = childRow;
+
+              if ((!resolvedChildRow || resolvedChildRow.length === 0) && selectedCard.kind === "movie") {
+                const hydratedMovieRecord = await prepareSelectedMovie(
+                  selectedCard.name,
+                  selectedCard.year,
+                  selectedCard.record?.tmdbId ?? selectedCard.record?.id ?? null,
+                );
+                resolvedChildRow = await buildChildRowForCard(selectedCard, {
+                  movieRecord: hydratedMovieRecord,
+                });
+              }
+
+              if ((!resolvedChildRow || resolvedChildRow.length === 0) && selectedCard.kind === "person") {
+                const hydratedPersonRecord = await prepareSelectedPerson(
+                  selectedCard.name,
+                  getPersonTmdbIdFromCard(selectedCard),
+                );
+                resolvedChildRow = await buildChildRowForCard(selectedCard, {
+                  personRecord: hydratedPersonRecord,
+                });
+              }
+
+              setTree(
+                resolvedChildRow && resolvedChildRow.length > 0
+                  ? [...tree, resolvedChildRow]
+                  : tree,
+              );
             })
             .catch(() => {
               setTree(tree);
-              addCinenerdleDebugLog("cinenerdle:selection:child-row:error", {
-                selectedCard: getDebugCardLabel(selectedCard),
-                elapsedMs: Number((getCinenerdleDebugNow() - startedAtMs).toFixed(2)),
-              });
             });
         } else {
           setTree(tree);

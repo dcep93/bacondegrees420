@@ -38,10 +38,8 @@ import {
 import { CINENERDLE_ICON_URL, TMDB_ICON_URL } from "./generators/cinenerdle2/constants";
 import { buildBookmarkPreviewCardsFromHash } from "./generators/cinenerdle2/controller";
 import {
-  addCinenerdleDebugLog,
   copyCinenerdleDebugLogToClipboard,
   copyCinenerdleIndexedDbSnapshotToClipboard,
-  getCinenerdleDebugNow,
 } from "./generators/cinenerdle2/debug";
 import {
   buildPathNodesFromSegments,
@@ -88,7 +86,6 @@ type ConnectionSuggestion = ConnectionEntity & {
 type PendingHashWrite = {
   hash: string;
   mode: "selection" | "navigation";
-  startedAtMs: number;
 };
 
 type HighlightedConnectionEntitySelectionRequest = {
@@ -366,18 +363,6 @@ function getHighestGenerationSelectedLabel(hashValue: string): string {
   }
 
   return selectedPathTarget.name;
-}
-
-function getDebugYoungestSelectedCardLabel(card: YoungestSelectedCard | null): string | null {
-  if (!card) {
-    return null;
-  }
-
-  if (card.kind === "movie") {
-    return `${card.name} (${card.year})`;
-  }
-
-  return card.name;
 }
 
 function getSelectedPathTooltipEntries(hashValue: string): string[] {
@@ -998,35 +983,18 @@ async function findMostPopularSelectedPersonSpoiler(
 export async function resolveConnectionMatchupPreview(
   youngestSelectedCard: YoungestSelectedCard | null,
 ): Promise<ConnectionMatchupPreview | null> {
-  const startedAtMs = getCinenerdleDebugNow();
-  addCinenerdleDebugLog("connection-matchup:resolve:start", {
-    selectedCard: getDebugYoungestSelectedCardLabel(youngestSelectedCard),
-  });
-
   if (!youngestSelectedCard || youngestSelectedCard.kind === "cinenerdle") {
-    addCinenerdleDebugLog("connection-matchup:resolve:skipped", {
-      selectedCard: getDebugYoungestSelectedCardLabel(youngestSelectedCard),
-      elapsedMs: Number((getCinenerdleDebugNow() - startedAtMs).toFixed(2)),
-    });
     return null;
   }
 
   if (youngestSelectedCard.kind === "movie") {
     const selectedMovieRecord = await resolveSelectedMovieRecord(youngestSelectedCard);
     if (!selectedMovieRecord) {
-      addCinenerdleDebugLog("connection-matchup:resolve:missing-selected-movie", {
-        selectedCard: getDebugYoungestSelectedCardLabel(youngestSelectedCard),
-        elapsedMs: Number((getCinenerdleDebugNow() - startedAtMs).toFixed(2)),
-      });
       return null;
     }
 
     const counterpartMovie = await findMovieCounterpart(selectedMovieRecord);
     if (!counterpartMovie) {
-      addCinenerdleDebugLog("connection-matchup:resolve:missing-counterpart-movie", {
-        selectedCard: getDebugYoungestSelectedCardLabel(youngestSelectedCard),
-        elapsedMs: Number((getCinenerdleDebugNow() - startedAtMs).toFixed(2)),
-      });
       return null;
     }
 
@@ -1035,46 +1003,25 @@ export async function resolveConnectionMatchupPreview(
       counterpartMovie.movieRecord,
     );
     if (!spoilerPerson) {
-      addCinenerdleDebugLog("connection-matchup:resolve:missing-spoiler-person", {
-        selectedCard: getDebugYoungestSelectedCardLabel(youngestSelectedCard),
-        elapsedMs: Number((getCinenerdleDebugNow() - startedAtMs).toFixed(2)),
-      });
       return null;
     }
 
-    const preview = {
+    return {
       counterpart: createPreviewEntityFromMovieRecord(
         counterpartMovie.movieRecord,
         counterpartMovie.sharedConnectionLabels,
       ),
       spoiler: createPreviewEntityFromPersonRecord(spoilerPerson),
     };
-
-    addCinenerdleDebugLog("connection-matchup:resolve:success", {
-      selectedCard: getDebugYoungestSelectedCardLabel(youngestSelectedCard),
-      counterpart: preview.counterpart.name,
-      spoiler: preview.spoiler.name,
-      elapsedMs: Number((getCinenerdleDebugNow() - startedAtMs).toFixed(2)),
-    });
-
-    return preview;
   }
 
   const selectedPersonRecord = await resolveSelectedPersonRecord(youngestSelectedCard);
   if (!selectedPersonRecord) {
-    addCinenerdleDebugLog("connection-matchup:resolve:missing-selected-person", {
-      selectedCard: getDebugYoungestSelectedCardLabel(youngestSelectedCard),
-      elapsedMs: Number((getCinenerdleDebugNow() - startedAtMs).toFixed(2)),
-    });
     return null;
   }
 
   const counterpartPerson = await findPersonCounterpart(selectedPersonRecord);
   if (!counterpartPerson) {
-    addCinenerdleDebugLog("connection-matchup:resolve:missing-counterpart-person", {
-      selectedCard: getDebugYoungestSelectedCardLabel(youngestSelectedCard),
-      elapsedMs: Number((getCinenerdleDebugNow() - startedAtMs).toFixed(2)),
-    });
     return null;
   }
 
@@ -1083,29 +1030,16 @@ export async function resolveConnectionMatchupPreview(
     counterpartPerson.personRecord,
   );
   if (!spoilerMovie) {
-    addCinenerdleDebugLog("connection-matchup:resolve:missing-spoiler-movie", {
-      selectedCard: getDebugYoungestSelectedCardLabel(youngestSelectedCard),
-      elapsedMs: Number((getCinenerdleDebugNow() - startedAtMs).toFixed(2)),
-    });
     return null;
   }
 
-  const preview = {
+  return {
     counterpart: createPreviewEntityFromPersonRecord(
       counterpartPerson.personRecord,
       counterpartPerson.sharedConnectionLabels,
     ),
     spoiler: createPreviewEntityFromMovieRecord(spoilerMovie),
   };
-
-  addCinenerdleDebugLog("connection-matchup:resolve:success", {
-    selectedCard: getDebugYoungestSelectedCardLabel(youngestSelectedCard),
-    counterpart: preview.counterpart.name,
-    spoiler: preview.spoiler.name,
-    elapsedMs: Number((getCinenerdleDebugNow() - startedAtMs).toFixed(2)),
-  });
-
-  return preview;
 }
 
 function createPathNodeFromConnectionEntity(entity: ConnectionEntity) {
@@ -1237,7 +1171,7 @@ export default function AppX() {
   }, [connectionSession]);
 
   useEffect(() => {
-    function syncHashState(nextHash: string, source: "hashchange" | "popstate") {
+    function syncHashState(nextHash: string) {
       const normalizedNextHash = normalizeHashValue(nextHash);
       const pendingHashWrite = pendingHashWriteRef.current;
       const matchedPendingHashWrite =
@@ -1245,13 +1179,6 @@ export default function AppX() {
       const isDuplicateHashSync = lastSyncedHashRef.current === normalizedNextHash;
 
       if (isDuplicateHashSync) {
-        addCinenerdleDebugLog("app:hash-sync:duplicate", {
-          source,
-          hash: normalizedNextHash,
-          matchedPendingHashWrite,
-          pendingMode: pendingHashWrite?.mode ?? null,
-        });
-
         if (matchedPendingHashWrite) {
           pendingHashWriteRef.current = null;
         }
@@ -1267,16 +1194,6 @@ export default function AppX() {
         setNavigationVersion((version) => version + 1);
       }
 
-      addCinenerdleDebugLog("app:hash-sync", {
-        source,
-        hash: normalizedNextHash,
-        matchedPendingHashWrite,
-        pendingMode: pendingHashWrite?.mode ?? null,
-        elapsedFromQueuedMs: pendingHashWrite
-          ? Number((getCinenerdleDebugNow() - pendingHashWrite.startedAtMs).toFixed(2))
-          : null,
-      });
-
       if (matchedPendingHashWrite) {
         pendingHashWriteRef.current = null;
       }
@@ -1284,13 +1201,13 @@ export default function AppX() {
 
     function handleHashChange() {
       setAppLocation(readAppLocationState());
-      syncHashState(window.location.hash, "hashchange");
+      syncHashState(window.location.hash);
     }
 
     function handlePopState() {
       const nextLocation = readAppLocationState();
       setAppLocation(nextLocation);
-      syncHashState(nextLocation.hash, "popstate");
+      syncHashState(nextLocation.hash);
     }
 
     window.addEventListener("hashchange", handleHashChange);
@@ -1329,46 +1246,22 @@ export default function AppX() {
 
     if (isBookmarksView || !youngestSelectedCard || youngestSelectedCard.kind === "cinenerdle") {
       setConnectionMatchupPreview(null);
-      addCinenerdleDebugLog("app:matchup-preview:clear", {
-        isBookmarksView,
-        selectedCard: getDebugYoungestSelectedCardLabel(youngestSelectedCard),
-      });
       return () => {
         cancelled = true;
       };
     }
 
-    const startedAtMs = getCinenerdleDebugNow();
-    addCinenerdleDebugLog("app:matchup-preview:effect:start", {
-      selectedCard: getDebugYoungestSelectedCardLabel(youngestSelectedCard),
-    });
-
     void resolveConnectionMatchupPreview(youngestSelectedCard)
       .then((nextPreview) => {
         if (cancelled) {
-          addCinenerdleDebugLog("app:matchup-preview:effect:cancelled", {
-            selectedCard: getDebugYoungestSelectedCardLabel(youngestSelectedCard),
-            elapsedMs: Number((getCinenerdleDebugNow() - startedAtMs).toFixed(2)),
-          });
           return;
         }
 
         setConnectionMatchupPreview(nextPreview);
-        addCinenerdleDebugLog("app:matchup-preview:effect:resolved", {
-          selectedCard: getDebugYoungestSelectedCardLabel(youngestSelectedCard),
-          hasPreview: Boolean(nextPreview),
-          previewCounterpart: nextPreview?.counterpart.name ?? null,
-          previewSpoiler: nextPreview?.spoiler.name ?? null,
-          elapsedMs: Number((getCinenerdleDebugNow() - startedAtMs).toFixed(2)),
-        });
       })
       .catch(() => {
         if (!cancelled) {
           setConnectionMatchupPreview(null);
-          addCinenerdleDebugLog("app:matchup-preview:effect:error", {
-            selectedCard: getDebugYoungestSelectedCardLabel(youngestSelectedCard),
-            elapsedMs: Number((getCinenerdleDebugNow() - startedAtMs).toFixed(2)),
-          });
         }
       });
 
@@ -1678,16 +1571,10 @@ export default function AppX() {
   const handleHashWrite = useCallback(
     (nextHash: string, mode: "selection" | "navigation") => {
       const normalizedHash = normalizeHashValue(nextHash);
-      const startedAtMs = getCinenerdleDebugNow();
       pendingHashWriteRef.current = {
         hash: normalizedHash,
         mode,
-        startedAtMs,
       };
-      addCinenerdleDebugLog("app:hash-write:queued", {
-        hash: normalizedHash,
-        mode,
-      });
     },
     [],
   );

@@ -120,8 +120,16 @@ export async function copyCinenerdleDebugLogToClipboard(): Promise<number> {
     throw new Error("Clipboard API is unavailable.");
   }
 
-  await writeTextToClipboard(getCinenerdleDebugLogText());
-  return getCinenerdleDebugEntryCount();
+  const copiedEntries = [...cinenerdleDebugEntries];
+  const copiedEntryCount = copiedEntries.length;
+  const copiedText =
+    copiedEntryCount === 0
+      ? EMPTY_DEBUG_LOG_TEXT
+      : JSON.stringify(copiedEntries, null, 2);
+
+  await writeTextToClipboard(copiedText);
+  cinenerdleDebugEntries.splice(0, copiedEntryCount);
+  return copiedEntryCount;
 }
 
 export async function copyCinenerdleIndexedDbSnapshotToClipboard(): Promise<{
