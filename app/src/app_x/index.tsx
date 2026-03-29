@@ -16,7 +16,6 @@ import {
   loadBookmarks,
   moveBookmarkEntry,
   removeBookmarkEntry,
-  saveBookmarks,
   toggleBookmarkPreviewCardSelection,
   upsertBookmarkEntry,
   type AppViewMode,
