@@ -19,9 +19,9 @@ import {
   serializePathNodes,
 } from "./hash";
 import {
+  getAllSearchableConnectionEntities,
   getFilmRecordByTitleAndYear,
   getFilmRecordCountsByPersonConnectionKeys,
-  getFilmRecordsByPersonConnectionKey,
   getFilmRecordsByIds,
   getPersonRecordById,
   getPersonRecordByName,
@@ -41,11 +41,11 @@ import {
   getFilmKey,
   getMovieKeyFromCredit,
   getSnapshotPeopleByRole,
-  getTmdbMovieCredits,
   getUniqueSortedTmdbMovieCredits,
   getValidTmdbEntityId,
   normalizeName,
   normalizeTitle,
+  parseMoviePathLabel,
 } from "./utils";
 import type { CinenerdleCard, CinenerdleCardViewModel, CinenerdlePathNode } from "./view_types";
 
@@ -539,6 +539,21 @@ async function buildChildRowForPersonCard(
   const filmRecordsById = await getFilmRecordsByIds(
     movieCredits.map((credit) => credit.id),
   );
+  const searchableConnectionEntities = await getAllSearchableConnectionEntities();
+  const popularityByPersonName = new Map<string, number>();
+  searchableConnectionEntities.forEach((entity) => {
+    if (entity.type !== "person") {
+      return;
+    }
+
+    popularityByPersonName.set(
+      normalizeName(entity.nameLower),
+      Math.max(
+        popularityByPersonName.get(normalizeName(entity.nameLower)) ?? 0,
+        entity.popularity ?? 0,
+      ),
+    );
+  });
   const connectionCounts = await getPersonRecordCountsByMovieKeys(
     movieCredits.map((credit) => getMovieKeyFromCredit(credit)),
   );
@@ -551,10 +566,16 @@ async function buildChildRowForPersonCard(
         const movieCard = createMovieAssociationCard(
           credit,
           movieRecord,
-          Math.max(connectionCounts.get(getMovieKeyFromCredit(credit)) ?? 0, 1),
+          movieRecord
+            ? Math.max(movieRecord.personConnectionKeys.length, 1)
+            : Math.max(connectionCounts.get(getMovieKeyFromCredit(credit)) ?? 0, 1),
         );
 
-        const connectionRank = getParentPersonRankForMovie(movieRecord, parentPersonRecord);
+        const connectionRank = getParentPersonRankForMovie(
+          movieRecord,
+          parentPersonRecord,
+          popularityByPersonName,
+        );
         return connectionRank === null
           ? movieCard
           : {
@@ -582,6 +603,20 @@ async function buildChildRowForMovieCard(
   const filmConnectionCounts = await getFilmRecordCountsByPersonConnectionKeys(
     tmdbCredits.map((credit) => credit.name ?? ""),
   );
+  const searchableConnectionEntities = await getAllSearchableConnectionEntities();
+  const popularityByMovieKey = new Map<string, number>();
+  searchableConnectionEntities.forEach((entity) => {
+    if (entity.type !== "movie") {
+      return;
+    }
+
+    const parsedMovie = parseMoviePathLabel(entity.nameLower);
+    const movieKey = getFilmKey(parsedMovie.name, parsedMovie.year);
+    popularityByMovieKey.set(
+      movieKey,
+      Math.max(popularityByMovieKey.get(movieKey) ?? 0, entity.popularity ?? 0),
+    );
+  });
   const personDetails = new Map(
     await Promise.all(
       tmdbCredits.map(async (credit) => {
@@ -594,11 +629,17 @@ async function buildChildRowForMovieCard(
         return [
           getPersonIdentityKey(personName, credit.id),
           {
-            connectionCount: Math.max(
-              filmConnectionCounts.get(normalizeName(personName)) ?? 0,
-              1,
+            connectionCount: cachedPersonRecord
+              ? Math.max(cachedPersonRecord.movieConnectionKeys.length, 1)
+              : Math.max(
+                filmConnectionCounts.get(normalizeName(personName)) ?? 0,
+                1,
+              ),
+            connectionRank: getParentMovieRankForPerson(
+              movieRecord,
+              cachedPersonRecord,
+              popularityByMovieKey,
             ),
-            connectionRank: await getParentMovieRankForPerson(movieRecord, cachedPersonRecord),
             personRecord: cachedPersonRecord,
           },
         ] as const;
@@ -663,7 +704,11 @@ async function buildChildRowForMovieCard(
           role,
           snapshotPersonRecord,
         );
-        const connectionRank = await getParentMovieRankForPerson(movieRecord, snapshotPersonRecord);
+        const connectionRank = getParentMovieRankForPerson(
+          movieRecord,
+          snapshotPersonRecord,
+          popularityByMovieKey,
+        );
         seenPeople.add(normalizedPersonName);
 
         return connectionRank === null
@@ -977,115 +1022,67 @@ function getRenderableSources(card: CinenerdleCard) {
   );
 }
 
-function getDensePopularityRank(
-  candidatePopularity: number,
-  linkedPopularities: number[],
+function getOrdinalRank<T>(
+  items: T[],
+  isTarget: (item: T) => boolean,
+  compare: (left: T, right: T) => number,
 ): number | null {
-  const rankedPopularities = Array.from(new Set(linkedPopularities)).sort((left, right) => right - left);
-  const rankIndex = rankedPopularities.findIndex((popularity) => popularity === candidatePopularity);
+  const rankIndex = [...items].sort(compare).findIndex(isTarget);
   return rankIndex >= 0 ? rankIndex + 1 : null;
 }
 
 function getParentPersonRankForMovie(
   movieRecord: FilmRecord | null,
   parentPersonRecord: PersonRecord | null,
+  popularityByPersonName: Map<string, number>,
 ): number | null {
   if (!movieRecord || !parentPersonRecord) {
     return null;
   }
 
-  const parentPersonTmdbId = getValidTmdbEntityId(parentPersonRecord.tmdbId ?? parentPersonRecord.id);
   const parentPersonName = normalizeName(parentPersonRecord.name);
-  const parentPersonPopularity = parentPersonRecord.rawTmdbPerson?.popularity ?? 0;
-  const popularityByPersonKey = new Map<string, number>();
-  let parentPersonKey: string | null = null;
-
-  getAssociatedPeopleFromMovieCredits(movieRecord).forEach((credit) => {
-    const creditTmdbId = getValidTmdbEntityId(credit.id);
-    const creditName = normalizeName(credit.name ?? "");
-    if (!creditTmdbId && !creditName) {
-      return;
-    }
-
-    const personKey = creditTmdbId ? `tmdb:${creditTmdbId}` : `name:${creditName}`;
-    const popularity = credit.popularity ?? 0;
-    popularityByPersonKey.set(
-      personKey,
-      Math.max(popularityByPersonKey.get(personKey) ?? 0, popularity),
-    );
-
-    if (
-      (parentPersonTmdbId && creditTmdbId === parentPersonTmdbId) ||
-      (!parentPersonTmdbId && creditName === parentPersonName)
-    ) {
-      parentPersonKey = personKey;
-    }
-  });
-
-  if (!parentPersonKey) {
-    const isNamedConnection =
-      parentPersonName &&
-      movieRecord.personConnectionKeys.some((personName) => normalizeName(personName) === parentPersonName);
-    if (!isNamedConnection) {
-      return null;
-    }
-
-    parentPersonKey = parentPersonTmdbId ? `tmdb:${parentPersonTmdbId}` : `name:${parentPersonName}`;
+  const linkedPersonNames = Array.from(
+    new Set(movieRecord.personConnectionKeys.map(normalizeName).filter(Boolean)),
+  );
+  if (!parentPersonName || !linkedPersonNames.includes(parentPersonName)) {
+    return null;
   }
 
-  popularityByPersonKey.set(
-    parentPersonKey,
-    Math.max(popularityByPersonKey.get(parentPersonKey) ?? 0, parentPersonPopularity),
+  popularityByPersonName.set(
+    parentPersonName,
+    Math.max(
+      popularityByPersonName.get(parentPersonName) ?? 0,
+      parentPersonRecord.rawTmdbPerson?.popularity ?? 0,
+    ),
   );
 
-  return getDensePopularityRank(
-    popularityByPersonKey.get(parentPersonKey) ?? parentPersonPopularity,
-    [...popularityByPersonKey.values()],
+  return getOrdinalRank(
+    linkedPersonNames,
+    (personName) => personName === parentPersonName,
+    (left, right) => {
+      const popularityDifference =
+        (popularityByPersonName.get(right) ?? 0) - (popularityByPersonName.get(left) ?? 0);
+      if (popularityDifference !== 0) {
+        return popularityDifference;
+      }
+
+      return left.localeCompare(right);
+    },
   );
 }
 
-async function getParentMovieRankForPerson(
+function getParentMovieRankForPerson(
   parentMovieRecord: FilmRecord | null,
   personRecord: PersonRecord | null,
-): Promise<number | null> {
+  popularityByMovieKey: Map<string, number>,
+): number | null {
   if (!parentMovieRecord || !personRecord) {
     return null;
   }
 
   const parentMovieKey = getFilmKey(parentMovieRecord.title, parentMovieRecord.year);
-  const popularityByMovieKey = new Map<string, number>();
-  const linkedMovieKeys = new Set<string>();
-
-  personRecord.movieConnectionKeys.forEach((movieKey) => {
-    if (movieKey) {
-      linkedMovieKeys.add(movieKey);
-    }
-  });
-
-  const linkedMovieRecords = await getFilmRecordsByPersonConnectionKey(personRecord.name);
-  linkedMovieRecords.forEach((movieRecord) => {
-    const movieKey = getFilmKey(movieRecord.title, movieRecord.year);
-    linkedMovieKeys.add(movieKey);
-    popularityByMovieKey.set(
-      movieKey,
-      Math.max(popularityByMovieKey.get(movieKey) ?? 0, movieRecord.popularity ?? 0),
-    );
-  });
-
-  getTmdbMovieCredits(personRecord).forEach((credit) => {
-    const movieKey = getMovieKeyFromCredit(credit);
-    if (!movieKey) {
-      return;
-    }
-
-    linkedMovieKeys.add(movieKey);
-    popularityByMovieKey.set(
-      movieKey,
-      Math.max(popularityByMovieKey.get(movieKey) ?? 0, credit.popularity ?? 0),
-    );
-  });
-
-  if (!linkedMovieKeys.has(parentMovieKey)) {
+  const linkedMovieKeys = Array.from(new Set(personRecord.movieConnectionKeys.filter(Boolean)));
+  if (!linkedMovieKeys.includes(parentMovieKey)) {
     return null;
   }
 
@@ -1094,9 +1091,18 @@ async function getParentMovieRankForPerson(
     Math.max(popularityByMovieKey.get(parentMovieKey) ?? 0, parentMovieRecord.popularity ?? 0),
   );
 
-  return getDensePopularityRank(
-    popularityByMovieKey.get(parentMovieKey) ?? 0,
-    Array.from(linkedMovieKeys, (movieKey) => popularityByMovieKey.get(movieKey) ?? 0),
+  return getOrdinalRank(
+    linkedMovieKeys,
+    (movieKey) => movieKey === parentMovieKey,
+    (left, right) => {
+      const popularityDifference =
+        (popularityByMovieKey.get(right) ?? 0) - (popularityByMovieKey.get(left) ?? 0);
+      if (popularityDifference !== 0) {
+        return popularityDifference;
+      }
+
+      return left.localeCompare(right);
+    },
   );
 }
 
