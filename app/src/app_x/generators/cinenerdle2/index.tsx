@@ -7,6 +7,7 @@ import {
 import type { GeneratorNode, GeneratorTree } from "../../types/generator";
 import type { ConnectionEntity } from "./connection_graph";
 import { useCinenerdleController } from "./controller";
+import { addCinenerdleDebugLog } from "./debug";
 export {
   CinenerdleBreakBar,
   CinenerdleEntityCard,
@@ -186,6 +187,28 @@ function areYoungestSelectedCardsEqual(
   return normalizeName(left.name) === normalizeName(right.name);
 }
 
+function summarizeYoungestSelectedCard(
+  card: Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }> | null,
+) {
+  if (!card) {
+    return {
+      kind: "none",
+      key: "",
+      label: "",
+      tmdbId: null,
+      year: "",
+    };
+  }
+
+  return {
+    kind: card.kind,
+    key: card.key,
+    label: card.name,
+    tmdbId: card.kind === "cinenerdle" ? null : getCardTmdbEntityId(card),
+    year: card.kind === "movie" ? card.year : "",
+  };
+}
+
 const Cinenerdle2 = memo(function Cinenerdle2({
   hashValue,
   highlightedConnectionEntity = null,
@@ -309,6 +332,10 @@ const Cinenerdle2 = memo(function Cinenerdle2({
         }
 
         lastYoungestSelectedCardRef.current = nextYoungestSelectedCard;
+        addCinenerdleDebugLog("cinenerdle2.youngestSelectedCard.changed", {
+          selectedCard: summarizeYoungestSelectedCard(nextYoungestSelectedCard),
+          treeDepth: tree.length,
+        });
         onYoungestSelectedCardChange?.(nextYoungestSelectedCard);
       }}
       optimisticSelection

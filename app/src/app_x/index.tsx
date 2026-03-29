@@ -389,6 +389,45 @@ function getHighestGenerationSelectedLabel(hashValue: string): string {
   return selectedPathTarget.name;
 }
 
+function summarizeYoungestSelectedCardForLog(card: YoungestSelectedCard | null) {
+  if (!card) {
+    return {
+      kind: "none",
+      key: "",
+      label: "",
+      year: "",
+    };
+  }
+
+  return {
+    kind: card.kind,
+    key: card.key,
+    label: card.name,
+    year: card.kind === "movie" ? card.year : "",
+  };
+}
+
+function summarizeConnectionMatchupPreviewForLog(preview: ConnectionMatchupPreview | null) {
+  if (!preview) {
+    return null;
+  }
+
+  return {
+    counterpart: {
+      key: preview.counterpart.key,
+      kind: preview.counterpart.kind,
+      name: preview.counterpart.name,
+      popularity: preview.counterpart.popularity,
+    },
+    spoiler: {
+      key: preview.spoiler.key,
+      kind: preview.spoiler.kind,
+      name: preview.spoiler.name,
+      popularity: preview.spoiler.popularity,
+    },
+  };
+}
+
 async function resolveYoungestSelectedPersonRecord(
   card: Extract<YoungestSelectedCard, { kind: "person" }>,
 ) {
@@ -903,24 +942,49 @@ export default function AppX() {
 
   useEffect(() => {
     let cancelled = false;
+    const selectedCardSummary = summarizeYoungestSelectedCardForLog(youngestSelectedCard);
 
     if (isBookmarksView || !youngestSelectedCard || youngestSelectedCard.kind === "cinenerdle") {
+      addCinenerdleDebugLog("app.connectionMatchupPreview.skipped", {
+        isBookmarksView,
+        reason: isBookmarksView
+          ? "bookmarksView"
+          : !youngestSelectedCard
+            ? "noSelectedCard"
+            : "cinenerdleSelected",
+        selectedCard: selectedCardSummary,
+      });
       setConnectionMatchupPreview(null);
       return () => {
         cancelled = true;
       };
     }
 
+    addCinenerdleDebugLog("app.connectionMatchupPreview.requested", {
+      selectedCard: selectedCardSummary,
+    });
     void resolveConnectionMatchupPreview(youngestSelectedCard)
       .then((nextPreview) => {
         if (cancelled) {
+          addCinenerdleDebugLog("app.connectionMatchupPreview.ignoredAfterCancel", {
+            selectedCard: selectedCardSummary,
+            preview: summarizeConnectionMatchupPreviewForLog(nextPreview),
+          });
           return;
         }
 
+        addCinenerdleDebugLog("app.connectionMatchupPreview.resolved", {
+          selectedCard: selectedCardSummary,
+          preview: summarizeConnectionMatchupPreviewForLog(nextPreview),
+        });
         setConnectionMatchupPreview(nextPreview);
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (!cancelled) {
+          addCinenerdleDebugLog("app.connectionMatchupPreview.failed", {
+            selectedCard: selectedCardSummary,
+            message: error instanceof Error ? error.message : String(error),
+          });
           setConnectionMatchupPreview(null);
         }
       });
@@ -929,6 +993,13 @@ export default function AppX() {
       cancelled = true;
     };
   }, [isBookmarksView, youngestSelectedCard]);
+
+  useEffect(() => {
+    addCinenerdleDebugLog("app.connectionMatchupPreview.state.changed", {
+      isVisible: connectionMatchupPreview !== null,
+      preview: summarizeConnectionMatchupPreviewForLog(connectionMatchupPreview),
+    });
+  }, [connectionMatchupPreview]);
 
   useEffect(() => {
     const query = deferredConnectionQuery.trim();

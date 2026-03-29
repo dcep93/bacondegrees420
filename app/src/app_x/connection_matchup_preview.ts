@@ -26,6 +26,7 @@ import {
   normalizeWhitespace,
 } from "./generators/cinenerdle2/utils";
 import type { CinenerdleCard } from "./generators/cinenerdle2/view_types";
+import { addCinenerdleDebugLog } from "./generators/cinenerdle2/debug";
 
 export type YoungestSelectedCard = Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }>;
 
@@ -42,6 +43,41 @@ export type ConnectionMatchupPreview = {
   counterpart: ConnectionMatchupPreviewEntity;
   spoiler: ConnectionMatchupPreviewEntity;
 };
+
+function summarizeYoungestSelectedCard(
+  card: YoungestSelectedCard | null,
+) {
+  if (!card) {
+    return {
+      kind: "none",
+      key: "",
+      label: "",
+      year: "",
+    };
+  }
+
+  return {
+    kind: card.kind,
+    key: card.key,
+    label: card.name,
+    year: card.kind === "movie" ? card.year : "",
+  };
+}
+
+function summarizePreviewEntity(
+  entity: ConnectionMatchupPreviewEntity | null,
+) {
+  if (!entity) {
+    return null;
+  }
+
+  return {
+    key: entity.key,
+    kind: entity.kind,
+    name: entity.name,
+    popularity: entity.popularity,
+  };
+}
 
 function getCardPersonTmdbId(
   card: Extract<YoungestSelectedCard, { kind: "person" }>,
@@ -524,61 +560,109 @@ async function findMostPopularSelectedPersonSpoiler(
 export async function resolveConnectionMatchupPreview(
   youngestSelectedCard: YoungestSelectedCard | null,
 ): Promise<ConnectionMatchupPreview | null> {
-  if (!youngestSelectedCard || youngestSelectedCard.kind === "cinenerdle") {
-    return null;
-  }
+  const selectedCardSummary = summarizeYoungestSelectedCard(youngestSelectedCard);
 
-  if (youngestSelectedCard.kind === "movie") {
-    const selectedMovieRecord = await resolveSelectedMovieRecord(youngestSelectedCard);
-    if (!selectedMovieRecord) {
+  try {
+    if (!youngestSelectedCard || youngestSelectedCard.kind === "cinenerdle") {
+      addCinenerdleDebugLog("connectionMatchupPreview.resolve.skipped", {
+        reason: !youngestSelectedCard ? "noSelectedCard" : "cinenerdleSelected",
+        selectedCard: selectedCardSummary,
+      });
       return null;
     }
 
-    const counterpartMovie = await findMovieCounterpart(selectedMovieRecord);
-    if (!counterpartMovie) {
-      return null;
-    }
+    if (youngestSelectedCard.kind === "movie") {
+      const selectedMovieRecord = await resolveSelectedMovieRecord(youngestSelectedCard);
+      if (!selectedMovieRecord) {
+        addCinenerdleDebugLog("connectionMatchupPreview.resolve.movie.missingSelectedRecord", {
+          selectedCard: selectedCardSummary,
+        });
+        return null;
+      }
 
-    const spoilerPerson = await findMostPopularSelectedMovieSpoiler(
-      selectedMovieRecord,
-      counterpartMovie.movieRecord,
-    );
-    if (!spoilerPerson) {
-      return null;
-    }
+      const counterpartMovie = await findMovieCounterpart(selectedMovieRecord);
+      if (!counterpartMovie) {
+        addCinenerdleDebugLog("connectionMatchupPreview.resolve.movie.noCounterpart", {
+          selectedCard: selectedCardSummary,
+          selectedMovieKey: getMovieRecordKey(selectedMovieRecord),
+        });
+        return null;
+      }
 
-    return {
-      counterpart: createPreviewEntityFromMovieRecord(
+      const spoilerPerson = await findMostPopularSelectedMovieSpoiler(
+        selectedMovieRecord,
         counterpartMovie.movieRecord,
-        counterpartMovie.sharedConnectionLabels,
-      ),
-      spoiler: createPreviewEntityFromPersonRecord(spoilerPerson),
-    };
-  }
+      );
+      if (!spoilerPerson) {
+        addCinenerdleDebugLog("connectionMatchupPreview.resolve.movie.noSpoiler", {
+          selectedCard: selectedCardSummary,
+          counterpartMovieKey: getMovieRecordKey(counterpartMovie.movieRecord),
+        });
+        return null;
+      }
 
-  const selectedPersonRecord = await resolveSelectedPersonRecord(youngestSelectedCard);
-  if (!selectedPersonRecord) {
-    return null;
-  }
+      const preview = {
+        counterpart: createPreviewEntityFromMovieRecord(
+          counterpartMovie.movieRecord,
+          counterpartMovie.sharedConnectionLabels,
+        ),
+        spoiler: createPreviewEntityFromPersonRecord(spoilerPerson),
+      };
+      addCinenerdleDebugLog("connectionMatchupPreview.resolve.movie.resolved", {
+        selectedCard: selectedCardSummary,
+        counterpart: summarizePreviewEntity(preview.counterpart),
+        spoiler: summarizePreviewEntity(preview.spoiler),
+      });
+      return preview;
+    }
 
-  const counterpartPerson = await findPersonCounterpart(selectedPersonRecord);
-  if (!counterpartPerson) {
-    return null;
-  }
+    const selectedPersonRecord = await resolveSelectedPersonRecord(youngestSelectedCard);
+    if (!selectedPersonRecord) {
+      addCinenerdleDebugLog("connectionMatchupPreview.resolve.person.missingSelectedRecord", {
+        selectedCard: selectedCardSummary,
+      });
+      return null;
+    }
 
-  const spoilerMovie = await findMostPopularSelectedPersonSpoiler(
-    selectedPersonRecord,
-    counterpartPerson.personRecord,
-  );
-  if (!spoilerMovie) {
-    return null;
-  }
+    const counterpartPerson = await findPersonCounterpart(selectedPersonRecord);
+    if (!counterpartPerson) {
+      addCinenerdleDebugLog("connectionMatchupPreview.resolve.person.noCounterpart", {
+        selectedCard: selectedCardSummary,
+        selectedPersonKey: getPersonRecordKey(selectedPersonRecord),
+      });
+      return null;
+    }
 
-  return {
-    counterpart: createPreviewEntityFromPersonRecord(
+    const spoilerMovie = await findMostPopularSelectedPersonSpoiler(
+      selectedPersonRecord,
       counterpartPerson.personRecord,
-      counterpartPerson.sharedConnectionLabels,
-    ),
-    spoiler: createPreviewEntityFromMovieRecord(spoilerMovie),
-  };
+    );
+    if (!spoilerMovie) {
+      addCinenerdleDebugLog("connectionMatchupPreview.resolve.person.noSpoiler", {
+        selectedCard: selectedCardSummary,
+        counterpartPersonKey: getPersonRecordKey(counterpartPerson.personRecord),
+      });
+      return null;
+    }
+
+    const preview = {
+      counterpart: createPreviewEntityFromPersonRecord(
+        counterpartPerson.personRecord,
+        counterpartPerson.sharedConnectionLabels,
+      ),
+      spoiler: createPreviewEntityFromMovieRecord(spoilerMovie),
+    };
+    addCinenerdleDebugLog("connectionMatchupPreview.resolve.person.resolved", {
+      selectedCard: selectedCardSummary,
+      counterpart: summarizePreviewEntity(preview.counterpart),
+      spoiler: summarizePreviewEntity(preview.spoiler),
+    });
+    return preview;
+  } catch (error) {
+    addCinenerdleDebugLog("connectionMatchupPreview.resolve.failed", {
+      selectedCard: selectedCardSummary,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
 }
