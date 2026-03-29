@@ -96,6 +96,13 @@
     -2px 0 0 #000;
 }
 
+.bacon-title-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  isolation: isolate;
+}
+
 .bacon-title-actions {
   margin-left: auto;
   display: flex;
@@ -106,9 +113,6 @@
 }
 
 .bacon-copy-status {
-  position: fixed;
-  top: calc(env(safe-area-inset-top, 0px) + 16px);
-  right: 16px;
   z-index: 80;
   max-width: min(320px, calc(100vw - 32px));
   padding: 10px 14px;
@@ -121,6 +125,21 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
   pointer-events: none;
+}
+
+.bacon-copy-status-toast {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 16px);
+  right: 16px;
+}
+
+.bacon-copy-status-title {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  max-width: min(320px, calc(100vw - 140px));
+  white-space: nowrap;
 }
 
 .bacon-title-action-button {

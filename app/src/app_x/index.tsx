@@ -756,6 +756,7 @@ export default function AppX() {
   const [connectionMatchupPreview, setConnectionMatchupPreview] =
     useState<ConnectionMatchupPreview | null>(null);
   const [copyStatus, setCopyStatus] = useState("");
+  const [copyStatusPlacement, setCopyStatusPlacement] = useState<"toast" | "title">("toast");
   const [isSavingBookmark, setIsSavingBookmark] = useState(false);
   const [isBookmarksTooltipSuppressed, setIsBookmarksTooltipSuppressed] = useState(false);
   const [connectionQuery, setConnectionQuery] = useState("");
@@ -895,6 +896,7 @@ export default function AppX() {
 
     const timeoutId = window.setTimeout(() => {
       setCopyStatus("");
+      setCopyStatusPlacement("toast");
     }, 2000);
 
     return () => {
@@ -1098,11 +1100,13 @@ export default function AppX() {
 
         return copyCinenerdleIndexedDbSnapshotToClipboard()
           .then(({ peopleCount, filmCount, searchableConnectionEntityCount }) => {
+            setCopyStatusPlacement("toast");
             setCopyStatus(
               `DB copied (${peopleCount} people, ${filmCount} films, ${searchableConnectionEntityCount} search)`,
             );
           })
           .catch((error: unknown) => {
+            setCopyStatusPlacement("toast");
             setCopyStatus(
               error instanceof Error && error.message
                 ? error.message
@@ -1127,9 +1131,11 @@ export default function AppX() {
 
     void copyCinenerdleDebugLogToClipboard()
       .then((entryCount) => {
+        setCopyStatusPlacement("title");
         setCopyStatus(`Debug log copied (${entryCount})`);
       })
       .catch((error: unknown) => {
+        setCopyStatusPlacement("title");
         setCopyStatus(
           error instanceof Error && error.message
             ? error.message
@@ -1295,6 +1301,7 @@ export default function AppX() {
         setBookmarks((currentBookmarks) => upsertBookmarkEntry(currentBookmarks, nextBookmark));
       })
       .catch(() => {
+        setCopyStatusPlacement("toast");
         setCopyStatus("Bookmark failed");
       })
       .finally(() => {
@@ -1961,14 +1968,27 @@ export default function AppX() {
         >
           <img alt="" className="bacon-title-icon" src="/favicon.svg" />
         </button>
-        <h1
-          className="bacon-title"
-          onClick={import.meta.env.DEV ? handleTitleDebugCopy : undefined}
-          ref={titleRef}
-        >
-          BaconDegrees420
-        </h1>
-        {copyStatus ? <span className="bacon-copy-status">{copyStatus}</span> : null}
+        <div className="bacon-title-wrap">
+          <h1
+            className="bacon-title"
+            onClick={import.meta.env.DEV ? handleTitleDebugCopy : undefined}
+            ref={titleRef}
+          >
+            BaconDegrees420
+          </h1>
+          {copyStatus ? (
+            <span
+              className={[
+                "bacon-copy-status",
+                copyStatusPlacement === "title"
+                  ? "bacon-copy-status-title"
+                  : "bacon-copy-status-toast",
+              ].join(" ")}
+            >
+              {copyStatus}
+            </span>
+          ) : null}
+        </div>
         <div className="bacon-title-actions">
           {renderConnectionMatchupPreview()}
           {!isBookmarksView ? (
