@@ -133,7 +133,7 @@ export function loadBookmarks(): BookmarkEntry[] {
     }
 
     return normalizeBookmarkEntries(JSON.parse(rawBookmarks));
-  } catch (error) {
+  } catch {
     return [];
   }
 }

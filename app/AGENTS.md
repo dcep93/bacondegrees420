@@ -8,3 +8,4 @@ Agent rules for this subtree:
 - Do not add `console.log`, `console.debug`, `console.warn`, or similar debug instrumentation in this subtree.
 - When debug logging is needed, record entries with the in-memory cinenerdle debug log in dev mode instead.
 - In dev mode, clicking the `BaconDegrees420` title copies the current debug log array to the clipboard.
+- Changes in this subtree must pass ESLint before handoff; run `npm run lint` in `/Users/danielcepeda/repos/bacondegrees420/app` and fix any failures.

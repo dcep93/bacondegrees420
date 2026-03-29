@@ -236,9 +236,9 @@ const Cinenerdle2 = memo(function Cinenerdle2({
 
   useEffect(() => {
     shouldSnapToBottomAfterLoadRef.current = hasLoadedPath(normalizedHash);
-  }, [navigationVersion]);
+  }, [navigationVersion, normalizedHash]);
 
-  const readHash = useCallback(() => hashRef.current, []);
+  const readHash = useCallback(() => hashRef.current, [hashRef]);
   const writeHash = useCallback(
     (nextHash: string, mode: "selection" | "navigation" = "navigation") => {
       const normalizedNextHash = normalizeHashValue(nextHash);

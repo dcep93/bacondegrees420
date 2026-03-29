@@ -66,7 +66,7 @@ function createFakeWindow(): FakeWindow {
         listeners.delete(listener);
       }
     },
-    postMessage(_message: unknown, _targetOrigin: string) {},
+    postMessage() {},
     setTimeout: globalThis.setTimeout.bind(globalThis),
     clearTimeout: globalThis.clearTimeout.bind(globalThis),
     dispatchMessage(message: unknown, source?: unknown) {
