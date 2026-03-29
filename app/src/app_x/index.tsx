@@ -68,12 +68,16 @@ import {
   getTmdbMovieCredits,
   getValidTmdbEntityId,
   normalizeName,
-  normalizeWhitespace,
   parseMoviePathLabel,
 } from "./generators/cinenerdle2/utils";
 import {
   isBookmarkPreviewCardSelectable,
 } from "./components/bookmark_preview";
+import {
+  compareRankedConnectionSuggestions,
+  compareRankedSearchableConnectionEntityRecords,
+  getConnectionSuggestionScore,
+} from "./connection_autocomplete";
 import FancyTooltip from "./components/fancy_tooltip";
 import {
   prefetchBestConnectionForYoungestSelectedCard,
@@ -459,50 +463,6 @@ async function getDirectConnectionKeysForYoungestSelectedCard(
         keyCount: keys.length,
       }),
     },
-  );
-}
-
-function stripSearchDiacritics(value: string): string {
-  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-}
-
-function getDirectSuggestionScore(normalizedQuery: string, normalizedLabel: string): number {
-  if (!normalizedQuery || !normalizedLabel.includes(normalizedQuery)) {
-    return -1;
-  }
-
-  if (normalizedLabel === normalizedQuery) {
-    return 400;
-  }
-
-  if (normalizedLabel.startsWith(normalizedQuery)) {
-    return 300;
-  }
-
-  if (normalizedLabel.split(/\s+/).some((word) => word.startsWith(normalizedQuery))) {
-    return 200;
-  }
-
-  return 100;
-}
-
-function getSuggestionScore(query: string, label: string): number {
-  const normalizedQuery = normalizeWhitespace(query).toLocaleLowerCase();
-  const normalizedLabel = normalizeWhitespace(label).toLocaleLowerCase();
-  const directScore = getDirectSuggestionScore(normalizedQuery, normalizedLabel);
-
-  if (directScore >= 0) {
-    return directScore;
-  }
-
-  const foldedQuery = stripSearchDiacritics(normalizedQuery);
-  if (foldedQuery !== normalizedQuery) {
-    return -1;
-  }
-
-  return getDirectSuggestionScore(
-    foldedQuery,
-    stripSearchDiacritics(normalizedLabel),
   );
 }
 
@@ -982,36 +942,15 @@ export default function AppX() {
         const candidateRecords = searchRecords
           .map((record) => ({
             record,
-            sortScore: getSuggestionScore(query, record.nameLower),
+            sortScore: getConnectionSuggestionScore(query, record.nameLower),
+            isConnectedToYoungestSelection: directConnectionKeys.has(record.key),
           }))
           .filter((item) => item.sortScore >= 0)
-          .sort((left, right) => {
-            const popularityDifference =
-              (right.record.popularity ?? 0) - (left.record.popularity ?? 0);
-            if (popularityDifference !== 0) {
-              return popularityDifference;
-            }
-
-            const rightIsConnected = directConnectionKeys.has(right.record.key) ? 1 : 0;
-            const leftIsConnected = directConnectionKeys.has(left.record.key) ? 1 : 0;
-            if (rightIsConnected !== leftIsConnected) {
-              return rightIsConnected - leftIsConnected;
-            }
-
-            if (right.sortScore !== left.sortScore) {
-              return right.sortScore - left.sortScore;
-            }
-
-            if (left.record.type !== right.record.type) {
-              return left.record.type === "person" ? -1 : 1;
-            }
-
-            return left.record.nameLower.localeCompare(right.record.nameLower);
-          })
+          .sort(compareRankedSearchableConnectionEntityRecords)
           .slice(0, 24);
 
         const nextSuggestions = Array.from(new Map((await Promise.all(
-          candidateRecords.map(async ({ record, sortScore }) => {
+          candidateRecords.map(async ({ record, sortScore, isConnectedToYoungestSelection }) => {
             const entity = await hydrateConnectionEntityFromSearchRecord(record);
             if (entity.connectionCount <= 0) {
               return null;
@@ -1019,10 +958,10 @@ export default function AppX() {
             return {
               ...entity,
               popularity: record.popularity ?? 0,
-              isConnectedToYoungestSelection: directConnectionKeys.has(record.key),
+              isConnectedToYoungestSelection,
               sortScore: Math.max(
                 sortScore,
-                getSuggestionScore(query, entity.label),
+                getConnectionSuggestionScore(query, entity.label),
               ),
             };
           }),
@@ -1030,25 +969,7 @@ export default function AppX() {
           .filter((entity): entity is ConnectionSuggestion => entity !== null)
           .map((entity) => [entity.key, entity] as const))
           .values())
-          .sort((left, right) => {
-            if (right.popularity !== left.popularity) {
-              return right.popularity - left.popularity;
-            }
-
-            if (left.isConnectedToYoungestSelection !== right.isConnectedToYoungestSelection) {
-              return Number(right.isConnectedToYoungestSelection) - Number(left.isConnectedToYoungestSelection);
-            }
-
-            if (right.sortScore !== left.sortScore) {
-              return right.sortScore - left.sortScore;
-            }
-
-            if (left.kind !== right.kind) {
-              return left.kind === "person" ? -1 : 1;
-            }
-
-            return left.label.localeCompare(right.label);
-          })
+          .sort(compareRankedConnectionSuggestions)
           .slice(0, 12);
 
         if (autocompleteRequestIdRef.current !== requestId) {
