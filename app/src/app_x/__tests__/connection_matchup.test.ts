@@ -28,7 +28,7 @@ const indexedDbMock = vi.hoisted(() => ({
 
 vi.mock("../generators/cinenerdle2/indexed_db", () => indexedDbMock);
 
-import { resolveConnectionMatchupPreview } from "../index";
+import { resolveConnectionMatchupPreview } from "../connection_matchup_preview";
 
 describe("resolveConnectionMatchupPreview", () => {
   it("suggests a spoiler connected to the youngest selected movie", async () => {
