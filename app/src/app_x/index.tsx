@@ -65,7 +65,6 @@ import {
 import {
   formatMoviePathLabel,
   getAssociatedPeopleFromMovieCredits,
-  getSnapshotConnectionLabels,
   getTmdbMovieCredits,
   getValidTmdbEntityId,
   normalizeName,
@@ -400,26 +399,23 @@ async function getDirectConnectionKeysForYoungestSelectedCard(
     }
 
     const personKeys = new Set<string>();
+    const tmdbCredits = getAssociatedPeopleFromMovieCredits(movieRecord);
 
-    movieRecord.personConnectionKeys.forEach((personName) => {
-      if (normalizeName(personName)) {
-        personKeys.add(getPersonConnectionEntityKey(personName));
-      }
-    });
-
-    getSnapshotConnectionLabels(movieRecord).forEach((personName) => {
-      if (normalizeName(personName)) {
-        personKeys.add(getPersonConnectionEntityKey(personName));
-      }
-    });
-
-    getAssociatedPeopleFromMovieCredits(movieRecord).forEach((credit) => {
-      const personName = credit.name ?? "";
-      const personTmdbId = getValidTmdbEntityId(credit.id);
-      if (personTmdbId || normalizeName(personName)) {
-        personKeys.add(getPersonConnectionEntityKey(personName, personTmdbId));
-      }
-    });
+    if (tmdbCredits.length > 0) {
+      tmdbCredits.forEach((credit) => {
+        const personName = credit.name ?? "";
+        const personTmdbId = getValidTmdbEntityId(credit.id);
+        if (personTmdbId || normalizeName(personName)) {
+          personKeys.add(getPersonConnectionEntityKey(personName, personTmdbId));
+        }
+      });
+    } else {
+      movieRecord.personConnectionKeys.forEach((personName) => {
+        if (normalizeName(personName)) {
+          personKeys.add(getPersonConnectionEntityKey(personName));
+        }
+      });
+    }
 
     return [...personKeys];
   }

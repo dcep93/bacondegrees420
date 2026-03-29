@@ -39,11 +39,13 @@ describe("resolveConnectionMatchupPreview", () => {
       year: "2012",
       popularity: 28.6,
       personConnectionKeys: ["andrew garfield", "emma stone", "irrfan khan"],
-      starterPeopleByRole: {
-        cast: ["Andrew Garfield", "Emma Stone", "Irrfan Khan"],
-        directors: [],
-        writers: [],
-        composers: [],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          { id: 37625, name: "Andrew Garfield", order: 0, popularity: 88 },
+          { id: 54693, name: "Emma Stone", order: 1, popularity: 95 },
+          { id: 86002, name: "Irrfan Khan", order: 2, popularity: 61 },
+        ],
+        crew: [],
       },
     });
     const theAmazingSpiderMan2 = makeFilmRecord({
@@ -52,12 +54,13 @@ describe("resolveConnectionMatchupPreview", () => {
       title: "The Amazing Spider-Man 2",
       year: "2014",
       popularity: 22.4,
-      personConnectionKeys: ["andrew garfield", "emma stone"],
-      starterPeopleByRole: {
-        cast: ["Andrew Garfield", "Emma Stone"],
-        directors: [],
-        writers: [],
-        composers: [],
+      personConnectionKeys: ["emma stone", "andrew garfield"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          { id: 54693, name: "Emma Stone", order: 0, popularity: 95 },
+          { id: 37625, name: "Andrew Garfield", order: 1, popularity: 88 },
+        ],
+        crew: [],
       },
     });
     const people = [
@@ -142,15 +145,12 @@ describe("resolveConnectionMatchupPreview", () => {
       titleYear: "project hail mary (2026)",
       popularity: 15,
       personConnectionKeys: ["ryan gosling", "andy weir", "drew goddard"],
-      starterPeopleByRole: {
-        cast: ["Ryan Gosling"],
-        directors: [],
-        writers: ["Andy Weir", "Drew Goddard"],
-        composers: [],
-      },
       rawTmdbMovieCreditsResponse: {
-        cast: [{ id: 30614, name: "Ryan Gosling", popularity: 90 }],
-        crew: [{ id: 47506, name: "Drew Goddard", job: "Screenplay", popularity: 10 }],
+        cast: [{ id: 30614, name: "Ryan Gosling", order: 0, popularity: 90 }],
+        crew: [
+          { id: 1352085, name: "Andy Weir", order: 1, job: "Writer", popularity: 20 },
+          { id: 47506, name: "Drew Goddard", order: 2, job: "Screenplay", popularity: 10 },
+        ],
       },
     };
     const theMartian = {
@@ -163,15 +163,12 @@ describe("resolveConnectionMatchupPreview", () => {
       titleYear: "the martian (2015)",
       popularity: 20,
       personConnectionKeys: ["andy weir", "drew goddard"],
-      starterPeopleByRole: {
-        cast: [],
-        directors: [],
-        writers: ["Andy Weir", "Drew Goddard"],
-        composers: [],
-      },
       rawTmdbMovieCreditsResponse: {
         cast: [],
-        crew: [{ id: 47506, name: "Drew Goddard", job: "Screenplay", popularity: 10 }],
+        crew: [
+          { id: 1352085, name: "Andy Weir", order: 0, job: "Writer", popularity: 20 },
+          { id: 47506, name: "Drew Goddard", order: 1, job: "Screenplay", popularity: 10 },
+        ],
       },
     };
     const people = [

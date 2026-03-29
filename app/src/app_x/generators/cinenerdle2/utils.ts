@@ -207,11 +207,11 @@ function isAllowedConnectionCrewJob(job: string | undefined): boolean {
   );
 }
 
-function isAllowedMoviePersonCredit(credit: TmdbPersonCredit): boolean {
-  if (credit.character) {
-    return !credit.character.toLowerCase().includes("(uncredited)");
-  }
+function isAllowedMovieCastCredit(credit: TmdbPersonCredit): boolean {
+  return !normalizeName(credit.character ?? "").includes("(uncredited)");
+}
 
+function isAllowedMovieCrewCredit(credit: TmdbPersonCredit): boolean {
   return isAllowedConnectionCrewJob(credit.job);
 }
 
@@ -222,14 +222,14 @@ export function getAssociatedPeopleFromMovieCredits(
     movieRecord?.rawTmdbMovieCreditsResponse ?? {};
   const seenPeople = new Set<string>();
   const castQueue = [...(credits.cast ?? [])]
-    .filter(isAllowedMoviePersonCredit)
+    .filter(isAllowedMovieCastCredit)
     .map((credit) => ({
       ...credit,
       creditType: "cast" as const,
     }))
     .sort((left, right) => left.order - right.order);
   const crewQueue = (credits.crew ?? [])
-    .filter(isAllowedMoviePersonCredit)
+    .filter(isAllowedMovieCrewCredit)
     .map((credit) => ({
       ...credit,
       creditType: "crew" as const,

@@ -133,19 +133,8 @@ describe("daily starter records and cards", () => {
       titleYear: "heat (1995)",
       popularity: 0,
       rawCinenerdleDailyStarter: expect.objectContaining({ title: "Heat (1995)" }),
-      starterPeopleByRole: {
-        cast: ["Al Pacino", " al pacino ", "Robert De Niro"],
-        directors: ["Michael Mann"],
-        writers: ["MICHAEL MANN"],
-        composers: ["Elliot Goldenthal"],
-      },
       isCinenerdleDailyStarter: 1,
-      personConnectionKeys: [
-        "al pacino",
-        "robert de niro",
-        "michael mann",
-        "elliot goldenthal",
-      ],
+      personConnectionKeys: [],
     });
   });
 
@@ -163,7 +152,7 @@ describe("daily starter records and cards", () => {
     expect(filmRecord.titleYear).toBe("heat");
   });
 
-  it("creates a daily starter movie card with starter poster precedence and genre summary", () => {
+  it("creates a daily starter movie card using TMDb poster data and no starter genre summary", () => {
     const filmRecord = makeFilmRecord({
       id: "starter-1",
       popularity: 12,
@@ -186,9 +175,9 @@ describe("daily starter records and cards", () => {
       year: "1995",
       popularity: 12,
       popularitySource: "TMDb movie popularity from the cached movie record.",
-      imageUrl: "https://img.test/heat.jpg",
+      imageUrl: `${TMDB_POSTER_BASE_URL}/w185/tmdb-heat.jpg`,
       subtitle: "1995",
-      subtitleDetail: "Crime • Drama",
+      subtitleDetail: "",
       connectionCount: 1,
       sources: [
         { iconUrl: TMDB_ICON_URL, label: "TMDb" },
@@ -201,7 +190,7 @@ describe("daily starter records and cards", () => {
     });
   });
 
-  it("falls back to a generic movie subtitle and empty detail when year and genres are missing", () => {
+  it("falls back to a generic movie subtitle and empty detail when year is missing", () => {
     const filmRecord = makeFilmRecord({
       year: "",
       personConnectionKeys: ["al pacino", "robert de niro"],

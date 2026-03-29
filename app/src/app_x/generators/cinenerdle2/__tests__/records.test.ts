@@ -89,7 +89,7 @@ describe("withDerivedPersonFields", () => {
 });
 
 describe("withDerivedFilmFields", () => {
-  it("normalizes derived film fields and merges TMDb plus starter people", () => {
+  it("normalizes derived film fields from TMDb movie credits only", () => {
     const filmRecord = withDerivedFilmFields(
       makeFilmRecord({
         id: "starter-heat",
@@ -127,12 +127,6 @@ describe("withDerivedFilmFields", () => {
             }),
           ],
         },
-        starterPeopleByRole: {
-          cast: ["Val Kilmer"],
-          directors: ["Michael Mann"],
-          writers: ["Michael Mann"],
-          composers: ["Elliot Goldenthal"],
-        },
         rawCinenerdleDailyStarter: makeStarter(),
         isCinenerdleDailyStarter: undefined,
       }),
@@ -142,13 +136,7 @@ describe("withDerivedFilmFields", () => {
     expect(filmRecord.lookupKey).toBe("heat (1995)");
     expect(filmRecord.titleLower).toBe("heat");
     expect(filmRecord.titleYear).toBe("heat (1995)");
-    expect(filmRecord.personConnectionKeys).toEqual([
-      "al pacino",
-      "robert de niro",
-      "michael mann",
-      "val kilmer",
-      "elliot goldenthal",
-    ]);
+    expect(filmRecord.personConnectionKeys).toEqual(["al pacino", "robert de niro", "michael mann"]);
     expect(filmRecord.personConnectionKeys).not.toContain("mark avery");
     expect(filmRecord.isCinenerdleDailyStarter).toBe(1);
   });
@@ -184,12 +172,6 @@ describe("buildFilmRecord", () => {
       rawCinenerdleDailyStarter: makeStarter({
         title: "Heat (1995)",
       }),
-      starterPeopleByRole: {
-        cast: ["Al Pacino"],
-        directors: ["Michael Mann"],
-        writers: ["Michael Mann"],
-        composers: ["Elliot Goldenthal"],
-      },
       isCinenerdleDailyStarter: 1,
       rawTmdbMovieCreditsResponse: {
         cast: [makePersonCredit({ id: 1, name: "Al Pacino" })],
@@ -213,7 +195,6 @@ describe("buildFilmRecord", () => {
     expect(filmRecord.popularity).toBe(99);
     expect(filmRecord.rawTmdbMovie).toEqual(tmdbFilm);
     expect(filmRecord.rawCinenerdleDailyStarter).toEqual(existingFilmRecord.rawCinenerdleDailyStarter);
-    expect(filmRecord.starterPeopleByRole).toEqual(existingFilmRecord.starterPeopleByRole);
     expect(filmRecord.rawTmdbMovieCreditsResponse).toEqual(existingFilmRecord.rawTmdbMovieCreditsResponse);
     expect(filmRecord.tmdbCreditsSavedAt).toBe("2026-03-27T00:00:00.000Z");
     expect(filmRecord.tmdbSavedAt).toBe("2026-03-28T12:34:56.000Z");

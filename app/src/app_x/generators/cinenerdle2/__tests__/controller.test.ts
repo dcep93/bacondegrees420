@@ -104,12 +104,6 @@ describe("buildBookmarkPreviewCardsFromHash", () => {
           }),
         ],
       },
-      starterPeopleByRole: {
-        cast: [],
-        directors: [],
-        writers: ["Andy Weir"],
-        composers: [],
-      },
     });
 
     indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (title: string, year: string) =>
@@ -138,7 +132,7 @@ describe("buildBookmarkPreviewCardsFromHash", () => {
     );
   });
 
-  it("uses a cached snapshot person record when the movie credits omit that person", async () => {
+  it("uses a cached person record when the movie credits omit that person", async () => {
     const andyWeirRecord = makePersonRecord({
       id: 1352085,
       tmdbId: 1352085,
@@ -171,12 +165,6 @@ describe("buildBookmarkPreviewCardsFromHash", () => {
           }),
         ],
       },
-      starterPeopleByRole: {
-        cast: [],
-        directors: [],
-        writers: ["Andy Weir", "Drew Goddard"],
-        composers: [],
-      },
     });
 
     indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (title: string, year: string) =>
@@ -202,6 +190,56 @@ describe("buildBookmarkPreviewCardsFromHash", () => {
         hasCachedTmdbSource: true,
       }),
     );
+  });
+
+  it("keeps movie child rows in the TMDb cast-order and crew-order merge sequence", async () => {
+    const heatRecord = makeFilmRecord({
+      id: "heat-1995",
+      tmdbId: 50,
+      title: "Heat",
+      year: "1995",
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({ id: 1, name: "Al Pacino", order: 1, popularity: 50 }),
+          makePersonCredit({ id: 2, name: "Robert De Niro", order: 0, popularity: 80 }),
+        ],
+        crew: [
+          makePersonCredit({
+            id: 3,
+            name: "Aaron Sorkin",
+            order: 10,
+            creditType: undefined,
+            character: undefined,
+            job: "Screenplay",
+            popularity: 60,
+          }),
+          makePersonCredit({
+            id: 4,
+            name: "Michael Mann",
+            order: 11,
+            creditType: undefined,
+            character: undefined,
+            job: "Director",
+            popularity: 90,
+          }),
+        ],
+      },
+    });
+
+    indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (title: string, year: string) =>
+      title === "Heat" && year === "1995" ? heatRecord : null,
+    );
+    indexedDbMock.getPersonRecordById.mockResolvedValue(null);
+    indexedDbMock.getPersonRecordByName.mockResolvedValue(null);
+
+    const tree = await buildTreeFromHash("#film|Heat+(1995)");
+
+    expect(tree[1]?.map((node) => node.data.name)).toEqual([
+      "Robert De Niro",
+      "Aaron Sorkin",
+      "Michael Mann",
+      "Al Pacino",
+    ]);
   });
 
   it("preserves escape segments as break preview cards", async () => {

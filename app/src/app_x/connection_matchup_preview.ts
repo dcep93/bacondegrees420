@@ -20,7 +20,6 @@ import {
   getMoviePosterUrl,
   parseMoviePathLabel,
   getPersonProfileImageUrl,
-  getSnapshotConnectionLabels,
   getTmdbMovieCredits,
   getValidTmdbEntityId,
   normalizeName,
@@ -95,23 +94,21 @@ function getPersonPopularity(personRecord: PersonRecord): number {
 function getMovieConnectedPersonLabels(movieRecord: FilmRecord): Map<string, string> {
   const labelsByName = new Map<string, string>();
 
-  movieRecord.personConnectionKeys.forEach((personName) => {
-    const normalizedPersonName = normalizeName(personName);
-    const trimmedPersonName = normalizeWhitespace(personName);
-    if (normalizedPersonName && trimmedPersonName && !labelsByName.has(normalizedPersonName)) {
-      labelsByName.set(normalizedPersonName, trimmedPersonName);
-    }
-  });
+  const credits = getAssociatedPeopleFromMovieCredits(movieRecord);
 
-  getSnapshotConnectionLabels(movieRecord).forEach((personName) => {
-    const normalizedPersonName = normalizeName(personName);
-    const trimmedPersonName = normalizeWhitespace(personName);
-    if (normalizedPersonName && trimmedPersonName) {
-      labelsByName.set(normalizedPersonName, trimmedPersonName);
-    }
-  });
+  if (credits.length === 0) {
+    movieRecord.personConnectionKeys.forEach((personName) => {
+      const normalizedPersonName = normalizeName(personName);
+      const trimmedPersonName = normalizeWhitespace(personName);
+      if (normalizedPersonName && trimmedPersonName && !labelsByName.has(normalizedPersonName)) {
+        labelsByName.set(normalizedPersonName, trimmedPersonName);
+      }
+    });
 
-  getAssociatedPeopleFromMovieCredits(movieRecord).forEach((credit) => {
+    return labelsByName;
+  }
+
+  credits.forEach((credit) => {
     const normalizedPersonName = normalizeName(credit.name ?? "");
     const trimmedPersonName = normalizeWhitespace(credit.name ?? "");
     if (normalizedPersonName && trimmedPersonName) {
@@ -151,15 +148,16 @@ function getPersonConnectedMovieLabels(personRecord: PersonRecord): Map<string, 
 function isMovieConnectedToPerson(movieRecord: FilmRecord, personRecord: PersonRecord): boolean {
   const personTmdbId = getValidTmdbEntityId(personRecord.tmdbId ?? personRecord.id);
   const normalizedPersonName = normalizeName(personRecord.name);
+  const credits = getAssociatedPeopleFromMovieCredits(movieRecord);
 
-  if (
-    normalizedPersonName &&
-    movieRecord.personConnectionKeys.some((personName) => normalizeName(personName) === normalizedPersonName)
-  ) {
-    return true;
+  if (credits.length === 0) {
+    return Boolean(
+      normalizedPersonName &&
+      movieRecord.personConnectionKeys.some((personName) => normalizeName(personName) === normalizedPersonName),
+    );
   }
 
-  return getAssociatedPeopleFromMovieCredits(movieRecord).some((credit) => {
+  return credits.some((credit) => {
     const creditTmdbId = getValidTmdbEntityId(credit.id);
     if (personTmdbId && creditTmdbId) {
       return personTmdbId === creditTmdbId;

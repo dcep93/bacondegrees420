@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { TMDB_POSTER_BASE_URL } from "../constants";
-import type { CinenerdleDailyStarter } from "../types";
 import {
-  buildPeopleByRoleFromStarter,
-  createEmptyPeopleByRole,
   formatFallbackPersonDisplayName,
   formatMoviePathLabel,
   getAssociatedPeopleFromMovieCredits,
@@ -13,14 +10,11 @@ import {
   getMovieCardKey,
   getMovieKeyFromCredit,
   getMoviePosterUrl,
-  getMovieCreditPersonPopularityLookup,
   getMovieTitleFromCredit,
   getMovieYearFromCredit,
   getPersonCardKey,
   getPersonProfileImageUrl,
   getPosterUrl,
-  getSnapshotConnectionLabels,
-  getSnapshotPeopleByRole,
   getTmdbMovieCredits,
   getUniqueSortedTmdbMovieCredits,
   getValidTmdbEntityId,
@@ -135,11 +129,11 @@ describe("poster helpers", () => {
           },
         }),
       ),
-    ).toBe("https://img.test/starter.jpg");
+    ).toBe(`${TMDB_POSTER_BASE_URL}/w185/tmdb.jpg`);
     expect(getMoviePosterUrl(makeFilmRecord())).toBeNull();
   });
 
-  it("falls back to TMDb poster and null profile values when starter data is missing", () => {
+  it("uses TMDb posters and null profile values when starter data is missing", () => {
     expect(
       getMoviePosterUrl(
         makeFilmRecord({
@@ -228,33 +222,61 @@ describe("tmdb credit aggregation", () => {
     expect(getUniqueSortedTmdbMovieCredits(personRecord).map((credit) => credit.id)).toEqual([6, 5]);
   });
 
-  it("dedupes people identities, filters unsupported crew jobs, and sorts by popularity", () => {
+  it("merges cast order with crew response order while preserving dedupe and filtering", () => {
     const filmRecord = makeFilmRecord({
       rawTmdbMovieCreditsResponse: {
         cast: [
-          makePersonCredit({ id: 1, name: "Al Pacino", popularity: 80 }),
-          makePersonCredit({ id: 1, name: "Al Pacino", popularity: 20 }),
-          makePersonCredit({ id: 2, name: "Bit Part", character: "Clerk (uncredited)", popularity: 99 }),
-          makePersonCredit({ id: undefined, name: "Kenneth Collard", popularity: 40 }),
-          makePersonCredit({ id: undefined, name: "  kenneth   collard ", popularity: 10 }),
+          makePersonCredit({ id: 1, name: "Al Pacino", order: 1, popularity: 50 }),
+          makePersonCredit({ id: 2, name: "Robert De Niro", order: 0, popularity: 80 }),
+          makePersonCredit({
+            id: 3,
+            name: "Bit Part",
+            order: 2,
+            character: "Clerk (uncredited)",
+            popularity: 99,
+          }),
+          makePersonCredit({ id: undefined, name: "Kenneth Collard", order: 3, popularity: 40 }),
+          makePersonCredit({ id: undefined, name: "  kenneth   collard ", order: 4, popularity: 10 }),
         ],
         crew: [
           makePersonCredit({
-            id: 3,
+            id: 4,
+            name: "Aaron Sorkin",
+            order: 99,
+            creditType: undefined,
+            character: undefined,
+            job: "Screenplay",
+            department: "Writing",
+            popularity: 60,
+          }),
+          makePersonCredit({
+            id: 5,
             name: "Michael Mann",
+            order: 98,
             creditType: undefined,
             character: undefined,
             job: "Director",
             department: "Directing",
-            popularity: 70,
+            popularity: 90,
           }),
           makePersonCredit({
-            id: 4,
+            id: 6,
             name: "Producer Person",
+            order: 97,
             creditType: undefined,
             character: undefined,
             job: "Producer",
             department: "Production",
+            popularity: 100,
+          }),
+          makePersonCredit({
+            id: 1,
+            name: "Al Pacino",
+            order: 96,
+            creditType: undefined,
+            character: undefined,
+            job: "Writer",
+            department: "Writing",
             popularity: 100,
           }),
         ],
@@ -262,10 +284,37 @@ describe("tmdb credit aggregation", () => {
     });
 
     expect(getAssociatedPeopleFromMovieCredits(filmRecord).map((credit) => credit.name)).toEqual([
-      "Bit Part",
-      "Al Pacino",
+      "Robert De Niro",
+      "Aaron Sorkin",
       "Michael Mann",
+      "Al Pacino",
       "Kenneth Collard",
+    ]);
+  });
+
+  it("prefers cast when cast and crew heads tie on popularity", () => {
+    const filmRecord = makeFilmRecord({
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({ id: 1, name: "Cast Head", order: 0, popularity: 60 }),
+        ],
+        crew: [
+          makePersonCredit({
+            id: 2,
+            name: "Crew Head",
+            order: 10,
+            creditType: undefined,
+            character: undefined,
+            job: "Director",
+            popularity: 60,
+          }),
+        ],
+      },
+    });
+
+    expect(getAssociatedPeopleFromMovieCredits(filmRecord).map((credit) => credit.name)).toEqual([
+      "Cast Head",
+      "Crew Head",
     ]);
   });
 
@@ -282,98 +331,5 @@ describe("tmdb credit aggregation", () => {
     expect(getAssociatedPeopleFromMovieCredits(filmRecord).map((credit) => credit.name)).toEqual([
       "Val Kilmer",
     ]);
-  });
-
-  it("keeps the highest raw-credit popularity by normalized person name for fallback records", () => {
-    const filmRecord = makeFilmRecord({
-      rawTmdbMovieCreditsResponse: {
-        cast: [
-          makePersonCredit({ id: 1, name: "Kenneth Collard", popularity: 40 }),
-          makePersonCredit({ id: undefined, name: "  kenneth   collard ", popularity: 10 }),
-        ],
-        crew: [
-          makePersonCredit({
-            id: 2116590,
-            name: "Aaron Barlow",
-            creditType: undefined,
-            character: undefined,
-            job: "Senior Animator",
-            department: "Visual Effects",
-            popularity: 0.1669,
-          }),
-          makePersonCredit({
-            id: undefined,
-            name: "",
-            creditType: undefined,
-            character: undefined,
-            job: "Director",
-            popularity: 999,
-          }),
-        ],
-      },
-    });
-
-    const popularityByName = getMovieCreditPersonPopularityLookup(filmRecord);
-
-    expect(popularityByName.get("kenneth collard")).toBe(40);
-    expect(popularityByName.get("aaron barlow")).toBe(0.1669);
-    expect(popularityByName.has("")).toBe(false);
-  });
-});
-
-describe("starter and snapshot helpers", () => {
-  it("creates empty people-by-role buckets", () => {
-    expect(createEmptyPeopleByRole()).toEqual({
-      cast: [],
-      directors: [],
-      writers: [],
-      composers: [],
-    });
-  });
-
-  it("filters falsey starter names and preserves order", () => {
-    const starter = {
-      cast: ["Tom Hanks", null, "Meg Ryan"],
-      directors: [undefined, "Nora Ephron"],
-      writers: ["", "Delia Ephron"],
-      composers: ["Marc Shaiman", false],
-    } as unknown as CinenerdleDailyStarter;
-
-    expect(buildPeopleByRoleFromStarter(starter)).toEqual({
-      cast: ["Tom Hanks", "Meg Ryan"],
-      directors: ["Nora Ephron"],
-      writers: ["Delia Ephron"],
-      composers: ["Marc Shaiman"],
-    });
-  });
-
-  it("returns empty role buckets when the starter is missing", () => {
-    expect(buildPeopleByRoleFromStarter(undefined)).toEqual(createEmptyPeopleByRole());
-  });
-
-  it("returns snapshot people and flattened labels with an empty fallback", () => {
-    const filmRecord = makeFilmRecord({
-      starterPeopleByRole: {
-        cast: ["Al Pacino"],
-        directors: ["Michael Mann"],
-        writers: ["Michael Mann"],
-        composers: ["Elliot Goldenthal"],
-      },
-    });
-
-    expect(getSnapshotPeopleByRole(filmRecord)).toEqual({
-      cast: ["Al Pacino"],
-      directors: ["Michael Mann"],
-      writers: ["Michael Mann"],
-      composers: ["Elliot Goldenthal"],
-    });
-    expect(getSnapshotConnectionLabels(filmRecord)).toEqual([
-      "Al Pacino",
-      "Michael Mann",
-      "Michael Mann",
-      "Elliot Goldenthal",
-    ]);
-    expect(getSnapshotPeopleByRole(null)).toEqual(createEmptyPeopleByRole());
-    expect(getSnapshotConnectionLabels(null)).toEqual([]);
   });
 });
