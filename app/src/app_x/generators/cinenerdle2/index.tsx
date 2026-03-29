@@ -7,10 +7,6 @@ import {
 import type { GeneratorNode, GeneratorTree } from "../../types/generator";
 import type { ConnectionEntity } from "./connection_graph";
 import { useCinenerdleController } from "./controller";
-import {
-  addCinenerdleDebugLog,
-  getCinenerdleDebugNow,
-} from "./debug";
 export {
   CinenerdleBreakBar,
   CinenerdleEntityCard,
@@ -42,18 +38,6 @@ type Cinenerdle2Props = {
   onHashWrite: (nextHash: string, mode: "selection" | "navigation") => void;
   resetVersion: number;
 };
-
-function getDebugDurationMs(startTime: number): number {
-  return Number((getCinenerdleDebugNow() - startTime).toFixed(1));
-}
-
-function getTreeDebugSummary(tree: GeneratorTree<CinenerdleCard>) {
-  return {
-    rowCount: tree.length,
-    rowSizes: tree.map((row) => row.length),
-    selectedKinds: tree.map((row) => row.find((node) => node.selected)?.data.kind ?? null),
-  };
-}
 
 function getCardTmdbEntityId(card: CinenerdleCard): number | null {
   if (card.kind === "movie" || card.kind === "person") {
@@ -212,8 +196,6 @@ const Cinenerdle2 = memo(function Cinenerdle2({
 }: Cinenerdle2Props) {
   const normalizedHash = normalizeHashValue(hashValue);
   const hashRef = useRef(normalizedHash);
-  const mountStartRef = useRef(getCinenerdleDebugNow());
-  const hasLoggedFirstVisibleTreeRef = useRef(false);
   const shouldSnapToBottomAfterLoadRef = useRef(hasLoadedPath(normalizedHash));
   const pendingDataRefreshFrameRef = useRef<number | null>(null);
   const lastYoungestSelectedCardRef = useRef<
@@ -226,34 +208,17 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   }, [normalizedHash]);
 
   useEffect(() => {
-    addCinenerdleDebugLog("cinenerdle component mounted", {
-      hash: normalizedHash,
-      navigationVersion,
-      resetVersion,
-    });
-  }, [navigationVersion, normalizedHash, resetVersion]);
-
-  useEffect(() => {
     primeTmdbApiKeyOnInit();
   }, []);
 
   useEffect(() => {
     function handleRecordsUpdated() {
       if (pendingDataRefreshFrameRef.current !== null) {
-        addCinenerdleDebugLog("records update coalesced", {
-          hash: hashRef.current,
-        });
         return;
       }
 
-      addCinenerdleDebugLog("records update scheduled", {
-        hash: hashRef.current,
-      });
       pendingDataRefreshFrameRef.current = window.requestAnimationFrame(() => {
         pendingDataRefreshFrameRef.current = null;
-        addCinenerdleDebugLog("records update applied", {
-          hash: hashRef.current,
-        });
         setDataRefreshVersion((version) => version + 1);
       });
     }
@@ -333,11 +298,6 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   }, []);
   const generatorResetKey = `${resetVersion}:${navigationVersion}:${dataRefreshVersion}`;
 
-  useEffect(() => {
-    mountStartRef.current = getCinenerdleDebugNow();
-    hasLoggedFirstVisibleTreeRef.current = false;
-  }, [generatorResetKey]);
-
   return (
     <AbstractGenerator
       activationRequest={activationRequest}
@@ -348,15 +308,6 @@ const Cinenerdle2 = memo(function Cinenerdle2({
       onActivationHandled={onHighlightedConnectionEntitySelectionHandled}
       onFocusRequestMatchChange={onHighlightedConnectionEntityYoungestGenerationMatchChange}
       onTreeChange={(tree) => {
-        if (!hasLoggedFirstVisibleTreeRef.current && tree.length > 0) {
-          hasLoggedFirstVisibleTreeRef.current = true;
-          addCinenerdleDebugLog("cinenerdle first visible tree", {
-            durationMs: getDebugDurationMs(mountStartRef.current),
-            hash: hashRef.current,
-            tree: getTreeDebugSummary(tree),
-          });
-        }
-
         if (shouldSnapToBottomAfterLoadRef.current && tree.length > 0) {
           shouldSnapToBottomAfterLoadRef.current = false;
           snapScrollToPageBottom();

@@ -34,11 +34,6 @@ import {
   prepareSelectedPerson,
 } from "./tmdb";
 import { CinenerdleBreakBar, CinenerdleEntityCard } from "./entity_card";
-import {
-  addCinenerdleDebugLog,
-  clearCinenerdleDebugLog,
-  getCinenerdleDebugNow,
-} from "./debug";
 import { pickBestPersonRecord } from "./records";
 import type { FilmRecord, PersonRecord } from "./types";
 import {
@@ -91,46 +86,6 @@ type SelectedPathHydrationTask = {
 type BuildTreeOptions = {
   dailyStarterSource?: "cache" | "network";
 };
-
-function getDebugDurationMs(startTime: number): number {
-  return Number((getCinenerdleDebugNow() - startTime).toFixed(1));
-}
-
-function getTreeDebugSummary(tree: GeneratorTree<CinenerdleCard>) {
-  return {
-    rowCount: tree.length,
-    rowSizes: tree.map((row) => row.length),
-    selectedKinds: tree.map((row) => row.find((node) => node.selected)?.data.kind ?? null),
-  };
-}
-
-function getSettledResultSummary(results: PromiseSettledResult<unknown>[]) {
-  let fulfilled = 0;
-  let rejected = 0;
-
-  results.forEach((result) => {
-    if (result.status === "fulfilled") {
-      fulfilled += 1;
-      return;
-    }
-
-    rejected += 1;
-  });
-
-  return {
-    fulfilled,
-    rejected,
-  };
-}
-
-function getHydrationTaskSummary(tasks: SelectedPathHydrationTask[]) {
-  return tasks.map((task) => ({
-    key: task.key,
-    kind: task.kind,
-    index: task.index,
-    label: task.label,
-  }));
-}
 
 function createBreakCard(): Extract<CinenerdleCard, { kind: "break" }> {
   return {
@@ -525,44 +480,24 @@ async function hydrateDailyStartersAndRedraw(
   setTree: (nextTree: GeneratorTree<CinenerdleCard>) => void,
   readHash: () => string,
 ) {
-  const hydrationStart = getCinenerdleDebugNow();
   const starterFilms = await fetchCinenerdleDailyStarterMovies();
   if (starterFilms.length === 0) {
-    addCinenerdleDebugLog("daily starter hydration skipped", {
-      durationMs: getDebugDurationMs(hydrationStart),
-      reason: "no starters",
-    });
     return;
   }
 
-  addCinenerdleDebugLog("daily starter hydration started", {
-    hash: readHash(),
-    starterCount: starterFilms.length,
-  });
   await hydrateCinenerdleDailyStarterMovies(starterFilms);
 
   const refreshedTree = await buildTreeFromHash(readHash());
   setTree(refreshedTree);
-  addCinenerdleDebugLog("daily starter hydration finished", {
-    durationMs: getDebugDurationMs(hydrationStart),
-    starterCount: starterFilms.length,
-    tree: getTreeDebugSummary(refreshedTree),
-  });
 }
 
 async function hydrateMissingSelectedPathItemsAndRedraw(
   setTree: (nextTree: GeneratorTree<CinenerdleCard>) => void,
   readHash: () => string,
 ) {
-  const hydrationStart = getCinenerdleDebugNow();
   const initialHash = readHash();
   const originalSelectedPathNodes = getSelectedEntityPathNodes(initialHash);
   if (originalSelectedPathNodes.length === 0) {
-    addCinenerdleDebugLog("selected path hydration skipped", {
-      durationMs: getDebugDurationMs(hydrationStart),
-      hash: initialHash,
-      reason: "no selected path items",
-    });
     return;
   }
 
@@ -571,89 +506,36 @@ async function hydrateMissingSelectedPathItemsAndRedraw(
   );
   const hydrationTasks = await buildSelectedPathHydrationTasks(selectedPathNodes);
   if (hydrationTasks.length === 0) {
-    addCinenerdleDebugLog("selected path hydration skipped", {
-      durationMs: getDebugDurationMs(hydrationStart),
-      hash: initialHash,
-      reason: "all selected path items already hydrated",
-    });
     return;
   }
 
-  addCinenerdleDebugLog("selected path hydration started", {
-    hash: initialHash,
-    taskCount: hydrationTasks.length,
-    tasks: getHydrationTaskSummary(hydrationTasks),
-  });
-  const hydrationResults = await Promise.allSettled(
+  await Promise.allSettled(
     hydrationTasks.map((task) => task.run()),
   );
-  addCinenerdleDebugLog("selected path hydration settled", {
-    durationMs: getDebugDurationMs(hydrationStart),
-    hash: initialHash,
-    ...getSettledResultSummary(hydrationResults),
-  });
   if (readHash() !== initialHash) {
-    addCinenerdleDebugLog("selected path hydration aborted", {
-      durationMs: getDebugDurationMs(hydrationStart),
-      initialHash,
-      currentHash: readHash(),
-      stage: "after primary hydration",
-    });
     return;
   }
 
   let refreshedTree = await buildTreeFromHash(readHash());
   setTree(refreshedTree);
-  addCinenerdleDebugLog("selected path hydration redrew tree", {
-    durationMs: getDebugDurationMs(hydrationStart),
-    hash: initialHash,
-    tree: getTreeDebugSummary(refreshedTree),
-  });
 
   const correctiveTasks = await buildCorrectivePersonHydrationTasks(
     originalSelectedPathNodes,
     refreshedTree,
   );
   if (correctiveTasks.length === 0) {
-    addCinenerdleDebugLog("selected path hydration finished", {
-      durationMs: getDebugDurationMs(hydrationStart),
-      hash: initialHash,
-      correctiveTaskCount: 0,
-    });
     return;
   }
 
-  addCinenerdleDebugLog("selected path corrective hydration started", {
-    hash: initialHash,
-    taskCount: correctiveTasks.length,
-    tasks: getHydrationTaskSummary(correctiveTasks),
-  });
-  const correctiveResults = await Promise.allSettled(
+  await Promise.allSettled(
     correctiveTasks.map((task) => task.run()),
   );
-  addCinenerdleDebugLog("selected path corrective hydration settled", {
-    durationMs: getDebugDurationMs(hydrationStart),
-    hash: initialHash,
-    ...getSettledResultSummary(correctiveResults),
-  });
   if (readHash() !== initialHash) {
-    addCinenerdleDebugLog("selected path hydration aborted", {
-      durationMs: getDebugDurationMs(hydrationStart),
-      initialHash,
-      currentHash: readHash(),
-      stage: "after corrective hydration",
-    });
     return;
   }
 
   refreshedTree = await buildTreeFromHash(readHash());
   setTree(refreshedTree);
-  addCinenerdleDebugLog("selected path hydration finished", {
-    durationMs: getDebugDurationMs(hydrationStart),
-    hash: initialHash,
-    correctiveTaskCount: correctiveTasks.length,
-    tree: getTreeDebugSummary(refreshedTree),
-  });
 }
 
 async function buildChildRowForPersonCard(
@@ -807,7 +689,6 @@ async function buildChildRowForCard(
     movieRecord?: FilmRecord | null;
   },
 ): Promise<GeneratorNode<CinenerdleCard>[] | null> {
-  const buildStart = getCinenerdleDebugNow();
   let childRow: GeneratorNode<CinenerdleCard>[] | null = null;
 
   if (card.kind === "cinenerdle") {
@@ -818,14 +699,6 @@ async function buildChildRowForCard(
     childRow = await buildChildRowForMovieCard(card, options?.movieRecord);
   }
 
-  addCinenerdleDebugLog("child row built", {
-    cardKind: card.kind,
-    cardName: card.name,
-    durationMs: getDebugDurationMs(buildStart),
-    childCount: childRow?.length ?? 0,
-    usedOverride:
-      Boolean(options?.movieRecord) || Boolean(options?.personRecord),
-  });
   return childRow;
 }
 
@@ -953,44 +826,21 @@ export async function buildTreeFromHash(
   hashValue: string,
   options?: BuildTreeOptions,
 ): Promise<GeneratorTree<CinenerdleCard>> {
-  const buildStart = getCinenerdleDebugNow();
   const pathNodes = buildPathNodesFromSegments(parseHashSegments(hashValue));
   const dailyStarterSource = options?.dailyStarterSource ?? "network";
-  const finalizeTreeBuild = (
-    tree: GeneratorTree<CinenerdleCard>,
-    reason: string,
-  ): GeneratorTree<CinenerdleCard> => {
-    addCinenerdleDebugLog("tree built from hash", {
-      hash: hashValue,
-      pathLength: pathNodes.length,
-      reason,
-      durationMs: getDebugDurationMs(buildStart),
-      tree: getTreeDebugSummary(tree),
-    });
-    return tree;
-  };
 
   if (pathNodes.length === 0) {
-    return finalizeTreeBuild(
-      await createCinenerdleRootTree({ dailyStarterSource }),
-      dailyStarterSource === "cache" ? "empty hash cache" : "empty hash",
-    );
+    return createCinenerdleRootTree({ dailyStarterSource });
   }
 
   const [rootNode, ...continuationPathNodes] = pathNodes;
   if (!rootNode || rootNode.kind === "break") {
-    return finalizeTreeBuild(
-      await createCinenerdleRootTree({ dailyStarterSource }),
-      dailyStarterSource === "cache" ? "invalid root cache" : "invalid root",
-    );
+    return createCinenerdleRootTree({ dailyStarterSource });
   }
 
   const rootTree = await createRootTreeFromPathNode(rootNode, { dailyStarterSource });
   if (!rootTree) {
-    return finalizeTreeBuild(
-      await createCinenerdleRootTree({ dailyStarterSource }),
-      dailyStarterSource === "cache" ? "missing root record cache" : "missing root record",
-    );
+    return createCinenerdleRootTree({ dailyStarterSource });
   }
 
   let tree = rootTree;
@@ -1002,7 +852,7 @@ export async function buildTreeFromHash(
     tree.length < 2 &&
     continuationPathNodes.length > 0
   ) {
-    return finalizeTreeBuild(tree, "cache-only cinenerdle root");
+    return tree;
   }
 
   for (const originalPathNode of continuationPathNodes) {
@@ -1078,7 +928,7 @@ export async function buildTreeFromHash(
     }
   }
 
-  return finalizeTreeBuild(tree, continuationPathNodes.length > 0 ? "path continued" : "root only");
+  return tree;
 }
 
 export async function buildBookmarkPreviewCardsFromHash(
@@ -1393,12 +1243,7 @@ export function useCinenerdleController({
     () => ({
       initTree(setTree) {
         void (async () => {
-          clearCinenerdleDebugLog();
-          const initStart = getCinenerdleDebugNow();
           const initialHash = readHash();
-          addCinenerdleDebugLog("cinenerdle init started", {
-            hash: initialHash,
-          });
 
           try {
             try {
@@ -1406,49 +1251,19 @@ export function useCinenerdleController({
                 dailyStarterSource: "cache",
               });
               setTree(cachedTree);
-              addCinenerdleDebugLog("cinenerdle init cached tree ready", {
-                durationMs: getDebugDurationMs(initStart),
-                hash: initialHash,
-                tree: getTreeDebugSummary(cachedTree),
-              });
             } catch (error: unknown) {
-              addCinenerdleDebugLog("cinenerdle init cached tree unavailable", {
-                durationMs: getDebugDurationMs(initStart),
-                hash: initialHash,
-                error:
-                  error instanceof Error && error.message
-                    ? error.message
-                    : String(error),
-              });
+              void error;
             }
 
             const nextTree = await buildTreeFromHash(readHash());
             setTree(nextTree);
-            addCinenerdleDebugLog("cinenerdle init tree ready", {
-              durationMs: getDebugDurationMs(initStart),
-              hash: initialHash,
-              tree: getTreeDebugSummary(nextTree),
-            });
             void hydrateMissingSelectedPathItemsAndRedraw(setTree, readHash).catch(() => { });
             if (isCinenerdleRootTree(nextTree)) {
               void hydrateDailyStartersAndRedraw(setTree, readHash).catch(() => { });
             }
-          } catch (error: unknown) {
-            addCinenerdleDebugLog("cinenerdle init failed, using fallback", {
-              durationMs: getDebugDurationMs(initStart),
-              hash: initialHash,
-              error:
-                error instanceof Error && error.message
-                  ? error.message
-                  : String(error),
-            });
+          } catch {
             const fallbackTree = await createCinenerdleRootTree();
             setTree(fallbackTree);
-            addCinenerdleDebugLog("cinenerdle fallback tree ready", {
-              durationMs: getDebugDurationMs(initStart),
-              hash: initialHash,
-              tree: getTreeDebugSummary(fallbackTree),
-            });
             void hydrateMissingSelectedPathItemsAndRedraw(setTree, readHash).catch(() => { });
             if (isCinenerdleRootTree(fallbackTree)) {
               void hydrateDailyStartersAndRedraw(setTree, readHash).catch(() => { });
