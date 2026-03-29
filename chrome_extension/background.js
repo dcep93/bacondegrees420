@@ -429,9 +429,6 @@ chrome.runtime.onInstalled.addListener(() => {
         "Failed to migrate BaconDegrees420 synced bookmarks on install",
         error instanceof Error ? error.message : error,
       );
-    })
-    .finally(() => {
-      logStorageUsage();
     });
 });
 
