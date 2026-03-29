@@ -12,22 +12,17 @@ import {
   type MouseEvent,
 } from "react";
 import {
-  type AppViewMode,
   createBookmarkId,
   loadBookmarks,
   moveBookmarkEntry,
   removeBookmarkEntry,
-  type BookmarkEntry,
   toggleBookmarkPreviewCardSelection,
   upsertBookmarkEntry,
+  type AppViewMode,
+  type BookmarkEntry,
 } from "./bookmarks";
 import { BookmarkPreviewCardView } from "./components/bookmark_preview_card";
 import Cinenerdle2 from "./generators/cinenerdle2";
-import { buildBookmarkPreviewCardsFromHash } from "./generators/cinenerdle2/controller";
-import {
-  copyCinenerdleDebugLogToClipboard,
-  copyCinenerdleIndexedDbSnapshotToClipboard,
-} from "./generators/cinenerdle2/debug";
 import {
   createCinenerdleConnectionEntity,
   createFallbackConnectionEntity,
@@ -41,6 +36,11 @@ import {
   type ConnectionSearchResult,
 } from "./generators/cinenerdle2/connection_graph";
 import { CINENERDLE_ICON_URL, TMDB_ICON_URL } from "./generators/cinenerdle2/constants";
+import { buildBookmarkPreviewCardsFromHash } from "./generators/cinenerdle2/controller";
+import {
+  copyCinenerdleDebugLogToClipboard,
+  copyCinenerdleIndexedDbSnapshotToClipboard,
+} from "./generators/cinenerdle2/debug";
 import {
   buildPathNodesFromSegments,
   createPathNode,
@@ -49,18 +49,19 @@ import {
   serializePathNodes,
 } from "./generators/cinenerdle2/hash";
 import {
-  getAllFilmRecords,
-  getAllPersonRecords,
   clearIndexedDb,
   estimateIndexedDbUsageBytes,
-  getFilmRecordByTitleAndYear,
+  getAllFilmRecords,
+  getAllPersonRecords,
   getAllSearchableConnectionEntities,
+  getFilmRecordByTitleAndYear,
   getFilmRecordsByPersonConnectionKey,
   getPersonRecordById,
   getPersonRecordByName,
   getPersonRecordsByMovieKey,
 } from "./generators/cinenerdle2/indexed_db";
 import { resolveConnectionQuery } from "./generators/cinenerdle2/tmdb";
+import type { FilmRecord, PersonRecord } from "./generators/cinenerdle2/types";
 import {
   formatMoviePathLabel,
   getAssociatedPeopleFromMovieCredits,
@@ -74,7 +75,6 @@ import {
   normalizeName,
   normalizeWhitespace,
 } from "./generators/cinenerdle2/utils";
-import type { FilmRecord, PersonRecord } from "./generators/cinenerdle2/types";
 import type { CinenerdleCard } from "./generators/cinenerdle2/view_types";
 import "./styles/app_shell.css";
 
@@ -138,9 +138,9 @@ type ConnectionMatchupPreview = {
   spoiler: ConnectionMatchupPreviewEntity;
 };
 
-const CONNECTION_MATCHUP_VS_TOOLTIP_KEY = "vs";
-const CONNECTION_MATCHUP_VS_TOOLTIP_TEXT =
-  "Suggested matchup preview: left is the closest counterpart, right is the spoiler unique to your current pick.";
+const CONNECTION_MATCHUP_TOOLTIP_KEY = "matchup";
+const CONNECTION_MATCHUP_SPOILER_EXPLANATION =
+  "is not in best-connected";
 
 type ConnectionSearchRow = {
   id: string;
@@ -1913,25 +1913,11 @@ export default function AppX() {
   );
 
   function renderConnectionMatchupTile(entity: ConnectionMatchupPreviewEntity) {
-    const tooltipEntries = getTooltipEntries(entity.tooltipText);
-    const isTooltipVisible = visibleConnectionMatchupTooltipKey === entity.key;
-
     return (
-      <span
-        className="bacon-connection-matchup-tile-wrap"
-        onBlur={() => setVisibleConnectionMatchupTooltipKey((currentKey) =>
-          currentKey === entity.key ? null : currentKey)}
-        onFocus={() => setVisibleConnectionMatchupTooltipKey(entity.key)}
-        onMouseEnter={() => setVisibleConnectionMatchupTooltipKey(entity.key)}
-        onMouseLeave={() => setVisibleConnectionMatchupTooltipKey((currentKey) =>
-          currentKey === entity.key ? null : currentKey)}
-      >
+      <span className="bacon-connection-matchup-tile-wrap">
         <span
           aria-label={entity.name}
           className="bacon-connection-matchup-tile"
-          onClick={(event) => handleTooltipClick(event, tooltipEntries)}
-          onMouseDown={preventTooltipMouseFocus}
-          tabIndex={0}
         >
           {entity.imageUrl ? (
             <img
@@ -1946,14 +1932,6 @@ export default function AppX() {
             </span>
           )}
         </span>
-        {isTooltipVisible ? (
-          <span
-            className="bacon-connection-pill-tooltip bacon-connection-matchup-tooltip"
-            role="tooltip"
-          >
-            {renderTooltipEntries(tooltipEntries, entity.key)}
-          </span>
-        ) : null}
       </span>
     );
   }
@@ -1963,45 +1941,47 @@ export default function AppX() {
       return null;
     }
 
-    const isVsTooltipVisible =
-      visibleConnectionMatchupTooltipKey === CONNECTION_MATCHUP_VS_TOOLTIP_KEY;
+    const isMatchupTooltipVisible =
+      visibleConnectionMatchupTooltipKey === CONNECTION_MATCHUP_TOOLTIP_KEY;
+    const counterpartTooltipEntries = getTooltipEntries(
+      connectionMatchupPreview.counterpart.tooltipText,
+    );
 
     return (
       <div
         aria-label={`Suggested matchup: ${connectionMatchupPreview.counterpart.name} vs ${connectionMatchupPreview.spoiler.name}`}
         className="bacon-connection-matchup"
+        onBlur={() => setVisibleConnectionMatchupTooltipKey((currentKey) =>
+          currentKey === CONNECTION_MATCHUP_TOOLTIP_KEY ? null : currentKey)}
+        onClick={(event) => handleTooltipClick(event, [
+          connectionMatchupPreview.spoiler.name,
+          CONNECTION_MATCHUP_SPOILER_EXPLANATION,
+          ...counterpartTooltipEntries,
+        ])}
+        onFocus={() => setVisibleConnectionMatchupTooltipKey(CONNECTION_MATCHUP_TOOLTIP_KEY)}
+        onMouseDown={preventTooltipMouseFocus}
+        onMouseEnter={() => setVisibleConnectionMatchupTooltipKey(CONNECTION_MATCHUP_TOOLTIP_KEY)}
+        onMouseLeave={() => setVisibleConnectionMatchupTooltipKey((currentKey) =>
+          currentKey === CONNECTION_MATCHUP_TOOLTIP_KEY ? null : currentKey)}
+        tabIndex={0}
       >
         {renderConnectionMatchupTile(connectionMatchupPreview.counterpart)}
-        <span
-          className="bacon-connection-matchup-tile-wrap"
-          onBlur={() => setVisibleConnectionMatchupTooltipKey((currentKey) =>
-            currentKey === CONNECTION_MATCHUP_VS_TOOLTIP_KEY ? null : currentKey)}
-          onFocus={() => setVisibleConnectionMatchupTooltipKey(CONNECTION_MATCHUP_VS_TOOLTIP_KEY)}
-          onMouseEnter={() => setVisibleConnectionMatchupTooltipKey(CONNECTION_MATCHUP_VS_TOOLTIP_KEY)}
-          onMouseLeave={() => setVisibleConnectionMatchupTooltipKey((currentKey) =>
-            currentKey === CONNECTION_MATCHUP_VS_TOOLTIP_KEY ? null : currentKey)}
-        >
-          <span
-            aria-label="What this matchup preview means"
-            className="bacon-connection-matchup-vs"
-            onClick={(event) => handleTooltipClick(event, [CONNECTION_MATCHUP_VS_TOOLTIP_TEXT])}
-            onMouseDown={preventTooltipMouseFocus}
-            tabIndex={0}
-          >
-            vs
-          </span>
-          {isVsTooltipVisible ? (
-            <span
-              className="bacon-connection-pill-tooltip bacon-connection-matchup-tooltip"
-              role="tooltip"
-            >
-              <span className="bacon-connection-pill-tooltip-entry">
-                {CONNECTION_MATCHUP_VS_TOOLTIP_TEXT}
-              </span>
-            </span>
-          ) : null}
-        </span>
+        <span aria-hidden="true" className="bacon-connection-matchup-vs">vs</span>
         {renderConnectionMatchupTile(connectionMatchupPreview.spoiler)}
+        {isMatchupTooltipVisible ? (
+          <span
+            className="bacon-connection-pill-tooltip bacon-connection-matchup-tooltip"
+            role="tooltip"
+          >
+            <span className="bacon-connection-pill-tooltip-entry">
+              {connectionMatchupPreview.spoiler.name}
+            </span>
+            <span className="bacon-connection-pill-tooltip-entry">
+              {CONNECTION_MATCHUP_SPOILER_EXPLANATION}
+            </span>
+            {renderTooltipEntries(counterpartTooltipEntries, connectionMatchupPreview.counterpart.key)}
+          </span>
+        ) : null}
       </div>
     );
   }
