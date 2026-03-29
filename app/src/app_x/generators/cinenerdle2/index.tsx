@@ -270,8 +270,8 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   }, []);
 
   useEffect(() => {
-    shouldSnapToBottomAfterLoadRef.current = hasLoadedPath(normalizedHash);
-  }, [navigationVersion, normalizedHash]);
+    shouldSnapToBottomAfterLoadRef.current = hasLoadedPath(hashRef.current);
+  }, [navigationVersion]);
 
   const readHash = useCallback(() => hashRef.current, [hashRef]);
   const writeHash = useCallback(
