@@ -18,6 +18,7 @@ import {
   getFilmKey,
   getMovieKeyFromCredit,
   getMoviePosterUrl,
+  parseMoviePathLabel,
   getPersonProfileImageUrl,
   getSnapshotConnectionLabels,
   getTmdbMovieCredits,
@@ -225,6 +226,75 @@ function formatPreviewPopularity(popularity: number): string {
   return Number(popularity.toFixed(2)).toString();
 }
 
+function compareSharedConnectionLabelsByPopularity(
+  left: { label: string; popularity: number },
+  right: { label: string; popularity: number },
+): number {
+  if (right.popularity !== left.popularity) {
+    return right.popularity - left.popularity;
+  }
+
+  return left.label.localeCompare(right.label);
+}
+
+async function sortSharedPersonLabelsByPopularity(
+  labels: Iterable<string>,
+): Promise<string[]> {
+  const allPeople = await getAllPersonRecords();
+  const popularityByPersonName = new Map<string, number>();
+
+  allPeople.forEach((personRecord) => {
+    const normalizedPersonName = normalizeName(personRecord.name);
+    if (!normalizedPersonName) {
+      return;
+    }
+
+    popularityByPersonName.set(
+      normalizedPersonName,
+      Math.max(
+        popularityByPersonName.get(normalizedPersonName) ?? 0,
+        getPersonPopularity(personRecord),
+      ),
+    );
+  });
+
+  const labelsWithPopularity = [...new Set(labels)].map((label) => ({
+    label,
+    popularity: popularityByPersonName.get(normalizeName(label)) ?? 0,
+  }));
+
+  return labelsWithPopularity
+    .sort(compareSharedConnectionLabelsByPopularity)
+    .map(({ label }) => label);
+}
+
+async function sortSharedMovieLabelsByPopularity(
+  labels: Iterable<string>,
+): Promise<string[]> {
+  const allFilms = await getAllFilmRecords();
+  const popularityByMovieKey = new Map<string, number>();
+
+  allFilms.forEach((filmRecord) => {
+    const movieKey = getFilmKey(filmRecord.title, filmRecord.year);
+    popularityByMovieKey.set(
+      movieKey,
+      Math.max(popularityByMovieKey.get(movieKey) ?? 0, getMoviePopularity(filmRecord)),
+    );
+  });
+
+  const labelsWithPopularity = [...new Set(labels)].map((label) => {
+    const movie = parseMoviePathLabel(label);
+    return {
+      label,
+      popularity: popularityByMovieKey.get(getFilmKey(movie.name, movie.year)) ?? 0,
+    };
+  });
+
+  return labelsWithPopularity
+    .sort(compareSharedConnectionLabelsByPopularity)
+    .map(({ label }) => label);
+}
+
 function buildCounterpartTooltipText(
   entityName: string,
   popularity: number,
@@ -340,8 +410,8 @@ async function findMovieCounterpart(
 
   return {
     movieRecord: bestCandidate.movieRecord,
-    sharedConnectionLabels: [...bestCandidate.sharedConnectionLabels].sort((left, right) =>
-      left.localeCompare(right),
+    sharedConnectionLabels: await sortSharedPersonLabelsByPopularity(
+      bestCandidate.sharedConnectionLabels,
     ),
   };
 }
@@ -407,8 +477,8 @@ async function findPersonCounterpart(
 
   return {
     personRecord: bestCandidate.personRecord,
-    sharedConnectionLabels: [...bestCandidate.sharedConnectionLabels].sort((left, right) =>
-      left.localeCompare(right),
+    sharedConnectionLabels: await sortSharedMovieLabelsByPopularity(
+      bestCandidate.sharedConnectionLabels,
     ),
   };
 }

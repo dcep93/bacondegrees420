@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getBookmarkPreviewCardHash,
   getSelectedPathTooltipEntries,
-} from "../index";
+} from "../index_helpers";
 
 describe("index hash helpers", () => {
   it("includes ESCAPE in selected-path tooltip entries", () => {

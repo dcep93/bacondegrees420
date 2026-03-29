@@ -78,6 +78,10 @@ import {
   type ConnectionMatchupPreviewEntity,
   type YoungestSelectedCard,
 } from "./connection_matchup_preview";
+import {
+  getBookmarkPreviewCardHash,
+  getSelectedPathTooltipEntries,
+} from "./index_helpers";
 import "./styles/app_shell.css";
 
 type ConnectionSuggestion = ConnectionEntity & {
@@ -231,17 +235,6 @@ function formatBookmarkIndexTooltip(bookmark: BookmarkEntry): string {
   return lines.join("\n");
 }
 
-export function getBookmarkPreviewCardHash(bookmarkHash: string, previewCardIndex: number): string {
-  const normalizedHash = normalizeHashValue(bookmarkHash);
-  const pathNodes = buildPathNodesFromSegments(parseHashSegments(normalizedHash));
-
-  if (previewCardIndex < 0 || previewCardIndex >= pathNodes.length) {
-    return normalizedHash;
-  }
-
-  return serializePathNodes(pathNodes.slice(0, previewCardIndex + 1));
-}
-
 function createBookmarkPreviewCardViewModel(
   card: Exclude<BookmarkEntry["previewCards"][number], { kind: "break" }>,
   isSelected: boolean,
@@ -365,29 +358,6 @@ function getHighestGenerationSelectedLabel(hashValue: string): string {
   }
 
   return selectedPathTarget.name;
-}
-
-export function getSelectedPathTooltipEntries(hashValue: string): string[] {
-  const pathNodes = buildPathNodesFromSegments(parseHashSegments(hashValue)).filter(
-    (pathNode) =>
-      pathNode.kind === "cinenerdle" ||
-      pathNode.kind === "movie" ||
-      pathNode.kind === "person" ||
-      pathNode.kind === "break",
-  );
-
-  if (pathNodes.length === 0) {
-    return ["cinenerdle"];
-  }
-
-  return pathNodes
-    .map((pathNode) =>
-      pathNode.kind === "break"
-        ? ESCAPE_LABEL
-        : pathNode.kind === "movie"
-        ? formatMoviePathLabel(pathNode.name, pathNode.year)
-        : pathNode.name,
-    );
 }
 
 function stripSearchDiacritics(value: string): string {

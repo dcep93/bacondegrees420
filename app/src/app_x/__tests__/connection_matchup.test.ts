@@ -73,7 +73,7 @@ describe("resolveConnectionMatchupPreview", () => {
         tmdbId: 54693,
         name: "Emma Stone",
         movieConnectionKeys: ["the amazing spider-man (2012)", "the amazing spider-man 2 (2014)"],
-        rawTmdbPerson: { id: 54693, name: "Emma Stone", popularity: 82 },
+        rawTmdbPerson: { id: 54693, name: "Emma Stone", popularity: 95 },
       }),
       makePersonRecord({
         id: 86002,
@@ -119,9 +119,13 @@ describe("resolveConnectionMatchupPreview", () => {
     expect(preview).not.toBeNull();
     expect(preview?.counterpart.name).toBe("The Amazing Spider-Man 2 (2014)");
     expect(preview?.spoiler.name).toBe("Irrfan Khan");
-    expect(preview?.counterpart.tooltipText).toContain("Andrew Garfield");
-    expect(preview?.counterpart.tooltipText).toContain("Emma Stone");
     expect(preview?.counterpart.tooltipText).toContain("Popularity: 22.4");
+    expect(preview?.counterpart.tooltipText.split("\n")).toEqual([
+      "The Amazing Spider-Man 2 (2014)",
+      "Popularity: 22.4",
+      "Emma Stone",
+      "Andrew Garfield",
+    ]);
   });
 
   it("prefers starter display casing over normalized connection keys in counterpart tooltips", async () => {
@@ -235,5 +239,122 @@ describe("resolveConnectionMatchupPreview", () => {
     expect(preview?.counterpart.tooltipText).toContain("Andy Weir");
     expect(preview?.counterpart.tooltipText).not.toContain("andy weir");
     expect(preview?.counterpart.tooltipText).toContain("Drew Goddard");
+  });
+
+  it("sorts shared movie connections in person counterpart tooltips by popularity", async () => {
+    const memento = makeFilmRecord({
+      id: "memento-2000",
+      tmdbId: 77,
+      title: "Memento",
+      year: "2000",
+      popularity: 20,
+    });
+    const theDarkKnight = makeFilmRecord({
+      id: "the-dark-knight-2008",
+      tmdbId: 155,
+      title: "The Dark Knight",
+      year: "2008",
+      popularity: 90,
+    });
+    const inception = makeFilmRecord({
+      id: "inception-2010",
+      tmdbId: 27205,
+      title: "Inception",
+      year: "2010",
+      popularity: 95,
+    });
+    const christopherNolan = makePersonRecord({
+      id: 525,
+      tmdbId: 525,
+      name: "Christopher Nolan",
+      movieConnectionKeys: [
+        "memento (2000)",
+        "the dark knight (2008)",
+        "inception (2010)",
+      ],
+      rawTmdbPerson: { id: 525, name: "Christopher Nolan", popularity: 85 },
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [
+          { id: 77, title: "Memento", release_date: "2000-09-05", popularity: 20 },
+          { id: 155, title: "The Dark Knight", release_date: "2008-07-18", popularity: 90 },
+          { id: 27205, title: "Inception", release_date: "2010-07-16", popularity: 95 },
+        ],
+      },
+    });
+    const davidGoyer = makePersonRecord({
+      id: 7897,
+      tmdbId: 7897,
+      name: "David S. Goyer",
+      movieConnectionKeys: [
+        "memento (2000)",
+        "the dark knight (2008)",
+      ],
+      rawTmdbPerson: { id: 7897, name: "David S. Goyer", popularity: 70 },
+    });
+
+    indexedDbMock.getPersonRecordById.mockImplementation(async (id: number) => {
+      if (id === 525) {
+        return christopherNolan;
+      }
+
+      return null;
+    });
+    indexedDbMock.getPersonRecordByName.mockImplementation(async (name: string) => {
+      if (normalizeName(name) === normalizeName("Christopher Nolan")) {
+        return christopherNolan;
+      }
+
+      if (normalizeName(name) === normalizeName("David S. Goyer")) {
+        return davidGoyer;
+      }
+
+      return null;
+    });
+    indexedDbMock.getPersonRecordsByMovieKey.mockImplementation(async (movieKey: string) => {
+      if (
+        movieKey === "memento (2000)" ||
+        movieKey === "the dark knight (2008)"
+      ) {
+        return [christopherNolan, davidGoyer];
+      }
+
+      if (movieKey === "inception (2010)") {
+        return [christopherNolan];
+      }
+
+      return [];
+    });
+    indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (title: string, year: string) => {
+      return [memento, theDarkKnight, inception].find(
+        (film) => film.title === title && film.year === year,
+      ) ?? null;
+    });
+    indexedDbMock.getAllFilmRecords.mockResolvedValue([memento, theDarkKnight, inception]);
+
+    const preview = await resolveConnectionMatchupPreview({
+      key: "person:525",
+      kind: "person",
+      name: "Christopher Nolan",
+      year: "",
+      popularity: 0,
+      imageUrl: null,
+      subtitle: "",
+      subtitleDetail: "",
+      connectionCount: null,
+      sources: [],
+      status: null,
+      record: null,
+    });
+
+    expect(preview).not.toBeNull();
+    expect(preview?.counterpart.name).toBe("David S. Goyer");
+    expect(preview?.spoiler.name).toBe("Inception (2010)");
+    expect(preview?.counterpart.tooltipText.split("\n")).toEqual([
+      "David S. Goyer",
+      "Popularity: 70",
+      "The Dark Knight (2008)",
+      "Memento (2000)",
+    ]);
   });
 });
