@@ -55,17 +55,17 @@ export function compareRankedSearchableConnectionEntityRecords(
     return connectionPriority;
   }
 
-  const sortScoreDifference = compareSortScore(left.sortScore, right.sortScore);
-  if (sortScoreDifference !== 0) {
-    return sortScoreDifference;
-  }
-
   const popularityDifference = comparePopularity(
     left.record.popularity ?? 0,
     right.record.popularity ?? 0,
   );
   if (popularityDifference !== 0) {
     return popularityDifference;
+  }
+
+  const sortScoreDifference = compareSortScore(left.sortScore, right.sortScore);
+  if (sortScoreDifference !== 0) {
+    return sortScoreDifference;
   }
 
   const kindDifference = compareKind(left.record.type, right.record.type);
@@ -88,14 +88,14 @@ export function compareRankedConnectionSuggestions(
     return connectionPriority;
   }
 
-  const sortScoreDifference = compareSortScore(left.sortScore, right.sortScore);
-  if (sortScoreDifference !== 0) {
-    return sortScoreDifference;
-  }
-
   const popularityDifference = comparePopularity(left.popularity, right.popularity);
   if (popularityDifference !== 0) {
     return popularityDifference;
+  }
+
+  const sortScoreDifference = compareSortScore(left.sortScore, right.sortScore);
+  if (sortScoreDifference !== 0) {
+    return sortScoreDifference;
   }
 
   const kindDifference = compareKind(left.kind, right.kind);

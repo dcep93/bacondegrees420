@@ -100,7 +100,54 @@ describe("connection autocomplete ranking", () => {
     expect(rankedKeys[0]).toBe("person:connected");
   });
 
-  it("keeps connected suggestions ordered by score, then popularity, then kind, then label", () => {
+  it("orders disconnected raw candidates by popularity before score", () => {
+    const candidates = [
+      makeRankedSearchRecord({
+        record: makeSearchRecord({
+          key: "movie:low-popularity",
+          nameLower: "zulu",
+          popularity: 20,
+        }),
+        sortScore: 400,
+      }),
+      makeRankedSearchRecord({
+        record: makeSearchRecord({
+          key: "movie:high-popularity",
+          nameLower: "alpha",
+          popularity: 90,
+        }),
+        sortScore: 100,
+      }),
+      makeRankedSearchRecord({
+        record: makeSearchRecord({
+          key: "person:tiebreak-person",
+          type: "person",
+          nameLower: "bravo",
+          popularity: 50,
+        }),
+        sortScore: 200,
+      }),
+      makeRankedSearchRecord({
+        record: makeSearchRecord({
+          key: "movie:tiebreak-movie",
+          type: "movie",
+          nameLower: "charlie",
+          popularity: 50,
+        }),
+        sortScore: 200,
+      }),
+    ];
+
+    expect([...candidates].sort(compareRankedSearchableConnectionEntityRecords).map((item) => item.record.key))
+      .toEqual([
+        "movie:high-popularity",
+        "person:tiebreak-person",
+        "movie:tiebreak-movie",
+        "movie:low-popularity",
+      ]);
+  });
+
+  it("keeps connected suggestions ordered by popularity, then score, then kind, then label", () => {
     const suggestions = [
       makeSuggestion({
         key: "movie:alphabetical-last",
@@ -137,14 +184,14 @@ describe("connection autocomplete ranking", () => {
     ];
 
     expect([...suggestions].sort(compareRankedConnectionSuggestions).map((item) => item.key)).toEqual([
+      "movie:high-popularity",
       "movie:high-score",
       "person:alphabetical-first",
       "movie:alphabetical-last",
-      "movie:high-popularity",
     ]);
   });
 
-  it("orders disconnected suggestions by score before popularity", () => {
+  it("orders disconnected suggestions by popularity before score", () => {
     const suggestions = [
       makeSuggestion({
         key: "movie:low-popularity",
@@ -177,14 +224,14 @@ describe("connection autocomplete ranking", () => {
     ];
 
     expect([...suggestions].sort(compareRankedConnectionSuggestions).map((item) => item.key)).toEqual([
-      "movie:low-popularity",
+      "movie:high-popularity",
       "person:tiebreak-person",
       "movie:tiebreak-movie",
-      "movie:high-popularity",
+      "movie:low-popularity",
     ]);
   });
 
-  it("keeps an exact movie match ahead of more popular partial matches", () => {
+  it("uses score only after popularity is tied", () => {
     const suggestions = [
       makeSuggestion({
         key: "movie:beau-is-afraid",
@@ -197,14 +244,14 @@ describe("connection autocomplete ranking", () => {
         key: "person:beau-bridges",
         kind: "person",
         label: "Beau Bridges",
-        popularity: 70,
+        popularity: 18,
         sortScore: 300,
       }),
       makeSuggestion({
         key: "movie:beautiful-mind",
         kind: "movie",
         label: "A Beautiful Mind",
-        popularity: 88,
+        popularity: 18,
         sortScore: 200,
       }),
     ];

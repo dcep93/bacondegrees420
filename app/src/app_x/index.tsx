@@ -778,7 +778,7 @@ export default function AppX() {
   const [connectionSession, setConnectionSession] = useState<ConnectionSession | null>(null);
   const [highlightedConnectionEntitySelectionRequest, setHighlightedConnectionEntitySelectionRequest] =
     useState<HighlightedConnectionEntitySelectionRequest | null>(null);
-  const [isHighlightedConnectionEntityInYoungestGeneration, setIsHighlightedConnectionEntityInYoungestGeneration] =
+  const [, setIsHighlightedConnectionEntityInYoungestGeneration] =
     useState(false);
   const [isSelectedPathTooltipVisible, setIsSelectedPathTooltipVisible] = useState(false);
   const [visibleConnectionMatchupTooltipKey, setVisibleConnectionMatchupTooltipKey] =
@@ -790,7 +790,6 @@ export default function AppX() {
   const autocompleteRequestIdRef = useRef(0);
   const connectionSessionIdRef = useRef(0);
   const connectionRowIdRef = useRef(0);
-  const highlightedConnectionEntitySelectionRequestIdRef = useRef(0);
   const connectionBarRef = useRef<HTMLElement | null>(null);
   const connectionInputWrapRef = useRef<HTMLDivElement | null>(null);
   const connectionDropdownRef = useRef<HTMLDivElement | null>(null);
@@ -1378,6 +1377,7 @@ export default function AppX() {
   );
 
   const clearConnectionInputState = useCallback(() => {
+    autocompleteRequestIdRef.current += 1;
     setConnectionQuery("");
     setConnectionSuggestions([]);
     setSelectedSuggestionIndex(-1);
@@ -1718,23 +1718,11 @@ export default function AppX() {
           return;
         }
 
-        if (isHighlightedConnectionEntityInYoungestGeneration) {
-          highlightedConnectionEntitySelectionRequestIdRef.current += 1;
-          setHighlightedConnectionEntitySelectionRequest({
-            requestKey: `highlighted-connection-entity:${highlightedConnectionEntitySelectionRequestIdRef.current}`,
-            entity: selectedSuggestion,
-          });
-          clearConnectionInputState();
-          return;
-        }
-
         void openConnectionRowsForEntity(selectedSuggestion);
       }
     },
     [
       connectionSuggestions,
-      clearConnectionInputState,
-      isHighlightedConnectionEntityInYoungestGeneration,
       openConnectionRowsForEntity,
       selectedSuggestionIndex,
     ],
