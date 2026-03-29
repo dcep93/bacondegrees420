@@ -757,6 +757,7 @@ export default function AppX() {
     useState<ConnectionMatchupPreview | null>(null);
   const [copyStatus, setCopyStatus] = useState("");
   const [isSavingBookmark, setIsSavingBookmark] = useState(false);
+  const [isBookmarksTooltipSuppressed, setIsBookmarksTooltipSuppressed] = useState(false);
   const [connectionQuery, setConnectionQuery] = useState("");
   const [isResolvingConnection, setIsResolvingConnection] = useState(false);
   const [connectionSuggestions, setConnectionSuggestions] = useState<ConnectionSuggestion[]>([]);
@@ -1292,7 +1293,6 @@ export default function AppX() {
         };
 
         setBookmarks((currentBookmarks) => upsertBookmarkEntry(currentBookmarks, nextBookmark));
-        setCopyStatus(existingBookmark ? "Bookmark updated" : "Bookmark saved");
       })
       .catch(() => {
         setCopyStatus("Bookmark failed");
@@ -1982,14 +1982,30 @@ export default function AppX() {
               💾
             </button>
           </FancyTooltip>
-          <FancyTooltip content={isBookmarksView ? "Close bookmarks" : "Open bookmarks"}>
+          <FancyTooltip
+            anchorProps={{
+              onFocus: () => setIsBookmarksTooltipSuppressed(false),
+              onMouseLeave: () => setIsBookmarksTooltipSuppressed(false),
+            }}
+            content={
+              isBookmarksTooltipSuppressed
+                ? null
+                : isBookmarksView
+                  ? "Close bookmarks"
+                  : "Open bookmarks"
+            }
+          >
             <button
               aria-label={isBookmarksView ? "Close bookmarks" : "Open bookmarks"}
               className="bacon-title-action-icon-button"
               onMouseDown={(event) => {
                 event.currentTarget.focus();
               }}
-              onClick={handleToggleBookmarks}
+              onClick={(event) => {
+                setIsBookmarksTooltipSuppressed(true);
+                event.currentTarget.blur();
+                handleToggleBookmarks();
+              }}
               type="button"
             >
               {isBookmarksView ? "🎬" : "📚"}

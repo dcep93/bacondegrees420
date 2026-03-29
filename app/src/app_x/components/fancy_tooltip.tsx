@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { HTMLAttributes, ReactNode } from "react";
 
 type FancyTooltipPlacement =
   | "bottom-center"
@@ -16,6 +16,7 @@ function getTooltipEntries(content: string | string[]): string[] {
 }
 
 export default function FancyTooltip({
+  anchorProps,
   anchorClassName,
   children,
   content,
@@ -23,6 +24,7 @@ export default function FancyTooltip({
   tooltipClassName,
   wrapperTag = "span",
 }: {
+  anchorProps?: HTMLAttributes<HTMLDivElement | HTMLSpanElement>;
   anchorClassName?: string;
   children: ReactNode;
   content: string | string[] | null | undefined;
@@ -49,6 +51,7 @@ export default function FancyTooltip({
       ]
         .filter(Boolean)
         .join(" ")}
+      {...anchorProps}
     >
       {children}
       <span
