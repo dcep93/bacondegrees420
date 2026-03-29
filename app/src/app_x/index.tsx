@@ -1770,17 +1770,15 @@ export default function AppX() {
           <article className="bacon-bookmark-row-shell" key={bookmark.id}>
             <div className="bacon-bookmark-row-layout">
               <div className="bacon-bookmark-row-actions bacon-bookmark-row-actions-left">
-                <FancyTooltip content="Move bookmark up" placement="right-center">
-                  <button
-                    aria-label={`Move ${bookmark.label} up`}
-                    className="bacon-title-action-icon-button"
-                    disabled={bookmarkIndex === 0}
-                    onClick={() => handleMoveBookmark(bookmark.id, "up")}
-                    type="button"
-                  >
-                    ⬆️
-                  </button>
-                </FancyTooltip>
+                <button
+                  aria-label={`Move ${bookmark.label} up`}
+                  className="bacon-title-action-icon-button"
+                  disabled={bookmarkIndex === 0}
+                  onClick={() => handleMoveBookmark(bookmark.id, "up")}
+                  type="button"
+                >
+                  ⬆️
+                </button>
                 <FancyTooltip content={formatBookmarkIndexTooltip(bookmark)} placement="right-center">
                   <span
                     className="bacon-bookmark-index-bubble"
@@ -1790,17 +1788,15 @@ export default function AppX() {
                     {bookmarkIndex + 1}
                   </span>
                 </FancyTooltip>
-                <FancyTooltip content="Move bookmark down" placement="right-center">
-                  <button
-                    aria-label={`Move ${bookmark.label} down`}
-                    className="bacon-title-action-icon-button"
-                    disabled={bookmarkIndex === bookmarks.length - 1}
-                    onClick={() => handleMoveBookmark(bookmark.id, "down")}
-                    type="button"
-                  >
-                    ⬇️
-                  </button>
-                </FancyTooltip>
+                <button
+                  aria-label={`Move ${bookmark.label} down`}
+                  className="bacon-title-action-icon-button"
+                  disabled={bookmarkIndex === bookmarks.length - 1}
+                  onClick={() => handleMoveBookmark(bookmark.id, "down")}
+                  type="button"
+                >
+                  ⬇️
+                </button>
                 <FancyTooltip content="Load bookmark" placement="right-center">
                   <button
                     aria-label={`Load ${bookmark.label}`}
@@ -1880,19 +1876,13 @@ export default function AppX() {
         >
           <img alt="" className="bacon-title-icon" src="/favicon.svg" />
         </button>
-        <FancyTooltip
-          content={import.meta.env.DEV ? "Copy debug log" : null}
-          placement="bottom-center"
-          wrapperTag="div"
+        <h1
+          className="bacon-title"
+          onClick={import.meta.env.DEV ? handleTitleDebugCopy : undefined}
+          ref={titleRef}
         >
-          <h1
-            className="bacon-title"
-            onClick={import.meta.env.DEV ? handleTitleDebugCopy : undefined}
-            ref={titleRef}
-          >
-            BaconDegrees420
-          </h1>
-        </FancyTooltip>
+          BaconDegrees420
+        </h1>
         {copyStatus ? <span className="bacon-copy-status">{copyStatus}</span> : null}
         <div className="bacon-title-actions">
           {renderConnectionMatchupPreview()}
@@ -1911,22 +1901,23 @@ export default function AppX() {
             <button
               aria-label={isBookmarksView ? "Close bookmarks" : "Open bookmarks"}
               className="bacon-title-action-icon-button"
+              onMouseDown={(event) => {
+                event.currentTarget.focus();
+              }}
               onClick={handleToggleBookmarks}
               type="button"
             >
               {isBookmarksView ? "🎬" : "📚"}
             </button>
           </FancyTooltip>
-          <FancyTooltip content="Clear TMDB cache">
-            <button
-              aria-label="Clear database"
-              className="bacon-title-action-button"
-              onClick={handleClearDatabase}
-              type="button"
-            >
-              Clear DB
-            </button>
-          </FancyTooltip>
+          <button
+            aria-label="Clear database"
+            className="bacon-title-action-button"
+            onClick={handleClearDatabase}
+            type="button"
+          >
+            Clear DB
+          </button>
         </div>
       </header>
 
