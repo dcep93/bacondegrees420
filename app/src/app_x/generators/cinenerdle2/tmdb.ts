@@ -511,7 +511,6 @@ export async function prefetchBestConnectionForYoungestSelectedCard(
       (await getLocalMovieRecordForCard(
         selectedCard.name,
         selectedCard.year,
-        selectedCard.record?.tmdbId ?? selectedCard.record?.id ?? null,
       ));
     if (!hasMovieCredits(movieRecord)) {
       return;

@@ -43,6 +43,7 @@ type BaseCard = {
   name: string;
   popularity: number;
   popularitySource: string | null;
+  connectionRank?: number | null;
   imageUrl: string | null;
   subtitle: string;
   subtitleDetail: string;

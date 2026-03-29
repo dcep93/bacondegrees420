@@ -21,6 +21,7 @@ import {
 import {
   getFilmRecordByTitleAndYear,
   getFilmRecordCountsByPersonConnectionKeys,
+  getFilmRecordsByPersonConnectionKey,
   getFilmRecordsByIds,
   getPersonRecordById,
   getPersonRecordByName,
@@ -37,8 +38,10 @@ import { pickBestPersonRecord } from "./records";
 import type { FilmRecord, PersonRecord } from "./types";
 import {
   getAssociatedPeopleFromMovieCredits,
+  getFilmKey,
   getMovieKeyFromCredit,
   getSnapshotPeopleByRole,
+  getTmdbMovieCredits,
   getUniqueSortedTmdbMovieCredits,
   getValidTmdbEntityId,
   normalizeName,
@@ -539,16 +542,26 @@ async function buildChildRowForPersonCard(
   const connectionCounts = await getPersonRecordCountsByMovieKeys(
     movieCredits.map((credit) => getMovieKeyFromCredit(credit)),
   );
+  const parentPersonRecord = personRecord;
 
   return createRow(
     sortCardsByPopularity(
-      movieCredits.map((credit) =>
-        createMovieAssociationCard(
+      movieCredits.map((credit) => {
+        const movieRecord = (credit.id ? filmRecordsById.get(credit.id) : null) ?? null;
+        const movieCard = createMovieAssociationCard(
           credit,
-          (credit.id ? filmRecordsById.get(credit.id) : null) ?? null,
+          movieRecord,
           Math.max(connectionCounts.get(getMovieKeyFromCredit(credit)) ?? 0, 1),
-        ),
-      ),
+        );
+
+        const connectionRank = getParentPersonRankForMovie(movieRecord, parentPersonRecord);
+        return connectionRank === null
+          ? movieCard
+          : {
+            ...movieCard,
+            connectionRank,
+          };
+      }),
     ),
   );
 }
@@ -585,6 +598,7 @@ async function buildChildRowForMovieCard(
               filmConnectionCounts.get(normalizeName(personName)) ?? 0,
               1,
             ),
+            connectionRank: await getParentMovieRankForPerson(movieRecord, cachedPersonRecord),
             personRecord: cachedPersonRecord,
           },
         ] as const;
@@ -593,11 +607,21 @@ async function buildChildRowForMovieCard(
   );
 
   const cards = tmdbCredits.map((credit) =>
-    createPersonAssociationCard(
-      credit,
-      personDetails.get(getPersonIdentityKey(credit.name ?? "", credit.id))?.connectionCount ?? 1,
-      personDetails.get(getPersonIdentityKey(credit.name ?? "", credit.id))?.personRecord ?? null,
-    ),
+    {
+      const personDetail = personDetails.get(getPersonIdentityKey(credit.name ?? "", credit.id));
+      const personCard = createPersonAssociationCard(
+        credit,
+        personDetail?.connectionCount ?? 1,
+        personDetail?.personRecord ?? null,
+      );
+
+      return personDetail?.connectionRank === null || personDetail?.connectionRank === undefined
+        ? personCard
+        : {
+          ...personCard,
+          connectionRank: personDetail.connectionRank,
+        };
+    },
   );
   const seenPeople = new Set(cards.map((personCard) => normalizeName(personCard.name)));
   const snapshotPeople = getSnapshotPeopleByRole(movieRecord);
@@ -621,26 +645,41 @@ async function buildChildRowForMovieCard(
     ),
   );
 
-  (
-    Object.entries(snapshotPeople) as Array<
-      [keyof typeof snapshotPeople, string[]]
-    >
-  ).forEach(([role, people]) => {
-    people.forEach((personName) => {
-      const normalizedPersonName = normalizeName(personName);
-      if (seenPeople.has(normalizedPersonName)) {
-        return;
-      }
+  const snapshotCards = await Promise.all(
+    (
+      Object.entries(snapshotPeople) as Array<
+        [keyof typeof snapshotPeople, string[]]
+      >
+    ).flatMap(([role, people]) =>
+      people.map(async (personName) => {
+        const normalizedPersonName = normalizeName(personName);
+        if (seenPeople.has(normalizedPersonName)) {
+          return null;
+        }
 
-      const snapshotCard = createSnapshotPersonCard(
-        personName,
-        role,
-        snapshotPersonRecords.get(normalizedPersonName) ?? null,
-      );
-      cards.push(snapshotCard);
-      seenPeople.add(normalizedPersonName);
-    });
-  });
+        const snapshotPersonRecord = snapshotPersonRecords.get(normalizedPersonName) ?? null;
+        const snapshotCard = createSnapshotPersonCard(
+          personName,
+          role,
+          snapshotPersonRecord,
+        );
+        const connectionRank = await getParentMovieRankForPerson(movieRecord, snapshotPersonRecord);
+        seenPeople.add(normalizedPersonName);
+
+        return connectionRank === null
+          ? snapshotCard
+          : {
+            ...snapshotCard,
+            connectionRank,
+          };
+      }),
+    ),
+  );
+
+  cards.push(
+    ...snapshotCards.filter((snapshotCard): snapshotCard is Exclude<typeof snapshotCard, null> =>
+      snapshotCard !== null),
+  );
 
   return createRow(sortCardsByPopularity(cards));
 }
@@ -938,24 +977,127 @@ function getRenderableSources(card: CinenerdleCard) {
   );
 }
 
-function getConnectionRankForRowCard(
-  rowCards: CinenerdleCard[],
-  card: CinenerdleCard,
+function getDensePopularityRank(
+  candidatePopularity: number,
+  linkedPopularities: number[],
 ): number | null {
-  if (typeof card.connectionCount !== "number") {
+  const rankedPopularities = Array.from(new Set(linkedPopularities)).sort((left, right) => right - left);
+  const rankIndex = rankedPopularities.findIndex((popularity) => popularity === candidatePopularity);
+  return rankIndex >= 0 ? rankIndex + 1 : null;
+}
+
+function getParentPersonRankForMovie(
+  movieRecord: FilmRecord | null,
+  parentPersonRecord: PersonRecord | null,
+): number | null {
+  if (!movieRecord || !parentPersonRecord) {
     return null;
   }
 
-  const rankedCounts = Array.from(
-    new Set(
-      rowCards
-        .map((rowCard) => rowCard.connectionCount)
-        .filter((count): count is number => typeof count === "number"),
-    ),
-  ).sort((left, right) => right - left);
-  const rankIndex = rankedCounts.findIndex((count) => count === card.connectionCount);
+  const parentPersonTmdbId = getValidTmdbEntityId(parentPersonRecord.tmdbId ?? parentPersonRecord.id);
+  const parentPersonName = normalizeName(parentPersonRecord.name);
+  const parentPersonPopularity = parentPersonRecord.rawTmdbPerson?.popularity ?? 0;
+  const popularityByPersonKey = new Map<string, number>();
+  let parentPersonKey: string | null = null;
 
-  return rankIndex >= 0 ? rankIndex + 1 : null;
+  getAssociatedPeopleFromMovieCredits(movieRecord).forEach((credit) => {
+    const creditTmdbId = getValidTmdbEntityId(credit.id);
+    const creditName = normalizeName(credit.name ?? "");
+    if (!creditTmdbId && !creditName) {
+      return;
+    }
+
+    const personKey = creditTmdbId ? `tmdb:${creditTmdbId}` : `name:${creditName}`;
+    const popularity = credit.popularity ?? 0;
+    popularityByPersonKey.set(
+      personKey,
+      Math.max(popularityByPersonKey.get(personKey) ?? 0, popularity),
+    );
+
+    if (
+      (parentPersonTmdbId && creditTmdbId === parentPersonTmdbId) ||
+      (!parentPersonTmdbId && creditName === parentPersonName)
+    ) {
+      parentPersonKey = personKey;
+    }
+  });
+
+  if (!parentPersonKey) {
+    const isNamedConnection =
+      parentPersonName &&
+      movieRecord.personConnectionKeys.some((personName) => normalizeName(personName) === parentPersonName);
+    if (!isNamedConnection) {
+      return null;
+    }
+
+    parentPersonKey = parentPersonTmdbId ? `tmdb:${parentPersonTmdbId}` : `name:${parentPersonName}`;
+  }
+
+  popularityByPersonKey.set(
+    parentPersonKey,
+    Math.max(popularityByPersonKey.get(parentPersonKey) ?? 0, parentPersonPopularity),
+  );
+
+  return getDensePopularityRank(
+    popularityByPersonKey.get(parentPersonKey) ?? parentPersonPopularity,
+    [...popularityByPersonKey.values()],
+  );
+}
+
+async function getParentMovieRankForPerson(
+  parentMovieRecord: FilmRecord | null,
+  personRecord: PersonRecord | null,
+): Promise<number | null> {
+  if (!parentMovieRecord || !personRecord) {
+    return null;
+  }
+
+  const parentMovieKey = getFilmKey(parentMovieRecord.title, parentMovieRecord.year);
+  const popularityByMovieKey = new Map<string, number>();
+  const linkedMovieKeys = new Set<string>();
+
+  personRecord.movieConnectionKeys.forEach((movieKey) => {
+    if (movieKey) {
+      linkedMovieKeys.add(movieKey);
+    }
+  });
+
+  const linkedMovieRecords = await getFilmRecordsByPersonConnectionKey(personRecord.name);
+  linkedMovieRecords.forEach((movieRecord) => {
+    const movieKey = getFilmKey(movieRecord.title, movieRecord.year);
+    linkedMovieKeys.add(movieKey);
+    popularityByMovieKey.set(
+      movieKey,
+      Math.max(popularityByMovieKey.get(movieKey) ?? 0, movieRecord.popularity ?? 0),
+    );
+  });
+
+  getTmdbMovieCredits(personRecord).forEach((credit) => {
+    const movieKey = getMovieKeyFromCredit(credit);
+    if (!movieKey) {
+      return;
+    }
+
+    linkedMovieKeys.add(movieKey);
+    popularityByMovieKey.set(
+      movieKey,
+      Math.max(popularityByMovieKey.get(movieKey) ?? 0, credit.popularity ?? 0),
+    );
+  });
+
+  if (!linkedMovieKeys.has(parentMovieKey)) {
+    return null;
+  }
+
+  popularityByMovieKey.set(
+    parentMovieKey,
+    Math.max(popularityByMovieKey.get(parentMovieKey) ?? 0, parentMovieRecord.popularity ?? 0),
+  );
+
+  return getDensePopularityRank(
+    popularityByMovieKey.get(parentMovieKey) ?? 0,
+    Array.from(linkedMovieKeys, (movieKey) => popularityByMovieKey.get(movieKey) ?? 0),
+  );
 }
 
 function createCardViewModel(
@@ -964,7 +1106,6 @@ function createCardViewModel(
     isSelected: boolean;
     isLocked?: boolean;
     isAncestorSelected?: boolean;
-    connectionRank?: number | null;
   },
 ): CinenerdleCardViewModel {
   const sharedFields = {
@@ -976,7 +1117,7 @@ function createCardViewModel(
     popularity: card.popularity,
     popularitySource: card.popularitySource,
     connectionCount: card.connectionCount,
-    connectionRank: options.connectionRank ?? null,
+    connectionRank: card.connectionRank ?? null,
     sources: getRenderableSources(card),
     status: card.status,
     isSelected: options.isSelected,
@@ -1072,14 +1213,12 @@ function renderCinenerdleCard(
   writeHash: (nextHash: string, mode?: "selection" | "navigation") => void,
 ) {
   const card = tree[row][col].data;
-  const rowCards = tree[row]?.map((node) => node.data) ?? [];
   const viewModel = createCardViewModel(card, {
     isSelected: tree[row][col].selected,
     isLocked: false,
     isAncestorSelected: getSelectedAncestorCards(tree, row).some((ancestorCard) =>
       cardsMatch(card, ancestorCard),
     ),
-    connectionRank: getConnectionRankForRowCard(rowCards, card),
   });
 
   if (viewModel.kind === "dbinfo") {
