@@ -240,6 +240,117 @@ describe("resolveConnectionMatchupPreview", () => {
     expect(preview?.counterpart.tooltipText).toContain("Drew Goddard");
   });
 
+  it("orders movie spoilers by the selected movie's dual-merge connections before falling back to popularity", async () => {
+    const selectedMovie = makeFilmRecord({
+      id: "selected-movie-2000",
+      tmdbId: 2000,
+      title: "Selected Movie",
+      year: "2000",
+      popularity: 40,
+      personConnectionKeys: [
+        "low exclusive",
+        "shared cast",
+        "shared crew",
+        "high exclusive",
+      ],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          { id: 101, name: "Low Exclusive", order: 0, popularity: 85 },
+          { id: 102, name: "Shared Cast", order: 1, popularity: 80 },
+        ],
+        crew: [
+          { id: 103, name: "Shared Crew", order: 0, job: "Director", popularity: 70 },
+          { id: 104, name: "High Exclusive", order: 1, job: "Writer", popularity: 95 },
+        ],
+      },
+    });
+    const counterpartMovie = makeFilmRecord({
+      id: "counterpart-movie-2001",
+      tmdbId: 2001,
+      title: "Counterpart Movie",
+      year: "2001",
+      popularity: 35,
+      personConnectionKeys: ["shared cast", "shared crew"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [{ id: 102, name: "Shared Cast", order: 0, popularity: 80 }],
+        crew: [{ id: 103, name: "Shared Crew", order: 0, job: "Director", popularity: 70 }],
+      },
+    });
+    const people = [
+      makePersonRecord({
+        id: 101,
+        tmdbId: 101,
+        name: "Low Exclusive",
+        movieConnectionKeys: ["selected movie (2000)"],
+        rawTmdbPerson: { id: 101, name: "Low Exclusive", popularity: 85 },
+      }),
+      makePersonRecord({
+        id: 102,
+        tmdbId: 102,
+        name: "Shared Cast",
+        movieConnectionKeys: ["selected movie (2000)", "counterpart movie (2001)"],
+        rawTmdbPerson: { id: 102, name: "Shared Cast", popularity: 80 },
+      }),
+      makePersonRecord({
+        id: 103,
+        tmdbId: 103,
+        name: "Shared Crew",
+        movieConnectionKeys: ["selected movie (2000)", "counterpart movie (2001)"],
+        rawTmdbPerson: { id: 103, name: "Shared Crew", popularity: 70 },
+      }),
+      makePersonRecord({
+        id: 104,
+        tmdbId: 104,
+        name: "High Exclusive",
+        movieConnectionKeys: ["selected movie (2000)"],
+        rawTmdbPerson: { id: 104, name: "High Exclusive", popularity: 95 },
+      }),
+    ];
+
+    indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (title: string, year: string) =>
+      [selectedMovie, counterpartMovie].find(
+        (film) => film.title === title && film.year === year,
+      ) ?? null,
+    );
+    indexedDbMock.getFilmRecordsByPersonConnectionKey.mockImplementation(async (personName: string) =>
+      [selectedMovie, counterpartMovie].filter((film) =>
+        Array.isArray(film.personConnectionKeys) &&
+        film.personConnectionKeys.some(
+          (candidate) => typeof candidate === "string" && normalizeName(candidate) === normalizeName(personName),
+        ),
+      ),
+    );
+    indexedDbMock.getPersonRecordById.mockImplementation(async (id: number) =>
+      people.find((person) => person.id === id || person.tmdbId === id) ?? null,
+    );
+    indexedDbMock.getPersonRecordByName.mockImplementation(async (name: string) =>
+      people.find((person) => normalizeName(person.name) === normalizeName(name)) ?? null,
+    );
+    indexedDbMock.getAllPersonRecords.mockResolvedValue(people);
+
+    const preview = await resolveConnectionMatchupPreview({
+      key: "movie:selected movie:2000",
+      kind: "movie",
+      name: "Selected Movie",
+      year: "2000",
+      popularity: 0,
+      popularitySource: null,
+      imageUrl: null,
+      subtitle: "",
+      subtitleDetail: "",
+      connectionCount: null,
+      sources: [],
+      status: null,
+      voteAverage: null,
+      voteCount: null,
+      record: null,
+    });
+
+    expect(preview).not.toBeNull();
+    expect(preview?.counterpart.name).toBe("Counterpart Movie (2001)");
+    expect(preview?.spoiler.name).toBe("Low Exclusive");
+  });
+
   it("sorts shared movie connections in person counterpart tooltips by popularity", async () => {
     const memento = makeFilmRecord({
       id: "memento-2000",
@@ -355,5 +466,132 @@ describe("resolveConnectionMatchupPreview", () => {
       "The Dark Knight (2008)",
       "Memento (2000)",
     ]);
+  });
+
+  it("orders person spoilers by the selected person's dual-merge connections before falling back to popularity", async () => {
+    const lowExclusiveMovie = makeFilmRecord({
+      id: "low-exclusive-2010",
+      tmdbId: 301,
+      title: "Low Exclusive",
+      year: "2010",
+      popularity: 85,
+    });
+    const sharedCastMovie = makeFilmRecord({
+      id: "shared-cast-2011",
+      tmdbId: 302,
+      title: "Shared Cast",
+      year: "2011",
+      popularity: 80,
+    });
+    const sharedCrewMovie = makeFilmRecord({
+      id: "shared-crew-2012",
+      tmdbId: 303,
+      title: "Shared Crew",
+      year: "2012",
+      popularity: 70,
+    });
+    const highExclusiveMovie = makeFilmRecord({
+      id: "high-exclusive-2013",
+      tmdbId: 304,
+      title: "High Exclusive",
+      year: "2013",
+      popularity: 95,
+    });
+    const selectedPerson = makePersonRecord({
+      id: 401,
+      tmdbId: 401,
+      name: "Selected Person",
+      movieConnectionKeys: [
+        "low exclusive (2010)",
+        "shared cast (2011)",
+        "shared crew (2012)",
+        "high exclusive (2013)",
+      ],
+      rawTmdbPerson: { id: 401, name: "Selected Person", popularity: 50 },
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          { id: 301, title: "Low Exclusive", release_date: "2010-01-01", popularity: 85 },
+          { id: 302, title: "Shared Cast", release_date: "2011-01-01", popularity: 80 },
+        ],
+        crew: [
+          { id: 303, title: "Shared Crew", release_date: "2012-01-01", job: "Director", popularity: 70 },
+          { id: 304, title: "High Exclusive", release_date: "2013-01-01", job: "Writer", popularity: 95 },
+        ],
+      },
+    });
+    const counterpartPerson = makePersonRecord({
+      id: 402,
+      tmdbId: 402,
+      name: "Counterpart Person",
+      movieConnectionKeys: ["shared cast (2011)", "shared crew (2012)"],
+      rawTmdbPerson: { id: 402, name: "Counterpart Person", popularity: 45 },
+    });
+
+    indexedDbMock.getPersonRecordById.mockImplementation(async (id: number) => {
+      if (id === 401) {
+        return selectedPerson;
+      }
+
+      if (id === 402) {
+        return counterpartPerson;
+      }
+
+      return null;
+    });
+    indexedDbMock.getPersonRecordByName.mockImplementation(async (name: string) => {
+      if (normalizeName(name) === normalizeName("Selected Person")) {
+        return selectedPerson;
+      }
+
+      if (normalizeName(name) === normalizeName("Counterpart Person")) {
+        return counterpartPerson;
+      }
+
+      return null;
+    });
+    indexedDbMock.getPersonRecordsByMovieKey.mockImplementation(async (movieKey: string) => {
+      if (movieKey === "shared cast (2011)" || movieKey === "shared crew (2012)") {
+        return [selectedPerson, counterpartPerson];
+      }
+
+      if (movieKey === "low exclusive (2010)" || movieKey === "high exclusive (2013)") {
+        return [selectedPerson];
+      }
+
+      return [];
+    });
+    indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (title: string, year: string) => {
+      return [
+        lowExclusiveMovie,
+        sharedCastMovie,
+        sharedCrewMovie,
+        highExclusiveMovie,
+      ].find((film) => film.title === title && film.year === year) ?? null;
+    });
+    indexedDbMock.getAllFilmRecords.mockResolvedValue([
+      lowExclusiveMovie,
+      sharedCastMovie,
+      sharedCrewMovie,
+      highExclusiveMovie,
+    ]);
+
+    const preview = await resolveConnectionMatchupPreview({
+      key: "person:401",
+      kind: "person",
+      name: "Selected Person",
+      popularity: 0,
+      popularitySource: null,
+      imageUrl: null,
+      subtitle: "",
+      subtitleDetail: "",
+      connectionCount: null,
+      sources: [],
+      status: null,
+      record: null,
+    });
+
+    expect(preview).not.toBeNull();
+    expect(preview?.counterpart.name).toBe("Counterpart Person");
+    expect(preview?.spoiler.name).toBe("Low Exclusive (2010)");
   });
 });

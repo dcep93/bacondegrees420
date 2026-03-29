@@ -186,7 +186,20 @@ export function getUniqueSortedTmdbMovieCredits(
 
 type DualMergeCredit = {
   popularity?: number;
+  order?: number;
 };
+
+function sortCreditsForOrderedTurns<T extends DualMergeCredit>(queue: T[]): T[] {
+  return [...queue].sort((left, right) => {
+    const leftOrder = typeof left.order === "number" ? left.order : Number.POSITIVE_INFINITY;
+    const rightOrder = typeof right.order === "number" ? right.order : Number.POSITIVE_INFINITY;
+    if (leftOrder !== rightOrder) {
+      return leftOrder - rightOrder;
+    }
+
+    return 0;
+  });
+}
 
 function getMostPopularQueueIndex<T extends DualMergeCredit>(queue: T[]): number {
   let bestIndex = 0;
@@ -214,13 +227,17 @@ function mergeAlternatingDualQueues<TCast extends DualMergeCredit, TCrew extends
 
   while (remainingCast.length > 0 || remainingCrew.length > 0) {
     if (remainingCast.length === 0) {
-      merged.push(...remainingCrew);
-      break;
+      const crewIndex = useOrderedTurn ? 0 : getMostPopularQueueIndex(remainingCrew);
+      merged.push(remainingCrew.splice(crewIndex, 1)[0]);
+      useOrderedTurn = !useOrderedTurn;
+      continue;
     }
 
     if (remainingCrew.length === 0) {
-      merged.push(...remainingCast);
-      break;
+      const castIndex = useOrderedTurn ? 0 : getMostPopularQueueIndex(remainingCast);
+      merged.push(remainingCast.splice(castIndex, 1)[0]);
+      useOrderedTurn = !useOrderedTurn;
+      continue;
     }
 
     const castIndex = useOrderedTurn ? 0 : getMostPopularQueueIndex(remainingCast);
@@ -246,14 +263,14 @@ export function getAssociatedMoviesFromPersonCredits(
   const credits: TmdbPersonMovieCreditsResponse =
     personRecord?.rawTmdbMovieCreditsResponse ?? {};
   const seenIds = new Set<number>();
-  const castQueue = (credits.cast ?? []).map((credit) => ({
+  const castQueue = sortCreditsForOrderedTurns((credits.cast ?? []).map((credit) => ({
     ...credit,
     creditType: "cast" as const,
-  }));
-  const crewQueue = (credits.crew ?? []).map((credit) => ({
+  })));
+  const crewQueue = sortCreditsForOrderedTurns((credits.crew ?? []).map((credit) => ({
     ...credit,
     creditType: "crew" as const,
-  }));
+  })));
   const candidates = mergeAlternatingDualQueues(castQueue, crewQueue);
 
   return candidates.filter((credit) => {
@@ -303,19 +320,20 @@ export function getAssociatedPeopleFromMovieCredits(
   const credits: TmdbMovieCreditsResponse =
     movieRecord?.rawTmdbMovieCreditsResponse ?? {};
   const seenPeople = new Set<string>();
-  const castQueue = [...(credits.cast ?? [])]
-    .filter(isAllowedMovieCastCredit)
-    .map((credit) => ({
-      ...credit,
-      creditType: "cast" as const,
-    }))
-    .sort((left, right) => left.order - right.order);
-  const crewQueue = (credits.crew ?? [])
+  const castQueue = sortCreditsForOrderedTurns(
+    [...(credits.cast ?? [])]
+      .filter(isAllowedMovieCastCredit)
+      .map((credit) => ({
+        ...credit,
+        creditType: "cast" as const,
+      })),
+  );
+  const crewQueue = sortCreditsForOrderedTurns((credits.crew ?? [])
     .filter(isAllowedMovieCrewCredit)
     .map((credit) => ({
       ...credit,
       creditType: "crew" as const,
-    }));
+    })));
   const candidates = mergeAlternatingDualQueues(castQueue, crewQueue);
 
   return candidates

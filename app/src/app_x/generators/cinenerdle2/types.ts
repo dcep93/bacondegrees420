@@ -34,6 +34,7 @@ export type TmdbMovieCredit = {
   poster_path?: string | null;
   release_date?: string;
   popularity?: number;
+  order?: number;
   vote_average?: number;
   vote_count?: number;
   creditType?: "cast" | "crew";

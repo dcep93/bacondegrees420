@@ -241,6 +241,25 @@ describe("tmdb credit aggregation", () => {
     ]);
   });
 
+  it("alternates ordered and popularity turns when only cast movie credits remain", () => {
+    const personRecord = makePersonRecord({
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({ id: 1, title: "Early Low", order: 0, popularity: 10 }),
+          makeMovieCredit({ id: 2, title: "Lincoln", order: 5, popularity: 80 }),
+          makeMovieCredit({ id: 3, title: "Middle", order: 2, popularity: 30 }),
+        ],
+        crew: [],
+      },
+    });
+
+    expect(getAssociatedMoviesFromPersonCredits(personRecord).map((credit) => credit.title)).toEqual([
+      "Early Low",
+      "Lincoln",
+      "Middle",
+    ]);
+  });
+
   it("preserves crew queue order when dual-merging person movie credits", () => {
     const personRecord = makePersonRecord({
       rawTmdbMovieCreditsResponse: {
@@ -262,8 +281,8 @@ describe("tmdb credit aggregation", () => {
     const personRecord = makePersonRecord({
       rawTmdbMovieCreditsResponse: {
         cast: [
-          makeMovieCredit({ id: 1, title: "Cast Head", popularity: 80 }),
-          makeMovieCredit({ id: 2, title: "Cast Tail", popularity: 20 }),
+          makeMovieCredit({ id: 1, title: "Cast Head", order: 0, popularity: 80 }),
+          makeMovieCredit({ id: 2, title: "Cast Tail", order: 1, popularity: 20 }),
         ],
         crew: [
           makeMovieCredit({ id: 3, title: "Crew Head", popularity: 50, creditType: undefined }),
@@ -279,6 +298,28 @@ describe("tmdb credit aggregation", () => {
       "Crew Head",
       "Cast Tail",
       "Crew Tail",
+    ]);
+  });
+
+  it("uses cast order before alternating person movie credits", () => {
+    const personRecord = makePersonRecord({
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({ id: 1, title: "Cast Later", order: 5, popularity: 70 }),
+          makeMovieCredit({ id: 2, title: "Beau Is Afraid", order: 0, popularity: 10 }),
+        ],
+        crew: [
+          makeMovieCredit({ id: 3, title: "Crew Head", popularity: 8, creditType: undefined }),
+          makeMovieCredit({ id: 4, title: "Crew High", popularity: 30, creditType: undefined }),
+        ],
+      },
+    });
+
+    expect(getAssociatedMoviesFromPersonCredits(personRecord).map((credit) => credit.title)).toEqual([
+      "Beau Is Afraid",
+      "Cast Later",
+      "Crew Head",
+      "Crew High",
     ]);
   });
 
@@ -417,8 +458,8 @@ describe("tmdb credit aggregation", () => {
     });
 
     expect(getAssociatedPeopleFromMovieCredits(filmRecord).map((credit) => credit.name)).toEqual([
-      "Robert De Niro",
       "Michael Mann",
+      "Robert De Niro",
       "Aaron Sorkin",
       "Al Pacino",
       "Kenneth Collard",
@@ -448,6 +489,54 @@ describe("tmdb credit aggregation", () => {
     expect(getAssociatedPeopleFromMovieCredits(filmRecord).map((credit) => credit.name)).toEqual([
       "Cast Head",
       "Crew Head",
+    ]);
+  });
+
+  it("uses the lowest crew order on ordered turns for movie credits", () => {
+    const filmRecord = makeFilmRecord({
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({ id: 1, name: "Cast Head", order: 4, popularity: 70 }),
+          makePersonCredit({ id: 2, name: "Cast Tail", order: 8, popularity: 10 }),
+        ],
+        crew: [
+          makePersonCredit({
+            id: 3,
+            name: "Crew Later",
+            order: 9,
+            creditType: undefined,
+            character: undefined,
+            job: "Director",
+            popularity: 20,
+          }),
+          makePersonCredit({
+            id: 4,
+            name: "Crew Earliest",
+            order: 1,
+            creditType: undefined,
+            character: undefined,
+            job: "Writer",
+            popularity: 60,
+          }),
+          makePersonCredit({
+            id: 5,
+            name: "Crew Most Popular",
+            order: 7,
+            creditType: undefined,
+            character: undefined,
+            job: "Screenplay",
+            popularity: 90,
+          }),
+        ],
+      },
+    });
+
+    expect(getAssociatedPeopleFromMovieCredits(filmRecord).map((credit) => credit.name)).toEqual([
+      "Cast Head",
+      "Crew Most Popular",
+      "Crew Earliest",
+      "Crew Later",
+      "Cast Tail",
     ]);
   });
 

@@ -78,6 +78,7 @@ export function makeMovieCredit(
     poster_path: pickOverride(overrides, "poster_path", "/insomnia.jpg"),
     release_date: pickOverride(overrides, "release_date", "2002-05-24"),
     popularity: pickOverride(overrides, "popularity", 55),
+    order: pickOverride(overrides, "order", 0),
     vote_average: pickOverride(overrides, "vote_average", 7.1),
     vote_count: pickOverride(overrides, "vote_count", 1200),
     creditType: pickOverride(overrides, "creditType", "cast"),

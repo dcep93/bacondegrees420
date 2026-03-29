@@ -14,9 +14,12 @@ import {
 import type { FilmRecord, PersonRecord } from "./generators/cinenerdle2/types";
 import {
   formatMoviePathLabel,
+  getAssociatedMoviesFromPersonCredits,
   getAssociatedPeopleFromMovieCredits,
   getFilmKey,
   getMovieKeyFromCredit,
+  getMovieTitleFromCredit,
+  getMovieYearFromCredit,
   getMoviePosterUrl,
   parseMoviePathLabel,
   getPersonProfileImageUrl,
@@ -537,6 +540,48 @@ async function findMostPopularSelectedMovieSpoiler(
   );
 }
 
+async function findDualMergeOrderedSelectedMovieSpoiler(
+  selectedMovieRecord: FilmRecord,
+  counterpartMovieRecord: FilmRecord,
+): Promise<PersonRecord | null> {
+  const orderedCredits = getAssociatedPeopleFromMovieCredits(selectedMovieRecord);
+
+  for (const credit of orderedCredits) {
+    const personName = normalizeWhitespace(credit.name ?? "");
+    if (!personName) {
+      continue;
+    }
+
+    const personRecord =
+      (credit.id ? await getPersonRecordById(credit.id) : null) ??
+      (await getPersonRecordByName(personName));
+    if (!personRecord) {
+      continue;
+    }
+
+    if (
+      isMovieConnectedToPerson(selectedMovieRecord, personRecord) &&
+      !isMovieConnectedToPerson(counterpartMovieRecord, personRecord)
+    ) {
+      return personRecord;
+    }
+  }
+
+  return null;
+}
+
+async function findBestSelectedMovieSpoiler(
+  selectedMovieRecord: FilmRecord,
+  counterpartMovieRecord: FilmRecord,
+): Promise<PersonRecord | null> {
+  return (
+    await findDualMergeOrderedSelectedMovieSpoiler(
+      selectedMovieRecord,
+      counterpartMovieRecord,
+    )
+  ) ?? findMostPopularSelectedMovieSpoiler(selectedMovieRecord, counterpartMovieRecord);
+}
+
 async function findMostPopularSelectedPersonSpoiler(
   selectedPersonRecord: PersonRecord,
   counterpartPersonRecord: PersonRecord,
@@ -555,6 +600,49 @@ async function findMostPopularSelectedPersonSpoiler(
         !isPersonConnectedToMovie(counterpartPersonRecord, movieRecord),
     ) ?? null
   );
+}
+
+async function findDualMergeOrderedSelectedPersonSpoiler(
+  selectedPersonRecord: PersonRecord,
+  counterpartPersonRecord: PersonRecord,
+): Promise<FilmRecord | null> {
+  const orderedCredits = getAssociatedMoviesFromPersonCredits(selectedPersonRecord);
+
+  for (const credit of orderedCredits) {
+    const movieTitle = getMovieTitleFromCredit(credit);
+    if (!movieTitle) {
+      continue;
+    }
+
+    const movieRecord = await getFilmRecordByTitleAndYear(
+      movieTitle,
+      getMovieYearFromCredit(credit),
+    );
+    if (!movieRecord) {
+      continue;
+    }
+
+    if (
+      isPersonConnectedToMovie(selectedPersonRecord, movieRecord) &&
+      !isPersonConnectedToMovie(counterpartPersonRecord, movieRecord)
+    ) {
+      return movieRecord;
+    }
+  }
+
+  return null;
+}
+
+async function findBestSelectedPersonSpoiler(
+  selectedPersonRecord: PersonRecord,
+  counterpartPersonRecord: PersonRecord,
+): Promise<FilmRecord | null> {
+  return (
+    await findDualMergeOrderedSelectedPersonSpoiler(
+      selectedPersonRecord,
+      counterpartPersonRecord,
+    )
+  ) ?? findMostPopularSelectedPersonSpoiler(selectedPersonRecord, counterpartPersonRecord);
 }
 
 export async function resolveConnectionMatchupPreview(
@@ -589,7 +677,7 @@ export async function resolveConnectionMatchupPreview(
         return null;
       }
 
-      const spoilerPerson = await findMostPopularSelectedMovieSpoiler(
+      const spoilerPerson = await findBestSelectedMovieSpoiler(
         selectedMovieRecord,
         counterpartMovie.movieRecord,
       );
@@ -633,7 +721,7 @@ export async function resolveConnectionMatchupPreview(
       return null;
     }
 
-    const spoilerMovie = await findMostPopularSelectedPersonSpoiler(
+    const spoilerMovie = await findBestSelectedPersonSpoiler(
       selectedPersonRecord,
       counterpartPerson.personRecord,
     );

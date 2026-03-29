@@ -251,6 +251,57 @@ describe("buildBookmarkPreviewCardsFromHash", () => {
     ]);
   });
 
+  it("uses crew order before alternating movie child rows", async () => {
+    const beauRecord = makeFilmRecord({
+      id: "beau-is-afraid-2023",
+      tmdbId: 798286,
+      title: "Beau Is Afraid",
+      year: "2023",
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({ id: 1, name: "Joaquin Phoenix", order: 0, popularity: 5 }),
+          makePersonCredit({ id: 2, name: "Patti LuPone", order: 1, popularity: 2 }),
+        ],
+        crew: [
+          makePersonCredit({
+            id: 3,
+            name: "Crew Later",
+            order: 8,
+            creditType: undefined,
+            character: undefined,
+            job: "Writer",
+            popularity: 3,
+          }),
+          makePersonCredit({
+            id: 4,
+            name: "Ari Aster",
+            order: 1,
+            creditType: undefined,
+            character: undefined,
+            job: "Director",
+            popularity: 6,
+          }),
+        ],
+      },
+    });
+
+    indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (title: string, year: string) =>
+      title === "Beau Is Afraid" && year === "2023" ? beauRecord : null,
+    );
+    indexedDbMock.getPersonRecordById.mockResolvedValue(null);
+    indexedDbMock.getPersonRecordByName.mockResolvedValue(null);
+
+    const tree = await buildTreeFromHash("#film|Beau+Is+Afraid+(2023)");
+    const childCards = tree[1]?.map((node) => node.data) ?? [];
+
+    expect(childCards.map((card) => card.name)).toEqual([
+      "Ari Aster",
+      "Joaquin Phoenix",
+      "Crew Later",
+      "Patti LuPone",
+    ]);
+  });
+
   it("preserves escape segments as break preview cards", async () => {
     const firstManRecord = makeFilmRecord({
       title: "First Man",
@@ -420,6 +471,156 @@ describe("buildTreeFromHash", () => {
       "Al Pacino",
       "Al Pacino",
       "Al Pacino",
+    ]);
+  });
+
+  it("uses cast order before alternating person child rows", async () => {
+    const beauRecord = makeFilmRecord({
+      id: 201,
+      tmdbId: 798286,
+      title: "Beau Is Afraid",
+      year: "2023",
+      popularity: 10,
+      personConnectionKeys: ["joaquin phoenix"],
+    });
+    const arrivalRecord = makeFilmRecord({
+      id: 202,
+      tmdbId: 329865,
+      title: "Arrival",
+      year: "2016",
+      popularity: 20,
+      personConnectionKeys: ["joaquin phoenix"],
+    });
+    const joaquinPhoenixRecord = makePersonRecord({
+      id: 73421,
+      tmdbId: 73421,
+      name: "Joaquin Phoenix",
+      movieConnectionKeys: [
+        "beau is afraid (2023)",
+        "arrival (2016)",
+      ],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({
+            id: 202,
+            title: "Arrival",
+            release_date: "2016-11-11",
+            order: 8,
+            popularity: 20,
+          }),
+          makeMovieCredit({
+            id: 201,
+            title: "Beau Is Afraid",
+            release_date: "2023-04-14",
+            order: 0,
+            popularity: 10,
+          }),
+        ],
+        crew: [],
+      },
+    });
+
+    indexedDbMock.getPersonRecordById.mockResolvedValue(joaquinPhoenixRecord);
+    indexedDbMock.getPersonRecordByName.mockImplementation(async (personName: string) =>
+      personName === "Joaquin Phoenix" ? joaquinPhoenixRecord : null,
+    );
+    indexedDbMock.getFilmRecordsByIds.mockResolvedValue(
+      new Map([
+        [201, beauRecord],
+        [202, arrivalRecord],
+      ]),
+    );
+
+    const tree = await buildTreeFromHash("#person|Joaquin+Phoenix");
+    const childCards = tree[1]?.map((node) => node.data) ?? [];
+
+    expect(childCards.map((card) => card.name)).toEqual([
+      "Beau Is Afraid",
+      "Arrival",
+    ]);
+  });
+
+  it("does not leave a popular cast-only movie at the end of a person child row", async () => {
+    const earlyLowRecord = makeFilmRecord({
+      id: 301,
+      tmdbId: 301,
+      title: "Early Low",
+      year: "2011",
+      popularity: 10,
+      personConnectionKeys: ["stephen mckinley henderson"],
+    });
+    const lincolnRecord = makeFilmRecord({
+      id: 302,
+      tmdbId: 302,
+      title: "Lincoln",
+      year: "2012",
+      popularity: 80,
+      personConnectionKeys: ["stephen mckinley henderson"],
+    });
+    const middleRecord = makeFilmRecord({
+      id: 303,
+      tmdbId: 303,
+      title: "Middle",
+      year: "2015",
+      popularity: 30,
+      personConnectionKeys: ["stephen mckinley henderson"],
+    });
+    const stephenRecord = makePersonRecord({
+      id: 196179,
+      tmdbId: 196179,
+      name: "Stephen McKinley Henderson",
+      movieConnectionKeys: [
+        "early low (2011)",
+        "lincoln (2012)",
+        "middle (2015)",
+      ],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({
+            id: 301,
+            title: "Early Low",
+            release_date: "2011-01-01",
+            order: 0,
+            popularity: 10,
+          }),
+          makeMovieCredit({
+            id: 302,
+            title: "Lincoln",
+            release_date: "2012-11-16",
+            order: 5,
+            popularity: 80,
+          }),
+          makeMovieCredit({
+            id: 303,
+            title: "Middle",
+            release_date: "2015-01-01",
+            order: 2,
+            popularity: 30,
+          }),
+        ],
+        crew: [],
+      },
+    });
+
+    indexedDbMock.getPersonRecordById.mockResolvedValue(stephenRecord);
+    indexedDbMock.getPersonRecordByName.mockImplementation(async (personName: string) =>
+      personName === "Stephen McKinley Henderson" ? stephenRecord : null,
+    );
+    indexedDbMock.getFilmRecordsByIds.mockResolvedValue(
+      new Map([
+        [301, earlyLowRecord],
+        [302, lincolnRecord],
+        [303, middleRecord],
+      ]),
+    );
+
+    const tree = await buildTreeFromHash("#person|Stephen+McKinley+Henderson");
+    const childCards = tree[1]?.map((node) => node.data) ?? [];
+
+    expect(childCards.map((card) => card.name)).toEqual([
+      "Early Low",
+      "Lincoln",
+      "Middle",
     ]);
   });
 
