@@ -233,10 +233,10 @@ describe("normalizeHashValue", () => {
   it("rewrites known skewed Star Wars movie titles to the TMDb title in cinenerdle hashes", () => {
     expect(
       normalizeHashValue(
-        "#cinenerdle|Return+of+the+Jedi+(1983)|James+Earl+Jones|Star+Wars:+Episode+VI+-+Return+of+the+Jedi+(1983)|James+Earl+Jones|Star+Wars:+Episode+V+-+The+Empire+Strikes+Back+(1980)",
+        "#cinenerdle|Star+Wars:+Episode+IV+-+A+New+Hope+(1977)|Harrison+Ford|Star+Wars:+Episode+VI+-+Return+of+the+Jedi+(1983)|James+Earl+Jones|Star+Wars:+Episode+V+-+The+Empire+Strikes+Back+(1980)",
       ),
     ).toBe(
-      "#cinenerdle|Return+of+the+Jedi+(1983)|James+Earl+Jones|Return+of+the+Jedi+(1983)|James+Earl+Jones|The+Empire+Strikes+Back+(1980)",
+      "#cinenerdle|A+New+Hope+(1977)|Harrison+Ford|Return+of+the+Jedi+(1983)|James+Earl+Jones|The+Empire+Strikes+Back+(1980)",
     );
   });
 });

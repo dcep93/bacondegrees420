@@ -12,6 +12,16 @@ function createKnownMovieTitleSkewKey(name: string, year = ""): string {
 const KNOWN_MOVIE_TITLE_SKEW_BY_KEY = new Map<string, KnownMovieTitleSkew>([
   [
     createKnownMovieTitleSkewKey(
+      "Star Wars: Episode IV - A New Hope",
+      "1977",
+    ),
+    {
+      canonicalName: "Star Wars",
+      canonicalYear: "1977",
+    },
+  ],
+  [
+    createKnownMovieTitleSkewKey(
       "Star Wars: Episode V - The Empire Strikes Back",
       "1980",
     ),
