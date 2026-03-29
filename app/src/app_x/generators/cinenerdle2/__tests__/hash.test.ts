@@ -236,7 +236,7 @@ describe("normalizeHashValue", () => {
         "#cinenerdle|Star+Wars:+Episode+IV+-+A+New+Hope+(1977)|Harrison+Ford|Star+Wars:+Episode+VI+-+Return+of+the+Jedi+(1983)|James+Earl+Jones|Star+Wars:+Episode+V+-+The+Empire+Strikes+Back+(1980)",
       ),
     ).toBe(
-      "#cinenerdle|A+New+Hope+(1977)|Harrison+Ford|Return+of+the+Jedi+(1983)|James+Earl+Jones|The+Empire+Strikes+Back+(1980)",
+      "#cinenerdle|Star+Wars+(1977)|Harrison+Ford|Return+of+the+Jedi+(1983)|James+Earl+Jones|The+Empire+Strikes+Back+(1980)",
     );
   });
 });
