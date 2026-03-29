@@ -35,7 +35,7 @@ import {
 } from "./tmdb";
 import { CinenerdleBreakBar, CinenerdleEntityCard } from "./entity_card";
 import { pickBestPersonRecord } from "./records";
-import type { FilmRecord, PersonRecord } from "./types";
+import type { FilmRecord, PersonRecord, SearchableConnectionEntityRecord } from "./types";
 import { measureAsync } from "../../perf";
 import {
   getAssociatedPeopleFromMovieCredits,
@@ -87,6 +87,16 @@ type SelectedPathHydrationTask = {
 type BuildTreeOptions = {
   dailyStarterSource?: "cache" | "network";
 };
+
+type ConnectionPopularityLookups = {
+  popularityByMovieKey: Map<string, number>;
+  popularityByPersonName: Map<string, number>;
+};
+
+const connectionPopularityLookupsCache = new WeakMap<
+  SearchableConnectionEntityRecord[],
+  ConnectionPopularityLookups
+>();
 
 function createBreakCard(): Extract<CinenerdleCard, { kind: "break" }> {
   return {
@@ -146,6 +156,43 @@ function sortCardsByPopularity(cards: CinenerdleCard[]) {
 
     return 0;
   });
+}
+
+function getConnectionPopularityLookups(
+  searchableConnectionEntities: SearchableConnectionEntityRecord[],
+): ConnectionPopularityLookups {
+  const cachedLookups = connectionPopularityLookupsCache.get(searchableConnectionEntities);
+  if (cachedLookups) {
+    return cachedLookups;
+  }
+
+  const popularityByMovieKey = new Map<string, number>();
+  const popularityByPersonName = new Map<string, number>();
+
+  searchableConnectionEntities.forEach((entity) => {
+    if (entity.type === "person") {
+      const personName = normalizeName(entity.nameLower);
+      popularityByPersonName.set(
+        personName,
+        Math.max(popularityByPersonName.get(personName) ?? 0, entity.popularity ?? 0),
+      );
+      return;
+    }
+
+    const parsedMovie = parseMoviePathLabel(entity.nameLower);
+    const movieKey = getFilmKey(parsedMovie.name, parsedMovie.year);
+    popularityByMovieKey.set(
+      movieKey,
+      Math.max(popularityByMovieKey.get(movieKey) ?? 0, entity.popularity ?? 0),
+    );
+  });
+
+  const nextLookups = {
+    popularityByMovieKey,
+    popularityByPersonName,
+  };
+  connectionPopularityLookupsCache.set(searchableConnectionEntities, nextLookups);
+  return nextLookups;
 }
 
 function getSelectedCard(tree: GeneratorTree<CinenerdleCard>, rowIndex: number) {
@@ -602,20 +649,9 @@ async function buildChildRowForPersonCard(
         movieCredits.map((credit) => credit.id),
       );
       const searchableConnectionEntities = await getAllSearchableConnectionEntities();
-      const popularityByPersonName = new Map<string, number>();
-      searchableConnectionEntities.forEach((entity) => {
-        if (entity.type !== "person") {
-          return;
-        }
-
-        popularityByPersonName.set(
-          normalizeName(entity.nameLower),
-          Math.max(
-            popularityByPersonName.get(normalizeName(entity.nameLower)) ?? 0,
-            entity.popularity ?? 0,
-          ),
-        );
-      });
+      const { popularityByPersonName } = getConnectionPopularityLookups(
+        searchableConnectionEntities,
+      );
       const connectionCounts = await getPersonRecordCountsByMovieKeys(
         movieCredits.map((credit) => getMovieKeyFromCredit(credit)),
       );
@@ -680,19 +716,9 @@ async function buildChildRowForMovieCard(
         tmdbCredits.map((credit) => credit.name ?? ""),
       );
       const searchableConnectionEntities = await getAllSearchableConnectionEntities();
-      const popularityByMovieKey = new Map<string, number>();
-      searchableConnectionEntities.forEach((entity) => {
-        if (entity.type !== "movie") {
-          return;
-        }
-
-        const parsedMovie = parseMoviePathLabel(entity.nameLower);
-        const movieKey = getFilmKey(parsedMovie.name, parsedMovie.year);
-        popularityByMovieKey.set(
-          movieKey,
-          Math.max(popularityByMovieKey.get(movieKey) ?? 0, entity.popularity ?? 0),
-        );
-      });
+      const { popularityByMovieKey } = getConnectionPopularityLookups(
+        searchableConnectionEntities,
+      );
       const personDetails = new Map(
         await Promise.all(
           tmdbCredits.map(async (credit) => {
