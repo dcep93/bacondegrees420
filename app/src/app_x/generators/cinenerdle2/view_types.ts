@@ -93,6 +93,7 @@ type BaseCardViewModel = {
   popularity: number;
   popularitySource: string | null;
   connectionCount: number | null;
+  connectionRank: number | null;
   sources: CardSource[];
   status: CardStatus | null;
   isSelected: boolean;

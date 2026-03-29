@@ -938,12 +938,33 @@ function getRenderableSources(card: CinenerdleCard) {
   );
 }
 
+function getConnectionRankForRowCard(
+  rowCards: CinenerdleCard[],
+  card: CinenerdleCard,
+): number | null {
+  if (typeof card.connectionCount !== "number") {
+    return null;
+  }
+
+  const rankedCounts = Array.from(
+    new Set(
+      rowCards
+        .map((rowCard) => rowCard.connectionCount)
+        .filter((count): count is number => typeof count === "number"),
+    ),
+  ).sort((left, right) => right - left);
+  const rankIndex = rankedCounts.findIndex((count) => count === card.connectionCount);
+
+  return rankIndex >= 0 ? rankIndex + 1 : null;
+}
+
 function createCardViewModel(
   card: CinenerdleCard,
   options: {
     isSelected: boolean;
     isLocked?: boolean;
     isAncestorSelected?: boolean;
+    connectionRank?: number | null;
   },
 ): CinenerdleCardViewModel {
   const sharedFields = {
@@ -955,6 +976,7 @@ function createCardViewModel(
     popularity: card.popularity,
     popularitySource: card.popularitySource,
     connectionCount: card.connectionCount,
+    connectionRank: options.connectionRank ?? null,
     sources: getRenderableSources(card),
     status: card.status,
     isSelected: options.isSelected,
@@ -1050,12 +1072,14 @@ function renderCinenerdleCard(
   writeHash: (nextHash: string, mode?: "selection" | "navigation") => void,
 ) {
   const card = tree[row][col].data;
+  const rowCards = tree[row]?.map((node) => node.data) ?? [];
   const viewModel = createCardViewModel(card, {
     isSelected: tree[row][col].selected,
     isLocked: false,
     isAncestorSelected: getSelectedAncestorCards(tree, row).some((ancestorCard) =>
       cardsMatch(card, ancestorCard),
     ),
+    connectionRank: getConnectionRankForRowCard(rowCards, card),
   });
 
   if (viewModel.kind === "dbinfo") {

@@ -81,7 +81,10 @@ import {
 import {
   isBookmarkPreviewCardSelectable,
 } from "./components/bookmark_preview";
-import { resolveConnectionQuery } from "./generators/cinenerdle2/tmdb";
+import {
+  prefetchBestConnectionForYoungestSelectedCard,
+  resolveConnectionQuery,
+} from "./generators/cinenerdle2/tmdb";
 import {
   resolveConnectionMatchupPreview,
   type ConnectionMatchupPreview,
@@ -254,6 +257,7 @@ function createBookmarkPreviewCardViewModel(
 ): RenderableCinenerdleEntityCard {
   const sharedFields = {
     ...card,
+    connectionRank: null,
     isSelected,
     isLocked: false,
     isAncestorSelected: false,
@@ -757,6 +761,10 @@ export default function AppX() {
   const connectionInputWrapRef = useRef<HTMLDivElement | null>(null);
   const connectionDropdownRef = useRef<HTMLDivElement | null>(null);
   const titleRef = useRef<HTMLHeadingElement | null>(null);
+  const shouldRunInitialYoungestPrefetchRef = useRef(
+    initialLocationState.viewMode !== "bookmarks",
+  );
+  const hasRunInitialYoungestPrefetchRef = useRef(false);
   const deferredConnectionQuery = useDeferredValue(connectionQuery);
   const isBookmarksView = appLocation.viewMode === "bookmarks";
   const highestGenerationSelectedLabel = getHighestGenerationSelectedLabel(hashValue);
@@ -915,6 +923,19 @@ export default function AppX() {
   useEffect(() => {
     document.title = isBookmarksView ? "Bookmarks | BaconDegrees420" : getDocumentTitle(hashValue);
   }, [hashValue, isBookmarksView]);
+
+  useEffect(() => {
+    if (
+      !shouldRunInitialYoungestPrefetchRef.current ||
+      hasRunInitialYoungestPrefetchRef.current ||
+      !youngestSelectedCard
+    ) {
+      return;
+    }
+
+    hasRunInitialYoungestPrefetchRef.current = true;
+    void prefetchBestConnectionForYoungestSelectedCard(youngestSelectedCard).catch(() => { });
+  }, [youngestSelectedCard]);
 
   useEffect(() => {
     let cancelled = false;

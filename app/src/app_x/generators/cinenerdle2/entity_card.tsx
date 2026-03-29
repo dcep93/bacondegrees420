@@ -10,6 +10,7 @@ type BaseRenderableCinenerdleEntityCard = {
   popularity: number;
   popularitySource: string | null;
   connectionCount: number | null;
+  connectionRank: number | null;
   sources: CardSource[];
   status: CardStatus | null;
   hasCachedTmdbSource: boolean;
@@ -141,8 +142,7 @@ function renderPopularityChip(card: RenderableCinenerdleEntityCard) {
 }
 
 function renderFooter(card: RenderableCinenerdleEntityCard) {
-  const hasTopLeftContent =
-    typeof card.connectionCount === "number" || card.sources.length > 0;
+  const shouldRenderTopLeftContent = card.hasCachedTmdbSource;
   const statusChip = renderStatusChip(card);
   const voteCountChip =
     card.kind === "movie"
@@ -166,10 +166,14 @@ function renderFooter(card: RenderableCinenerdleEntityCard) {
   return (
     <footer className="cinenerdle-card-footer">
       <div className="cinenerdle-card-footer-top">
-        {hasTopLeftContent ? (
+        {shouldRenderTopLeftContent ? (
           <div className="cinenerdle-card-footer-left">
             {typeof card.connectionCount === "number" ? (
-              <span className="cinenerdle-card-count">{card.connectionCount}</span>
+              <span className="cinenerdle-card-count">
+                {typeof card.connectionRank === "number"
+                  ? `${card.connectionRank} / ${card.connectionCount}`
+                  : card.connectionCount}
+              </span>
             ) : null}
             {card.sources.length > 0 ? (
               <div className="cinenerdle-card-sources">
@@ -180,14 +184,6 @@ function renderFooter(card: RenderableCinenerdleEntityCard) {
                     className="cinenerdle-card-source-icon"
                     key={`${source.iconUrl}:${source.label}`}
                     src={source.iconUrl}
-                    style={
-                      card.hasCachedTmdbSource
-                        ? undefined
-                        : {
-                          filter: "grayscale(1)",
-                          opacity: 0.9,
-                        }
-                    }
                     title={source.label}
                   />
                 ))}

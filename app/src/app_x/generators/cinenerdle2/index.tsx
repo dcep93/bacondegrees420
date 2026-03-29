@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   AbstractGenerator,
   type AbstractGeneratorActivationRequest,
@@ -14,6 +14,7 @@ export {
 } from "./entity_card";
 import { buildPathNodesFromSegments, normalizeHashValue, parseHashSegments } from "./hash";
 import { primeTmdbApiKeyOnInit } from "./tmdb";
+import { CINENERDLE_RECORDS_UPDATED_EVENT } from "./indexed_db";
 import { getValidTmdbEntityId, normalizeName, normalizeTitle } from "./utils";
 import type { CinenerdleCard } from "./view_types";
 import "../../styles/cinenerdle2.css";
@@ -196,9 +197,11 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   const normalizedHash = normalizeHashValue(hashValue);
   const hashRef = useRef(normalizedHash);
   const shouldSnapToBottomAfterLoadRef = useRef(hasLoadedPath(normalizedHash));
+  const pendingDataRefreshFrameRef = useRef<number | null>(null);
   const lastYoungestSelectedCardRef = useRef<
     Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }> | null
   >(null);
+  const [dataRefreshVersion, setDataRefreshVersion] = useState(0);
 
   useLayoutEffect(() => {
     hashRef.current = normalizedHash;
@@ -206,6 +209,29 @@ const Cinenerdle2 = memo(function Cinenerdle2({
 
   useEffect(() => {
     primeTmdbApiKeyOnInit();
+  }, []);
+
+  useEffect(() => {
+    function handleRecordsUpdated() {
+      if (pendingDataRefreshFrameRef.current !== null) {
+        return;
+      }
+
+      pendingDataRefreshFrameRef.current = window.requestAnimationFrame(() => {
+        pendingDataRefreshFrameRef.current = null;
+        setDataRefreshVersion((version) => version + 1);
+      });
+    }
+
+    window.addEventListener(CINENERDLE_RECORDS_UPDATED_EVENT, handleRecordsUpdated);
+    return () => {
+      if (pendingDataRefreshFrameRef.current !== null) {
+        window.cancelAnimationFrame(pendingDataRefreshFrameRef.current);
+        pendingDataRefreshFrameRef.current = null;
+      }
+
+      window.removeEventListener(CINENERDLE_RECORDS_UPDATED_EVENT, handleRecordsUpdated);
+    };
   }, []);
 
   useEffect(() => {
@@ -270,7 +296,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
       cardButtonClassName: "generator-card-button-row-break",
     };
   }, []);
-  const generatorResetKey = `${resetVersion}:${navigationVersion}`;
+  const generatorResetKey = `${resetVersion}:${navigationVersion}:${dataRefreshVersion}`;
 
   return (
     <AbstractGenerator

@@ -33,6 +33,7 @@ import type {
   TmdbPersonSearchResult,
   TmdbSearchResponse,
 } from "./types";
+import type { CinenerdleCard } from "./view_types";
 import {
   getMovieTitleFromCredit,
   getMovieYearFromCredit,
@@ -469,6 +470,18 @@ async function getLocalMovieRecordForCard(
   );
 }
 
+function getSelectedPersonCardTmdbId(
+  card: Extract<CinenerdleCard, { kind: "person" }>,
+): number | null {
+  const recordTmdbId = getValidTmdbEntityId(card.record?.tmdbId ?? card.record?.id);
+  if (recordTmdbId) {
+    return recordTmdbId;
+  }
+
+  const keyMatch = card.key.match(/^person:(\d+)$/);
+  return keyMatch ? getValidTmdbEntityId(keyMatch[1]) : null;
+}
+
 function hasMovieCredits(
   movieRecord: FilmRecord | null,
 ): movieRecord is FilmRecord & {
@@ -483,6 +496,42 @@ function hasPersonMovieCredits(
   rawTmdbMovieCreditsResponse: NonNullable<PersonRecord["rawTmdbMovieCreditsResponse"]>;
 } {
   return Boolean(personRecord?.rawTmdbMovieCreditsResponse);
+}
+
+export async function prefetchBestConnectionForYoungestSelectedCard(
+  selectedCard: Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }> | null,
+): Promise<void> {
+  if (!selectedCard || selectedCard.kind === "cinenerdle") {
+    return;
+  }
+
+  if (selectedCard.kind === "movie") {
+    const movieRecord =
+      selectedCard.record ??
+      (await getLocalMovieRecordForCard(
+        selectedCard.name,
+        selectedCard.year,
+        selectedCard.record?.tmdbId ?? selectedCard.record?.id ?? null,
+      ));
+    if (!hasMovieCredits(movieRecord)) {
+      return;
+    }
+
+    await prefetchBestPersonForMovieRecord(movieRecord);
+    return;
+  }
+
+  const personRecord =
+    selectedCard.record ??
+    (await getLocalPersonRecordForCard(
+      selectedCard.name,
+      getSelectedPersonCardTmdbId(selectedCard),
+    ));
+  if (!hasPersonMovieCredits(personRecord)) {
+    return;
+  }
+
+  await prefetchBestMovieForPersonRecord(personRecord);
 }
 
 export async function prepareSelectedPerson(

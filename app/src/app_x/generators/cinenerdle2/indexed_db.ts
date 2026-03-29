@@ -31,6 +31,16 @@ const REQUIRED_OBJECT_STORE_NAMES = [
   SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME,
 ] as const;
 
+export const CINENERDLE_RECORDS_UPDATED_EVENT = "cinenerdle:records-updated";
+
+function dispatchCinenerdleRecordsUpdated(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.dispatchEvent(new Event(CINENERDLE_RECORDS_UPDATED_EVENT));
+}
+
 function indexedDbRequestToPromise<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
@@ -500,6 +510,8 @@ export async function savePersonRecord(personRecord: PersonRecord): Promise<void
       }
     },
   );
+
+  dispatchCinenerdleRecordsUpdated();
 }
 
 export async function getFilmRecordById(
@@ -823,4 +835,6 @@ export async function saveFilmRecords(filmRecords: FilmRecord[]): Promise<void> 
       );
     },
   );
+
+  dispatchCinenerdleRecordsUpdated();
 }
