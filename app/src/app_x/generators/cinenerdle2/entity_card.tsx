@@ -1,4 +1,5 @@
 import type { AriaRole, CSSProperties, KeyboardEvent, MouseEvent } from "react";
+import FancyTooltip from "../../components/fancy_tooltip";
 import type { CardSource, CardStatus } from "./view_types";
 
 type BaseRenderableCinenerdleEntityCard = {
@@ -178,14 +179,18 @@ function renderFooter(card: RenderableCinenerdleEntityCard) {
             {card.sources.length > 0 ? (
               <div className="cinenerdle-card-sources">
                 {card.sources.map((source) => (
-                  <img
-                    alt={source.label}
-                    aria-label={source.label}
-                    className="cinenerdle-card-source-icon"
+                  <FancyTooltip
+                    content={source.label}
                     key={`${source.iconUrl}:${source.label}`}
-                    src={source.iconUrl}
-                    title={source.label}
-                  />
+                    placement="top-center"
+                  >
+                    <img
+                      alt={source.label}
+                      aria-label={source.label}
+                      className="cinenerdle-card-source-icon"
+                      src={source.iconUrl}
+                    />
+                  </FancyTooltip>
                 ))}
               </div>
             ) : null}

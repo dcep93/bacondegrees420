@@ -8,6 +8,7 @@ const CINENERDLE_BATTLE_ORIGIN = "https://www.cinenerdle2.app";
 const CINENERDLE_BATTLE_PATHNAME = "/battle";
 const BACONDEGREES_HOME_URL = "https://bacondegrees420.web.app";
 const CINENERDLE_GAME_OVER_DATASET_KEY = "bacondegreesCinenerdleGameOverLink";
+const CINENERDLE_FANCY_TOOLTIP_DATASET_KEY = "bacondegreesFancyTooltipAttached";
 const CINENERDLE_BREAK_CONNECTOR_TYPES = new Set(["escape"]);
 const CINENERDLE_SKIP_CONNECTOR_TYPE = "skip";
 
@@ -257,6 +258,77 @@ function getCinenerdleBattleUrl() {
   return `${BACONDEGREES_HOME_URL}/${battleHash}`;
 }
 
+function attachFancyTooltip(element, label) {
+  if (!element || element.dataset[CINENERDLE_FANCY_TOOLTIP_DATASET_KEY] === "true") {
+    return;
+  }
+
+  element.dataset[CINENERDLE_FANCY_TOOLTIP_DATASET_KEY] = "true";
+
+  const tooltipElement = document.createElement("span");
+  tooltipElement.textContent = label;
+  tooltipElement.setAttribute("role", "tooltip");
+  Object.assign(tooltipElement.style, {
+    position: "fixed",
+    top: "0",
+    left: "0",
+    zIndex: "2147483647",
+    minWidth: "max-content",
+    maxWidth: "220px",
+    padding: "10px 14px",
+    border: "1px solid rgba(228, 193, 150, 0.38)",
+    borderRadius: "18px",
+    background:
+      "linear-gradient(180deg, rgba(33, 24, 19, 0.98) 0%, rgba(14, 10, 8, 0.98) 100%)",
+    boxShadow: "0 24px 48px rgba(0, 0, 0, 0.42)",
+    color: "#fef3c7",
+    fontSize: "0.92rem",
+    fontWeight: "600",
+    lineHeight: "1.35",
+    whiteSpace: "normal",
+    pointerEvents: "none",
+    opacity: "0",
+    visibility: "hidden",
+    transform: "translate(-50%, 4px)",
+    transition: "opacity 120ms ease, transform 120ms ease, visibility 120ms ease",
+  });
+  document.body.appendChild(tooltipElement);
+
+  const positionTooltip = () => {
+    const rect = element.getBoundingClientRect();
+    tooltipElement.style.left = `${rect.left + rect.width / 2}px`;
+    tooltipElement.style.top = `${rect.bottom + 10}px`;
+  };
+
+  const showTooltip = () => {
+    positionTooltip();
+    tooltipElement.style.opacity = "1";
+    tooltipElement.style.visibility = "visible";
+    tooltipElement.style.transform = "translate(-50%, 0)";
+  };
+
+  const hideTooltip = () => {
+    tooltipElement.style.opacity = "0";
+    tooltipElement.style.visibility = "hidden";
+    tooltipElement.style.transform = "translate(-50%, 4px)";
+  };
+
+  element.addEventListener("blur", hideTooltip);
+  element.addEventListener("focus", showTooltip);
+  element.addEventListener("mouseenter", showTooltip);
+  element.addEventListener("mouseleave", hideTooltip);
+  window.addEventListener("scroll", () => {
+    if (tooltipElement.style.visibility === "visible") {
+      positionTooltip();
+    }
+  }, { passive: true });
+  window.addEventListener("resize", () => {
+    if (tooltipElement.style.visibility === "visible") {
+      positionTooltip();
+    }
+  });
+}
+
 function attachCinenerdleGameOverLink() {
   if (!isCinenerdleBattlePage()) {
     return;
@@ -272,7 +344,7 @@ function attachCinenerdleGameOverLink() {
   gameOverElement.style.textDecoration = "underline";
   gameOverElement.style.textUnderlineOffset = "4px";
   gameOverElement.tabIndex = 0;
-  gameOverElement.title = "Open BaconDegrees420";
+  attachFancyTooltip(gameOverElement, "Open BaconDegrees420");
 
   const openBaconDegreesHome = () => {
     window.open(getCinenerdleBattleUrl(), "_blank", "noopener,noreferrer");

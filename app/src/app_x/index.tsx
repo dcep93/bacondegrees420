@@ -81,6 +81,7 @@ import {
 import {
   isBookmarkPreviewCardSelectable,
 } from "./components/bookmark_preview";
+import FancyTooltip from "./components/fancy_tooltip";
 import {
   prefetchBestConnectionForYoungestSelectedCard,
   resolveConnectionQuery,
@@ -1788,20 +1789,21 @@ export default function AppX() {
           <span className="bacon-connection-node-count">
             {entity.connectionCount}
           </span>
-          <img
-            alt={entity.kind === "cinenerdle" ? "Cinenerdle" : "TMDb"}
-            className="bacon-connection-node-source-icon"
-            src={entity.kind === "cinenerdle" ? CINENERDLE_ICON_URL : TMDB_ICON_URL}
-            style={
-              entity.kind === "cinenerdle" || entity.hasCachedTmdbSource
-                ? undefined
-                : {
-                  filter: "grayscale(1)",
-                  opacity: 0.9,
-                }
-            }
-            title={entity.kind === "cinenerdle" ? "Cinenerdle" : "TMDb"}
-          />
+          <FancyTooltip content={entity.kind === "cinenerdle" ? "Cinenerdle" : "TMDb"} placement="top-center">
+            <img
+              alt={entity.kind === "cinenerdle" ? "Cinenerdle" : "TMDb"}
+              className="bacon-connection-node-source-icon"
+              src={entity.kind === "cinenerdle" ? CINENERDLE_ICON_URL : TMDB_ICON_URL}
+              style={
+                entity.kind === "cinenerdle" || entity.hasCachedTmdbSource
+                  ? undefined
+                  : {
+                    filter: "grayscale(1)",
+                    opacity: 0.9,
+                  }
+              }
+            />
+          </FancyTooltip>
         </div>
       </article>
     );
@@ -1827,52 +1829,57 @@ export default function AppX() {
           <article className="bacon-bookmark-row-shell" key={bookmark.id}>
             <div className="bacon-bookmark-row-layout">
               <div className="bacon-bookmark-row-actions bacon-bookmark-row-actions-left">
-                <button
-                  aria-label={`Move ${bookmark.label} up`}
-                  className="bacon-title-action-icon-button"
-                  disabled={bookmarkIndex === 0}
-                  onClick={() => handleMoveBookmark(bookmark.id, "up")}
-                  title="Move bookmark up"
-                  type="button"
-                >
-                  ⬆️
-                </button>
-                <span
-                  className="bacon-bookmark-index-bubble"
-                  role="note"
-                  tabIndex={0}
-                  title={formatBookmarkIndexTooltip(bookmark)}
-                >
-                  {bookmarkIndex + 1}
-                </span>
-                <button
-                  aria-label={`Move ${bookmark.label} down`}
-                  className="bacon-title-action-icon-button"
-                  disabled={bookmarkIndex === bookmarks.length - 1}
-                  onClick={() => handleMoveBookmark(bookmark.id, "down")}
-                  title="Move bookmark down"
-                  type="button"
-                >
-                  ⬇️
-                </button>
-                <button
-                  aria-label={`Load ${bookmark.label}`}
-                  className="bacon-title-action-icon-button"
-                  onClick={() => handleLoadBookmark(bookmark)}
-                  title="Load bookmark"
-                  type="button"
-                >
-                  📥
-                </button>
-                <button
-                  aria-label={`Remove ${bookmark.label}`}
-                  className="bacon-title-action-icon-button bacon-title-action-icon-button-danger"
-                  onClick={() => handleRemoveBookmark(bookmark.id)}
-                  title="Remove bookmark"
-                  type="button"
-                >
-                  🗑️
-                </button>
+                <FancyTooltip content="Move bookmark up" placement="right-center">
+                  <button
+                    aria-label={`Move ${bookmark.label} up`}
+                    className="bacon-title-action-icon-button"
+                    disabled={bookmarkIndex === 0}
+                    onClick={() => handleMoveBookmark(bookmark.id, "up")}
+                    type="button"
+                  >
+                    ⬆️
+                  </button>
+                </FancyTooltip>
+                <FancyTooltip content={formatBookmarkIndexTooltip(bookmark)} placement="right-center">
+                  <span
+                    className="bacon-bookmark-index-bubble"
+                    role="note"
+                    tabIndex={0}
+                  >
+                    {bookmarkIndex + 1}
+                  </span>
+                </FancyTooltip>
+                <FancyTooltip content="Move bookmark down" placement="right-center">
+                  <button
+                    aria-label={`Move ${bookmark.label} down`}
+                    className="bacon-title-action-icon-button"
+                    disabled={bookmarkIndex === bookmarks.length - 1}
+                    onClick={() => handleMoveBookmark(bookmark.id, "down")}
+                    type="button"
+                  >
+                    ⬇️
+                  </button>
+                </FancyTooltip>
+                <FancyTooltip content="Load bookmark" placement="right-center">
+                  <button
+                    aria-label={`Load ${bookmark.label}`}
+                    className="bacon-title-action-icon-button"
+                    onClick={() => handleLoadBookmark(bookmark)}
+                    type="button"
+                  >
+                    📥
+                  </button>
+                </FancyTooltip>
+                <FancyTooltip content="Remove bookmark" placement="right-center">
+                  <button
+                    aria-label={`Remove ${bookmark.label}`}
+                    className="bacon-title-action-icon-button bacon-title-action-icon-button-danger"
+                    onClick={() => handleRemoveBookmark(bookmark.id)}
+                    type="button"
+                  >
+                    🗑️
+                  </button>
+                </FancyTooltip>
               </div>
               <div className="bacon-bookmark-row-body">
                 <div className="bacon-bookmark-card-row">
@@ -1932,45 +1939,53 @@ export default function AppX() {
         >
           <img alt="" className="bacon-title-icon" src="/favicon.svg" />
         </button>
-        <h1
-          className="bacon-title"
-          onClick={import.meta.env.DEV ? handleTitleDebugCopy : undefined}
-          ref={titleRef}
-          title={import.meta.env.DEV ? "Copy debug log" : undefined}
+        <FancyTooltip
+          content={import.meta.env.DEV ? "Copy debug log" : null}
+          placement="bottom-center"
+          wrapperTag="div"
         >
-          BaconDegrees420
-        </h1>
+          <h1
+            className="bacon-title"
+            onClick={import.meta.env.DEV ? handleTitleDebugCopy : undefined}
+            ref={titleRef}
+          >
+            BaconDegrees420
+          </h1>
+        </FancyTooltip>
         {copyStatus ? <span className="bacon-copy-status">{copyStatus}</span> : null}
         <div className="bacon-title-actions">
           {renderConnectionMatchupPreview()}
-          <button
-            aria-label="Save bookmark"
-            className="bacon-title-action-icon-button"
-            disabled={isSavingBookmark}
-            onClick={handleSaveBookmark}
-            title={isSavingBookmark ? "Saving bookmark..." : "Save bookmark"}
-            type="button"
-          >
-            💾
-          </button>
-          <button
-            aria-label={isBookmarksView ? "Close bookmarks" : "Open bookmarks"}
-            className="bacon-title-action-icon-button"
-            onClick={handleToggleBookmarks}
-            title={isBookmarksView ? "Close bookmarks" : "Open bookmarks"}
-            type="button"
-          >
-            {isBookmarksView ? "🎬" : "📚"}
-          </button>
-          <button
-            aria-label="Clear database"
-            className="bacon-title-action-button"
-            onClick={handleClearDatabase}
-            title="Clear TMDB cache"
-            type="button"
-          >
-            Clear DB
-          </button>
+          <FancyTooltip content={isSavingBookmark ? "Saving bookmark..." : "Save bookmark"}>
+            <button
+              aria-label="Save bookmark"
+              className="bacon-title-action-icon-button"
+              disabled={isSavingBookmark}
+              onClick={handleSaveBookmark}
+              type="button"
+            >
+              💾
+            </button>
+          </FancyTooltip>
+          <FancyTooltip content={isBookmarksView ? "Close bookmarks" : "Open bookmarks"}>
+            <button
+              aria-label={isBookmarksView ? "Close bookmarks" : "Open bookmarks"}
+              className="bacon-title-action-icon-button"
+              onClick={handleToggleBookmarks}
+              type="button"
+            >
+              {isBookmarksView ? "🎬" : "📚"}
+            </button>
+          </FancyTooltip>
+          <FancyTooltip content="Clear TMDB cache">
+            <button
+              aria-label="Clear database"
+              className="bacon-title-action-button"
+              onClick={handleClearDatabase}
+              type="button"
+            >
+              Clear DB
+            </button>
+          </FancyTooltip>
         </div>
       </header>
 
@@ -2110,32 +2125,31 @@ export default function AppX() {
                               : () => navigateToConnectionEntity(entity),
                           })}
                           {nextEntity ? (
-                            <button
-                              className={[
-                                "bacon-connection-arrow",
-                                "bacon-connection-arrow-button",
-                                isEdgeDimmed
-                                  ? "bacon-connection-arrow-disconnected"
-                                  : "bacon-connection-arrow-connected",
-                              ]
-                                .filter(Boolean)
-                                .join(" ")}
-                              aria-pressed={isEdgeDimmed}
-                              onClick={() =>
-                                spawnAlternativeConnectionRow(row.id, {
-                                  kind: "edge",
-                                  edgeKey,
-                                })
-                              }
-                              title={
-                                isEdgeDimmed
-                                  ? "Reconnect this edge"
-                                  : "Disconnect this edge"
-                              }
-                              type="button"
+                            <FancyTooltip
+                              content={isEdgeDimmed ? "Reconnect this edge" : "Disconnect this edge"}
                             >
-                              →
-                            </button>
+                              <button
+                                className={[
+                                  "bacon-connection-arrow",
+                                  "bacon-connection-arrow-button",
+                                  isEdgeDimmed
+                                    ? "bacon-connection-arrow-disconnected"
+                                    : "bacon-connection-arrow-connected",
+                                ]
+                                  .filter(Boolean)
+                                  .join(" ")}
+                                aria-pressed={isEdgeDimmed}
+                                onClick={() =>
+                                  spawnAlternativeConnectionRow(row.id, {
+                                    kind: "edge",
+                                    edgeKey,
+                                  })
+                                }
+                                type="button"
+                              >
+                                →
+                              </button>
+                            </FancyTooltip>
                           ) : null}
                         </Fragment>
                       );
