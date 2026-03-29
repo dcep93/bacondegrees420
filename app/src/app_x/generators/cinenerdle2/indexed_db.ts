@@ -22,6 +22,7 @@ import {
   normalizeName,
   normalizeTitle,
 } from "./utils";
+import { measureAsync } from "../../perf";
 
 const REQUIRED_OBJECT_STORE_NAMES = [
   PEOPLE_STORE_NAME,
@@ -33,12 +34,18 @@ export const CINENERDLE_RECORDS_UPDATED_EVENT = "cinenerdle:records-updated";
 
 const personRecordByIdCache = new Map<number, PersonRecord>();
 const personRecordByNameCache = new Map<string, PersonRecord>();
+const missingPersonRecordIdsCache = new Set<number>();
+const missingPersonRecordNamesCache = new Set<string>();
 const filmRecordByIdCache = new Map<string, FilmRecord>();
 const filmRecordQueryCache = new Map<string, FilmRecord | null>();
 const personCountByMovieKeyCache = new Map<string, number>();
 const filmCountByPersonNameCache = new Map<string, number>();
 const searchableConnectionEntityByKeyCache = new Map<string, SearchableConnectionEntityRecord>();
 let allSearchableConnectionEntitiesCache: SearchableConnectionEntityRecord[] | null = null;
+let indexedDbPromise: Promise<IDBDatabase> | null = null;
+let indexedDbConnection: IDBDatabase | null = null;
+let cinenerdleRecordsUpdatedDispatchSuspensionCount = 0;
+let hasPendingCinenerdleRecordsUpdatedDispatch = false;
 
 function getFilmCacheIdKey(id: number | string): string {
   return String(id);
@@ -54,6 +61,8 @@ function getFilmQueryCacheKey(title: string, year = ""): string {
 function clearInMemoryIndexedDbCaches(): void {
   personRecordByIdCache.clear();
   personRecordByNameCache.clear();
+  missingPersonRecordIdsCache.clear();
+  missingPersonRecordNamesCache.clear();
   filmRecordByIdCache.clear();
   filmRecordQueryCache.clear();
   personCountByMovieKeyCache.clear();
@@ -73,14 +82,17 @@ function cachePersonRecord(personRecord: PersonRecord | null | undefined): void 
 
   if (recordId) {
     personRecordByIdCache.set(recordId, personRecord);
+    missingPersonRecordIdsCache.delete(recordId);
   }
 
   if (recordTmdbId) {
     personRecordByIdCache.set(recordTmdbId, personRecord);
+    missingPersonRecordIdsCache.delete(recordTmdbId);
   }
 
   if (normalizedName) {
     personRecordByNameCache.set(normalizedName, personRecord);
+    missingPersonRecordNamesCache.delete(normalizedName);
   }
 }
 
@@ -166,7 +178,46 @@ function dispatchCinenerdleRecordsUpdated(): void {
     return;
   }
 
+  if (cinenerdleRecordsUpdatedDispatchSuspensionCount > 0) {
+    hasPendingCinenerdleRecordsUpdatedDispatch = true;
+    return;
+  }
+
   window.dispatchEvent(new Event(CINENERDLE_RECORDS_UPDATED_EVENT));
+}
+
+function resetIndexedDbConnection(): void {
+  indexedDbConnection?.close();
+  indexedDbConnection = null;
+  indexedDbPromise = null;
+}
+
+function flushPendingCinenerdleRecordsUpdated(): void {
+  if (!hasPendingCinenerdleRecordsUpdatedDispatch) {
+    return;
+  }
+
+  hasPendingCinenerdleRecordsUpdatedDispatch = false;
+  dispatchCinenerdleRecordsUpdated();
+}
+
+export async function batchCinenerdleRecordsUpdatedEvents<T>(
+  callback: () => Promise<T>,
+): Promise<T> {
+  cinenerdleRecordsUpdatedDispatchSuspensionCount += 1;
+
+  try {
+    return await callback();
+  } finally {
+    cinenerdleRecordsUpdatedDispatchSuspensionCount = Math.max(
+      0,
+      cinenerdleRecordsUpdatedDispatchSuspensionCount - 1,
+    );
+
+    if (cinenerdleRecordsUpdatedDispatchSuspensionCount === 0) {
+      flushPendingCinenerdleRecordsUpdated();
+    }
+  }
 }
 
 function indexedDbRequestToPromise<T>(request: IDBRequest<T>): Promise<T> {
@@ -325,103 +376,136 @@ function collectSearchableConnectionEntitiesFromFilmRecord(
 }
 
 async function openIndexedDb(): Promise<IDBDatabase> {
-  function hasRequiredObjectStores(database: IDBDatabase): boolean {
-    return REQUIRED_OBJECT_STORE_NAMES.every((storeName) =>
-      database.objectStoreNames.contains(storeName),
-    );
+  if (indexedDbConnection) {
+    return indexedDbConnection;
   }
 
-  function deleteIndexedDb(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const deleteRequest = indexedDB.deleteDatabase(INDEXED_DB_NAME);
-
-      deleteRequest.onsuccess = () => resolve();
-      deleteRequest.onerror = () => {
-        reject(deleteRequest.error ?? new Error("Unable to delete IndexedDB"));
-      };
-      deleteRequest.onblocked = () => {
-        reject(new Error("IndexedDB deletion blocked"));
-      };
-    });
+  if (indexedDbPromise) {
+    return indexedDbPromise;
   }
 
-  async function openIndexedDbOnce(allowDeleteAndRetry: boolean): Promise<IDBDatabase> {
-    const database = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open(INDEXED_DB_NAME, INDEXED_DB_VERSION);
+  indexedDbPromise = measureAsync(
+    "idb.openIndexedDb",
+    async () => {
+      function hasRequiredObjectStores(database: IDBDatabase): boolean {
+        return REQUIRED_OBJECT_STORE_NAMES.every((storeName) =>
+          database.objectStoreNames.contains(storeName),
+        );
+      }
 
-      request.onupgradeneeded = (event) => {
-        const database = request.result;
-        const oldVersion = event.oldVersion ?? 0;
+      function deleteIndexedDb(): Promise<void> {
+        return new Promise((resolve, reject) => {
+          resetIndexedDbConnection();
+          const deleteRequest = indexedDB.deleteDatabase(INDEXED_DB_NAME);
 
-        if (oldVersion > 0 && oldVersion < INDEXED_DB_VERSION) {
-          Array.from(database.objectStoreNames).forEach((storeName) => {
-            database.deleteObjectStore(storeName);
-          });
+          deleteRequest.onsuccess = () => resolve();
+          deleteRequest.onerror = () => {
+            reject(deleteRequest.error ?? new Error("Unable to delete IndexedDB"));
+          };
+          deleteRequest.onblocked = () => {
+            reject(new Error("IndexedDB deletion blocked"));
+          };
+        });
+      }
+
+      async function openIndexedDbOnce(allowDeleteAndRetry: boolean): Promise<IDBDatabase> {
+        const database = await new Promise<IDBDatabase>((resolve, reject) => {
+          const request = indexedDB.open(INDEXED_DB_NAME, INDEXED_DB_VERSION);
+
+          request.onupgradeneeded = (event) => {
+            const database = request.result;
+            const oldVersion = event.oldVersion ?? 0;
+
+            if (oldVersion > 0 && oldVersion < INDEXED_DB_VERSION) {
+              Array.from(database.objectStoreNames).forEach((storeName) => {
+                database.deleteObjectStore(storeName);
+              });
+            }
+
+            if (!database.objectStoreNames.contains(PEOPLE_STORE_NAME)) {
+              const peopleStore = database.createObjectStore(PEOPLE_STORE_NAME, {
+                keyPath: "id",
+              });
+              peopleStore.createIndex("nameLower", "nameLower", { unique: false });
+              peopleStore.createIndex("movieConnectionKeys", "movieConnectionKeys", {
+                unique: false,
+                multiEntry: true,
+              });
+            }
+
+            if (!database.objectStoreNames.contains(FILMS_STORE_NAME)) {
+              const filmsStore = database.createObjectStore(FILMS_STORE_NAME, {
+                keyPath: "id",
+              });
+              filmsStore.createIndex("titleYear", "titleYear", { unique: false });
+              filmsStore.createIndex("titleLower", "titleLower", { unique: false });
+              filmsStore.createIndex("personConnectionKeys", "personConnectionKeys", {
+                unique: false,
+                multiEntry: true,
+              });
+              filmsStore.createIndex("isCinenerdleDailyStarter", "isCinenerdleDailyStarter", {
+                unique: false,
+              });
+            }
+
+            if (!database.objectStoreNames.contains(SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME)) {
+              const searchableStore = database.createObjectStore(
+                SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME,
+                {
+                  keyPath: "key",
+                },
+              );
+              searchableStore.createIndex("type", "type", { unique: false });
+              searchableStore.createIndex("nameLower", "nameLower", { unique: false });
+            }
+          };
+
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => {
+            reject(request.error ?? new Error("Unable to open IndexedDB"));
+          };
+        });
+
+        database.onversionchange = () => {
+          database.close();
+          if (indexedDbConnection === database) {
+            indexedDbConnection = null;
+            indexedDbPromise = null;
+          }
+        };
+
+        if (hasRequiredObjectStores(database)) {
+          return database;
         }
 
-        if (!database.objectStoreNames.contains(PEOPLE_STORE_NAME)) {
-          const peopleStore = database.createObjectStore(PEOPLE_STORE_NAME, {
-            keyPath: "id",
-          });
-          peopleStore.createIndex("nameLower", "nameLower", { unique: false });
-          peopleStore.createIndex("movieConnectionKeys", "movieConnectionKeys", {
-            unique: false,
-            multiEntry: true,
-          });
+        database.close();
+
+        if (!allowDeleteAndRetry) {
+          throw new Error("IndexedDB schema is missing required object stores");
         }
 
-        if (!database.objectStoreNames.contains(FILMS_STORE_NAME)) {
-          const filmsStore = database.createObjectStore(FILMS_STORE_NAME, {
-            keyPath: "id",
-          });
-          filmsStore.createIndex("titleYear", "titleYear", { unique: false });
-          filmsStore.createIndex("titleLower", "titleLower", { unique: false });
-          filmsStore.createIndex("personConnectionKeys", "personConnectionKeys", {
-            unique: false,
-            multiEntry: true,
-          });
-          filmsStore.createIndex("isCinenerdleDailyStarter", "isCinenerdleDailyStarter", {
-            unique: false,
-          });
-        }
+        await deleteIndexedDb();
+        return openIndexedDbOnce(false);
+      }
 
-        if (!database.objectStoreNames.contains(SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME)) {
-          const searchableStore = database.createObjectStore(
-            SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME,
-            {
-              keyPath: "key",
-            },
-          );
-          searchableStore.createIndex("type", "type", { unique: false });
-          searchableStore.createIndex("nameLower", "nameLower", { unique: false });
-        }
-      };
+      return openIndexedDbOnce(true);
+    },
+    {
+      details: {
+        databaseName: INDEXED_DB_NAME,
+        version: INDEXED_DB_VERSION,
+      },
+      slowThresholdMs: 10,
+    },
+  );
 
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => {
-        reject(request.error ?? new Error("Unable to open IndexedDB"));
-      };
-    });
-
-    database.onversionchange = () => {
-      database.close();
-    };
-
-    if (hasRequiredObjectStores(database)) {
-      return database;
-    }
-
-    database.close();
-
-    if (!allowDeleteAndRetry) {
-      throw new Error("IndexedDB schema is missing required object stores");
-    }
-
-    await deleteIndexedDb();
-    return openIndexedDbOnce(false);
+  try {
+    indexedDbConnection = await indexedDbPromise;
+    return indexedDbConnection;
+  } catch (error) {
+    resetIndexedDbConnection();
+    throw error;
   }
-
-  return openIndexedDbOnce(true);
 }
 
 async function withStore<T>(
@@ -431,15 +515,11 @@ async function withStore<T>(
 ): Promise<T> {
   const database = await openIndexedDb();
 
-  try {
-    const transaction = database.transaction(storeName, mode);
-    const store = transaction.objectStore(storeName);
-    const result = await callback(store, transaction);
-    await transactionDonePromise(transaction);
-    return result;
-  } finally {
-    database.close();
-  }
+  const transaction = database.transaction(storeName, mode);
+  const store = transaction.objectStore(storeName);
+  const result = await callback(store, transaction);
+  await transactionDonePromise(transaction);
+  return result;
 }
 
 async function withStores<T>(
@@ -452,17 +532,13 @@ async function withStores<T>(
 ): Promise<T> {
   const database = await openIndexedDb();
 
-  try {
-    const transaction = database.transaction(storeNames, mode);
-    const stores = new Map(
-      storeNames.map((storeName) => [storeName, transaction.objectStore(storeName)]),
-    );
-    const result = await callback(stores, transaction);
-    await transactionDonePromise(transaction);
-    return result;
-  } finally {
-    database.close();
-  }
+  const transaction = database.transaction(storeNames, mode);
+  const stores = new Map(
+    storeNames.map((storeName) => [storeName, transaction.objectStore(storeName)]),
+  );
+  const result = await callback(stores, transaction);
+  await transactionDonePromise(transaction);
+  return result;
 }
 
 async function upsertSearchableConnectionEntities(
@@ -516,48 +592,90 @@ function buildSearchableConnectionPopularityLookup(
 export async function getPersonRecordByName(
   personName: string,
 ): Promise<PersonRecord | null> {
-  const normalizedPersonName = normalizeName(personName);
-  if (!normalizedPersonName) {
-    return null;
-  }
+  return measureAsync(
+    "idb.getPersonRecordByName",
+    async () => {
+      const normalizedPersonName = normalizeName(personName);
+      if (!normalizedPersonName) {
+        return null;
+      }
 
-  const cachedRecord = personRecordByNameCache.get(normalizedPersonName);
-  if (cachedRecord) {
-    return cachedRecord;
-  }
+      if (missingPersonRecordNamesCache.has(normalizedPersonName)) {
+        return null;
+      }
 
-  return withStore(PEOPLE_STORE_NAME, "readonly", async (store) => {
-    const personRecord = await indexedDbRequestToPromise<PersonRecord | undefined>(
-      store.index("nameLower").get(normalizedPersonName),
-    );
+      const cachedRecord = personRecordByNameCache.get(normalizedPersonName);
+      if (cachedRecord) {
+        return cachedRecord;
+      }
 
-    const resolvedRecord = personRecord ?? null;
-    cachePersonRecord(resolvedRecord);
-    return resolvedRecord;
-  });
+      return withStore(PEOPLE_STORE_NAME, "readonly", async (store) => {
+        const personRecord = await indexedDbRequestToPromise<PersonRecord | undefined>(
+          store.index("nameLower").get(normalizedPersonName),
+        );
+
+        const resolvedRecord = personRecord ?? null;
+        cachePersonRecord(resolvedRecord);
+        if (!resolvedRecord) {
+          missingPersonRecordNamesCache.add(normalizedPersonName);
+        }
+        return resolvedRecord;
+      });
+    },
+    {
+      details: {
+        personName,
+      },
+      slowThresholdMs: 5,
+      summarizeResult: (personRecord) => ({
+        hit: Boolean(personRecord),
+      }),
+    },
+  );
 }
 
 export async function getPersonRecordById(
   id: number | null | undefined,
 ): Promise<PersonRecord | null> {
-  if (!id) {
-    return null;
-  }
+  return measureAsync(
+    "idb.getPersonRecordById",
+    async () => {
+      if (!id) {
+        return null;
+      }
 
-  const cachedRecord = personRecordByIdCache.get(id);
-  if (cachedRecord) {
-    return cachedRecord;
-  }
+      if (missingPersonRecordIdsCache.has(id)) {
+        return null;
+      }
 
-  return withStore(PEOPLE_STORE_NAME, "readonly", async (store) => {
-    const record = await indexedDbRequestToPromise<PersonRecord | undefined>(
-      store.get(id),
-    );
+      const cachedRecord = personRecordByIdCache.get(id);
+      if (cachedRecord) {
+        return cachedRecord;
+      }
 
-    const resolvedRecord = record ?? null;
-    cachePersonRecord(resolvedRecord);
-    return resolvedRecord;
-  });
+      return withStore(PEOPLE_STORE_NAME, "readonly", async (store) => {
+        const record = await indexedDbRequestToPromise<PersonRecord | undefined>(
+          store.get(id),
+        );
+
+        const resolvedRecord = record ?? null;
+        cachePersonRecord(resolvedRecord);
+        if (!resolvedRecord) {
+          missingPersonRecordIdsCache.add(id);
+        }
+        return resolvedRecord;
+      });
+    },
+    {
+      details: {
+        id,
+      },
+      slowThresholdMs: 5,
+      summarizeResult: (personRecord) => ({
+        hit: Boolean(personRecord),
+      }),
+    },
+  );
 }
 
 export async function getPersonRecordsByMovieKey(
@@ -579,42 +697,56 @@ export async function getPersonRecordsByMovieKey(
 export async function getPersonRecordCountsByMovieKeys(
   movieKeys: string[],
 ): Promise<Map<string, number>> {
-  const uniqueMovieKeys = Array.from(new Set(movieKeys.filter(Boolean)));
+  return measureAsync(
+    "idb.getPersonRecordCountsByMovieKeys",
+    async () => {
+      const uniqueMovieKeys = Array.from(new Set(movieKeys.filter(Boolean)));
 
-  if (uniqueMovieKeys.length === 0) {
-    return new Map();
-  }
+      if (uniqueMovieKeys.length === 0) {
+        return new Map();
+      }
 
-  const resolvedCounts = new Map<string, number>();
-  const missingMovieKeys = uniqueMovieKeys.filter((movieKey) => {
-    if (!personCountByMovieKeyCache.has(movieKey)) {
-      return true;
-    }
+      const resolvedCounts = new Map<string, number>();
+      const missingMovieKeys = uniqueMovieKeys.filter((movieKey) => {
+        if (!personCountByMovieKeyCache.has(movieKey)) {
+          return true;
+        }
 
-    resolvedCounts.set(movieKey, personCountByMovieKeyCache.get(movieKey) ?? 0);
-    return false;
-  });
+        resolvedCounts.set(movieKey, personCountByMovieKeyCache.get(movieKey) ?? 0);
+        return false;
+      });
 
-  if (missingMovieKeys.length === 0) {
-    return resolvedCounts;
-  }
+      if (missingMovieKeys.length === 0) {
+        return resolvedCounts;
+      }
 
-  return withStore(PEOPLE_STORE_NAME, "readonly", async (store) => {
-    const movieConnectionIndex = store.index("movieConnectionKeys");
-    const entries = await Promise.all(
-      missingMovieKeys.map(async (movieKey) => [
-        movieKey,
-        await indexedDbRequestToPromise<number>(movieConnectionIndex.count(movieKey)),
-      ] as const),
-    );
+      return withStore(PEOPLE_STORE_NAME, "readonly", async (store) => {
+        const movieConnectionIndex = store.index("movieConnectionKeys");
+        const entries = await Promise.all(
+          missingMovieKeys.map(async (movieKey) => [
+            movieKey,
+            await indexedDbRequestToPromise<number>(movieConnectionIndex.count(movieKey)),
+          ] as const),
+        );
 
-    entries.forEach(([movieKey, count]) => {
-      personCountByMovieKeyCache.set(movieKey, count);
-      resolvedCounts.set(movieKey, count);
-    });
+        entries.forEach(([movieKey, count]) => {
+          personCountByMovieKeyCache.set(movieKey, count);
+          resolvedCounts.set(movieKey, count);
+        });
 
-    return resolvedCounts;
-  });
+        return resolvedCounts;
+      });
+    },
+    {
+      details: {
+        movieKeyCount: movieKeys.length,
+      },
+      slowThresholdMs: 10,
+      summarizeResult: (counts) => ({
+        resolvedCount: counts.size,
+      }),
+    },
+  );
 }
 
 export async function getAllPersonRecords(): Promise<PersonRecord[]> {
@@ -625,49 +757,66 @@ export async function getAllPersonRecords(): Promise<PersonRecord[]> {
 }
 
 export async function savePersonRecord(personRecord: PersonRecord): Promise<void> {
-  const searchRecords = collectSearchableConnectionEntitiesFromPersonRecord(personRecord);
-  const canonicalSearchRecord = createPersonSearchRecord(
-    personRecord.name,
-    personRecord.tmdbId ?? personRecord.id,
-  );
-  const legacySearchRecord = createPersonSearchRecord(personRecord.name);
-
-  await withStores(
-    [PEOPLE_STORE_NAME, SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME],
-    "readwrite",
-    async (stores) => {
-      await indexedDbRequestToPromise(
-        stores.get(PEOPLE_STORE_NAME)!.put(personRecord),
+  await measureAsync(
+    "idb.savePersonRecord",
+    async () => {
+      const searchRecords = collectSearchableConnectionEntitiesFromPersonRecord(personRecord);
+      const canonicalSearchRecord = createPersonSearchRecord(
+        personRecord.name,
+        personRecord.tmdbId ?? personRecord.id,
       );
-      await upsertSearchableConnectionEntities(
-        stores.get(SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME)!,
-        searchRecords,
+      const legacySearchRecord = createPersonSearchRecord(personRecord.name);
+
+      await withStores(
+        [PEOPLE_STORE_NAME, SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME],
+        "readwrite",
+        async (stores) => {
+          await indexedDbRequestToPromise(
+            stores.get(PEOPLE_STORE_NAME)!.put(personRecord),
+          );
+          await upsertSearchableConnectionEntities(
+            stores.get(SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME)!,
+            searchRecords,
+          );
+
+          if (
+            canonicalSearchRecord &&
+            legacySearchRecord &&
+            canonicalSearchRecord.key !== legacySearchRecord.key
+          ) {
+            await indexedDbRequestToPromise(
+              stores.get(SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME)!.delete(legacySearchRecord.key),
+            );
+          }
+        },
       );
 
+      cachePersonRecord(personRecord);
+      personCountByMovieKeyCache.clear();
+      cacheSearchableConnectionEntities(searchRecords);
       if (
         canonicalSearchRecord &&
         legacySearchRecord &&
         canonicalSearchRecord.key !== legacySearchRecord.key
       ) {
-        await indexedDbRequestToPromise(
-          stores.get(SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME)!.delete(legacySearchRecord.key),
-        );
+        removeCachedSearchableConnectionEntity(legacySearchRecord.key);
       }
+
+      dispatchCinenerdleRecordsUpdated();
+
+      return searchRecords.length;
+    },
+    {
+      always: true,
+      details: {
+        movieConnectionCount: personRecord.movieConnectionKeys.length,
+        personName: personRecord.name,
+      },
+      summarizeResult: (searchRecordCount) => ({
+        searchRecordCount,
+      }),
     },
   );
-
-  cachePersonRecord(personRecord);
-  personCountByMovieKeyCache.clear();
-  cacheSearchableConnectionEntities(searchRecords);
-  if (
-    canonicalSearchRecord &&
-    legacySearchRecord &&
-    canonicalSearchRecord.key !== legacySearchRecord.key
-  ) {
-    removeCachedSearchableConnectionEntity(legacySearchRecord.key);
-  }
-
-  dispatchCinenerdleRecordsUpdated();
 }
 
 export async function getFilmRecordById(
@@ -708,34 +857,49 @@ export async function getFilmRecordByTitleAndYear(
   title: string,
   year = "",
 ): Promise<FilmRecord | null> {
-  const normalizedTitle = normalizeTitle(title);
-  if (!normalizedTitle) {
-    return null;
-  }
+  return measureAsync(
+    "idb.getFilmRecordByTitleAndYear",
+    async () => {
+      const normalizedTitle = normalizeTitle(title);
+      if (!normalizedTitle) {
+        return null;
+      }
 
-  const queryCacheKey = getFilmQueryCacheKey(normalizedTitle, year);
-  if (filmRecordQueryCache.has(queryCacheKey)) {
-    return filmRecordQueryCache.get(queryCacheKey) ?? null;
-  }
+      const queryCacheKey = getFilmQueryCacheKey(normalizedTitle, year);
+      if (filmRecordQueryCache.has(queryCacheKey)) {
+        return filmRecordQueryCache.get(queryCacheKey) ?? null;
+      }
 
-  if (year) {
-    return withStore(FILMS_STORE_NAME, "readonly", async (store) => {
-      const exactRecords = await indexedDbRequestToPromise<FilmRecord[]>(
-        store.index("titleYear").getAll(getFilmKey(normalizedTitle, year)),
-      );
+      if (year) {
+        return withStore(FILMS_STORE_NAME, "readonly", async (store) => {
+          const exactRecords = await indexedDbRequestToPromise<FilmRecord[]>(
+            store.index("titleYear").getAll(getFilmKey(normalizedTitle, year)),
+          );
 
-      const resolvedRecord = chooseBestFilmRecord(exactRecords ?? [], normalizedTitle, year);
-      cacheFilmRecord(resolvedRecord);
+          const resolvedRecord = chooseBestFilmRecord(exactRecords ?? [], normalizedTitle, year);
+          cacheFilmRecord(resolvedRecord);
+          filmRecordQueryCache.set(queryCacheKey, resolvedRecord);
+          return resolvedRecord;
+        });
+      }
+
+      const records = await getFilmRecordsByTitle(normalizedTitle);
+      const resolvedRecord = chooseBestFilmRecord(records, normalizedTitle, year);
       filmRecordQueryCache.set(queryCacheKey, resolvedRecord);
+      cacheFilmRecord(resolvedRecord);
       return resolvedRecord;
-    });
-  }
-
-  const records = await getFilmRecordsByTitle(normalizedTitle);
-  const resolvedRecord = chooseBestFilmRecord(records, normalizedTitle, year);
-  filmRecordQueryCache.set(queryCacheKey, resolvedRecord);
-  cacheFilmRecord(resolvedRecord);
-  return resolvedRecord;
+    },
+    {
+      details: {
+        title,
+        year,
+      },
+      slowThresholdMs: 5,
+      summarizeResult: (filmRecord) => ({
+        hit: Boolean(filmRecord),
+      }),
+    },
+  );
 }
 
 export async function getFilmRecordsByIds(
@@ -813,129 +977,164 @@ export async function getFilmRecordsByPersonConnectionKey(
 export async function getFilmRecordCountsByPersonConnectionKeys(
   personNames: string[],
 ): Promise<Map<string, number>> {
-  const normalizedNames = Array.from(
-    new Set(
-      personNames
-        .map((personName) => normalizeName(personName))
-        .filter(Boolean),
-    ),
+  return measureAsync(
+    "idb.getFilmRecordCountsByPersonConnectionKeys",
+    async () => {
+      const normalizedNames = Array.from(
+        new Set(
+          personNames
+            .map((personName) => normalizeName(personName))
+            .filter(Boolean),
+        ),
+      );
+
+      if (normalizedNames.length === 0) {
+        return new Map();
+      }
+
+      const resolvedCounts = new Map<string, number>();
+      const missingNames = normalizedNames.filter((personName) => {
+        if (!filmCountByPersonNameCache.has(personName)) {
+          return true;
+        }
+
+        resolvedCounts.set(personName, filmCountByPersonNameCache.get(personName) ?? 0);
+        return false;
+      });
+
+      if (missingNames.length === 0) {
+        return resolvedCounts;
+      }
+
+      return withStore(FILMS_STORE_NAME, "readonly", async (store) => {
+        const personConnectionIndex = store.index("personConnectionKeys");
+        const entries = await Promise.all(
+          missingNames.map(async (personName) => [
+            personName,
+            await indexedDbRequestToPromise<number>(personConnectionIndex.count(personName)),
+          ] as const),
+        );
+
+        entries.forEach(([personName, count]) => {
+          filmCountByPersonNameCache.set(personName, count);
+          resolvedCounts.set(personName, count);
+        });
+
+        return resolvedCounts;
+      });
+    },
+    {
+      details: {
+        personNameCount: personNames.length,
+      },
+      slowThresholdMs: 10,
+      summarizeResult: (counts) => ({
+        resolvedCount: counts.size,
+      }),
+    },
   );
-
-  if (normalizedNames.length === 0) {
-    return new Map();
-  }
-
-  const resolvedCounts = new Map<string, number>();
-  const missingNames = normalizedNames.filter((personName) => {
-    if (!filmCountByPersonNameCache.has(personName)) {
-      return true;
-    }
-
-    resolvedCounts.set(personName, filmCountByPersonNameCache.get(personName) ?? 0);
-    return false;
-  });
-
-  if (missingNames.length === 0) {
-    return resolvedCounts;
-  }
-
-  return withStore(FILMS_STORE_NAME, "readonly", async (store) => {
-    const personConnectionIndex = store.index("personConnectionKeys");
-    const entries = await Promise.all(
-      missingNames.map(async (personName) => [
-        personName,
-        await indexedDbRequestToPromise<number>(personConnectionIndex.count(personName)),
-      ] as const),
-    );
-
-    entries.forEach(([personName, count]) => {
-      filmCountByPersonNameCache.set(personName, count);
-      resolvedCounts.set(personName, count);
-    });
-
-    return resolvedCounts;
-  });
 }
 
 export async function getCinenerdleStarterFilmRecords(): Promise<FilmRecord[]> {
-  return withStore(FILMS_STORE_NAME, "readonly", async (store) => {
-    const indexedRecords = await indexedDbRequestToPromise<FilmRecord[]>(
-      store.index("isCinenerdleDailyStarter").getAll(1),
-    );
+  return measureAsync(
+    "idb.getCinenerdleStarterFilmRecords",
+    () =>
+      withStore(FILMS_STORE_NAME, "readonly", async (store) => {
+        const indexedRecords = await indexedDbRequestToPromise<FilmRecord[]>(
+          store.index("isCinenerdleDailyStarter").getAll(1),
+        );
 
-    if ((indexedRecords ?? []).length > 0) {
-      return (indexedRecords ?? []).sort(
-        (left, right) => (right.popularity ?? 0) - (left.popularity ?? 0),
-      );
-    }
+        if ((indexedRecords ?? []).length > 0) {
+          return (indexedRecords ?? []).sort(
+            (left, right) => (right.popularity ?? 0) - (left.popularity ?? 0),
+          );
+        }
 
-    const allRecords = await indexedDbRequestToPromise<FilmRecord[]>(store.getAll());
-    const starterRecords = (allRecords ?? []).filter(
-      (record) => record.isCinenerdleDailyStarter === 1 || record.rawCinenerdleDailyStarter,
-    );
-    const fallbackRecords = starterRecords
-      .map((record) => withDerivedFilmFields(record))
-      .sort((left, right) => (right.popularity ?? 0) - (left.popularity ?? 0));
+        const allRecords = await indexedDbRequestToPromise<FilmRecord[]>(store.getAll());
+        const starterRecords = (allRecords ?? []).filter(
+          (record) => record.isCinenerdleDailyStarter === 1 || record.rawCinenerdleDailyStarter,
+        );
+        const fallbackRecords = starterRecords
+          .map((record) => withDerivedFilmFields(record))
+          .sort((left, right) => (right.popularity ?? 0) - (left.popularity ?? 0));
 
-    if (fallbackRecords.length > 0) {
-      void saveFilmRecords(
-        starterRecords
-          .filter((record) => record.isCinenerdleDailyStarter !== 1)
-          .map((record) => withDerivedFilmFields(record)),
-      );
-    }
+        if (fallbackRecords.length > 0) {
+          void saveFilmRecords(
+            starterRecords
+              .filter((record) => record.isCinenerdleDailyStarter !== 1)
+              .map((record) => withDerivedFilmFields(record)),
+          );
+        }
 
-    return fallbackRecords;
-  });
+        return fallbackRecords;
+      }),
+    {
+      always: true,
+      summarizeResult: (records) => ({
+        recordCount: records.length,
+      }),
+    },
+  );
 }
 
 export async function getAllSearchableConnectionEntities(): Promise<
   SearchableConnectionEntityRecord[]
 > {
-  if (allSearchableConnectionEntitiesCache) {
-    return allSearchableConnectionEntitiesCache;
-  }
-
-  return withStores(
-    [
-      SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME,
-      PEOPLE_STORE_NAME,
-      FILMS_STORE_NAME,
-    ],
-    "readonly",
-    async (stores) => {
-      const searchStore = stores.get(SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME)!;
-      const records = await indexedDbRequestToPromise<SearchableConnectionEntityRecord[]>(
-        searchStore.getAll(),
-      );
-
-      const nextRecords = records ?? [];
-      if (nextRecords.every((record) => typeof record.popularity === "number")) {
-        allSearchableConnectionEntitiesCache = nextRecords;
-        nextRecords.forEach((record) => {
-          searchableConnectionEntityByKeyCache.set(record.key, record);
-        });
-        return nextRecords;
+  return measureAsync(
+    "idb.getAllSearchableConnectionEntities",
+    async () => {
+      if (allSearchableConnectionEntitiesCache) {
+        return allSearchableConnectionEntitiesCache;
       }
 
-      const [personRecords, filmRecords] = await Promise.all([
-        indexedDbRequestToPromise<PersonRecord[]>(stores.get(PEOPLE_STORE_NAME)!.getAll()),
-        indexedDbRequestToPromise<FilmRecord[]>(stores.get(FILMS_STORE_NAME)!.getAll()),
-      ]);
-      const popularityByKey = buildSearchableConnectionPopularityLookup(
-        personRecords ?? [],
-        filmRecords ?? [],
-      );
+      return withStores(
+        [
+          SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME,
+          PEOPLE_STORE_NAME,
+          FILMS_STORE_NAME,
+        ],
+        "readonly",
+        async (stores) => {
+          const searchStore = stores.get(SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME)!;
+          const records = await indexedDbRequestToPromise<SearchableConnectionEntityRecord[]>(
+            searchStore.getAll(),
+          );
 
-      const resolvedRecords = nextRecords.map((record) => ({
-        ...record,
-        popularity: record.popularity ?? popularityByKey.get(record.key) ?? 0,
-      }));
-      allSearchableConnectionEntitiesCache = resolvedRecords;
-      resolvedRecords.forEach((record) => {
-        searchableConnectionEntityByKeyCache.set(record.key, record);
-      });
-      return resolvedRecords;
+          const nextRecords = records ?? [];
+          if (nextRecords.every((record) => typeof record.popularity === "number")) {
+            allSearchableConnectionEntitiesCache = nextRecords;
+            nextRecords.forEach((record) => {
+              searchableConnectionEntityByKeyCache.set(record.key, record);
+            });
+            return nextRecords;
+          }
+
+          const [personRecords, filmRecords] = await Promise.all([
+            indexedDbRequestToPromise<PersonRecord[]>(stores.get(PEOPLE_STORE_NAME)!.getAll()),
+            indexedDbRequestToPromise<FilmRecord[]>(stores.get(FILMS_STORE_NAME)!.getAll()),
+          ]);
+          const popularityByKey = buildSearchableConnectionPopularityLookup(
+            personRecords ?? [],
+            filmRecords ?? [],
+          );
+
+          const resolvedRecords = nextRecords.map((record) => ({
+            ...record,
+            popularity: record.popularity ?? popularityByKey.get(record.key) ?? 0,
+          }));
+          allSearchableConnectionEntitiesCache = resolvedRecords;
+          resolvedRecords.forEach((record) => {
+            searchableConnectionEntityByKeyCache.set(record.key, record);
+          });
+          return resolvedRecords;
+        },
+      );
+    },
+    {
+      always: true,
+      summarizeResult: (records) => ({
+        recordCount: records.length,
+      }),
     },
   );
 }
@@ -1003,47 +1202,67 @@ export async function getSearchableConnectionEntityByKey(
 }
 
 export async function estimateIndexedDbUsageBytes(): Promise<number> {
-  const estimate = (await navigator.storage?.estimate?.()) as
-    | (StorageEstimate & {
-        usageDetails?: {
-          indexedDB?: number;
-        };
-      })
-    | undefined;
-  return estimate?.usageDetails?.indexedDB ?? estimate?.usage ?? 0;
+  return measureAsync(
+    "idb.estimateIndexedDbUsageBytes",
+    async () => {
+      const estimate = (await navigator.storage?.estimate?.()) as
+        | (StorageEstimate & {
+            usageDetails?: {
+              indexedDB?: number;
+            };
+          })
+        | undefined;
+      return estimate?.usageDetails?.indexedDB ?? estimate?.usage ?? 0;
+    },
+    {
+      always: true,
+      summarizeResult: (bytes) => ({
+        bytes,
+      }),
+    },
+  );
 }
 
 export async function clearIndexedDb(): Promise<void> {
-  const database = await openIndexedDb();
+  await measureAsync(
+    "idb.clearIndexedDb",
+    async () => {
+      resetIndexedDbConnection();
+      const database = await openIndexedDb();
 
-  try {
-    const transaction = database.transaction(
-      [
-        PEOPLE_STORE_NAME,
-        FILMS_STORE_NAME,
-        SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME,
-      ],
-      "readwrite",
-    );
+      try {
+        const transaction = database.transaction(
+          [
+            PEOPLE_STORE_NAME,
+            FILMS_STORE_NAME,
+            SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME,
+          ],
+          "readwrite",
+        );
 
-    await Promise.all([
-      indexedDbRequestToPromise(
-        transaction.objectStore(PEOPLE_STORE_NAME).clear(),
-      ),
-      indexedDbRequestToPromise(
-        transaction.objectStore(FILMS_STORE_NAME).clear(),
-      ),
-      indexedDbRequestToPromise(
-        transaction.objectStore(SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME).clear(),
-      ),
-    ]);
+        await Promise.all([
+          indexedDbRequestToPromise(
+            transaction.objectStore(PEOPLE_STORE_NAME).clear(),
+          ),
+          indexedDbRequestToPromise(
+            transaction.objectStore(FILMS_STORE_NAME).clear(),
+          ),
+          indexedDbRequestToPromise(
+            transaction.objectStore(SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME).clear(),
+          ),
+        ]);
 
-    await transactionDonePromise(transaction);
-  } finally {
-    database.close();
-  }
+        await transactionDonePromise(transaction);
+      } finally {
+        database.close();
+      }
 
-  clearInMemoryIndexedDbCaches();
+      clearInMemoryIndexedDbCaches();
+    },
+    {
+      always: true,
+    },
+  );
 }
 
 export async function saveFilmRecord(filmRecord: FilmRecord): Promise<void> {
@@ -1051,35 +1270,50 @@ export async function saveFilmRecord(filmRecord: FilmRecord): Promise<void> {
 }
 
 export async function saveFilmRecords(filmRecords: FilmRecord[]): Promise<void> {
-  if (filmRecords.length === 0) {
-    return;
-  }
-
-  const searchRecords = filmRecords.flatMap(collectSearchableConnectionEntitiesFromFilmRecord);
-
-  await withStores(
-    [FILMS_STORE_NAME, SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME],
-    "readwrite",
-    async (stores) => {
-      const filmsStore = stores.get(FILMS_STORE_NAME)!;
-
-      for (const filmRecord of filmRecords) {
-        await indexedDbRequestToPromise(filmsStore.put(filmRecord));
+  await measureAsync(
+    "idb.saveFilmRecords",
+    async () => {
+      if (filmRecords.length === 0) {
+        return 0;
       }
 
-      await upsertSearchableConnectionEntities(
-        stores.get(SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME)!,
-        searchRecords,
+      const searchRecords = filmRecords.flatMap(collectSearchableConnectionEntitiesFromFilmRecord);
+
+      await withStores(
+        [FILMS_STORE_NAME, SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME],
+        "readwrite",
+        async (stores) => {
+          const filmsStore = stores.get(FILMS_STORE_NAME)!;
+
+          for (const filmRecord of filmRecords) {
+            await indexedDbRequestToPromise(filmsStore.put(filmRecord));
+          }
+
+          await upsertSearchableConnectionEntities(
+            stores.get(SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME)!,
+            searchRecords,
+          );
+        },
       );
+
+      filmRecordQueryCache.clear();
+      filmCountByPersonNameCache.clear();
+      filmRecords.forEach((filmRecord) => {
+        cacheFilmRecord(filmRecord);
+      });
+      cacheSearchableConnectionEntities(searchRecords);
+
+      dispatchCinenerdleRecordsUpdated();
+      return searchRecords.length;
+    },
+    {
+      always: true,
+      details: {
+        filmRecordCount: filmRecords.length,
+      },
+      summarizeResult: (searchRecordCount) => ({
+        searchRecordCount,
+      }),
     },
   );
-
-  filmRecordQueryCache.clear();
-  filmCountByPersonNameCache.clear();
-  filmRecords.forEach((filmRecord) => {
-    cacheFilmRecord(filmRecord);
-  });
-  cacheSearchableConnectionEntities(searchRecords);
-
-  dispatchCinenerdleRecordsUpdated();
 }

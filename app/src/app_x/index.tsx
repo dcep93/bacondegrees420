@@ -90,6 +90,7 @@ import {
   getBookmarkPreviewCardRootHash,
   getSelectedPathTooltipEntries,
 } from "./index_helpers";
+import { logPerfSinceMark, measureAsync } from "./perf";
 import "./styles/app_shell.css";
 
 type ConnectionSuggestion = ConnectionEntity & {
@@ -168,6 +169,7 @@ type AppLocationState = {
 };
 
 const BOOKMARKS_PATH_SUFFIX = "/bookmarks";
+let hasLoggedAppXMount = false;
 
 function normalizePathname(pathname: string): string {
   const trimmedPathname = pathname.trim() || "/";
@@ -388,62 +390,77 @@ async function resolveYoungestSelectedPersonRecord(
 async function getDirectConnectionKeysForYoungestSelectedCard(
   card: YoungestSelectedCard | null,
 ): Promise<string[]> {
-  if (!card || card.kind === "cinenerdle") {
-    return [];
-  }
+  return measureAsync(
+    "app.getDirectConnectionKeysForYoungestSelectedCard",
+    async () => {
+      if (!card || card.kind === "cinenerdle") {
+        return [];
+      }
 
-  if (card.kind === "movie") {
-    const movieRecord = await getFilmRecordByTitleAndYear(card.name, card.year);
-    if (!movieRecord) {
-      return [];
-    }
+      if (card.kind === "movie") {
+        const movieRecord = await getFilmRecordByTitleAndYear(card.name, card.year);
+        if (!movieRecord) {
+          return [];
+        }
 
-    const personKeys = new Set<string>();
-    const tmdbCredits = getAssociatedPeopleFromMovieCredits(movieRecord);
+        const personKeys = new Set<string>();
+        const tmdbCredits = getAssociatedPeopleFromMovieCredits(movieRecord);
 
-    if (tmdbCredits.length > 0) {
-      tmdbCredits.forEach((credit) => {
-        const personName = credit.name ?? "";
-        const personTmdbId = getValidTmdbEntityId(credit.id);
-        if (personTmdbId || normalizeName(personName)) {
-          personKeys.add(getPersonConnectionEntityKey(personName, personTmdbId));
+        if (tmdbCredits.length > 0) {
+          tmdbCredits.forEach((credit) => {
+            const personName = credit.name ?? "";
+            const personTmdbId = getValidTmdbEntityId(credit.id);
+            if (personTmdbId || normalizeName(personName)) {
+              personKeys.add(getPersonConnectionEntityKey(personName, personTmdbId));
+            }
+          });
+        } else {
+          movieRecord.personConnectionKeys.forEach((personName) => {
+            if (normalizeName(personName)) {
+              personKeys.add(getPersonConnectionEntityKey(personName));
+            }
+          });
+        }
+
+        return [...personKeys];
+      }
+
+      const personRecord = await resolveYoungestSelectedPersonRecord(card);
+      if (!personRecord) {
+        return [];
+      }
+
+      const movieKeys = new Set<string>();
+
+      personRecord.movieConnectionKeys.forEach((movieKey) => {
+        const parsedMovie = parseMoviePathLabel(movieKey);
+        if (parsedMovie.name) {
+          movieKeys.add(getMovieConnectionEntityKey(parsedMovie.name, parsedMovie.year));
         }
       });
-    } else {
-      movieRecord.personConnectionKeys.forEach((personName) => {
-        if (normalizeName(personName)) {
-          personKeys.add(getPersonConnectionEntityKey(personName));
+
+      getTmdbMovieCredits(personRecord).forEach((credit) => {
+        const movieName = credit.title ?? credit.original_title ?? "";
+        if (movieName) {
+          movieKeys.add(
+            getMovieConnectionEntityKey(movieName, credit.release_date?.slice(0, 4) ?? ""),
+          );
         }
       });
-    }
 
-    return [...personKeys];
-  }
-
-  const personRecord = await resolveYoungestSelectedPersonRecord(card);
-  if (!personRecord) {
-    return [];
-  }
-
-  const movieKeys = new Set<string>();
-
-  personRecord.movieConnectionKeys.forEach((movieKey) => {
-    const parsedMovie = parseMoviePathLabel(movieKey);
-    if (parsedMovie.name) {
-      movieKeys.add(getMovieConnectionEntityKey(parsedMovie.name, parsedMovie.year));
-    }
-  });
-
-  getTmdbMovieCredits(personRecord).forEach((credit) => {
-    const movieName = credit.title ?? credit.original_title ?? "";
-    if (movieName) {
-      movieKeys.add(
-        getMovieConnectionEntityKey(movieName, credit.release_date?.slice(0, 4) ?? ""),
-      );
-    }
-  });
-
-  return [...movieKeys];
+      return [...movieKeys];
+    },
+    {
+      always: true,
+      details: {
+        cardKey: card?.key ?? "",
+        cardKind: card?.kind ?? "none",
+      },
+      summarizeResult: (keys) => ({
+        keyCount: keys.length,
+      }),
+    },
+  );
 }
 
 function stripSearchDiacritics(value: string): string {
@@ -763,6 +780,18 @@ export default function AppX() {
   const youngestSelectedCardKey = youngestSelectedCard?.key ?? "";
 
   useEffect(() => {
+    if (hasLoggedAppXMount) {
+      return;
+    }
+
+    hasLoggedAppXMount = true;
+    logPerfSinceMark("AppX mounted", "app-bootstrap", {
+      hash: initialLocationState.hash,
+      viewMode: initialLocationState.viewMode,
+    });
+  }, [initialLocationState.hash, initialLocationState.viewMode]);
+
+  useEffect(() => {
     if (!import.meta.env.DEV) {
       return;
     }
@@ -922,89 +951,107 @@ export default function AppX() {
     autocompleteRequestIdRef.current = requestId;
     const directConnectionKeys = new Set(youngestSelectedConnectionKeys);
 
-    void getAllSearchableConnectionEntities().then(async (searchRecords) => {
-      if (autocompleteRequestIdRef.current !== requestId) {
-        return;
-      }
+    void measureAsync(
+      "app.connectionAutocomplete",
+      async () => {
+        const searchRecords = await getAllSearchableConnectionEntities();
+        if (autocompleteRequestIdRef.current !== requestId) {
+          return [];
+        }
 
-      const candidateRecords = searchRecords
-        .map((record) => ({
-          record,
-          sortScore: getSuggestionScore(query, record.nameLower),
-        }))
-        .filter((item) => item.sortScore >= 0)
-        .sort((left, right) => {
-          const popularityDifference =
-            (right.record.popularity ?? 0) - (left.record.popularity ?? 0);
-          if (popularityDifference !== 0) {
-            return popularityDifference;
-          }
+        const candidateRecords = searchRecords
+          .map((record) => ({
+            record,
+            sortScore: getSuggestionScore(query, record.nameLower),
+          }))
+          .filter((item) => item.sortScore >= 0)
+          .sort((left, right) => {
+            const popularityDifference =
+              (right.record.popularity ?? 0) - (left.record.popularity ?? 0);
+            if (popularityDifference !== 0) {
+              return popularityDifference;
+            }
 
-          const rightIsConnected = directConnectionKeys.has(right.record.key) ? 1 : 0;
-          const leftIsConnected = directConnectionKeys.has(left.record.key) ? 1 : 0;
-          if (rightIsConnected !== leftIsConnected) {
-            return rightIsConnected - leftIsConnected;
-          }
+            const rightIsConnected = directConnectionKeys.has(right.record.key) ? 1 : 0;
+            const leftIsConnected = directConnectionKeys.has(left.record.key) ? 1 : 0;
+            if (rightIsConnected !== leftIsConnected) {
+              return rightIsConnected - leftIsConnected;
+            }
 
-          if (right.sortScore !== left.sortScore) {
-            return right.sortScore - left.sortScore;
-          }
+            if (right.sortScore !== left.sortScore) {
+              return right.sortScore - left.sortScore;
+            }
 
-          if (left.record.type !== right.record.type) {
-            return left.record.type === "person" ? -1 : 1;
-          }
+            if (left.record.type !== right.record.type) {
+              return left.record.type === "person" ? -1 : 1;
+            }
 
-          return left.record.nameLower.localeCompare(right.record.nameLower);
-        })
-        .slice(0, 24);
+            return left.record.nameLower.localeCompare(right.record.nameLower);
+          })
+          .slice(0, 24);
 
-      const nextSuggestions = Array.from(new Map((await Promise.all(
-        candidateRecords.map(async ({ record, sortScore }) => {
-          const entity = await hydrateConnectionEntityFromSearchRecord(record);
-          return {
-            ...entity,
-            popularity: record.popularity ?? 0,
-            isConnectedToYoungestSelection: directConnectionKeys.has(record.key),
-            sortScore: Math.max(
-              sortScore,
-              getSuggestionScore(query, entity.label),
-            ),
-          };
+        const nextSuggestions = Array.from(new Map((await Promise.all(
+          candidateRecords.map(async ({ record, sortScore }) => {
+            const entity = await hydrateConnectionEntityFromSearchRecord(record);
+            return {
+              ...entity,
+              popularity: record.popularity ?? 0,
+              isConnectedToYoungestSelection: directConnectionKeys.has(record.key),
+              sortScore: Math.max(
+                sortScore,
+                getSuggestionScore(query, entity.label),
+              ),
+            };
+          }),
+        ))
+          .map((entity) => [entity.key, entity] as const))
+          .values())
+          .sort((left, right) => {
+            if (right.popularity !== left.popularity) {
+              return right.popularity - left.popularity;
+            }
+
+            if (left.isConnectedToYoungestSelection !== right.isConnectedToYoungestSelection) {
+              return Number(right.isConnectedToYoungestSelection) - Number(left.isConnectedToYoungestSelection);
+            }
+
+            if (right.sortScore !== left.sortScore) {
+              return right.sortScore - left.sortScore;
+            }
+
+            if (left.kind !== right.kind) {
+              return left.kind === "person" ? -1 : 1;
+            }
+
+            return left.label.localeCompare(right.label);
+          })
+          .slice(0, 12);
+
+        if (autocompleteRequestIdRef.current !== requestId) {
+          return nextSuggestions;
+        }
+
+        startTransition(() => {
+          setConnectionSuggestions(nextSuggestions);
+          setSelectedSuggestionIndex(nextSuggestions.length > 0 ? 0 : -1);
+        });
+
+        return nextSuggestions;
+      },
+      {
+        always: true,
+        details: {
+          directConnectionKeyCount: directConnectionKeys.size,
+          query,
+          requestId,
+          youngestSelectedCardKey,
+        },
+        summarizeResult: (suggestions) => ({
+          suggestionCount: suggestions.length,
         }),
-      ))
-        .map((entity) => [entity.key, entity] as const))
-        .values())
-        .sort((left, right) => {
-          if (right.popularity !== left.popularity) {
-            return right.popularity - left.popularity;
-          }
-
-          if (left.isConnectedToYoungestSelection !== right.isConnectedToYoungestSelection) {
-            return Number(right.isConnectedToYoungestSelection) - Number(left.isConnectedToYoungestSelection);
-          }
-
-          if (right.sortScore !== left.sortScore) {
-            return right.sortScore - left.sortScore;
-          }
-
-          if (left.kind !== right.kind) {
-            return left.kind === "person" ? -1 : 1;
-          }
-
-          return left.label.localeCompare(right.label);
-        })
-        .slice(0, 12);
-
-      if (autocompleteRequestIdRef.current !== requestId) {
-        return;
-      }
-
-      startTransition(() => {
-        setConnectionSuggestions(nextSuggestions);
-        setSelectedSuggestionIndex(nextSuggestions.length > 0 ? 0 : -1);
-      });
-    });
-  }, [deferredConnectionQuery, youngestSelectedConnectionKeys]);
+      },
+    );
+  }, [deferredConnectionQuery, youngestSelectedCardKey, youngestSelectedConnectionKeys]);
 
   function handleReset() {
     bookmarksReturnHashRef.current = "";
@@ -1329,11 +1376,30 @@ export default function AppX() {
           .catch(() => createFallbackConnectionEntity(params.right)),
       ]);
 
-      const result = await findConnectionPathBidirectional(leftEntity, rightEntity, {
-        excludedNodeKeys: new Set(params.excludedNodeKeys),
-        excludedEdgeKeys: new Set(params.excludedEdgeKeys),
-        timeoutMs: 5000,
-      });
+      const result = await measureAsync(
+        "app.runConnectionRowSearch",
+        () =>
+          findConnectionPathBidirectional(leftEntity, rightEntity, {
+            excludedNodeKeys: new Set(params.excludedNodeKeys),
+            excludedEdgeKeys: new Set(params.excludedEdgeKeys),
+            timeoutMs: 5000,
+          }),
+        {
+          always: true,
+          details: {
+            excludedEdgeKeyCount: params.excludedEdgeKeys.length,
+            excludedNodeKeyCount: params.excludedNodeKeys.length,
+            leftKey: leftEntity.key,
+            rightKey: rightEntity.key,
+            rowId: params.rowId,
+            sessionId: params.sessionId,
+          },
+          summarizeResult: (searchResult) => ({
+            pathLength: searchResult.path.length,
+            status: searchResult.status,
+          }),
+        },
+      );
 
       setConnectionSession((currentSession) => {
         if (!currentSession || currentSession.id !== params.sessionId) {

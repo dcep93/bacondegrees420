@@ -106,10 +106,21 @@
 }
 
 .bacon-copy-status {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 16px);
+  right: 16px;
+  z-index: 80;
+  max-width: min(320px, calc(100vw - 32px));
+  padding: 10px 14px;
+  border: 1px solid var(--bacon-border-strong);
+  border-radius: 999px;
+  background: rgba(17, 12, 10, 0.94);
+  box-shadow: var(--bacon-shadow);
   color: var(--bacon-text-muted);
   font-size: 0.78rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  pointer-events: none;
 }
 
 .bacon-title-action-button {

@@ -17,6 +17,7 @@ import { primeTmdbApiKeyOnInit } from "./tmdb";
 import { CINENERDLE_RECORDS_UPDATED_EVENT } from "./indexed_db";
 import { getValidTmdbEntityId, normalizeName, normalizeTitle } from "./utils";
 import type { CinenerdleCard } from "./view_types";
+import { logPerfSinceMark } from "../../perf";
 import "../../styles/cinenerdle2.css";
 
 type Cinenerdle2Props = {
@@ -183,6 +184,8 @@ function areYoungestSelectedCardsEqual(
   return normalizeName(left.name) === normalizeName(right.name);
 }
 
+let hasLoggedCinenerdleMount = false;
+
 const Cinenerdle2 = memo(function Cinenerdle2({
   hashValue,
   highlightedConnectionEntity = null,
@@ -205,6 +208,15 @@ const Cinenerdle2 = memo(function Cinenerdle2({
 
   useLayoutEffect(() => {
     hashRef.current = normalizedHash;
+  }, [normalizedHash]);
+
+  useEffect(() => {
+    if (!hasLoggedCinenerdleMount) {
+      hasLoggedCinenerdleMount = true;
+      logPerfSinceMark("Cinenerdle2 mounted", "app-bootstrap", {
+        hash: normalizedHash,
+      });
+    }
   }, [normalizedHash]);
 
   useEffect(() => {

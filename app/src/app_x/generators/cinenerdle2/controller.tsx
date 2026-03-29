@@ -36,6 +36,7 @@ import {
 import { CinenerdleBreakBar, CinenerdleEntityCard } from "./entity_card";
 import { pickBestPersonRecord } from "./records";
 import type { FilmRecord, PersonRecord } from "./types";
+import { measureAsync } from "../../perf";
 import {
   getAssociatedPeopleFromMovieCredits,
   getFilmKey,
@@ -480,125 +481,182 @@ async function hydrateDailyStartersAndRedraw(
   setTree: (nextTree: GeneratorTree<CinenerdleCard>) => void,
   readHash: () => string,
 ) {
-  const starterFilms = await fetchCinenerdleDailyStarterMovies();
-  if (starterFilms.length === 0) {
-    return;
-  }
+  await measureAsync(
+    "controller.hydrateDailyStartersAndRedraw",
+    async () => {
+      const starterFilms = await fetchCinenerdleDailyStarterMovies();
+      if (starterFilms.length === 0) {
+        return;
+      }
 
-  await hydrateCinenerdleDailyStarterMovies(starterFilms);
+      await hydrateCinenerdleDailyStarterMovies(starterFilms);
 
-  const refreshedTree = await buildTreeFromHash(readHash());
-  setTree(refreshedTree);
+      const refreshedTree = await buildTreeFromHash(readHash());
+      setTree(refreshedTree);
+    },
+    {
+      always: true,
+      details: {
+        hash: readHash(),
+      },
+    },
+  );
 }
 
 async function hydrateMissingSelectedPathItemsAndRedraw(
   setTree: (nextTree: GeneratorTree<CinenerdleCard>) => void,
   readHash: () => string,
 ) {
-  const initialHash = readHash();
-  const originalSelectedPathNodes = getSelectedEntityPathNodes(initialHash);
-  if (originalSelectedPathNodes.length === 0) {
-    return;
-  }
+  await measureAsync(
+    "controller.hydrateMissingSelectedPathItemsAndRedraw",
+    async () => {
+      const initialHash = readHash();
+      const originalSelectedPathNodes = getSelectedEntityPathNodes(initialHash);
+      if (originalSelectedPathNodes.length === 0) {
+        return {
+          correctiveTaskCount: 0,
+          hydrationTaskCount: 0,
+        };
+      }
 
-  const selectedPathNodes = await resolveSelectedPathNodesForHydration(
-    getSelectedHydrationPathNodes(initialHash),
+      const selectedPathNodes = await resolveSelectedPathNodesForHydration(
+        getSelectedHydrationPathNodes(initialHash),
+      );
+      const hydrationTasks = await buildSelectedPathHydrationTasks(selectedPathNodes);
+      if (hydrationTasks.length === 0) {
+        return {
+          correctiveTaskCount: 0,
+          hydrationTaskCount: 0,
+        };
+      }
+
+      await Promise.allSettled(
+        hydrationTasks.map((task) => task.run()),
+      );
+      if (readHash() !== initialHash) {
+        return {
+          correctiveTaskCount: 0,
+          hydrationTaskCount: hydrationTasks.length,
+        };
+      }
+
+      let refreshedTree = await buildTreeFromHash(readHash());
+      setTree(refreshedTree);
+
+      const correctiveTasks = await buildCorrectivePersonHydrationTasks(
+        originalSelectedPathNodes,
+        refreshedTree,
+      );
+      if (correctiveTasks.length === 0) {
+        return {
+          correctiveTaskCount: 0,
+          hydrationTaskCount: hydrationTasks.length,
+        };
+      }
+
+      await Promise.allSettled(
+        correctiveTasks.map((task) => task.run()),
+      );
+      if (readHash() !== initialHash) {
+        return {
+          correctiveTaskCount: correctiveTasks.length,
+          hydrationTaskCount: hydrationTasks.length,
+        };
+      }
+
+      refreshedTree = await buildTreeFromHash(readHash());
+      setTree(refreshedTree);
+
+      return {
+        correctiveTaskCount: correctiveTasks.length,
+        hydrationTaskCount: hydrationTasks.length,
+      };
+    },
+    {
+      always: true,
+      details: {
+        hash: readHash(),
+      },
+      summarizeResult: (result) => result,
+    },
   );
-  const hydrationTasks = await buildSelectedPathHydrationTasks(selectedPathNodes);
-  if (hydrationTasks.length === 0) {
-    return;
-  }
-
-  await Promise.allSettled(
-    hydrationTasks.map((task) => task.run()),
-  );
-  if (readHash() !== initialHash) {
-    return;
-  }
-
-  let refreshedTree = await buildTreeFromHash(readHash());
-  setTree(refreshedTree);
-
-  const correctiveTasks = await buildCorrectivePersonHydrationTasks(
-    originalSelectedPathNodes,
-    refreshedTree,
-  );
-  if (correctiveTasks.length === 0) {
-    return;
-  }
-
-  await Promise.allSettled(
-    correctiveTasks.map((task) => task.run()),
-  );
-  if (readHash() !== initialHash) {
-    return;
-  }
-
-  refreshedTree = await buildTreeFromHash(readHash());
-  setTree(refreshedTree);
 }
 
 async function buildChildRowForPersonCard(
   card: Extract<CinenerdleCard, { kind: "person" }>,
   personRecordOverride?: PersonRecord | null,
 ): Promise<GeneratorNode<CinenerdleCard>[] | null> {
-  const personRecord =
-    personRecordOverride ??
-    card.record ??
-    (await getLocalPersonRecord(card.name, getPersonTmdbIdFromCard(card)));
-  if (!personRecord) {
-    return null;
-  }
+  return measureAsync(
+    "controller.buildChildRowForPersonCard",
+    async () => {
+      const personRecord =
+        personRecordOverride ??
+        card.record ??
+        (await getLocalPersonRecord(card.name, getPersonTmdbIdFromCard(card)));
+      if (!personRecord) {
+        return null;
+      }
 
-  const movieCredits = getUniqueSortedTmdbMovieCredits(personRecord);
-  const filmRecordsById = await getFilmRecordsByIds(
-    movieCredits.map((credit) => credit.id),
-  );
-  const searchableConnectionEntities = await getAllSearchableConnectionEntities();
-  const popularityByPersonName = new Map<string, number>();
-  searchableConnectionEntities.forEach((entity) => {
-    if (entity.type !== "person") {
-      return;
-    }
+      const movieCredits = getUniqueSortedTmdbMovieCredits(personRecord);
+      const filmRecordsById = await getFilmRecordsByIds(
+        movieCredits.map((credit) => credit.id),
+      );
+      const searchableConnectionEntities = await getAllSearchableConnectionEntities();
+      const popularityByPersonName = new Map<string, number>();
+      searchableConnectionEntities.forEach((entity) => {
+        if (entity.type !== "person") {
+          return;
+        }
 
-    popularityByPersonName.set(
-      normalizeName(entity.nameLower),
-      Math.max(
-        popularityByPersonName.get(normalizeName(entity.nameLower)) ?? 0,
-        entity.popularity ?? 0,
-      ),
-    );
-  });
-  const connectionCounts = await getPersonRecordCountsByMovieKeys(
-    movieCredits.map((credit) => getMovieKeyFromCredit(credit)),
-  );
-  const parentPersonRecord = personRecord;
-
-  return createRow(
-    sortCardsByPopularity(
-      movieCredits.map((credit) => {
-        const movieRecord = (credit.id ? filmRecordsById.get(credit.id) : null) ?? null;
-        const movieCard = createMovieAssociationCard(
-          credit,
-          movieRecord,
-          movieRecord
-            ? Math.max(movieRecord.personConnectionKeys.length, 1)
-            : Math.max(connectionCounts.get(getMovieKeyFromCredit(credit)) ?? 0, 1),
+        popularityByPersonName.set(
+          normalizeName(entity.nameLower),
+          Math.max(
+            popularityByPersonName.get(normalizeName(entity.nameLower)) ?? 0,
+            entity.popularity ?? 0,
+          ),
         );
+      });
+      const connectionCounts = await getPersonRecordCountsByMovieKeys(
+        movieCredits.map((credit) => getMovieKeyFromCredit(credit)),
+      );
+      const parentPersonRecord = personRecord;
 
-        const connectionRank = getParentPersonRankForMovie(
-          movieRecord,
-          parentPersonRecord,
-          popularityByPersonName,
-        );
-        return connectionRank === null
-          ? movieCard
-          : {
-            ...movieCard,
-            connectionRank,
-          };
+      return createRow(
+        sortCardsByPopularity(
+          movieCredits.map((credit) => {
+            const movieRecord = (credit.id ? filmRecordsById.get(credit.id) : null) ?? null;
+            const movieCard = createMovieAssociationCard(
+              credit,
+              movieRecord,
+              movieRecord
+                ? Math.max(movieRecord.personConnectionKeys.length, 1)
+                : Math.max(connectionCounts.get(getMovieKeyFromCredit(credit)) ?? 0, 1),
+            );
+
+            const connectionRank = getParentPersonRankForMovie(
+              movieRecord,
+              parentPersonRecord,
+              popularityByPersonName,
+            );
+            return connectionRank === null
+              ? movieCard
+              : {
+                ...movieCard,
+                connectionRank,
+              };
+          }),
+        ),
+      );
+    },
+    {
+      details: {
+        cardKey: card.key,
+      },
+      slowThresholdMs: 15,
+      summarizeResult: (row) => ({
+        childCount: row?.length ?? 0,
       }),
-    ),
+    },
   );
 }
 
@@ -606,80 +664,94 @@ async function buildChildRowForMovieCard(
   card: Extract<CinenerdleCard, { kind: "movie" }>,
   movieRecordOverride?: FilmRecord | null,
 ): Promise<GeneratorNode<CinenerdleCard>[] | null> {
-  const movieRecord =
-    movieRecordOverride ??
-    card.record ??
-    (await getFilmRecordByTitleAndYear(card.name, card.year));
-  if (!movieRecord) {
-    return null;
-  }
+  return measureAsync(
+    "controller.buildChildRowForMovieCard",
+    async () => {
+      const movieRecord =
+        movieRecordOverride ??
+        card.record ??
+        (await getFilmRecordByTitleAndYear(card.name, card.year));
+      if (!movieRecord) {
+        return null;
+      }
 
-  const tmdbCredits = getAssociatedPeopleFromMovieCredits(movieRecord);
-  const filmConnectionCounts = await getFilmRecordCountsByPersonConnectionKeys(
-    tmdbCredits.map((credit) => credit.name ?? ""),
-  );
-  const searchableConnectionEntities = await getAllSearchableConnectionEntities();
-  const popularityByMovieKey = new Map<string, number>();
-  searchableConnectionEntities.forEach((entity) => {
-    if (entity.type !== "movie") {
-      return;
-    }
+      const tmdbCredits = getAssociatedPeopleFromMovieCredits(movieRecord);
+      const filmConnectionCounts = await getFilmRecordCountsByPersonConnectionKeys(
+        tmdbCredits.map((credit) => credit.name ?? ""),
+      );
+      const searchableConnectionEntities = await getAllSearchableConnectionEntities();
+      const popularityByMovieKey = new Map<string, number>();
+      searchableConnectionEntities.forEach((entity) => {
+        if (entity.type !== "movie") {
+          return;
+        }
 
-    const parsedMovie = parseMoviePathLabel(entity.nameLower);
-    const movieKey = getFilmKey(parsedMovie.name, parsedMovie.year);
-    popularityByMovieKey.set(
-      movieKey,
-      Math.max(popularityByMovieKey.get(movieKey) ?? 0, entity.popularity ?? 0),
-    );
-  });
-  const personDetails = new Map(
-    await Promise.all(
-      tmdbCredits.map(async (credit) => {
-        const personName = credit.name ?? "";
-        const cachedPersonRecord = pickBestPersonRecord(
-          credit.id ? await getPersonRecordById(credit.id) : null,
-          personName ? await getPersonRecordByName(personName) : null,
+        const parsedMovie = parseMoviePathLabel(entity.nameLower);
+        const movieKey = getFilmKey(parsedMovie.name, parsedMovie.year);
+        popularityByMovieKey.set(
+          movieKey,
+          Math.max(popularityByMovieKey.get(movieKey) ?? 0, entity.popularity ?? 0),
         );
+      });
+      const personDetails = new Map(
+        await Promise.all(
+          tmdbCredits.map(async (credit) => {
+            const personName = credit.name ?? "";
+            const cachedPersonRecord = pickBestPersonRecord(
+              credit.id ? await getPersonRecordById(credit.id) : null,
+              personName ? await getPersonRecordByName(personName) : null,
+            );
 
-        return [
-          getPersonIdentityKey(personName, credit.id),
-          {
-            connectionCount: cachedPersonRecord
-              ? Math.max(cachedPersonRecord.movieConnectionKeys.length, 1)
-              : Math.max(
-                filmConnectionCounts.get(normalizeName(personName)) ?? 0,
-                1,
-              ),
-            connectionRank: getParentMovieRankForPerson(
-              movieRecord,
-              cachedPersonRecord,
-              popularityByMovieKey,
-            ),
-            personRecord: cachedPersonRecord,
-          },
-        ] as const;
-      }),
-    ),
-  );
-
-  const cards = tmdbCredits.map((credit) =>
-    {
-      const personDetail = personDetails.get(getPersonIdentityKey(credit.name ?? "", credit.id));
-      const personCard = createPersonAssociationCard(
-        credit,
-        personDetail?.connectionCount ?? 1,
-        personDetail?.personRecord ?? null,
+            return [
+              getPersonIdentityKey(personName, credit.id),
+              {
+                connectionCount: cachedPersonRecord
+                  ? Math.max(cachedPersonRecord.movieConnectionKeys.length, 1)
+                  : Math.max(
+                    filmConnectionCounts.get(normalizeName(personName)) ?? 0,
+                    1,
+                  ),
+                connectionRank: getParentMovieRankForPerson(
+                  movieRecord,
+                  cachedPersonRecord,
+                  popularityByMovieKey,
+                ),
+                personRecord: cachedPersonRecord,
+              },
+            ] as const;
+          }),
+        ),
       );
 
-      return personDetail?.connectionRank === null || personDetail?.connectionRank === undefined
-        ? personCard
-        : {
-          ...personCard,
-          connectionRank: personDetail.connectionRank,
-        };
+      const cards = tmdbCredits.map((credit) =>
+        {
+          const personDetail = personDetails.get(getPersonIdentityKey(credit.name ?? "", credit.id));
+          const personCard = createPersonAssociationCard(
+            credit,
+            personDetail?.connectionCount ?? 1,
+            personDetail?.personRecord ?? null,
+          );
+
+          return personDetail?.connectionRank === null || personDetail?.connectionRank === undefined
+            ? personCard
+            : {
+              ...personCard,
+              connectionRank: personDetail.connectionRank,
+            };
+        },
+      );
+      return createRow(cards);
+    },
+    {
+      details: {
+        cardKey: card.key,
+      },
+      slowThresholdMs: 15,
+      summarizeResult: (row) => ({
+        childCount: row?.length ?? 0,
+      }),
     },
   );
-  return createRow(cards);
 }
 
 async function buildChildRowForCard(
@@ -826,122 +898,151 @@ export async function buildTreeFromHash(
   hashValue: string,
   options?: BuildTreeOptions,
 ): Promise<GeneratorTree<CinenerdleCard>> {
-  const pathNodes = buildPathNodesFromSegments(parseHashSegments(hashValue));
-  const dailyStarterSource = options?.dailyStarterSource ?? "network";
+  return measureAsync(
+    "controller.buildTreeFromHash",
+    async () => {
+      const pathNodes = buildPathNodesFromSegments(parseHashSegments(hashValue));
+      const dailyStarterSource = options?.dailyStarterSource ?? "network";
 
-  if (pathNodes.length === 0) {
-    return createCinenerdleRootTree({ dailyStarterSource });
-  }
-
-  const [rootNode, ...continuationPathNodes] = pathNodes;
-  if (!rootNode || rootNode.kind === "break") {
-    return createCinenerdleRootTree({ dailyStarterSource });
-  }
-
-  const rootTree = await createRootTreeFromPathNode(rootNode, { dailyStarterSource });
-  if (!rootTree) {
-    return createCinenerdleRootTree({ dailyStarterSource });
-  }
-
-  let tree = rootTree;
-  let shouldStartDisconnectedBranch = false;
-
-  if (
-    dailyStarterSource === "cache" &&
-    rootNode.kind === "cinenerdle" &&
-    tree.length < 2 &&
-    continuationPathNodes.length > 0
-  ) {
-    return tree;
-  }
-
-  for (const originalPathNode of continuationPathNodes) {
-    if (originalPathNode.kind === "break") {
-      if (!rowHasSelectedNode(tree[tree.length - 1])) {
-        tree = tree.slice(0, -1);
+      if (pathNodes.length === 0) {
+        return createCinenerdleRootTree({ dailyStarterSource });
       }
 
-      tree = [...tree, createBreakRow()];
-      shouldStartDisconnectedBranch = true;
-      continue;
-    }
-
-    if (originalPathNode.kind !== "movie" && originalPathNode.kind !== "person") {
-      continue;
-    }
-
-    if (tree.length === 0) {
-      break;
-    }
-
-    let selectedCard: CinenerdleCard | null = null;
-
-    if (shouldStartDisconnectedBranch) {
-      const disconnectedRow = await createDisconnectedRow(originalPathNode);
-      if (!disconnectedRow) {
-        break;
+      const [rootNode, ...continuationPathNodes] = pathNodes;
+      if (!rootNode || rootNode.kind === "break") {
+        return createCinenerdleRootTree({ dailyStarterSource });
       }
 
-      tree = [...tree, disconnectedRow];
-      selectedCard = disconnectedRow[0]?.data ?? null;
-      shouldStartDisconnectedBranch = false;
-    } else {
-      const lastRow = tree[tree.length - 1];
-      if (!lastRow) {
-        break;
+      const rootTree = await createRootTreeFromPathNode(rootNode, { dailyStarterSource });
+      if (!rootTree) {
+        return createCinenerdleRootTree({ dailyStarterSource });
       }
 
-      const parentSelectedCard =
-        tree.length >= 2 ? getSelectedCard(tree, tree.length - 2) : getSelectedCard(tree, 0);
-      const pathNode =
-        originalPathNode.kind === "person" && parentSelectedCard?.kind === "movie"
-          ? await resolvePersonPathNodeFromMovieContext(originalPathNode, parentSelectedCard)
-          : originalPathNode;
+      let tree = rootTree;
+      let shouldStartDisconnectedBranch = false;
 
-      let nextRow = lastRow;
-      let selectedIndex = findCardIndex(lastRow, pathNode);
+      if (
+        dailyStarterSource === "cache" &&
+        rootNode.kind === "cinenerdle" &&
+        tree.length < 2 &&
+        continuationPathNodes.length > 0
+      ) {
+        return tree;
+      }
 
-      if (selectedIndex >= 0) {
-        nextRow = selectCardInRow(lastRow, selectedIndex);
-        tree = [...tree.slice(0, -1), nextRow];
-      } else {
-        const disconnectedRow = await createDisconnectedRow(pathNode);
-        if (!disconnectedRow) {
+      for (const originalPathNode of continuationPathNodes) {
+        if (originalPathNode.kind === "break") {
+          if (!rowHasSelectedNode(tree[tree.length - 1])) {
+            tree = tree.slice(0, -1);
+          }
+
+          tree = [...tree, createBreakRow()];
+          shouldStartDisconnectedBranch = true;
+          continue;
+        }
+
+        if (originalPathNode.kind !== "movie" && originalPathNode.kind !== "person") {
+          continue;
+        }
+
+        if (tree.length === 0) {
           break;
         }
 
-        nextRow = disconnectedRow;
-        tree = [...tree.slice(0, -1), disconnectedRow];
-        selectedIndex = 0;
+        let selectedCard: CinenerdleCard | null = null;
+
+        if (shouldStartDisconnectedBranch) {
+          const disconnectedRow = await createDisconnectedRow(originalPathNode);
+          if (!disconnectedRow) {
+            break;
+          }
+
+          tree = [...tree, disconnectedRow];
+          selectedCard = disconnectedRow[0]?.data ?? null;
+          shouldStartDisconnectedBranch = false;
+        } else {
+          const lastRow = tree[tree.length - 1];
+          if (!lastRow) {
+            break;
+          }
+
+          const parentSelectedCard =
+            tree.length >= 2 ? getSelectedCard(tree, tree.length - 2) : getSelectedCard(tree, 0);
+          const pathNode =
+            originalPathNode.kind === "person" && parentSelectedCard?.kind === "movie"
+              ? await resolvePersonPathNodeFromMovieContext(originalPathNode, parentSelectedCard)
+              : originalPathNode;
+
+          let nextRow = lastRow;
+          let selectedIndex = findCardIndex(lastRow, pathNode);
+
+          if (selectedIndex >= 0) {
+            nextRow = selectCardInRow(lastRow, selectedIndex);
+            tree = [...tree.slice(0, -1), nextRow];
+          } else {
+            const disconnectedRow = await createDisconnectedRow(pathNode);
+            if (!disconnectedRow) {
+              break;
+            }
+
+            nextRow = disconnectedRow;
+            tree = [...tree.slice(0, -1), disconnectedRow];
+            selectedIndex = 0;
+          }
+
+          selectedCard = nextRow[selectedIndex]?.data ?? null;
+        }
+
+        if (!selectedCard || selectedCard.kind === "break" || selectedCard.kind === "dbinfo") {
+          break;
+        }
+
+        const childRow = await buildChildRowForCard(selectedCard);
+        if (childRow && childRow.length > 0) {
+          tree = [...tree, childRow];
+        }
       }
 
-      selectedCard = nextRow[selectedIndex]?.data ?? null;
-    }
-
-    if (!selectedCard || selectedCard.kind === "break" || selectedCard.kind === "dbinfo") {
-      break;
-    }
-
-    const childRow = await buildChildRowForCard(selectedCard);
-    if (childRow && childRow.length > 0) {
-      tree = [...tree, childRow];
-    }
-  }
-
-  return tree;
+      return tree;
+    },
+    {
+      always: true,
+      details: {
+        dailyStarterSource: options?.dailyStarterSource ?? "network",
+        hash: hashValue,
+      },
+      summarizeResult: (tree) => ({
+        rowCount: tree.length,
+      }),
+    },
+  );
 }
 
 export async function buildBookmarkPreviewCardsFromHash(
   hashValue: string,
 ): Promise<BookmarkPreviewCard[]> {
-  const tree = await buildTreeFromHash(hashValue);
+  return measureAsync(
+    "controller.buildBookmarkPreviewCardsFromHash",
+    async () => {
+      const tree = await buildTreeFromHash(hashValue);
 
-  return tree
-    .map((row) => row.find((node) => node.selected)?.data ?? null)
-    .filter((card): card is Exclude<CinenerdleCard, { kind: "dbinfo" }> =>
-      card !== null && card.kind !== "dbinfo",
-    )
-    .map((card) => createBookmarkPreviewCard(card));
+      return tree
+        .map((row) => row.find((node) => node.selected)?.data ?? null)
+        .filter((card): card is Exclude<CinenerdleCard, { kind: "dbinfo" }> =>
+          card !== null && card.kind !== "dbinfo",
+        )
+        .map((card) => createBookmarkPreviewCard(card));
+    },
+    {
+      always: true,
+      details: {
+        hash: hashValue,
+      },
+      summarizeResult: (previewCards) => ({
+        previewCardCount: previewCards.length,
+      }),
+    },
+  );
 }
 
 function getSelectedAncestorCards(
@@ -1245,30 +1346,41 @@ export function useCinenerdleController({
         void (async () => {
           const initialHash = readHash();
 
-          try {
-            try {
-              const cachedTree = await buildTreeFromHash(initialHash, {
-                dailyStarterSource: "cache",
-              });
-              setTree(cachedTree);
-            } catch (error: unknown) {
-              void error;
-            }
+          await measureAsync(
+            "controller.initTree",
+            async () => {
+              try {
+                try {
+                  const cachedTree = await buildTreeFromHash(initialHash, {
+                    dailyStarterSource: "cache",
+                  });
+                  setTree(cachedTree);
+                } catch (error: unknown) {
+                  void error;
+                }
 
-            const nextTree = await buildTreeFromHash(readHash());
-            setTree(nextTree);
-            void hydrateMissingSelectedPathItemsAndRedraw(setTree, readHash).catch(() => { });
-            if (isCinenerdleRootTree(nextTree)) {
-              void hydrateDailyStartersAndRedraw(setTree, readHash).catch(() => { });
-            }
-          } catch {
-            const fallbackTree = await createCinenerdleRootTree();
-            setTree(fallbackTree);
-            void hydrateMissingSelectedPathItemsAndRedraw(setTree, readHash).catch(() => { });
-            if (isCinenerdleRootTree(fallbackTree)) {
-              void hydrateDailyStartersAndRedraw(setTree, readHash).catch(() => { });
-            }
-          }
+                const nextTree = await buildTreeFromHash(readHash());
+                setTree(nextTree);
+                void hydrateMissingSelectedPathItemsAndRedraw(setTree, readHash).catch(() => { });
+                if (isCinenerdleRootTree(nextTree)) {
+                  void hydrateDailyStartersAndRedraw(setTree, readHash).catch(() => { });
+                }
+              } catch {
+                const fallbackTree = await createCinenerdleRootTree();
+                setTree(fallbackTree);
+                void hydrateMissingSelectedPathItemsAndRedraw(setTree, readHash).catch(() => { });
+                if (isCinenerdleRootTree(fallbackTree)) {
+                  void hydrateDailyStartersAndRedraw(setTree, readHash).catch(() => { });
+                }
+              }
+            },
+            {
+              always: true,
+              details: {
+                initialHash,
+              },
+            },
+          );
         })();
       },
       afterCardSelected({ tree, setTree }) {
@@ -1282,9 +1394,10 @@ export function useCinenerdleController({
             selectedCard.kind === "movie" ||
             selectedCard.kind === "person")
         ) {
-          void buildChildRowForCard(selectedCard)
-            .then(async (childRow) => {
-              let resolvedChildRow = childRow;
+          void measureAsync(
+            "controller.afterCardSelected",
+            async () => {
+              let resolvedChildRow = await buildChildRowForCard(selectedCard);
 
               if ((!resolvedChildRow || resolvedChildRow.length === 0) && selectedCard.kind === "movie") {
                 const hydratedMovieRecord = await prepareSelectedMovie(
@@ -1312,7 +1425,21 @@ export function useCinenerdleController({
                   ? [...tree, resolvedChildRow]
                   : tree,
               );
-            })
+
+              return resolvedChildRow;
+            },
+            {
+              always: true,
+              details: {
+                hash: nextHash,
+                selectedCardKey: selectedCard.key,
+                selectedCardKind: selectedCard.kind,
+              },
+              summarizeResult: (resolvedChildRow) => ({
+                childCount: resolvedChildRow?.length ?? 0,
+              }),
+            },
+          )
             .catch(() => {
               setTree(tree);
             });
