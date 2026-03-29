@@ -7,7 +7,11 @@ import {
 import type { GeneratorNode, GeneratorTree } from "../../types/generator";
 import type { ConnectionEntity } from "./connection_graph";
 import { useCinenerdleController } from "./controller";
-export { CinenerdleEntityCard, type RenderableCinenerdleEntityCard } from "./entity_card";
+export {
+  CinenerdleBreakBar,
+  CinenerdleEntityCard,
+  type RenderableCinenerdleEntityCard,
+} from "./entity_card";
 import { normalizeHashValue } from "./hash";
 import { primeTmdbApiKeyOnInit } from "./tmdb";
 import { getValidTmdbEntityId, normalizeName, normalizeTitle } from "./utils";
@@ -225,6 +229,20 @@ const Cinenerdle2 = memo(function Cinenerdle2({
         matchesHighlightedConnectionEntity(node.data, highlightedConnectionEntitySelectionRequest.entity),
     };
   }, [highlightedConnectionEntitySelectionRequest]);
+  const getRowPresentation = useCallback((row: GeneratorNode<CinenerdleCard>[]) => {
+    const isBreakRow = row.length === 1 && row[0]?.data.kind === "break";
+
+    if (!isBreakRow) {
+      return {};
+    }
+
+    return {
+      hideBubble: true,
+      className: "generator-row-break",
+      trackClassName: "generator-row-track-break",
+      cardButtonClassName: "generator-card-button-row-break",
+    };
+  }, []);
   const generatorResetKey = `${resetVersion}:${navigationVersion}`;
 
   return (
@@ -232,6 +250,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
       activationRequest={activationRequest}
       afterCardSelected={controller.afterCardSelected}
       focusRequest={focusRequest}
+      getRowPresentation={getRowPresentation}
       initTree={controller.initTree}
       onActivationHandled={onHighlightedConnectionEntitySelectionHandled}
       onFocusRequestMatchChange={onHighlightedConnectionEntityYoungestGenerationMatchChange}

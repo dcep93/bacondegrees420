@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   makeFilmRecord,
+  makeMovieCredit,
   makePersonCredit,
   makePersonRecord,
   makeTmdbPersonSearchResult,
@@ -40,7 +41,8 @@ vi.mock("../tmdb", async () => {
   };
 });
 
-import { buildBookmarkPreviewCardsFromHash } from "../controller";
+import { buildBookmarkPreviewCardsFromHash, buildTreeFromHash } from "../controller";
+import { ESCAPE_LABEL } from "../constants";
 
 describe("buildBookmarkPreviewCardsFromHash", () => {
   beforeEach(() => {
@@ -194,6 +196,152 @@ describe("buildBookmarkPreviewCardsFromHash", () => {
         name: "Andy Weir",
         imageUrl: expect.stringContaining("/andy-weir.jpg"),
         hasCachedTmdbSource: true,
+      }),
+    );
+  });
+
+  it("preserves escape segments as break preview cards", async () => {
+    const firstManRecord = makeFilmRecord({
+      title: "First Man",
+      year: "2018",
+      personConnectionKeys: ["kyle chandler"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({
+            id: 100,
+            name: "Kyle Chandler",
+          }),
+        ],
+        crew: [],
+      },
+    });
+
+    tmdbMock.fetchCinenerdleDailyStarterMovies.mockResolvedValue([firstManRecord]);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(firstManRecord);
+    indexedDbMock.getPersonRecordByName.mockImplementation(async (personName: string) =>
+      personName === "Tom Hanks"
+        ? makePersonRecord({
+          name: "Tom Hanks",
+        })
+        : null,
+    );
+
+    const previewCards = await buildBookmarkPreviewCardsFromHash(
+      "#cinenerdle|First+Man+(2018)|Kyle+Chandler||Tom+Hanks",
+    );
+
+    expect(previewCards.at(-2)).toEqual(
+      expect.objectContaining({
+        kind: "break",
+        name: ESCAPE_LABEL,
+      }),
+    );
+    expect(previewCards.at(-1)).toEqual(
+      expect.objectContaining({
+        kind: "person",
+        name: "Tom Hanks",
+      }),
+    );
+  });
+});
+
+describe("buildTreeFromHash", () => {
+  beforeEach(() => {
+    Object.values(indexedDbMock).forEach((mock) => mock.mockReset());
+    Object.values(tmdbMock).forEach((mock) => mock.mockReset());
+
+    indexedDbMock.getFilmRecordsByIds.mockResolvedValue(new Map());
+    indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(new Map());
+    indexedDbMock.getPersonRecordCountsByMovieKeys.mockResolvedValue(new Map());
+    indexedDbMock.getPersonRecordsByMovieKey.mockResolvedValue([]);
+    tmdbMock.fetchCinenerdleDailyStarterMovies.mockResolvedValue([]);
+    tmdbMock.hydrateCinenerdleDailyStarterMovies.mockResolvedValue(undefined);
+  });
+
+  it("inserts a separator row and starts a disconnected branch after an escape", async () => {
+    const firstManRecord = makeFilmRecord({
+      title: "First Man",
+      year: "2018",
+      personConnectionKeys: ["kyle chandler"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({
+            id: 100,
+            name: "Kyle Chandler",
+          }),
+        ],
+        crew: [],
+      },
+    });
+    tmdbMock.fetchCinenerdleDailyStarterMovies.mockResolvedValue([firstManRecord]);
+    const kyleChandlerRecord = makePersonRecord({
+      id: 100,
+      tmdbId: 100,
+      name: "Kyle Chandler",
+      movieConnectionKeys: ["game night (2018)"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({
+            id: 200,
+            title: "Game Night",
+            release_date: "2018-02-23",
+          }),
+        ],
+        crew: [],
+      },
+    });
+    const tomHanksRecord = makePersonRecord({
+      id: 101,
+      tmdbId: 101,
+      name: "Tom Hanks",
+      movieConnectionKeys: [],
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+    });
+
+    indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (title: string, year: string) =>
+      title === "First Man" && year === "2018" ? firstManRecord : null,
+    );
+    indexedDbMock.getPersonRecordById.mockImplementation(async (personId: number) =>
+      personId === 100 ? kyleChandlerRecord : personId === 101 ? tomHanksRecord : null,
+    );
+    indexedDbMock.getPersonRecordByName.mockImplementation(async (personName: string) =>
+      personName === "Kyle Chandler"
+        ? kyleChandlerRecord
+        : personName === "Tom Hanks"
+          ? tomHanksRecord
+          : null,
+    );
+
+    const tree = await buildTreeFromHash(
+      "#cinenerdle|First+Man+(2018)|Kyle+Chandler||Tom+Hanks",
+    );
+
+    expect(tree.map((row) => row.find((node) => node.selected)?.data.kind ?? null)).toEqual([
+      "cinenerdle",
+      "movie",
+      "person",
+      "break",
+      "person",
+    ]);
+    expect(tree[3]).toHaveLength(1);
+    expect(tree[3]?.[0]).toEqual(
+      expect.objectContaining({
+        selected: true,
+        disabled: true,
+        data: expect.objectContaining({
+          kind: "break",
+          name: ESCAPE_LABEL,
+        }),
+      }),
+    );
+    expect(tree[4]).toHaveLength(1);
+    expect(tree[4]?.[0]?.data).toEqual(
+      expect.objectContaining({
+        kind: "person",
+        name: "Tom Hanks",
       }),
     );
   });

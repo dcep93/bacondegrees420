@@ -63,6 +63,11 @@ export type CinenerdleRootCard = BaseCard & {
   record: null;
 };
 
+export type BreakCard = BaseCard & {
+  kind: "break";
+  record: null;
+};
+
 export type PersonCard = BaseCard & {
   kind: "person";
   record: PersonRecord | null;
@@ -76,7 +81,7 @@ export type MovieCard = BaseCard & {
   record: FilmRecord | null;
 };
 
-export type CinenerdleCard = CinenerdleRootCard | PersonCard | MovieCard | DbInfoCard;
+export type CinenerdleCard = CinenerdleRootCard | BreakCard | PersonCard | MovieCard | DbInfoCard;
 
 type BaseCardViewModel = {
   kind: CinenerdleCard["kind"];
@@ -102,6 +107,9 @@ export type CinenerdleCardViewModel =
       kind: "movie";
       voteAverage: number | null;
       voteCount: number | null;
+    })
+  | (BaseCardViewModel & {
+      kind: "break";
     })
   | (BaseCardViewModel & {
       kind: "dbinfo";

@@ -11,7 +11,7 @@ import {
   createPersonRootCard,
   createSnapshotPersonCard,
 } from "./cards";
-import { TMDB_ICON_URL } from "./constants";
+import { ESCAPE_LABEL, TMDB_ICON_URL } from "./constants";
 import {
   buildPathNodesFromSegments,
   createPathNode,
@@ -32,7 +32,7 @@ import {
   prepareSelectedMovie,
   prepareSelectedPerson,
 } from "./tmdb";
-import { CinenerdleEntityCard } from "./entity_card";
+import { CinenerdleBreakBar, CinenerdleEntityCard } from "./entity_card";
 import { pickBestPersonRecord } from "./records";
 import type { FilmRecord, PersonRecord } from "./types";
 import {
@@ -80,9 +80,30 @@ type SelectedPathHydrationTask = {
   run: () => Promise<FilmRecord | PersonRecord | null>;
 };
 
-function createNode(data: CinenerdleCard, selected = false): GeneratorNode<CinenerdleCard> {
+function createBreakCard(): Extract<CinenerdleCard, { kind: "break" }> {
+  return {
+    key: "break",
+    kind: "break",
+    name: ESCAPE_LABEL,
+    popularity: 0,
+    imageUrl: null,
+    subtitle: "",
+    subtitleDetail: "",
+    connectionCount: null,
+    sources: [],
+    status: null,
+    record: null,
+  };
+}
+
+function createNode(
+  data: CinenerdleCard,
+  selected = false,
+  disabled = false,
+): GeneratorNode<CinenerdleCard> {
   return {
     selected,
+    disabled,
     data,
   };
 }
@@ -182,7 +203,7 @@ function getPathNodeFromCard(card: CinenerdleCard): CinenerdlePathNode {
     return createPathNode("cinenerdle", "cinenerdle");
   }
 
-  if (card.kind === "dbinfo") {
+  if (card.kind === "break" || card.kind === "dbinfo") {
     return createPathNode("break", "");
   }
 
@@ -211,6 +232,15 @@ function getSelectedEntityPathNodes(hashValue: string): SelectedEntityPathNode[]
   return buildPathNodesFromSegments(parseHashSegments(hashValue)).filter(
     (pathNode): pathNode is SelectedEntityPathNode =>
       pathNode.kind === "movie" || pathNode.kind === "person",
+  );
+}
+
+function getSelectedHydrationPathNodes(
+  hashValue: string,
+): Extract<CinenerdlePathNode, { kind: "movie" | "person" | "break" }>[] {
+  return buildPathNodesFromSegments(parseHashSegments(hashValue)).filter(
+    (pathNode): pathNode is Extract<CinenerdlePathNode, { kind: "movie" | "person" | "break" }> =>
+      pathNode.kind === "movie" || pathNode.kind === "person" || pathNode.kind === "break",
   );
 }
 
@@ -285,12 +315,17 @@ async function buildSelectedPathHydrationTasks(
 }
 
 async function resolveSelectedPathNodesForHydration(
-  selectedPathNodes: SelectedEntityPathNode[],
+  selectedPathNodes: Extract<CinenerdlePathNode, { kind: "movie" | "person" | "break" }>[],
 ): Promise<SelectedEntityPathNode[]> {
   const resolvedPathNodes: SelectedEntityPathNode[] = [];
   let previousMovieCard: Extract<CinenerdleCard, { kind: "movie" }> | null = null;
 
   for (const pathNode of selectedPathNodes) {
+    if (pathNode.kind === "break") {
+      previousMovieCard = null;
+      continue;
+    }
+
     const resolvedPathNode: SelectedEntityPathNode =
       pathNode.kind === "person" && previousMovieCard
         ? await resolvePersonPathNodeFromMovieContext(pathNode, previousMovieCard)
@@ -446,7 +481,9 @@ async function hydrateMissingSelectedPathItemsAndRedraw(
     return;
   }
 
-  const selectedPathNodes = await resolveSelectedPathNodesForHydration(originalSelectedPathNodes);
+  const selectedPathNodes = await resolveSelectedPathNodesForHydration(
+    getSelectedHydrationPathNodes(initialHash),
+  );
   const hydrationTasks = await buildSelectedPathHydrationTasks(selectedPathNodes);
   if (hydrationTasks.length === 0) {
     return;
@@ -699,6 +736,14 @@ async function createDisconnectedRow(
   return createRow([movieCard], movieCard.key);
 }
 
+function createBreakRow(): GeneratorNode<CinenerdleCard>[] {
+  return [createNode(createBreakCard(), true, true)];
+}
+
+function rowHasSelectedNode(row: GeneratorNode<CinenerdleCard>[] | undefined) {
+  return row?.some((node) => node.selected) ?? false;
+}
+
 function findCardIndex(
   row: GeneratorNode<CinenerdleCard>[],
   pathNode: Extract<CinenerdlePathNode, { kind: "movie" | "person" }>,
@@ -737,7 +782,7 @@ function selectCardInRow(
   }));
 }
 
-async function buildTreeFromHash(
+export async function buildTreeFromHash(
   hashValue: string,
 ): Promise<GeneratorTree<CinenerdleCard>> {
   const pathNodes = buildPathNodesFromSegments(parseHashSegments(hashValue));
@@ -757,46 +802,72 @@ async function buildTreeFromHash(
   }
 
   let tree = rootTree;
-  for (const originalPathNode of continuationPathNodes.filter(
-    (node): node is Extract<CinenerdlePathNode, { kind: "movie" | "person" }> =>
-      node.kind === "movie" || node.kind === "person",
-  )) {
+  let shouldStartDisconnectedBranch = false;
+
+  for (const originalPathNode of continuationPathNodes) {
+    if (originalPathNode.kind === "break") {
+      if (!rowHasSelectedNode(tree[tree.length - 1])) {
+        tree = tree.slice(0, -1);
+      }
+
+      tree = [...tree, createBreakRow()];
+      shouldStartDisconnectedBranch = true;
+      continue;
+    }
+
+    if (originalPathNode.kind !== "movie" && originalPathNode.kind !== "person") {
+      continue;
+    }
+
     if (tree.length === 0) {
       break;
     }
 
-    const lastRow = tree[tree.length - 1];
-    if (!lastRow) {
-      break;
-    }
+    let selectedCard: CinenerdleCard | null = null;
 
-    const parentSelectedCard =
-      tree.length >= 2 ? getSelectedCard(tree, tree.length - 2) : getSelectedCard(tree, 0);
-    const pathNode =
-      originalPathNode.kind === "person" && parentSelectedCard?.kind === "movie"
-        ? await resolvePersonPathNodeFromMovieContext(originalPathNode, parentSelectedCard)
-        : originalPathNode;
-
-    let nextRow = lastRow;
-    let selectedIndex = findCardIndex(lastRow, pathNode);
-
-    if (selectedIndex >= 0) {
-      nextRow = selectCardInRow(lastRow, selectedIndex);
-      tree = [...tree.slice(0, -1), nextRow];
-    } else {
-      const disconnectedRow = await createDisconnectedRow(pathNode);
+    if (shouldStartDisconnectedBranch) {
+      const disconnectedRow = await createDisconnectedRow(originalPathNode);
       if (!disconnectedRow) {
         break;
       }
 
-      nextRow = disconnectedRow;
-      tree = [...tree.slice(0, -1), disconnectedRow];
-      selectedIndex = 0;
+      tree = [...tree, disconnectedRow];
+      selectedCard = disconnectedRow[0]?.data ?? null;
+      shouldStartDisconnectedBranch = false;
+    } else {
+      const lastRow = tree[tree.length - 1];
+      if (!lastRow) {
+        break;
+      }
+
+      const parentSelectedCard =
+        tree.length >= 2 ? getSelectedCard(tree, tree.length - 2) : getSelectedCard(tree, 0);
+      const pathNode =
+        originalPathNode.kind === "person" && parentSelectedCard?.kind === "movie"
+          ? await resolvePersonPathNodeFromMovieContext(originalPathNode, parentSelectedCard)
+          : originalPathNode;
+
+      let nextRow = lastRow;
+      let selectedIndex = findCardIndex(lastRow, pathNode);
+
+      if (selectedIndex >= 0) {
+        nextRow = selectCardInRow(lastRow, selectedIndex);
+        tree = [...tree.slice(0, -1), nextRow];
+      } else {
+        const disconnectedRow = await createDisconnectedRow(pathNode);
+        if (!disconnectedRow) {
+          break;
+        }
+
+        nextRow = disconnectedRow;
+        tree = [...tree.slice(0, -1), disconnectedRow];
+        selectedIndex = 0;
+      }
+
+      selectedCard = nextRow[selectedIndex]?.data ?? null;
     }
 
-    const selectedCard = nextRow[selectedIndex]?.data;
-
-    if (!selectedCard) {
+    if (!selectedCard || selectedCard.kind === "break" || selectedCard.kind === "dbinfo") {
       break;
     }
 
@@ -856,6 +927,10 @@ function isTmdbSourceLabel(label: string) {
 }
 
 function getRenderableSources(card: CinenerdleCard) {
+  if (card.kind === "break") {
+    return [];
+  }
+
   return (card.sources ?? []).filter(
     (source) => source.iconUrl === TMDB_ICON_URL || isTmdbSourceLabel(source.label),
   );
@@ -901,6 +976,13 @@ function createCardViewModel(
       kind: "movie",
       voteAverage: card.voteAverage,
       voteCount: card.voteCount,
+    };
+  }
+
+  if (card.kind === "break") {
+    return {
+      ...sharedFields,
+      kind: "break",
     };
   }
 
@@ -975,6 +1057,10 @@ function renderCinenerdleCard(
 
   if (viewModel.kind === "dbinfo") {
     return renderDbInfoCard(viewModel);
+  }
+
+  if (viewModel.kind === "break") {
+    return <CinenerdleBreakBar label={viewModel.name} />;
   }
 
   const rootHash = serializePathNodes([getPathNodeFromCard(card)]);

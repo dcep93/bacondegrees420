@@ -1,4 +1,7 @@
-import type { BookmarkPreviewCard } from "./components/bookmark_preview";
+import {
+  isBookmarkPreviewCardSelectable,
+  type BookmarkPreviewCard,
+} from "./components/bookmark_preview";
 import { normalizeHashValue } from "./generators/cinenerdle2/hash";
 
 export const BOOKMARKS_STORAGE_KEY = "bacondegrees420.bookmarks.v1";
@@ -20,9 +23,13 @@ function sanitizeSelectedPreviewCardIndices(
 ) {
   return Array.from(
     new Set(
-      (selectedPreviewCardIndices ?? []).filter((value) =>
-        Number.isInteger(value) && value >= 0 && value < previewCards.length
-      ),
+      (selectedPreviewCardIndices ?? []).filter((value) => {
+        if (!Number.isInteger(value) || value < 0 || value >= previewCards.length) {
+          return false;
+        }
+
+        return isBookmarkPreviewCardSelectable(previewCards[value]);
+      }),
     ),
   ).sort((left, right) => left - right);
 }
@@ -221,6 +228,10 @@ export function toggleBookmarkPreviewCardSelection(
 
   const currentBookmark = currentBookmarks[bookmarkIndex];
   if (previewCardIndex < 0 || previewCardIndex >= currentBookmark.previewCards.length) {
+    return currentBookmarks;
+  }
+
+  if (!isBookmarkPreviewCardSelectable(currentBookmark.previewCards[previewCardIndex])) {
     return currentBookmarks;
   }
 

@@ -29,6 +29,29 @@ type RenderableNonMovieCard = BaseRenderableCinenerdleEntityCard & {
 
 export type RenderableCinenerdleEntityCard = RenderableMovieCard | RenderableNonMovieCard;
 
+export function CinenerdleBreakBar({
+  className,
+  label = "ESCAPE",
+}: {
+  className?: string;
+  label?: string;
+}) {
+  return (
+    <div
+      aria-label={label}
+      className={[
+        "cinenerdle-break-bar",
+        className ?? "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      role="separator"
+    >
+      <span className="cinenerdle-break-bar-label">{label}</span>
+    </div>
+  );
+}
+
 function clampNumber(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }

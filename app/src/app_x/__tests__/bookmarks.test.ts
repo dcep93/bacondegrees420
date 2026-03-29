@@ -5,9 +5,11 @@ import {
   mergeMissingBookmarks,
   mergeSyncedBookmarks,
   saveBookmarks,
+  toggleBookmarkPreviewCardSelection,
   type BookmarkEntry,
 } from "../bookmarks";
 import type { BookmarkPreviewCard } from "../components/bookmark_preview";
+import { ESCAPE_LABEL } from "../generators/cinenerdle2/constants";
 import { createPathNode, serializePathNodes } from "../generators/cinenerdle2/hash";
 
 const MATRIX_HASH = serializePathNodes([
@@ -33,6 +35,25 @@ function createPreviewCard(overrides: Partial<BookmarkPreviewCard> = {}): Bookma
     year: "1999",
     voteAverage: 8.7,
     voteCount: 100,
+    ...overrides,
+  };
+}
+
+function createBreakPreviewCard(
+  overrides: Partial<Extract<BookmarkPreviewCard, { kind: "break" }>> = {},
+): Extract<BookmarkPreviewCard, { kind: "break" }> {
+  return {
+    key: "break",
+    kind: "break",
+    name: ESCAPE_LABEL,
+    imageUrl: null,
+    subtitle: "",
+    subtitleDetail: "",
+    popularity: 0,
+    connectionCount: null,
+    sources: [],
+    status: null,
+    hasCachedTmdbSource: false,
     ...overrides,
   };
 }
@@ -181,5 +202,54 @@ describe("bookmarks", () => {
         selectedPreviewCardIndices: [0],
       }),
     ]);
+  });
+
+  it("drops selected preview indices that point at escape separators", () => {
+    saveBookmarks([
+      createBookmark({
+        previewCards: [
+          createPreviewCard(),
+          createBreakPreviewCard(),
+          createPreviewCard({
+            key: "person:keanu-reeves",
+            kind: "person",
+            name: "Keanu Reeves",
+            subtitle: "Person",
+            subtitleDetail: "Actor",
+          }),
+        ],
+        selectedPreviewCardIndices: [1, 2],
+      }),
+    ]);
+
+    expect(JSON.parse(localStorage.getItem(BOOKMARKS_STORAGE_KEY) ?? "[]")).toEqual([
+      createBookmark({
+        previewCards: [
+          createPreviewCard(),
+          createBreakPreviewCard(),
+          createPreviewCard({
+            key: "person:keanu-reeves",
+            kind: "person",
+            name: "Keanu Reeves",
+            subtitle: "Person",
+            subtitleDetail: "Actor",
+          }),
+        ],
+        selectedPreviewCardIndices: [2],
+      }),
+    ]);
+  });
+
+  it("ignores toggle requests for escape separators", () => {
+    const currentBookmarks = [
+      createBookmark({
+        previewCards: [createPreviewCard(), createBreakPreviewCard()],
+        selectedPreviewCardIndices: [0],
+      }),
+    ];
+
+    expect(toggleBookmarkPreviewCardSelection(currentBookmarks, "bookmark-1", 1)).toEqual(
+      currentBookmarks,
+    );
   });
 });

@@ -284,3 +284,23 @@
   font-size: 10px;
   line-height: 1.25;
 }
+
+.cinenerdle-break-bar {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 40px;
+  padding: 10px 14px;
+  border: 1px solid #000;
+  border-radius: 12px;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cinenerdle-break-bar-label {
+  color: rgba(255, 255, 255, 0.74);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}

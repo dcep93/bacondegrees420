@@ -28,6 +28,7 @@ import {
   setSyncedBookmarks,
 } from "./bookmark_sync";
 import Cinenerdle2, {
+  CinenerdleBreakBar,
   CinenerdleEntityCard,
   type RenderableCinenerdleEntityCard,
 } from "./generators/cinenerdle2";
@@ -41,7 +42,11 @@ import {
   type ConnectionEntity,
   type ConnectionSearchResult,
 } from "./generators/cinenerdle2/connection_graph";
-import { CINENERDLE_ICON_URL, TMDB_ICON_URL } from "./generators/cinenerdle2/constants";
+import {
+  CINENERDLE_ICON_URL,
+  ESCAPE_LABEL,
+  TMDB_ICON_URL,
+} from "./generators/cinenerdle2/constants";
 import { buildBookmarkPreviewCardsFromHash } from "./generators/cinenerdle2/controller";
 import {
   copyCinenerdleDebugLogToClipboard,
@@ -63,6 +68,9 @@ import {
   formatMoviePathLabel,
   normalizeWhitespace,
 } from "./generators/cinenerdle2/utils";
+import {
+  isBookmarkPreviewCardSelectable,
+} from "./components/bookmark_preview";
 import { resolveConnectionQuery } from "./generators/cinenerdle2/tmdb";
 import {
   resolveConnectionMatchupPreview,
@@ -223,11 +231,9 @@ function formatBookmarkIndexTooltip(bookmark: BookmarkEntry): string {
   return lines.join("\n");
 }
 
-function getBookmarkPreviewCardHash(bookmarkHash: string, previewCardIndex: number): string {
+export function getBookmarkPreviewCardHash(bookmarkHash: string, previewCardIndex: number): string {
   const normalizedHash = normalizeHashValue(bookmarkHash);
-  const pathNodes = buildPathNodesFromSegments(parseHashSegments(normalizedHash)).filter(
-    (pathNode): pathNode is Exclude<(typeof pathNode), { kind: "break" }> => pathNode.kind !== "break",
-  );
+  const pathNodes = buildPathNodesFromSegments(parseHashSegments(normalizedHash));
 
   if (previewCardIndex < 0 || previewCardIndex >= pathNodes.length) {
     return normalizedHash;
@@ -237,7 +243,7 @@ function getBookmarkPreviewCardHash(bookmarkHash: string, previewCardIndex: numb
 }
 
 function createBookmarkPreviewCardViewModel(
-  card: BookmarkEntry["previewCards"][number],
+  card: Exclude<BookmarkEntry["previewCards"][number], { kind: "break" }>,
   isSelected: boolean,
 ): RenderableCinenerdleEntityCard {
   const sharedFields = {
@@ -361,12 +367,13 @@ function getHighestGenerationSelectedLabel(hashValue: string): string {
   return selectedPathTarget.name;
 }
 
-function getSelectedPathTooltipEntries(hashValue: string): string[] {
+export function getSelectedPathTooltipEntries(hashValue: string): string[] {
   const pathNodes = buildPathNodesFromSegments(parseHashSegments(hashValue)).filter(
-    (pathNode): pathNode is Exclude<(typeof pathNode), { kind: "break" }> =>
+    (pathNode) =>
       pathNode.kind === "cinenerdle" ||
       pathNode.kind === "movie" ||
-      pathNode.kind === "person",
+      pathNode.kind === "person" ||
+      pathNode.kind === "break",
   );
 
   if (pathNodes.length === 0) {
@@ -375,7 +382,9 @@ function getSelectedPathTooltipEntries(hashValue: string): string[] {
 
   return pathNodes
     .map((pathNode) =>
-      pathNode.kind === "movie"
+      pathNode.kind === "break"
+        ? ESCAPE_LABEL
+        : pathNode.kind === "movie"
         ? formatMoviePathLabel(pathNode.name, pathNode.year)
         : pathNode.name,
     );
@@ -1095,6 +1104,11 @@ export default function AppX() {
   }
 
   function handleLoadBookmarkPreviewCard(bookmark: BookmarkEntry, previewCardIndex: number) {
+    const previewCard = bookmark.previewCards[previewCardIndex];
+    if (!previewCard || !isBookmarkPreviewCardSelectable(previewCard)) {
+      return;
+    }
+
     const previewCardHash = getBookmarkPreviewCardHash(bookmark.hash, previewCardIndex);
     bookmarksReturnHashRef.current = previewCardHash;
     window.history.replaceState(
@@ -1695,23 +1709,35 @@ export default function AppX() {
               </div>
               <div className="bacon-bookmark-row-body">
                 <div className="bacon-bookmark-card-row">
-                  {bookmark.previewCards.map((card, cardIndex) => (
-                    <button
-                      aria-pressed={bookmark.selectedPreviewCardIndices.includes(cardIndex)}
-                      className="generator-card-button"
-                      key={`${bookmark.id}:${cardIndex}:${card.key}`}
-                      onClick={() => handleToggleBookmarkPreviewCard(bookmark.id, cardIndex)}
-                      type="button"
-                    >
-                      <CinenerdleEntityCard
-                        card={createBookmarkPreviewCardViewModel(
-                          card,
-                          bookmark.selectedPreviewCardIndices.includes(cardIndex),
-                        )}
-                        onTitleClick={() => handleLoadBookmarkPreviewCard(bookmark, cardIndex)}
-                      />
-                    </button>
-                  ))}
+                  {bookmark.previewCards.map((card, cardIndex) => {
+                    const isSelected = bookmark.selectedPreviewCardIndices.includes(cardIndex);
+
+                    if (!isBookmarkPreviewCardSelectable(card)) {
+                      return (
+                        <div
+                          className="generator-card-button generator-card-button-row-break"
+                          key={`${bookmark.id}:${cardIndex}:${card.key}`}
+                        >
+                          <CinenerdleBreakBar label={card.name} />
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <button
+                        aria-pressed={isSelected}
+                        className="generator-card-button"
+                        key={`${bookmark.id}:${cardIndex}:${card.key}`}
+                        onClick={() => handleToggleBookmarkPreviewCard(bookmark.id, cardIndex)}
+                        type="button"
+                      >
+                        <CinenerdleEntityCard
+                          card={createBookmarkPreviewCardViewModel(card, isSelected)}
+                          onTitleClick={() => handleLoadBookmarkPreviewCard(bookmark, cardIndex)}
+                        />
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>

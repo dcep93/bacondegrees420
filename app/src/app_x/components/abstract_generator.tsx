@@ -23,6 +23,15 @@ export type AbstractGeneratorActivationRequest<T> = {
 export type AbstractGeneratorProps<T> = GeneratorController<T> & {
   activationRequest?: AbstractGeneratorActivationRequest<T> | null;
   focusRequest?: AbstractGeneratorFocusRequest<T> | null;
+  getRowPresentation?: (
+    row: GeneratorNode<T>[],
+    generationIndex: number,
+  ) => {
+    cardButtonClassName?: string;
+    className?: string;
+    hideBubble?: boolean;
+    trackClassName?: string;
+  };
   onActivationHandled?: (requestKey: string, didActivate: boolean) => void;
   onFocusRequestMatchChange?: (didMatch: boolean) => void;
   onTreeChange?: (tree: GeneratorTree<T>) => void;
@@ -81,6 +90,7 @@ export function AbstractGenerator<T>({
   initTree,
   afterCardSelected,
   focusRequest = null,
+  getRowPresentation,
   onActivationHandled,
   onFocusRequestMatchChange,
   onTreeChange,
@@ -413,22 +423,38 @@ export function AbstractGenerator<T>({
       {renderedGenerations.map(({ row, generationIndex }) => {
         const selectedCol = row.findIndex((node) => node.selected);
         const hasSelection = selectedCol >= 0;
+        const rowPresentation = getRowPresentation?.(row, generationIndex) ?? {};
 
         return (
-          <div className="generator-row" key={generationIndex}>
-            <button
-              className="generator-row-bubble"
-              disabled={!hasSelection}
-              onClick={() => handleScrollToSelected(generationIndex, {
-                behavior: "smooth",
-              })}
-              type="button"
-            >
-              {`GEN ${generationIndex}`}
-            </button>
+          <div
+            className={[
+              "generator-row",
+              rowPresentation.className ?? "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            key={generationIndex}
+          >
+            {rowPresentation.hideBubble ? null : (
+              <button
+                className="generator-row-bubble"
+                disabled={!hasSelection}
+                onClick={() => handleScrollToSelected(generationIndex, {
+                  behavior: "smooth",
+                })}
+                type="button"
+              >
+                {`GEN ${generationIndex}`}
+              </button>
+            )}
 
             <div
-              className="generator-row-track"
+              className={[
+                "generator-row-track",
+                rowPresentation.trackClassName ?? "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
               ref={(element) => {
                 rowRefs.current[generationIndex] = element;
               }}
@@ -449,6 +475,7 @@ export function AbstractGenerator<T>({
                           "generator-card-button",
                           isPlaceholder ? "generator-card-button-placeholder" : "",
                           isDisabledNode(node) ? "generator-card-button-disabled" : "",
+                          rowPresentation.cardButtonClassName ?? "",
                         ]
                           .filter(Boolean)
                           .join(" ")
