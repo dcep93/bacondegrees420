@@ -69,6 +69,7 @@ import {
   getTmdbMovieCredits,
   getValidTmdbEntityId,
   normalizeName,
+  normalizeWhitespace,
   parseMoviePathLabel,
 } from "./generators/cinenerdle2/utils";
 import {
@@ -98,7 +99,8 @@ import {
 import { measureAsync } from "./perf";
 import "./styles/app_shell.css";
 
-type ConnectionSuggestion = ConnectionEntity & {
+type ConnectionSuggestion = Omit<ConnectionEntity, "kind"> & {
+  kind: "person" | "movie";
   popularity: number;
   isConnectedToYoungestSelection: boolean;
   sortScore: number;
@@ -258,16 +260,26 @@ function createBookmarkPreviewCardViewModel(
   const sharedFields = {
     ...card,
     connectionRank: null,
+    connectionOrder: null,
+    connectionParentLabel: null,
     isSelected,
     isLocked: false,
     isAncestorSelected: false,
   };
 
   if (card.kind === "movie") {
-    return sharedFields;
+    return {
+      ...sharedFields,
+      kind: "movie",
+      voteAverage: card.voteAverage,
+      voteCount: card.voteCount,
+    };
   }
 
-  return sharedFields;
+  return {
+    ...sharedFields,
+    kind: card.kind,
+  };
 }
 
 function isEditableKeyboardTarget(target: EventTarget | null): boolean {
@@ -953,7 +965,7 @@ export default function AppX() {
         const nextSuggestions = Array.from(new Map((await Promise.all(
           candidateRecords.map(async ({ record, sortScore, isConnectedToYoungestSelection }) => {
             const entity = await hydrateConnectionEntityFromSearchRecord(record);
-            if (entity.connectionCount <= 0) {
+            if (entity.kind === "cinenerdle" || entity.connectionCount <= 0) {
               return null;
             }
             return {

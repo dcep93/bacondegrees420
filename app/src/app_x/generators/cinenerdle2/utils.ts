@@ -203,13 +203,13 @@ function getMostPopularQueueIndex<T extends DualMergeCredit>(queue: T[]): number
   return bestIndex;
 }
 
-function mergeAlternatingDualQueues<T extends DualMergeCredit>(
-  castQueue: T[],
-  crewQueue: T[],
-): T[] {
+function mergeAlternatingDualQueues<TCast extends DualMergeCredit, TCrew extends DualMergeCredit>(
+  castQueue: TCast[],
+  crewQueue: TCrew[],
+): Array<TCast | TCrew> {
   const remainingCast = [...castQueue];
   const remainingCrew = [...crewQueue];
-  const merged: T[] = [];
+  const merged: Array<TCast | TCrew> = [];
   let useOrderedTurn = true;
 
   while (remainingCast.length > 0 || remainingCrew.length > 0) {

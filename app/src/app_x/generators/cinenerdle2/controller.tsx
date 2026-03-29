@@ -847,6 +847,7 @@ async function createCinenerdleRootTree(
   options?: Pick<BuildTreeOptions, "dailyStarterSource">,
   runtime?: TreeBuildRuntime,
 ): Promise<GeneratorTree<CinenerdleCard>> {
+  void runtime;
   const starterRow = await createDailyStarterRow(options);
   const starterCount = starterRow?.length ?? 0;
   const tree: GeneratorTree<CinenerdleCard> = [

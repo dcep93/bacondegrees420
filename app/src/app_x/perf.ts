@@ -11,38 +11,51 @@ export function isPerfLoggingEnabled(): boolean {
   return false;
 }
 
-export function logPerf(_label: string, _details?: PerfDetails): void {
+export function logPerf(label: string, details?: PerfDetails): void {
+  void label;
+  void details;
   return;
 }
 
-export function logPerfOnce(_onceKey: string, _label: string, _details?: PerfDetails): void {
+export function logPerfOnce(onceKey: string, label: string, details?: PerfDetails): void {
+  void onceKey;
+  void label;
+  void details;
   return;
 }
 
-export function markPerf(_markName: string): void {
+export function markPerf(markName: string): void {
+  void markName;
   return;
 }
 
 export function logPerfSinceMark(
-  _label: string,
-  _markName: string,
-  _details?: PerfDetails,
+  label: string,
+  markName: string,
+  details?: PerfDetails,
 ): void {
+  void label;
+  void markName;
+  void details;
   return;
 }
 
 export async function measureAsync<T>(
-  _label: string,
+  label: string,
   callback: () => Promise<T>,
-  _options: PerfMeasureOptions<T> = {},
+  options: PerfMeasureOptions<T> = {},
 ): Promise<T> {
+  void label;
+  void options;
   return callback();
 }
 
 export function measureSync<T>(
-  _label: string,
+  label: string,
   callback: () => T,
-  _options: PerfMeasureOptions<T> = {},
+  options: PerfMeasureOptions<T> = {},
 ): T {
+  void label;
+  void options;
   return callback();
 }
