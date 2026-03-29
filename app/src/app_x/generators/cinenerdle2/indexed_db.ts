@@ -440,6 +440,28 @@ export async function getPersonRecordsByMovieKey(
   });
 }
 
+export async function getPersonRecordCountsByMovieKeys(
+  movieKeys: string[],
+): Promise<Map<string, number>> {
+  const uniqueMovieKeys = Array.from(new Set(movieKeys.filter(Boolean)));
+
+  if (uniqueMovieKeys.length === 0) {
+    return new Map();
+  }
+
+  return withStore(PEOPLE_STORE_NAME, "readonly", async (store) => {
+    const movieConnectionIndex = store.index("movieConnectionKeys");
+    const entries = await Promise.all(
+      uniqueMovieKeys.map(async (movieKey) => [
+        movieKey,
+        await indexedDbRequestToPromise<number>(movieConnectionIndex.count(movieKey)),
+      ] as const),
+    );
+
+    return new Map(entries);
+  });
+}
+
 export async function getAllPersonRecords(): Promise<PersonRecord[]> {
   return withStore(PEOPLE_STORE_NAME, "readonly", async (store) => {
     const records = await indexedDbRequestToPromise<PersonRecord[]>(store.getAll());
@@ -578,6 +600,34 @@ export async function getFilmRecordsByPersonConnectionKey(
     );
 
     return records ?? [];
+  });
+}
+
+export async function getFilmRecordCountsByPersonConnectionKeys(
+  personNames: string[],
+): Promise<Map<string, number>> {
+  const normalizedNames = Array.from(
+    new Set(
+      personNames
+        .map((personName) => normalizeName(personName))
+        .filter(Boolean),
+    ),
+  );
+
+  if (normalizedNames.length === 0) {
+    return new Map();
+  }
+
+  return withStore(FILMS_STORE_NAME, "readonly", async (store) => {
+    const personConnectionIndex = store.index("personConnectionKeys");
+    const entries = await Promise.all(
+      normalizedNames.map(async (personName) => [
+        personName,
+        await indexedDbRequestToPromise<number>(personConnectionIndex.count(personName)),
+      ] as const),
+    );
+
+    return new Map(entries);
   });
 }
 

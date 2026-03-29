@@ -20,11 +20,11 @@ import {
 } from "./hash";
 import {
   getFilmRecordByTitleAndYear,
+  getFilmRecordCountsByPersonConnectionKeys,
   getFilmRecordsByIds,
-  getFilmRecordsByPersonConnectionKey,
   getPersonRecordById,
   getPersonRecordByName,
-  getPersonRecordsByMovieKey,
+  getPersonRecordCountsByMovieKeys,
 } from "./indexed_db";
 import {
   fetchCinenerdleDailyStarterMovies,
@@ -509,14 +509,8 @@ async function buildChildRowForPersonCard(
   const filmRecordsById = await getFilmRecordsByIds(
     movieCredits.map((credit) => credit.id),
   );
-  const connectionCounts = new Map(
-    await Promise.all(
-      movieCredits.map(async (credit) => {
-        const movieKey = getMovieKeyFromCredit(credit);
-        const matchingPeople = await getPersonRecordsByMovieKey(movieKey);
-        return [movieKey, Math.max(matchingPeople.length, 1)] as const;
-      }),
-    ),
+  const connectionCounts = await getPersonRecordCountsByMovieKeys(
+    movieCredits.map((credit) => getMovieKeyFromCredit(credit)),
   );
 
   return createRow(
@@ -525,7 +519,7 @@ async function buildChildRowForPersonCard(
         createMovieAssociationCard(
           credit,
           (credit.id ? filmRecordsById.get(credit.id) : null) ?? null,
-          connectionCounts.get(getMovieKeyFromCredit(credit)) ?? 1,
+          Math.max(connectionCounts.get(getMovieKeyFromCredit(credit)) ?? 0, 1),
         ),
       ),
     ),
@@ -545,11 +539,13 @@ async function buildChildRowForMovieCard(
   }
 
   const tmdbCredits = getAssociatedPeopleFromMovieCredits(movieRecord);
+  const filmConnectionCounts = await getFilmRecordCountsByPersonConnectionKeys(
+    tmdbCredits.map((credit) => credit.name ?? ""),
+  );
   const personDetails = new Map(
     await Promise.all(
       tmdbCredits.map(async (credit) => {
         const personName = credit.name ?? "";
-        const matchingFilms = await getFilmRecordsByPersonConnectionKey(personName);
         const cachedPersonRecord = pickBestPersonRecord(
           credit.id ? await getPersonRecordById(credit.id) : null,
           personName ? await getPersonRecordByName(personName) : null,
@@ -558,7 +554,10 @@ async function buildChildRowForMovieCard(
         return [
           getPersonIdentityKey(personName, credit.id),
           {
-            connectionCount: Math.max(matchingFilms.length, 1),
+            connectionCount: Math.max(
+              filmConnectionCounts.get(normalizeName(personName)) ?? 0,
+              1,
+            ),
             personRecord: cachedPersonRecord,
           },
         ] as const;
@@ -1241,14 +1240,47 @@ export function useCinenerdleController({
           }
         })();
       },
-      afterCardSelected({ tree }) {
+      afterCardSelected({ tree, setTree }) {
         const selectedPathNodes = getSelectedPathNodes(tree);
         const nextHash = serializePathNodes(selectedPathNodes);
+        const selectedCard = getSelectedCard(tree, tree.length - 1);
         addCinenerdleDebugLog("cinenerdle:selection:write-hash", {
           nextHash,
           pathLength: selectedPathNodes.length,
-          youngestSelectedCard: getDebugCardLabel(getSelectedCard(tree, tree.length - 1)),
+          youngestSelectedCard: getDebugCardLabel(selectedCard),
         });
+
+        if (
+          selectedCard &&
+          (selectedCard.kind === "cinenerdle" ||
+            selectedCard.kind === "movie" ||
+            selectedCard.kind === "person")
+        ) {
+          const startedAtMs = getCinenerdleDebugNow();
+          addCinenerdleDebugLog("cinenerdle:selection:child-row:start", {
+            selectedCard: getDebugCardLabel(selectedCard),
+          });
+
+          void buildChildRowForCard(selectedCard)
+            .then((childRow) => {
+              setTree(childRow && childRow.length > 0 ? [...tree, childRow] : tree);
+              addCinenerdleDebugLog("cinenerdle:selection:child-row:resolved", {
+                selectedCard: getDebugCardLabel(selectedCard),
+                childRowCount: childRow?.length ?? 0,
+                elapsedMs: Number((getCinenerdleDebugNow() - startedAtMs).toFixed(2)),
+              });
+            })
+            .catch(() => {
+              setTree(tree);
+              addCinenerdleDebugLog("cinenerdle:selection:child-row:error", {
+                selectedCard: getDebugCardLabel(selectedCard),
+                elapsedMs: Number((getCinenerdleDebugNow() - startedAtMs).toFixed(2)),
+              });
+            });
+        } else {
+          setTree(tree);
+        }
+
         writeHash(nextHash, "selection");
       },
       renderCard(row, col, tree) {

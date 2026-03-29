@@ -239,7 +239,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
         matchesHighlightedConnectionEntity(node.data, highlightedConnectionEntitySelectionRequest.entity),
     };
   }, [highlightedConnectionEntitySelectionRequest]);
-  const generatorResetKey = `${resetVersion}:${navigationVersion}:${normalizedHash}`;
+  const generatorResetKey = `${resetVersion}:${navigationVersion}`;
 
   useEffect(() => {
     addCinenerdleDebugLog("cinenerdle:generator-props", {

@@ -7,10 +7,12 @@ import {
 } from "./factories";
 
 const indexedDbMock = vi.hoisted(() => ({
+  getFilmRecordCountsByPersonConnectionKeys: vi.fn(),
   getFilmRecordByTitleAndYear: vi.fn(),
   getFilmRecordsByIds: vi.fn(),
   getFilmRecordsByPersonConnectionKey: vi.fn(),
   getPersonRecordById: vi.fn(),
+  getPersonRecordCountsByMovieKeys: vi.fn(),
   getPersonRecordByName: vi.fn(),
   getPersonRecordsByMovieKey: vi.fn(),
 }));
@@ -46,6 +48,8 @@ describe("buildBookmarkPreviewCardsFromHash", () => {
     Object.values(tmdbMock).forEach((mock) => mock.mockReset());
 
     indexedDbMock.getFilmRecordsByIds.mockResolvedValue(new Map());
+    indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(new Map());
+    indexedDbMock.getPersonRecordCountsByMovieKeys.mockResolvedValue(new Map());
     indexedDbMock.getPersonRecordsByMovieKey.mockResolvedValue([]);
     tmdbMock.fetchCinenerdleDailyStarterMovies.mockResolvedValue([]);
     tmdbMock.hydrateCinenerdleDailyStarterMovies.mockResolvedValue(undefined);
