@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   makeFilmRecord,
+  makeMovieCredit,
   makePersonCredit,
   makePersonRecord,
   makeTmdbMovieSearchResult,
@@ -8,6 +9,8 @@ import {
 } from "./factories";
 
 const indexedDbMock = vi.hoisted(() => ({
+  getAllFilmRecords: vi.fn(),
+  getAllPersonRecords: vi.fn(),
   batchCinenerdleRecordsUpdatedEvents: vi.fn(async (callback: () => Promise<unknown>) => callback()),
   getAllSearchableConnectionEntities: vi.fn(),
   getFilmRecordById: vi.fn(),
@@ -72,6 +75,8 @@ describe("tmdb forced refresh helpers", () => {
       (name: string, tmdbId?: number | string | null) => `person:${tmdbId ?? name.toLowerCase()}`,
     );
     Object.values(debugLogMock).forEach((mock) => mock.mockReset());
+    indexedDbMock.getAllFilmRecords.mockResolvedValue([]);
+    indexedDbMock.getAllPersonRecords.mockResolvedValue([]);
     indexedDbMock.getAllSearchableConnectionEntities.mockResolvedValue([]);
     indexedDbMock.getFilmRecordsByIds.mockResolvedValue(new Map());
     connectionGraphMock.hydrateConnectionEntityFromSearchRecord.mockImplementation(
@@ -433,7 +438,9 @@ describe("tmdb forced refresh helpers", () => {
         ([event]) => event === "gen 0 movie 1 / 1 fetch Gran Torino (2007) pop 88",
       ),
     ).toHaveLength(1);
-    expect(debugLogMock.addCinenerdleDebugLog).toHaveBeenCalledTimes(1);
+    expect(debugLogMock.addCinenerdleDebugLog).toHaveBeenCalledWith(
+      "gen 0 movie 1 / 1 fetch Gran Torino (2007) pop 88",
+    );
   });
 
   it("logs raw person responses with the requested format", async () => {
@@ -1064,7 +1071,7 @@ describe("tmdb forced refresh helpers", () => {
   it("dedupes overlapping global popular prefetch runs", async () => {
     const searchRecords = [
       {
-        key: "person:tom-brady",
+        key: "person:12",
         type: "person" as const,
         nameLower: "tom brady",
         popularity: 10,
@@ -1346,7 +1353,7 @@ describe("tmdb forced refresh helpers", () => {
     const searchRecordsAfterMovie = [
       ...searchRecordsBeforeMovie,
       {
-        key: "person:tom-brady",
+        key: "person:12",
         type: "person" as const,
         nameLower: "tom brady",
         popularity: 10,
@@ -1530,5 +1537,116 @@ describe("tmdb forced refresh helpers", () => {
         }),
       }),
     );
+  });
+
+  it("batches direct movie cache checks for a selected person before prefetching the next movie", async () => {
+    const hydratedMovieRecord = makeFilmRecord({
+      id: 101,
+      tmdbId: 101,
+      title: "Hydrated Hit",
+      year: "2020",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 101,
+        title: "Hydrated Hit",
+        release_date: "2020-01-01",
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [makePersonCredit({ id: 1, name: "Samara Weaving" })],
+        crew: [],
+      },
+      personConnectionKeys: ["Samara Weaving"],
+    });
+    const selectedPersonRecord = makePersonRecord({
+      id: 1,
+      tmdbId: 1,
+      name: "Samara Weaving",
+      rawTmdbPerson: makeTmdbPersonSearchResult({
+        id: 1,
+        name: "Samara Weaving",
+        popularity: 88,
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({
+            id: 101,
+            title: "Hydrated Hit",
+            release_date: "2020-01-01",
+            popularity: 99,
+          }),
+          makeMovieCredit({
+            id: 102,
+            title: "Needs Prefetch",
+            release_date: "2019-01-01",
+            popularity: 55,
+          }),
+        ],
+        crew: [],
+      },
+    });
+    const fetchMock = vi.fn(async (input: string) => {
+      const url = String(input);
+
+      if (url.includes("/search/movie?") && url.includes("Needs+Prefetch")) {
+        return createJsonResponse({
+          page: 1,
+          results: [
+            makeTmdbMovieSearchResult({
+              id: 102,
+              title: "Needs Prefetch",
+              release_date: "2019-01-01",
+              popularity: 55,
+            }),
+          ],
+          total_pages: 1,
+          total_results: 1,
+        });
+      }
+
+      if (url.includes("/movie/102/credits")) {
+        return createJsonResponse({
+          cast: [makePersonCredit({ id: 1, name: "Samara Weaving" })],
+          crew: [],
+        });
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    indexedDbMock.getPersonRecordById.mockImplementation(async (personId: number) =>
+      personId === 1 ? selectedPersonRecord : null,
+    );
+    indexedDbMock.getPersonRecordByName.mockImplementation(async (personName: string) =>
+      personName === "Samara Weaving" ? selectedPersonRecord : null,
+    );
+    indexedDbMock.getFilmRecordsByIds.mockResolvedValue(
+      new Map([[101, hydratedMovieRecord]]),
+    );
+    indexedDbMock.getFilmRecordById.mockImplementation(async (movieId: number) =>
+      movieId === 101 ? hydratedMovieRecord : null,
+    );
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(null);
+    vi.stubGlobal("fetch", fetchMock);
+
+    await prefetchBestConnectionForYoungestSelectedCard({
+      key: "person:1",
+      kind: "person",
+      name: "Samara Weaving",
+      popularity: 88,
+      popularitySource: null,
+      imageUrl: null,
+      subtitle: "Actor",
+      subtitleDetail: "",
+      connectionCount: null,
+      sources: [],
+      status: null,
+      record: selectedPersonRecord,
+    });
+
+    expect(indexedDbMock.getFilmRecordsByIds).toHaveBeenCalledWith([101, 102]);
+    expect(indexedDbMock.getFilmRecordByTitleAndYear).not.toHaveBeenCalledWith(
+      "Hydrated Hit",
+      "2020",
+    );
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("Needs+Prefetch"))).toBe(true);
   });
 });

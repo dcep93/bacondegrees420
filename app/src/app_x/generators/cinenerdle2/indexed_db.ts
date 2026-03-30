@@ -81,6 +81,7 @@ const missingPersonRecordIdsCache = new Set<number>();
 const missingPersonRecordNamesCache = new Set<string>();
 const filmRecordByIdCache = new Map<string, FilmRecord>();
 const filmRecordQueryCache = new Map<string, FilmRecord | null>();
+const filmRecordsByNormalizedTitleCache = new Map<string, FilmRecord[]>();
 let allPersonRecordsCache: PersonRecord[] | null = null;
 let allFilmRecordsCache: FilmRecord[] | null = null;
 const personCountByMovieKeyCache = new Map<string, number>();
@@ -278,6 +279,7 @@ function clearInMemoryIndexedDbCaches(): void {
   missingPersonRecordNamesCache.clear();
   filmRecordByIdCache.clear();
   filmRecordQueryCache.clear();
+  filmRecordsByNormalizedTitleCache.clear();
   allPersonRecordsCache = null;
   allFilmRecordsCache = null;
   personCountByMovieKeyCache.clear();
@@ -382,6 +384,22 @@ function cacheFilmRecord(filmRecord: FilmRecord | null | undefined): void {
     getFilmQueryCacheKey(normalizedTitle, filmRecord.year),
     filmRecord,
   );
+
+  const cachedFilmRecords = filmRecordsByNormalizedTitleCache.get(normalizedTitle) ?? [];
+  const nextFilmRecordsById = new Map(
+    cachedFilmRecords.map((record) => [getFilmCacheIdKey(record.id), record] as const),
+  );
+  nextFilmRecordsById.set(getFilmCacheIdKey(filmRecord.id), filmRecord);
+  filmRecordsByNormalizedTitleCache.set(normalizedTitle, Array.from(nextFilmRecordsById.values()));
+}
+
+function rebuildFilmRecordLookupCaches(): void {
+  filmRecordByIdCache.clear();
+  filmRecordQueryCache.clear();
+  filmRecordsByNormalizedTitleCache.clear();
+  (allFilmRecordsCache ?? []).forEach((filmRecord) => {
+    cacheFilmRecord(filmRecord);
+  });
 }
 
 function rebuildConnectionCountCaches(
@@ -553,83 +571,41 @@ function updateFilmCountCacheForPersonNames(personNames: Iterable<string>): void
     });
 }
 
-function resolveSearchableConnectionEntityRecordByKey(
-  key: string,
-): SearchableConnectionEntityRecord | null {
-  if (!key) {
-    return null;
-  }
-
-  let resolvedRecord: SearchableConnectionEntityRecord | null = null;
-  const mergeCandidateRecord = (candidateRecord: SearchableConnectionEntityRecord | null): void => {
-    if (!candidateRecord || candidateRecord.key !== key) {
-      return;
-    }
-
-    resolvedRecord = resolvedRecord
-      ? {
-          ...resolvedRecord,
-          ...candidateRecord,
-          popularity: Math.max(
-            resolvedRecord.popularity ?? 0,
-            candidateRecord.popularity ?? 0,
-          ),
-        }
-      : candidateRecord;
-  };
-
-  (allPersonRecordsCache ?? []).forEach((personRecord) => {
-    collectSearchableConnectionEntitiesFromPersonRecord(personRecord).forEach((candidateRecord) => {
-      mergeCandidateRecord(candidateRecord);
-    });
-  });
-  (allFilmRecordsCache ?? []).forEach((filmRecord) => {
-    collectSearchableConnectionEntitiesFromFilmRecord(filmRecord).forEach((candidateRecord) => {
-      mergeCandidateRecord(candidateRecord);
-    });
-  });
-
-  return resolvedRecord;
-}
-
-async function synchronizePersistedSearchableConnectionEntityKeys(
-  keys: Iterable<string>,
+async function synchronizePersistedSearchableConnectionEntities(
+  nextRecords: SearchableConnectionEntityRecord[],
+  touchedKeys: Iterable<string>,
 ): Promise<void> {
-  const uniqueKeys = Array.from(new Set(Array.from(keys).filter(Boolean)));
-  if (uniqueKeys.length === 0) {
+  const mergedNextRecords = mergeSearchableConnectionEntityRecords(nextRecords);
+  const mergedNextRecordsByKey = new Map(
+    mergedNextRecords.map((record) => [record.key, record] as const),
+  );
+  const uniqueTouchedKeys = Array.from(
+    new Set([
+      ...Array.from(touchedKeys).filter(Boolean),
+      ...mergedNextRecords.map((record) => record.key),
+    ]),
+  );
+
+  if (uniqueTouchedKeys.length === 0) {
     return;
   }
-
-  await ensureCoreRecordCachesReady();
-
-  const resolvedRecords = uniqueKeys
-    .map((key) => resolveSearchableConnectionEntityRecordByKey(key))
-    .filter((record): record is SearchableConnectionEntityRecord => record !== null);
-  const resolvedRecordsByKey = new Map(
-    resolvedRecords.map((record) => [record.key, record] as const),
-  );
 
   await withStore(
     SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME,
     "readwrite",
     async (store) => {
-      await Promise.all(
-        uniqueKeys.map(async (key) => {
-          const resolvedRecord = resolvedRecordsByKey.get(key);
-          if (resolvedRecord) {
-            await indexedDbRequestToPromise(store.put(resolvedRecord));
-            return;
-          }
-
-          await indexedDbRequestToPromise(store.delete(key));
-        }),
-      );
+      queueIndexedDbStoreWrites(store, mergedNextRecords);
+      uniqueTouchedKeys.forEach((key) => {
+        if (!mergedNextRecordsByKey.has(key)) {
+          store.delete(key);
+        }
+      });
     },
   );
 
-  cacheSearchableConnectionEntities(resolvedRecords);
-  uniqueKeys.forEach((key) => {
-    if (!resolvedRecordsByKey.has(key)) {
+  cacheSearchableConnectionEntities(mergedNextRecords);
+  uniqueTouchedKeys.forEach((key) => {
+    if (!mergedNextRecordsByKey.has(key)) {
       removeCachedSearchableConnectionEntity(key);
     }
   });
@@ -1358,11 +1334,14 @@ export async function savePersonRecord(personRecord: PersonRecord): Promise<void
         ...searchRecords,
       ]);
 
-      await synchronizePersistedSearchableConnectionEntityKeys([
-        ...existingSearchRecords.map((record) => record.key),
-        ...searchRecords.map((record) => record.key),
-        ...searchableKeysToDelete,
-      ]);
+      await synchronizePersistedSearchableConnectionEntities(
+        searchRecords,
+        [
+          ...existingSearchRecords.map((record) => record.key),
+          ...searchRecords.map((record) => record.key),
+          ...searchableKeysToDelete,
+        ],
+      );
 
       dispatchCinenerdleRecordsUpdated();
 
@@ -1405,8 +1384,7 @@ export async function getFilmRecordsByTitle(title: string): Promise<FilmRecord[]
     return [];
   }
 
-  return (allFilmRecordsCache ?? []).filter((filmRecord) =>
-    normalizeTitle(filmRecord.title) === normalizedTitle);
+  return filmRecordsByNormalizedTitleCache.get(normalizedTitle) ?? [];
 }
 
 export async function getFilmRecordByTitleAndYear(
@@ -1427,8 +1405,7 @@ export async function getFilmRecordByTitleAndYear(
       }
 
       await ensureCoreRecordCachesReady();
-      const records = (allFilmRecordsCache ?? []).filter((filmRecord) =>
-        normalizeTitle(filmRecord.title) === normalizedTitle);
+      const records = filmRecordsByNormalizedTitleCache.get(normalizedTitle) ?? [];
       const resolvedRecord = chooseBestFilmRecord(records, normalizedTitle, year);
       filmRecordQueryCache.set(queryCacheKey, resolvedRecord);
       cacheFilmRecord(resolvedRecord);
@@ -1957,6 +1934,7 @@ async function persistSearchableConnectionEntitiesInBackground(
     phase: "persisting-base",
   });
   replaceCachedSearchableConnectionEntities(mergedSearchableConnectionEntities);
+  const persistenceStartedAt = getIndexedDbPerfNow();
   emitSearchableConnectionEntityPersistenceEvent("searchable-persist:start", {
     searchableConnectionEntityCount: mergedSearchableConnectionEntities.length,
   });
@@ -1975,6 +1953,7 @@ async function persistSearchableConnectionEntitiesInBackground(
       startIndex < mergedSearchableConnectionEntities.length;
       startIndex += SEARCHABLE_CONNECTION_ENTITY_PERSISTENCE_BATCH_SIZE
     ) {
+      const chunkStartedAt = getIndexedDbPerfNow();
       const records = mergedSearchableConnectionEntities.slice(
         startIndex,
         startIndex + SEARCHABLE_CONNECTION_ENTITY_PERSISTENCE_BATCH_SIZE,
@@ -1988,11 +1967,14 @@ async function persistSearchableConnectionEntitiesInBackground(
         },
       );
       emitSearchableConnectionEntityPersistenceEvent("searchable-persist:chunk", {
+        chunkElapsedMs: roundIndexedDbElapsedMs(getIndexedDbPerfNow() - chunkStartedAt),
+        chunkSize: records.length,
         persistedCount: Math.min(
           mergedSearchableConnectionEntities.length,
           startIndex + records.length,
         ),
         searchableConnectionEntityCount: mergedSearchableConnectionEntities.length,
+        totalElapsedMs: roundIndexedDbElapsedMs(getIndexedDbPerfNow() - persistenceStartedAt),
       });
 
       if (startIndex + records.length < mergedSearchableConnectionEntities.length) {
@@ -2011,6 +1993,7 @@ async function persistSearchableConnectionEntitiesInBackground(
     });
     emitSearchableConnectionEntityPersistenceEvent("searchable-persist:complete", {
       searchableConnectionEntityCount: mergedSearchableConnectionEntities.length,
+      totalElapsedMs: roundIndexedDbElapsedMs(getIndexedDbPerfNow() - persistenceStartedAt),
     });
 
     return mergedSearchableConnectionEntities;
@@ -2021,6 +2004,7 @@ async function persistSearchableConnectionEntitiesInBackground(
       phase: "idle",
     });
     emitSearchableConnectionEntityPersistenceEvent("searchable-persist:error", {
+      totalElapsedMs: roundIndexedDbElapsedMs(getIndexedDbPerfNow() - persistenceStartedAt),
       message: error instanceof Error ? error.message : String(error),
     });
     throw error;
@@ -2039,6 +2023,9 @@ export async function prepareSearchableConnectionEntitiesForStartup(): Promise<{
 
   if (allSearchableConnectionEntitiesCache) {
     writeSearchableConnectionEntityPersistenceReadyMarker(true);
+    emitSearchableConnectionEntityPersistenceEvent("searchable-persist:startup-reused-memory-cache", {
+      searchableConnectionEntityCount: allSearchableConnectionEntitiesCache.length,
+    });
     return {
       isSearchablePersistencePending: false,
       searchableConnectionEntityCount: allSearchableConnectionEntitiesCache.length,
@@ -2050,6 +2037,9 @@ export async function prepareSearchableConnectionEntitiesForStartup(): Promise<{
     getSearchableConnectionEntityPersistenceReadyMarkerValue() === "1" &&
     persistedSearchableConnectionEntityCount > 0
   ) {
+    emitSearchableConnectionEntityPersistenceEvent("searchable-persist:startup-reused-persisted-cache", {
+      searchableConnectionEntityCount: persistedSearchableConnectionEntityCount,
+    });
     return {
       isSearchablePersistencePending: false,
       searchableConnectionEntityCount: persistedSearchableConnectionEntityCount,
@@ -2060,6 +2050,9 @@ export async function prepareSearchableConnectionEntitiesForStartup(): Promise<{
     allPersonRecordsCache ?? [],
     allFilmRecordsCache ?? [],
   );
+  emitSearchableConnectionEntityPersistenceEvent("searchable-persist:startup-rebuild-scheduled", {
+    searchableConnectionEntityCount: searchableConnectionEntities.length,
+  });
   void persistSearchableConnectionEntitiesInBackground(searchableConnectionEntities).catch(() => { });
 
   return {
@@ -3038,7 +3031,6 @@ export async function saveFilmRecords(filmRecords: FilmRecord[]): Promise<void> 
         },
       );
 
-      filmRecordQueryCache.clear();
       if (allPersonRecordsCache) {
         const nextPeopleById = new Map(allPersonRecordsCache.map((record) => [record.id, record] as const));
         mergedPersonRecords.forEach((personRecord) => {
@@ -3064,9 +3056,7 @@ export async function saveFilmRecords(filmRecords: FilmRecord[]): Promise<void> 
           Array.from(nextFilmsById.values()).map((record) => [getFilmCacheIdKey(record.id), record] as const),
         ).values());
       }
-      filmRecords.forEach((filmRecord) => {
-        cacheFilmRecord(filmRecord);
-      });
+      rebuildFilmRecordLookupCaches();
 
       updateFilmCountCacheForPersonNames([
         ...existingFilmRecords.flatMap((filmRecord) => filmRecord?.personConnectionKeys ?? []),
@@ -3093,10 +3083,13 @@ export async function saveFilmRecords(filmRecords: FilmRecord[]): Promise<void> 
         ...existingSearchRecords,
         ...nextSearchRecords,
       ]);
-      await synchronizePersistedSearchableConnectionEntityKeys([
-        ...existingSearchRecords.map((record) => record.key),
-        ...nextSearchRecords.map((record) => record.key),
-      ]);
+      await synchronizePersistedSearchableConnectionEntities(
+        nextSearchRecords,
+        [
+          ...existingSearchRecords.map((record) => record.key),
+          ...nextSearchRecords.map((record) => record.key),
+        ],
+      );
 
       dispatchCinenerdleRecordsUpdated();
       return nextSearchRecords.length;

@@ -11,6 +11,8 @@ import {
 } from "./constants";
 import { addCinenerdleDebugLog } from "./debug_log";
 import {
+  getAllFilmRecords,
+  getAllPersonRecords,
   batchCinenerdleRecordsUpdatedEvents,
   getAllSearchableConnectionEntities,
   incrementCinenerdleIndexedDbFetchCount,
@@ -283,6 +285,74 @@ function getSelectedPersonPreparationKey(
   }
 
   return `person:${normalizeName(personName)}`;
+}
+
+function getSearchRecordPersonTmdbId(
+  searchRecord: SearchableConnectionEntityRecord,
+): number | null {
+  if (searchRecord.type !== "person" || !searchRecord.key.startsWith("person:")) {
+    return null;
+  }
+
+  return getValidTmdbEntityId(searchRecord.key.slice("person:".length));
+}
+
+function buildHydratedMoviePrefetchKeySet(filmRecords: FilmRecord[]): Set<string> {
+  return new Set(
+    filmRecords
+      .filter((filmRecord) => hasHydratedMovieRecord(filmRecord))
+      .map((filmRecord) => getMovieConnectionEntityKey(filmRecord.title, filmRecord.year)),
+  );
+}
+
+function buildHydratedPersonPrefetchKeySet(personRecords: PersonRecord[]): Set<string> {
+  const hydratedKeys = new Set<string>();
+
+  personRecords
+    .filter((personRecord) => hasHydratedPersonRecord(personRecord))
+    .forEach((personRecord) => {
+      hydratedKeys.add(
+        getPersonConnectionEntityKey(
+          personRecord.name,
+          personRecord.tmdbId ?? personRecord.id,
+        ),
+      );
+      hydratedKeys.add(getPersonConnectionEntityKey(personRecord.name));
+    });
+
+  return hydratedKeys;
+}
+
+function buildPendingPopularMoviePrefetchFromSearchRecord(
+  searchRecord: SearchableConnectionEntityRecord,
+): PendingPopularMoviePrefetch | null {
+  if (searchRecord.type !== "movie") {
+    return null;
+  }
+
+  const parsedMovieLabel = parseMoviePathLabel(searchRecord.nameLower);
+  return {
+    key: searchRecord.key,
+    title: parsedMovieLabel.name,
+    year: parsedMovieLabel.year,
+    tmdbId: null,
+    popularity: searchRecord.popularity ?? 0,
+  };
+}
+
+function buildPendingPopularPersonPrefetchFromSearchRecord(
+  searchRecord: SearchableConnectionEntityRecord,
+): PendingPopularPersonPrefetch | null {
+  if (searchRecord.type !== "person") {
+    return null;
+  }
+
+  return {
+    key: searchRecord.key,
+    name: searchRecord.nameLower,
+    tmdbId: getSearchRecordPersonTmdbId(searchRecord),
+    popularity: searchRecord.popularity ?? 0,
+  };
 }
 
 function describeFetchInput(input: string) {
@@ -618,53 +688,6 @@ export async function hydrateCinenerdleDailyStarterMovies(
   return dailyStarterHydrationPromise;
 }
 
-async function buildPendingPopularMoviePrefetch(
-  searchRecord: SearchableConnectionEntityRecord,
-): Promise<PendingPopularMoviePrefetch | null> {
-  const entity = await hydrateConnectionEntityFromSearchRecord(searchRecord);
-  if (entity.kind !== "movie") {
-    return null;
-  }
-
-  const localMovieRecord =
-    (entity.tmdbId ? await getFilmRecordById(entity.tmdbId) : null) ??
-    (await getFilmRecordByTitleAndYear(entity.name, entity.year));
-  if (hasHydratedMovieRecord(localMovieRecord)) {
-    return null;
-  }
-
-  return {
-    key: entity.key,
-    title: entity.name,
-    year: entity.year,
-    tmdbId: entity.tmdbId,
-    popularity: searchRecord.popularity ?? 0,
-  };
-}
-
-async function buildPendingPopularPersonPrefetch(
-  searchRecord: SearchableConnectionEntityRecord,
-): Promise<PendingPopularPersonPrefetch | null> {
-  const entity = await hydrateConnectionEntityFromSearchRecord(searchRecord);
-  if (entity.kind !== "person") {
-    return null;
-  }
-
-  const localPersonRecord = entity.tmdbId
-    ? await getPersonRecordById(entity.tmdbId)
-    : await getPersonRecordByName(searchRecord.nameLower);
-  if (hasHydratedPersonRecord(localPersonRecord)) {
-    return null;
-  }
-
-  return {
-    key: entity.key,
-    name: entity.name,
-    tmdbId: entity.tmdbId,
-    popularity: searchRecord.popularity ?? 0,
-  };
-}
-
 async function syncPopularConnectionPrefetchQueues(): Promise<void> {
   if (syncPopularConnectionPrefetchQueuesPromise) {
     return syncPopularConnectionPrefetchQueuesPromise;
@@ -679,17 +702,23 @@ async function syncPopularConnectionPrefetchQueues(): Promise<void> {
         return;
       }
 
-      const searchableConnectionEntities = await getAllSearchableConnectionEntities();
-      const pendingMovieCandidates = await Promise.all(
-        searchableConnectionEntities
-          .filter((searchRecord) => searchRecord.type === "movie")
-          .map((searchRecord) => buildPendingPopularMoviePrefetch(searchRecord)),
-      );
-      const pendingPersonCandidates = await Promise.all(
-        searchableConnectionEntities
-          .filter((searchRecord) => searchRecord.type === "person")
-          .map((searchRecord) => buildPendingPopularPersonPrefetch(searchRecord)),
-      );
+      const [searchableConnectionEntities, filmRecords, personRecords] = await Promise.all([
+        getAllSearchableConnectionEntities(),
+        getAllFilmRecords(),
+        getAllPersonRecords(),
+      ]);
+      const hydratedMovieKeys = buildHydratedMoviePrefetchKeySet(filmRecords);
+      const hydratedPersonKeys = buildHydratedPersonPrefetchKeySet(personRecords);
+      const pendingMovieCandidates = searchableConnectionEntities
+        .filter((searchRecord) =>
+          searchRecord.type === "movie" &&
+          !hydratedMovieKeys.has(searchRecord.key))
+        .map((searchRecord) => buildPendingPopularMoviePrefetchFromSearchRecord(searchRecord));
+      const pendingPersonCandidates = searchableConnectionEntities
+        .filter((searchRecord) =>
+          searchRecord.type === "person" &&
+          !hydratedPersonKeys.has(searchRecord.key))
+        .map((searchRecord) => buildPendingPopularPersonPrefetchFromSearchRecord(searchRecord));
 
       pendingPopularMoviePrefetchQueue = pendingMovieCandidates
         .filter((candidate): candidate is PendingPopularMoviePrefetch => candidate !== null)
@@ -735,12 +764,19 @@ async function getExistingPersonRecordForPendingCandidate(
 
 async function buildPendingDirectMoviePrefetchQueue(
   personRecord: PersonRecord,
+  options: {
+    maxCandidateCount?: number;
+  } = {},
 ): Promise<PendingPopularMoviePrefetch[]> {
   const seenKeys = new Set<string>();
   const candidateCredits = getUniqueSortedTmdbMovieCredits(personRecord).filter(
     isAllowedBfsTmdbMovieCredit,
   );
+  const existingMovieRecordsById = await getFilmRecordsByIds(
+    candidateCredits.map((credit) => getValidTmdbEntityId(credit.id)).filter(Boolean),
+  );
   const candidates: PendingPopularMoviePrefetch[] = [];
+  const maxCandidateCount = options.maxCandidateCount ?? Number.POSITIVE_INFINITY;
 
   for (const credit of candidateCredits) {
     const title = normalizeWhitespace(getMovieTitleFromCredit(credit));
@@ -755,9 +791,11 @@ async function buildPendingDirectMoviePrefetchQueue(
     }
 
     const existingMovieRecord = credit.id
-      ? await getFilmRecordById(credit.id)
+      ? existingMovieRecordsById.get(credit.id) ?? null
       : null;
-    const fallbackMovieRecord = await getFilmRecordByTitleAndYear(title, year);
+    const fallbackMovieRecord = existingMovieRecord
+      ? null
+      : await getFilmRecordByTitleAndYear(title, year);
     const resolvedExistingMovieRecord = existingMovieRecord ?? fallbackMovieRecord;
     if (hasHydratedMovieRecord(resolvedExistingMovieRecord)) {
       continue;
@@ -773,6 +811,10 @@ async function buildPendingDirectMoviePrefetchQueue(
       ),
       popularity: credit.popularity ?? resolvedExistingMovieRecord?.popularity ?? 0,
     });
+
+    if (candidates.length >= maxCandidateCount) {
+      break;
+    }
   }
 
   return candidates;
@@ -780,6 +822,9 @@ async function buildPendingDirectMoviePrefetchQueue(
 
 async function buildPendingDirectPersonPrefetchQueue(
   movieRecord: FilmRecord,
+  options: {
+    maxCandidateCount?: number;
+  } = {},
 ): Promise<PendingPopularPersonPrefetch[]> {
   const seenKeys = new Set<string>();
   const credits = movieRecord.rawTmdbMovieCreditsResponse ?? {};
@@ -788,6 +833,7 @@ async function buildPendingDirectPersonPrefetchQueue(
     ...(credits.crew ?? []),
   ].sort((left, right) => (right.popularity ?? 0) - (left.popularity ?? 0));
   const candidates: PendingPopularPersonPrefetch[] = [];
+  const maxCandidateCount = options.maxCandidateCount ?? Number.POSITIVE_INFINITY;
 
   for (const credit of candidateCredits) {
     const name = normalizeWhitespace(credit.name ?? "");
@@ -816,6 +862,10 @@ async function buildPendingDirectPersonPrefetchQueue(
       tmdbId,
       popularity: credit.popularity ?? 0,
     });
+
+    if (candidates.length >= maxCandidateCount) {
+      break;
+    }
   }
 
   return candidates;
@@ -823,6 +873,9 @@ async function buildPendingDirectPersonPrefetchQueue(
 
 async function syncDirectConnectionPrefetchQueues(
   selectedCard: SelectedPrefetchCard | null,
+  options: {
+    maxCandidateCount?: number;
+  } = {},
 ): Promise<void> {
   pendingDirectMoviePrefetchQueue = [];
   pendingDirectPersonPrefetchQueue = [];
@@ -842,7 +895,7 @@ async function syncDirectConnectionPrefetchQueues(
       return;
     }
 
-    pendingDirectPersonPrefetchQueue = await buildPendingDirectPersonPrefetchQueue(movieRecord);
+    pendingDirectPersonPrefetchQueue = await buildPendingDirectPersonPrefetchQueue(movieRecord, options);
     return;
   }
 
@@ -856,7 +909,7 @@ async function syncDirectConnectionPrefetchQueues(
     return;
   }
 
-  pendingDirectMoviePrefetchQueue = await buildPendingDirectMoviePrefetchQueue(personRecord);
+  pendingDirectMoviePrefetchQueue = await buildPendingDirectMoviePrefetchQueue(personRecord, options);
 }
 
 async function selectEligibleMoviePrefetchCandidate(
@@ -1346,7 +1399,9 @@ export async function prefetchBestConnectionForYoungestSelectedCard(
         return;
       }
 
-      await syncDirectConnectionPrefetchQueues(selectedCard);
+      await syncDirectConnectionPrefetchQueues(selectedCard, {
+        maxCandidateCount: 8,
+      });
 
       if (selectedCard.kind === "movie") {
         const personCandidate = await selectNextPersonPrefetchCandidate({

@@ -8,6 +8,7 @@ import {
   subscribeSearchableConnectionEntityPersistenceStatus,
   type IndexedDbSnapshot,
 } from "./indexed_db";
+import { addCinenerdleDebugLog } from "./debug_log";
 
 export type CinenerdleIndexedDbBootstrapPhase = "idle" | "processing" | "reset-required";
 export type CinenerdleIndexedDbBootstrapStatus = {
@@ -36,14 +37,29 @@ async function importCinenerdleBootstrapSnapshot(): Promise<{
   isSearchablePersistencePending: boolean;
   searchableConnectionEntityCount: number;
 }> {
-  const response = await fetch(getCinenerdleBootstrapSnapshotUrl());
+  const snapshotUrl = getCinenerdleBootstrapSnapshotUrl();
+  addCinenerdleDebugLog("bootstrap:fetch-snapshot:start", {
+    snapshotUrl,
+  });
+
+  const response = await fetch(snapshotUrl);
   if (!response.ok) {
     throw new Error(`Unable to fetch bootstrap snapshot: ${response.status}`);
   }
 
   const snapshot = await response.json() as IndexedDbSnapshot;
+  addCinenerdleDebugLog("bootstrap:fetch-snapshot:loaded", {
+    filmCount: snapshot.films.length,
+    peopleCount: snapshot.people.length,
+    snapshotUrl,
+    snapshotVersion: snapshot.version,
+  });
+
   return importIndexedDbSnapshot(snapshot, {
     deferSearchablePersistence: true,
+    onProgress: (event, details) => {
+      addCinenerdleDebugLog(`bootstrap:${event}`, details);
+    },
   });
 }
 
@@ -115,7 +131,9 @@ subscribeSearchableConnectionEntityPersistenceStatus((status) => {
   });
 });
 
-subscribeSearchableConnectionEntityPersistenceEvents(() => { });
+subscribeSearchableConnectionEntityPersistenceEvents((event) => {
+  addCinenerdleDebugLog(event.event, event.details);
+});
 
 export function startCinenerdleIndexedDbBootstrap(): Promise<boolean> {
   if (cinenerdleIndexedDbBootstrapPromise) {
@@ -130,17 +148,28 @@ export function startCinenerdleIndexedDbBootstrap(): Promise<boolean> {
     });
 
     const hasCachedRecords = await hasCinenerdleIndexedDbRecords();
+    addCinenerdleDebugLog("bootstrap:start", {
+      hasCachedRecords,
+    });
 
     if (hasCachedRecords) {
       setCinenerdleIndexedDbBootstrapStatus({
         phase: "processing",
       });
+      addCinenerdleDebugLog("bootstrap:prepare-searchable:start");
       const searchableStartupResult = await prepareSearchableConnectionEntitiesForStartup();
       setCinenerdleIndexedDbBootstrapStatus({
         isCoreReady: true,
         phase: "idle",
         isSearchablePersistencePending: searchableStartupResult.isSearchablePersistencePending,
         resetRequiredMessage: null,
+      });
+      addCinenerdleDebugLog("bootstrap:prepare-searchable:complete", searchableStartupResult);
+      addCinenerdleDebugLog("bootstrap:complete", {
+        hasCachedRecords,
+        isCoreReady: true,
+        isSearchablePersistencePending: searchableStartupResult.isSearchablePersistencePending,
+        mode: "cached-records",
       });
       return false;
     }
@@ -157,10 +186,23 @@ export function startCinenerdleIndexedDbBootstrap(): Promise<boolean> {
         isSearchablePersistencePending: snapshotImportResult.isSearchablePersistencePending,
         resetRequiredMessage: null,
       });
+      addCinenerdleDebugLog("bootstrap:complete", {
+        hasCachedRecords,
+        isCoreReady: true,
+        isSearchablePersistencePending: snapshotImportResult.isSearchablePersistencePending,
+        mode: "snapshot-import",
+        searchableConnectionEntityCount: snapshotImportResult.searchableConnectionEntityCount,
+      });
       return false;
-    } catch {
+    } catch (error) {
+      addCinenerdleDebugLog("bootstrap:import:error", {
+        message: error instanceof Error ? error.message : String(error),
+      });
       try {
         await deleteCinenerdleIndexedDbDatabase();
+        addCinenerdleDebugLog("idb-reset:complete", {
+          mode: "delete-database-after-import-error",
+        });
       } catch {
         // Best-effort cleanup only. Bootstrap should still unblock into an empty app.
       }
@@ -171,18 +213,35 @@ export function startCinenerdleIndexedDbBootstrap(): Promise<boolean> {
         isSearchablePersistencePending: false,
         resetRequiredMessage: null,
       });
+      addCinenerdleDebugLog("bootstrap:complete", {
+        hasCachedRecords,
+        isCoreReady: true,
+        isSearchablePersistencePending: false,
+        mode: "empty-fallback",
+      });
       return false;
     }
   })().catch(async (error) => {
     cinenerdleIndexedDbBootstrapPromise = null;
     if (isRecoverableCinenerdleBootstrapError(error)) {
+      addCinenerdleDebugLog("bootstrap:recoverable-error", {
+        message: error instanceof Error ? error.message : String(error),
+      });
       try {
         await deleteCinenerdleIndexedDbDatabase();
+        addCinenerdleDebugLog("idb-reset:complete", {
+          mode: "delete-database-after-recoverable-error",
+        });
         setCinenerdleIndexedDbBootstrapStatus({
           isCoreReady: true,
           phase: "idle",
           isSearchablePersistencePending: false,
           resetRequiredMessage: null,
+        });
+        addCinenerdleDebugLog("bootstrap:complete", {
+          isCoreReady: true,
+          isSearchablePersistencePending: false,
+          mode: "recoverable-reset",
         });
         return false;
       } catch (resetError) {
@@ -190,6 +249,9 @@ export function startCinenerdleIndexedDbBootstrap(): Promise<boolean> {
       }
     }
 
+    addCinenerdleDebugLog("bootstrap:reset-required", {
+      message: error instanceof Error ? error.message : String(error),
+    });
     setCinenerdleIndexedDbBootstrapStatus({
       isCoreReady: false,
       phase: "reset-required",

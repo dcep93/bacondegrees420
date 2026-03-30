@@ -156,6 +156,10 @@ export async function copyCinenerdleBootstrapDebugLogToClipboard(): Promise<numb
   return copyFilteredCinenerdleDebugEntriesToClipboard((entry) => entry.event.startsWith("bootstrap:"));
 }
 
+export async function copyCinenerdlePerfDebugLogToClipboard(): Promise<number> {
+  return copyFilteredCinenerdleDebugEntriesToClipboard((entry) => entry.event.startsWith("perf:"));
+}
+
 export async function copyCinenerdleSearchablePersistenceDebugLogToClipboard(): Promise<number> {
   return copyFilteredCinenerdleDebugEntriesToClipboard((entry) =>
     entry.event.startsWith("searchable-persist:"));

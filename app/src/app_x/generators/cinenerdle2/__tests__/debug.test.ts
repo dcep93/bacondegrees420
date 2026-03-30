@@ -20,6 +20,7 @@ import {
   clearCinenerdleDebugLog,
   copyCinenerdleBootstrapDebugLogToClipboard,
   copyCinenerdleIndexedDbSnapshotToClipboard,
+  copyCinenerdlePerfDebugLogToClipboard,
   copyCinenerdleRecoveryDebugLogToClipboard,
   copyCinenerdleSearchablePersistenceDebugLogToClipboard,
   copyCinenerdleTextToClipboard,
@@ -410,6 +411,56 @@ describe("addCinenerdleDebugLog", () => {
         event: "searchable-persist:complete",
         details: {
           transactionElapsedMs: 42,
+        },
+      }),
+    ]);
+    expect(JSON.parse(getCinenerdleDebugLogText())).toEqual([
+      expect.objectContaining({
+        event: "bootstrap:start",
+        details: {
+          snapshotUrl: "/dump.json",
+        },
+      }),
+    ]);
+  });
+
+  it("copies only perf debug entries to the clipboard", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: {
+        clipboard: {
+          writeText,
+        },
+      },
+    });
+
+    addCinenerdleDebugLog("perf:controller.buildTreeFromHash", {
+      elapsedMs: 98.12,
+      status: "ok",
+    });
+    addCinenerdleDebugLog("bootstrap:start", { snapshotUrl: "/dump.json" });
+    addCinenerdleDebugLog("perf:app.connectionAutocomplete", {
+      elapsedMs: 54.33,
+      status: "ok",
+    });
+
+    await expect(copyCinenerdlePerfDebugLogToClipboard()).resolves.toBe(2);
+
+    expect(JSON.parse(writeText.mock.calls[0]?.[0] ?? "[]")).toEqual([
+      expect.objectContaining({
+        event: "perf:controller.buildTreeFromHash",
+        details: {
+          elapsedMs: 98.12,
+          status: "ok",
+        },
+      }),
+      expect.objectContaining({
+        event: "perf:app.connectionAutocomplete",
+        details: {
+          elapsedMs: 54.33,
+          status: "ok",
         },
       }),
     ]);

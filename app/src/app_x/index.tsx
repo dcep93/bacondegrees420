@@ -48,6 +48,7 @@ import {
   copyCinenerdleBootstrapDebugLogToClipboard,
   copyCinenerdleDebugLogToClipboard,
   copyCinenerdleIndexedDbSnapshotToClipboard,
+  copyCinenerdlePerfDebugLogToClipboard,
   copyCinenerdleRecoveryDebugLogToClipboard,
   copyCinenerdleSearchablePersistenceDebugLogToClipboard,
 } from "./generators/cinenerdle2/debug";
@@ -259,6 +260,7 @@ declare global {
     idleFetch: () => IdleFetchHandle;
     copyCinenerdleBootstrapDebugLog?: () => Promise<number>;
     copyCinenerdleDebugLog?: () => Promise<number>;
+    copyCinenerdlePerfDebugLog?: () => Promise<number>;
     copyCinenerdleRecoveryDebugLog?: () => Promise<number>;
     copyCinenerdleSearchablePersistenceDebugLog?: () => Promise<number>;
     copyCinenerdleSnapshot?: typeof copyCinenerdleIndexedDbSnapshotToClipboard;
@@ -980,6 +982,7 @@ export default function AppX() {
 
     window.copyCinenerdleBootstrapDebugLog = () => copyCinenerdleBootstrapDebugLogToClipboard();
     window.copyCinenerdleDebugLog = () => copyCinenerdleDebugLogToClipboard();
+    window.copyCinenerdlePerfDebugLog = () => copyCinenerdlePerfDebugLogToClipboard();
     window.copyCinenerdleSearchablePersistenceDebugLog =
       () => copyCinenerdleSearchablePersistenceDebugLogToClipboard();
     window.copyCinenerdleSnapshot = () => copyCinenerdleIndexedDbSnapshotToClipboard();
@@ -987,6 +990,7 @@ export default function AppX() {
     return () => {
       Reflect.deleteProperty(window, "copyCinenerdleBootstrapDebugLog");
       Reflect.deleteProperty(window, "copyCinenerdleDebugLog");
+      Reflect.deleteProperty(window, "copyCinenerdlePerfDebugLog");
       Reflect.deleteProperty(window, "copyCinenerdleRecoveryDebugLog");
       Reflect.deleteProperty(window, "copyCinenerdleSearchablePersistenceDebugLog");
       Reflect.deleteProperty(window, "copyCinenerdleSnapshot");
