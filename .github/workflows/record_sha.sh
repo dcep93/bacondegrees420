@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-target_sha_path="app/src/app_x/config/sha.json"
+target_sha_path="app/src/app_x/config/sha_x.json"
 
 if [[ ! -f "$target_sha_path" ]]; then
   echo "Expected sha.json at $target_sha_path before writing." >&2

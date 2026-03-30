@@ -1,0 +1,133 @@
+import type {
+  AriaRole,
+  KeyboardEvent,
+  MouseEvent,
+} from "react";
+import { FooterChips } from "./entity_card/chips";
+import type { RenderableCinenerdleEntityCard } from "./entity_card/types";
+
+export type { RenderableCinenerdleEntityCard } from "./entity_card/types";
+
+export function CinenerdleBreakBar({
+  className,
+  label = "ESCAPE",
+}: {
+  className?: string;
+  label?: string;
+}) {
+  return (
+    <div
+      aria-label={label}
+      className={[
+        "cinenerdle-break-bar",
+        className ?? "",
+      ].filter(Boolean).join(" ")}
+      role="separator"
+    >
+      <span className="cinenerdle-break-bar-label">{label}</span>
+    </div>
+  );
+}
+
+export function CinenerdleEntityCard({
+  card,
+  ariaPressed,
+  className,
+  onCardClick,
+  onCardKeyDown,
+  onTitleClick,
+  role,
+  tabIndex,
+  titleElement = "p",
+}: {
+  card: RenderableCinenerdleEntityCard;
+  ariaPressed?: boolean;
+  className?: string;
+  onCardClick?: (event: MouseEvent<HTMLElement>) => void;
+  onCardKeyDown?: (event: KeyboardEvent<HTMLElement>) => void;
+  onTitleClick?: (event: MouseEvent<HTMLElement>) => void;
+  role?: AriaRole;
+  tabIndex?: number;
+  titleElement?: "button" | "p";
+}) {
+  const creditLines =
+    card.creditLines && card.creditLines.length > 0
+      ? card.creditLines
+      : [{ subtitle: card.subtitle, subtitleDetail: card.subtitleDetail }];
+
+  return (
+    <article
+      aria-pressed={ariaPressed}
+      className={[
+        "cinenerdle-card",
+        card.isSelected ? "cinenerdle-card-selected" : "",
+        card.isLocked ? "cinenerdle-card-locked" : "",
+        card.isAncestorSelected ? "cinenerdle-card-ancestor-selected" : "",
+        className ?? "",
+      ].filter(Boolean).join(" ")}
+      onClick={onCardClick}
+      onKeyDown={onCardKeyDown}
+      role={role}
+      tabIndex={tabIndex}
+    >
+      <div className="cinenerdle-card-image-shell">
+        {card.imageUrl ? (
+          <img
+            alt={card.name}
+            className="cinenerdle-card-image"
+            loading="lazy"
+            src={card.imageUrl}
+          />
+        ) : (
+          <div className="cinenerdle-card-image cinenerdle-card-image-fallback">
+            {card.name}
+          </div>
+        )}
+      </div>
+
+      <div className="cinenerdle-card-copy">
+        {onTitleClick && titleElement === "button" ? (
+          <button
+            className="cinenerdle-card-title"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onTitleClick(event);
+            }}
+            type="button"
+          >
+            {card.name}
+          </button>
+        ) : (
+          <p
+            className="cinenerdle-card-title"
+            onClick={onTitleClick
+              ? (event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onTitleClick(event);
+                }
+              : undefined}
+          >
+            {card.name}
+          </p>
+        )}
+        <div className="cinenerdle-card-copy-spacer" />
+        <div className="cinenerdle-card-secondary">
+          {creditLines.map((line, index) => (
+            <div
+              className="cinenerdle-card-credit-line"
+              key={`${line.subtitle}:${line.subtitleDetail}:${index}`}
+            >
+              <p className="cinenerdle-card-subtitle">{line.subtitle}</p>
+              {line.subtitleDetail ? (
+                <p className="cinenerdle-card-detail">{line.subtitleDetail}</p>
+              ) : null}
+            </div>
+          ))}
+        </div>
+        <FooterChips card={card} />
+      </div>
+    </article>
+  );
+}

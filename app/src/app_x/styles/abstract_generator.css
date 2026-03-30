@@ -1,0 +1,138 @@
+.abstract-generator {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 18px 18px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  transition: opacity 180ms ease;
+}
+
+.abstract-generator-hidden {
+  opacity: 0;
+}
+
+.generator-row {
+  min-height: 132px;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.generator-row-bubble {
+  appearance: none;
+  align-self: center;
+  min-width: 44px;
+  padding: 6px 7px;
+  border: 1px solid var(--bacon-border-strong);
+  border-radius: 999px;
+  background: var(--bacon-panel-strong);
+  box-shadow: var(--bacon-shadow);
+  color: var(--bacon-text);
+  font-size: 0.5rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    opacity 160ms ease,
+    border-color 160ms ease;
+}
+
+.generator-row-bubble:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.generator-row-bubble:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+
+.generator-row-track {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 13.3px;
+  overflow-x: auto;
+  overflow-y: visible;
+  padding: 8px 4px 8px 2px;
+  scroll-behavior: smooth;
+}
+
+.generator-row-track:not(.generator-row-track-break)::before,
+.generator-row-track:not(.generator-row-track-break)::after {
+  content: "";
+  flex: 0 0 100%;
+  pointer-events: none;
+}
+
+.generator-row-break {
+  min-height: 64px;
+  align-items: center;
+}
+
+.generator-row-track-break {
+  overflow: visible;
+  padding: 6px 0;
+}
+
+.generator-card-button {
+  appearance: none;
+  flex: 0 0 auto;
+  display: flex;
+  align-self: stretch;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+  text-align: left;
+}
+
+.generator-card-button-row-break {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+}
+
+.generator-card-button-disabled {
+  cursor: default;
+}
+
+.generator-card-button-placeholder {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.generator-card-button:focus-visible,
+.generator-row-bubble:focus-visible,
+.bacon-title-icon-button:focus-visible {
+  outline: 2px solid var(--bacon-accent);
+  outline-offset: 3px;
+}
+
+@media (max-width: 720px) {
+  .abstract-generator {
+    padding: 14px 12px 20px;
+    gap: 12px;
+  }
+
+  .generator-row {
+    gap: 10px;
+  }
+
+  .generator-row-break {
+    min-height: 52px;
+  }
+
+  .generator-row-bubble {
+    min-width: 40px;
+    padding: 5px 6px;
+    font-size: 0.46rem;
+  }
+
+  .generator-row-track {
+    gap: 9.5px;
+  }
+}

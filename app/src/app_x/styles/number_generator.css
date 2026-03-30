@@ -1,0 +1,40 @@
+.number-generator-card {
+  box-sizing: border-box;
+  width: clamp(108px, 16vw, 156px);
+  min-height: 116px;
+  padding: 18px;
+  border: 1px solid var(--bacon-border);
+  border-radius: 26px;
+  display: grid;
+  place-items: center;
+  background:
+    linear-gradient(180deg, rgba(42, 30, 24, 0.88) 0%, rgba(21, 15, 12, 0.96) 100%);
+  box-shadow: var(--bacon-shadow);
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.generator-card-button:hover .number-generator-card {
+  transform: translateY(-2px);
+  border-color: rgba(228, 193, 150, 0.5);
+}
+
+.number-generator-card-selected {
+  border-color: var(--bacon-accent);
+  box-shadow:
+    0 0 0 1px rgba(213, 163, 108, 0.42),
+    0 22px 72px rgba(0, 0, 0, 0.38);
+  background:
+    radial-gradient(circle at top, rgba(213, 163, 108, 0.14), transparent 52%),
+    linear-gradient(180deg, rgba(56, 39, 29, 0.96) 0%, rgba(23, 16, 12, 1) 100%);
+}
+
+.number-generator-value {
+  color: var(--bacon-text);
+  font-family: "Courier New", monospace;
+  font-size: clamp(1.5rem, 3vw, 2.3rem);
+  font-weight: 700;
+  line-height: 1;
+}

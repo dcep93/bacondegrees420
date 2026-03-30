@@ -1,0 +1,258 @@
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  AbstractGenerator,
+  type AbstractGeneratorActivationRequest,
+  type AbstractGeneratorFocusRequest,
+} from "../../components/abstract_generator";
+import "../../styles/cinenerdle2.css";
+import type { GeneratorNode } from "../../types/generator";
+import type { ConnectionEntity } from "./connection_graph";
+import { useCinenerdleController } from "./controller";
+import {
+  normalizeHashValue,
+} from "./hash";
+import {
+  applyHash,
+  areYoungestSelectedCardsEqual,
+  hasLoadedPath,
+  getYoungestSelectedCard,
+  getYoungestSelectedGenerationIndex,
+  matchesHighlightedConnectionEntity,
+  serializeSelectedTreePath,
+} from "./navigation";
+import { CINENERDLE_RECORDS_UPDATED_EVENT } from "./indexed_db";
+import { primeTmdbApiKeyOnInit, setTmdbLogGeneration } from "./tmdb";
+import type { CinenerdleCard } from "./view_types";
+export {
+  CinenerdleBreakBar,
+  CinenerdleEntityCard,
+  type RenderableCinenerdleEntityCard
+} from "./entity_card";
+
+type Cinenerdle2Props = {
+  hashValue: string;
+  highlightedConnectionEntity?: ConnectionEntity | null;
+  highlightedConnectionEntitySelectionRequest?: {
+    requestKey: string;
+    entity: ConnectionEntity;
+  } | null;
+  navigationVersion: number;
+  onHighlightedConnectionEntitySelectionHandled?: (
+    requestKey: string,
+    didSelect: boolean,
+  ) => void;
+  onHighlightedConnectionEntityYoungestGenerationMatchChange?: (didMatch: boolean) => void;
+  onYoungestSelectedCardChange?: (
+    card: Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }> | null,
+  ) => void;
+  onHashWrite: (nextHash: string, mode: "selection" | "navigation") => void;
+  resetVersion: number;
+};
+
+let pendingInitialPathLoadSnap =
+  typeof window !== "undefined" && hasLoadedPath(window.location.hash);
+const INITIAL_PATH_LOAD_VERTICAL_SNAP_DELAY_MS = 150;
+
+function getInitialPathLoadScrollTop(): number {
+  const scrollingElement = document.scrollingElement ?? document.documentElement;
+  const maxScrollTop = Math.max(0, scrollingElement.scrollHeight - window.innerHeight);
+  const generatorElement = document.querySelector<HTMLElement>(".abstract-generator");
+
+  if (!generatorElement) {
+    return maxScrollTop;
+  }
+
+  const generatorRect = generatorElement.getBoundingClientRect();
+  const generatorBottom = generatorRect.top + window.scrollY + generatorRect.height;
+
+  return Math.max(0, Math.min(generatorBottom - window.innerHeight, maxScrollTop));
+}
+
+function snapScrollToInitialPathLoadTarget(onComplete?: () => void) {
+  if (typeof window === "undefined") {
+    onComplete?.();
+    return;
+  }
+
+  window.setTimeout(() => {
+    window.requestAnimationFrame(() => {
+      window.scrollTo({
+        top: getInitialPathLoadScrollTop(),
+        behavior: "auto",
+      });
+
+      window.requestAnimationFrame(() => {
+        onComplete?.();
+      });
+    });
+  }, INITIAL_PATH_LOAD_VERTICAL_SNAP_DELAY_MS);
+}
+
+const Cinenerdle2 = memo(function Cinenerdle2({
+  hashValue,
+  highlightedConnectionEntity = null,
+  highlightedConnectionEntitySelectionRequest = null,
+  navigationVersion,
+  onHighlightedConnectionEntitySelectionHandled,
+  onHighlightedConnectionEntityYoungestGenerationMatchChange,
+  onYoungestSelectedCardChange,
+  onHashWrite,
+  resetVersion,
+}: Cinenerdle2Props) {
+  const normalizedHash = normalizeHashValue(hashValue);
+  const initialShouldSnapToBottomAfterLoad = pendingInitialPathLoadSnap;
+  const hashRef = useRef(normalizedHash);
+  const shouldSnapToBottomAfterLoadRef = useRef(initialShouldSnapToBottomAfterLoad);
+  const pendingExplicitFooterTopFetchScrollSuppressionRef = useRef(false);
+  const lastYoungestSelectedCardRef = useRef<
+    Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }> | null
+  >(null);
+  const [explicitFooterTopFetchSuppressVersion, setExplicitFooterTopFetchSuppressVersion] = useState(0);
+  const [recordsRefreshVersion, setRecordsRefreshVersion] = useState(0);
+  const [isAwaitingInitialPathLoadSnap, setIsAwaitingInitialPathLoadSnap] = useState(
+    initialShouldSnapToBottomAfterLoad,
+  );
+
+  useLayoutEffect(() => {
+    hashRef.current = normalizedHash;
+  }, [normalizedHash]);
+
+  useEffect(() => {
+    primeTmdbApiKeyOnInit();
+  }, []);
+
+  useEffect(() => {
+    function handleRecordsUpdated() {
+      setRecordsRefreshVersion((version) => version + 1);
+
+      if (!pendingExplicitFooterTopFetchScrollSuppressionRef.current) {
+        return;
+      }
+
+      pendingExplicitFooterTopFetchScrollSuppressionRef.current = false;
+      setExplicitFooterTopFetchSuppressVersion((version) => version + 1);
+    }
+
+    window.addEventListener(CINENERDLE_RECORDS_UPDATED_EVENT, handleRecordsUpdated);
+    return () => {
+      window.removeEventListener(CINENERDLE_RECORDS_UPDATED_EVENT, handleRecordsUpdated);
+    };
+  }, []);
+
+  const readHash = useCallback(() => hashRef.current, [hashRef]);
+  const writeHash = useCallback(
+    (nextHash: string, mode: "selection" | "navigation" = "navigation") => {
+      const normalizedNextHash = normalizeHashValue(nextHash);
+      const currentHash = normalizeHashValue(window.location.hash);
+
+      if (normalizedNextHash === currentHash) {
+        return;
+      }
+
+      onHashWrite(normalizedNextHash, mode);
+      applyHash(normalizedNextHash);
+    },
+    [onHashWrite],
+  );
+  const handleExplicitFooterTopRefreshClick = useCallback(() => {
+    pendingExplicitFooterTopFetchScrollSuppressionRef.current = true;
+  }, []);
+
+  const controller = useCinenerdleController({
+    onExplicitFooterTopRefreshClick: handleExplicitFooterTopRefreshClick,
+    recordsRefreshVersion,
+    readHash,
+    writeHash,
+  });
+  const focusRequest = useMemo<AbstractGeneratorFocusRequest<CinenerdleCard> | null>(() => {
+    if (!highlightedConnectionEntity) {
+      return null;
+    }
+
+    return {
+      requestKey: highlightedConnectionEntity.key,
+      targetGeneration: "youngest",
+      matchesNode: (node: GeneratorNode<CinenerdleCard>) =>
+        matchesHighlightedConnectionEntity(node.data, highlightedConnectionEntity),
+    };
+  }, [highlightedConnectionEntity]);
+  const activationRequest = useMemo<AbstractGeneratorActivationRequest<CinenerdleCard> | null>(() => {
+    if (!highlightedConnectionEntitySelectionRequest) {
+      return null;
+    }
+
+    return {
+      requestKey: highlightedConnectionEntitySelectionRequest.requestKey,
+      targetGeneration: "youngest",
+      matchesNode: (node: GeneratorNode<CinenerdleCard>) =>
+        matchesHighlightedConnectionEntity(node.data, highlightedConnectionEntitySelectionRequest.entity),
+    };
+  }, [highlightedConnectionEntitySelectionRequest]);
+  const getRowPresentation = useCallback((row: GeneratorNode<CinenerdleCard>[]) => {
+    const isBreakRow = row.length === 1 && row[0]?.data.kind === "break";
+
+    if (!isBreakRow) {
+      return {};
+    }
+
+    return {
+      hideBubble: true,
+      className: "generator-row-break",
+      trackClassName: "generator-row-track-break",
+      cardButtonClassName: "generator-card-button-row-break",
+    };
+  }, []);
+  const generatorResetKey = `${resetVersion}:${navigationVersion}`;
+  const generatorScrollSessionKey = `${resetVersion}:${navigationVersion}`;
+  const suppressTreeChangeScrollKey = explicitFooterTopFetchSuppressVersion > 0
+    ? explicitFooterTopFetchSuppressVersion
+    : null;
+
+  return (
+    <AbstractGenerator
+      activationRequest={activationRequest}
+      createInitialState={controller.createInitialState}
+      focusRequest={focusRequest}
+      getRowPresentation={getRowPresentation}
+      key={generatorResetKey}
+      onActivationHandled={onHighlightedConnectionEntitySelectionHandled}
+      onFocusRequestMatchChange={onHighlightedConnectionEntityYoungestGenerationMatchChange}
+      onTreeChange={(tree) => {
+        const youngestSelectedGenerationIndex = getYoungestSelectedGenerationIndex(tree);
+
+        if (
+          shouldSnapToBottomAfterLoadRef.current &&
+          tree.length > 0 &&
+          serializeSelectedTreePath(tree) === normalizedHash
+        ) {
+          shouldSnapToBottomAfterLoadRef.current = false;
+          pendingInitialPathLoadSnap = false;
+          snapScrollToInitialPathLoadTarget(() => {
+            setIsAwaitingInitialPathLoadSnap(false);
+          });
+        }
+
+        const nextYoungestSelectedCard = getYoungestSelectedCard(tree);
+        setTmdbLogGeneration(youngestSelectedGenerationIndex);
+        if (areYoungestSelectedCardsEqual(
+          lastYoungestSelectedCardRef.current,
+          nextYoungestSelectedCard,
+        )) {
+          return;
+        }
+
+        lastYoungestSelectedCardRef.current = nextYoungestSelectedCard;
+        onYoungestSelectedCardChange?.(nextYoungestSelectedCard);
+      }}
+      optimisticSelection
+      reduce={controller.reduce}
+      renderCard={controller.renderCard}
+      runEffect={controller.runEffect}
+      scrollSessionKey={generatorScrollSessionKey}
+      suppressTreeChangeScrollKey={suppressTreeChangeScrollKey}
+      visuallyHidden={isAwaitingInitialPathLoadSnap}
+    />
+  );
+});
+
+export default Cinenerdle2;
