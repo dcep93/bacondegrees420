@@ -165,7 +165,12 @@ describe("startCinenerdleIndexedDbBootstrap", () => {
 
     expect(indexedDbMock.prepareSearchableConnectionEntitiesForStartup).not.toHaveBeenCalled();
     expect(globalThis.fetch).toHaveBeenCalledWith(`${import.meta.env.BASE_URL}dump.json`);
-    expect(indexedDbMock.importIndexedDbSnapshot).toHaveBeenCalledWith(TEST_INDEXED_DB_SNAPSHOT);
+    expect(indexedDbMock.importIndexedDbSnapshot).toHaveBeenCalledWith(
+      TEST_INDEXED_DB_SNAPSHOT,
+      {
+        deferSearchablePersistence: true,
+      },
+    );
     expect(bootstrapStatuses).toEqual([
       {
         isCoreReady: false,

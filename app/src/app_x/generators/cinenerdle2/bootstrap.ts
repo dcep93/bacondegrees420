@@ -42,7 +42,9 @@ async function importCinenerdleBootstrapSnapshot(): Promise<{
   }
 
   const snapshot = await response.json() as IndexedDbSnapshot;
-  return importIndexedDbSnapshot(snapshot);
+  return importIndexedDbSnapshot(snapshot, {
+    deferSearchablePersistence: true,
+  });
 }
 
 function isRecoverableCinenerdleBootstrapError(error: unknown): boolean {

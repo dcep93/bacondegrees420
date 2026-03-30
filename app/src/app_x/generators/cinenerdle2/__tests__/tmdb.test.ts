@@ -173,6 +173,19 @@ describe("tmdb forced refresh helpers", () => {
         return createJsonResponse({ cast: [], crew: [] });
       }
 
+      if (url.includes("/search/movie?")) {
+        return createJsonResponse({
+          results: [
+            makeTmdbMovieSearchResult({
+              id: 321,
+              title: "Heat",
+              release_date: "1995-12-15",
+              popularity: 99,
+            }),
+          ],
+        });
+      }
+
       if (url.includes("/movie/321?")) {
         return createJsonResponse(
           makeTmdbMovieSearchResult({
@@ -325,6 +338,19 @@ describe("tmdb forced refresh helpers", () => {
       const url = String(input);
       if (url.includes("/movie/321/credits")) {
         return createJsonResponse({ cast: [], crew: [] });
+      }
+
+      if (url.includes("/search/movie?")) {
+        return createJsonResponse({
+          results: [
+            makeTmdbMovieSearchResult({
+              id: 321,
+              title: "Heat",
+              release_date: "1995-12-15",
+              popularity: 99,
+            }),
+          ],
+        });
       }
 
       if (url.includes("/movie/321?")) {
@@ -509,6 +535,19 @@ describe("tmdb forced refresh helpers", () => {
         return createJsonResponse({ cast: [], crew: [] });
       }
 
+      if (url.includes("/search/movie?")) {
+        return createJsonResponse({
+          results: [
+            makeTmdbMovieSearchResult({
+              id: 321,
+              title: "Heat",
+              release_date: "1995-12-15",
+              popularity: 99,
+            }),
+          ],
+        });
+      }
+
       if (url.includes("/movie/321?")) {
         return createJsonResponse(
           makeTmdbMovieSearchResult({
@@ -530,7 +569,7 @@ describe("tmdb forced refresh helpers", () => {
     await prepareSelectedMovie("Heat", "1995", 321);
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fetchMock.mock.calls[0]?.[0]).toContain("/movie/321?");
+    expect(fetchMock.mock.calls[0]?.[0]).toContain("/search/movie?");
     expect(fetchMock.mock.calls[1]?.[0]).toContain("/movie/321/credits?");
   });
 

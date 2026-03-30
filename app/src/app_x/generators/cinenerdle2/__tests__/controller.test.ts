@@ -17,10 +17,12 @@ const indexedDbMock = vi.hoisted(() => ({
   getFilmRecordByTitleAndYear: vi.fn(),
   getFilmRecordsByIds: vi.fn(),
   getFilmRecordsByPersonConnectionKey: vi.fn(),
+  getMoviePopularityByLabels: vi.fn(),
   getPersonRecordById: vi.fn(),
   getPersonRecordCountsByMovieKeys: vi.fn(),
   getPersonRecordByName: vi.fn(),
   getPersonRecordsByMovieKey: vi.fn(),
+  getPersonPopularityByNames: vi.fn(),
 }));
 
 const tmdbMock = vi.hoisted(() => ({
@@ -659,12 +661,13 @@ describe("buildBookmarkPreviewCardsFromHash", () => {
     Object.values(tmdbMock).forEach((mock) => mock.mockReset());
     clearChildGenerationOrderingCache();
 
-    indexedDbMock.getAllSearchableConnectionEntities.mockResolvedValue([]);
     indexedDbMock.getCinenerdleStarterFilmRecords.mockResolvedValue([]);
     indexedDbMock.getFilmRecordsByIds.mockResolvedValue(new Map());
     indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(new Map());
+    indexedDbMock.getMoviePopularityByLabels.mockResolvedValue(new Map());
     indexedDbMock.getPersonRecordCountsByMovieKeys.mockResolvedValue(new Map());
     indexedDbMock.getPersonRecordsByMovieKey.mockResolvedValue([]);
+    indexedDbMock.getPersonPopularityByNames.mockResolvedValue(new Map());
     tmdbMock.fetchCinenerdleDailyStarterMovies.mockResolvedValue([]);
     tmdbMock.hydrateCinenerdleDailyStarterMovies.mockResolvedValue(undefined);
   });
@@ -1196,12 +1199,13 @@ describe("buildTreeFromHash", () => {
     Object.values(tmdbMock).forEach((mock) => mock.mockReset());
     clearChildGenerationOrderingCache();
 
-    indexedDbMock.getAllSearchableConnectionEntities.mockResolvedValue([]);
     indexedDbMock.getCinenerdleStarterFilmRecords.mockResolvedValue([]);
     indexedDbMock.getFilmRecordsByIds.mockResolvedValue(new Map());
     indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(new Map());
+    indexedDbMock.getMoviePopularityByLabels.mockResolvedValue(new Map());
     indexedDbMock.getPersonRecordCountsByMovieKeys.mockResolvedValue(new Map());
     indexedDbMock.getPersonRecordsByMovieKey.mockResolvedValue([]);
+    indexedDbMock.getPersonPopularityByNames.mockResolvedValue(new Map());
     tmdbMock.fetchCinenerdleDailyStarterMovies.mockResolvedValue([]);
     tmdbMock.hydrateCinenerdleDailyStarterMovies.mockResolvedValue(undefined);
   });
