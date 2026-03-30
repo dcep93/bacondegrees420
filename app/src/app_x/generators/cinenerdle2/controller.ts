@@ -1,5 +1,6 @@
 import { useMemo, useRef, type MouseEvent as ReactMouseEvent } from "react";
 import { createBookmarkPreviewCard, type BookmarkPreviewCard } from "../../components/bookmark_preview";
+import { didRequestNewTabNavigation } from "../../index_helpers";
 import { measureAsync } from "../../perf";
 import { createGeneratorState, reduceGeneratorLifecycleEvent } from "../generator_runtime";
 import type {
@@ -1588,7 +1589,7 @@ function renderCinenerdleCard(
         return;
       }
 
-      if (event.metaKey || event.ctrlKey) {
+      if (didRequestNewTabNavigation(event)) {
         window.open(rootHref, "_blank", "noopener,noreferrer");
         return;
       }

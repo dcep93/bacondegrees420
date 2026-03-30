@@ -276,20 +276,26 @@ describe("ConnectionEntityCard", () => {
 
     const preventDefault = vi.fn();
     const stopPropagation = vi.fn();
+    const clickEvent = {
+      ctrlKey: false,
+      metaKey: true,
+      preventDefault,
+      stopPropagation,
+    };
     const titleButtonOnClick = titleButton?.props.onClick as
       | ((event: {
+        ctrlKey: boolean;
+        metaKey: boolean;
         preventDefault: () => void;
         stopPropagation: () => void;
       }) => void)
       | undefined;
-    titleButtonOnClick?.({
-      preventDefault,
-      stopPropagation,
-    });
+    titleButtonOnClick?.(clickEvent);
 
     expect(preventDefault).toHaveBeenCalledOnce();
     expect(stopPropagation).toHaveBeenCalledOnce();
     expect(onNameClick).toHaveBeenCalledOnce();
+    expect(onNameClick).toHaveBeenCalledWith(clickEvent);
     expect(onCardClick).not.toHaveBeenCalled();
   });
 });

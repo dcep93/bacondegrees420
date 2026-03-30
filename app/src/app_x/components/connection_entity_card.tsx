@@ -25,7 +25,7 @@ export default function ConnectionEntityCard({
   entity: ConnectionEntity;
   dimmed?: boolean;
   onCardClick?: () => void;
-  onNameClick?: () => void;
+  onNameClick?: (event: MouseEvent<HTMLButtonElement>) => void;
 }) {
   const hasImage = Boolean(entity.imageUrl);
   const sourceLabel = getConnectionEntitySourceLabel(entity);
@@ -67,7 +67,7 @@ export default function ConnectionEntityCard({
           onClick={(event: MouseEvent<HTMLButtonElement>) => {
             event.preventDefault();
             event.stopPropagation();
-            onNameClick?.();
+            onNameClick?.(event);
           }}
           type="button"
         >

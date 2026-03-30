@@ -7,6 +7,13 @@ import {
 } from "./generators/cinenerdle2/hash";
 import { formatMoviePathLabel } from "./generators/cinenerdle2/utils";
 
+export function didRequestNewTabNavigation(event: {
+  ctrlKey: boolean;
+  metaKey: boolean;
+}): boolean {
+  return event.metaKey || event.ctrlKey;
+}
+
 export function getBookmarkPreviewCardHash(bookmarkHash: string, previewCardIndex: number): string {
   const normalizedHash = normalizeHashValue(bookmarkHash);
   const pathNodes = buildPathNodesFromSegments(parseHashSegments(normalizedHash));

@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
+  didRequestNewTabNavigation,
   getBookmarkPreviewCardHash,
   getBookmarkPreviewCardRootHash,
   getSelectedPathTooltipEntries,
 } from "../index_helpers";
 
 describe("index hash helpers", () => {
+  it("detects cmd/ctrl click requests for new-tab navigation", () => {
+    expect(didRequestNewTabNavigation({ metaKey: true, ctrlKey: false })).toBe(true);
+    expect(didRequestNewTabNavigation({ metaKey: false, ctrlKey: true })).toBe(true);
+    expect(didRequestNewTabNavigation({ metaKey: false, ctrlKey: false })).toBe(false);
+  });
+
   it("includes ESCAPE in selected-path tooltip entries", () => {
     expect(
       getSelectedPathTooltipEntries(

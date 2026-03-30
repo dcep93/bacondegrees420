@@ -124,6 +124,7 @@ import {
 } from "./connection_matchup_helpers";
 import { formatIndexedDbClearConfirmationMessage } from "./indexed_db_clear_confirmation";
 import {
+  didRequestNewTabNavigation,
   getBookmarkPreviewCardHash,
   getBookmarkPreviewCardRootHash,
   getSelectedPathTooltipEntries,
@@ -1536,6 +1537,22 @@ export default function AppX() {
     [handleHashWrite],
   );
 
+  const openHashInNewTab = useCallback(
+    (nextHash: string) => {
+      const normalizedHash = normalizeHashValue(nextHash);
+      if (!normalizedHash) {
+        return;
+      }
+
+      window.open(
+        buildLocationHref(appLocation.basePathname, normalizedHash),
+        "_blank",
+        "noopener,noreferrer",
+      );
+    },
+    [appLocation.basePathname],
+  );
+
   const navigateToConnectionEntity = useCallback(
     (entity: ConnectionEntity) => {
       navigateToHash(serializeConnectionEntityHash(entity), "navigation");
@@ -1543,11 +1560,25 @@ export default function AppX() {
     [navigateToHash],
   );
 
+  const openConnectionEntityInNewTab = useCallback(
+    (entity: ConnectionEntity) => {
+      openHashInNewTab(serializeConnectionEntityHash(entity));
+    },
+    [openHashInNewTab],
+  );
+
   const navigateToConnectionPath = useCallback(
     (path: ConnectionEntity[]) => {
       navigateToHash(serializeConnectionPathHash(path), "navigation");
     },
     [navigateToHash],
+  );
+
+  const openConnectionPathInNewTab = useCallback(
+    (path: ConnectionEntity[]) => {
+      openHashInNewTab(serializeConnectionPathHash(path));
+    },
+    [openHashInNewTab],
   );
 
   const clearConnectionInputState = useCallback(() => {
@@ -2169,7 +2200,7 @@ export default function AppX() {
                         <CinenerdleEntityCard
                           card={createBookmarkPreviewCardViewModel(card, isSelected)}
                           onTitleClick={(event) => {
-                            if (event.metaKey || event.ctrlKey) {
+                            if (didRequestNewTabNavigation(event)) {
                               handleOpenBookmarkPreviewCardAsRootInNewTab(bookmark, cardIndex);
                               return;
                             }
@@ -2361,7 +2392,14 @@ export default function AppX() {
                   <ConnectionEntityCard
                     entity={connectionSession.left}
                     onCardClick={() => navigateToConnectionEntity(connectionSession.left)}
-                    onNameClick={() => navigateToConnectionEntity(connectionSession.left)}
+                    onNameClick={(event) => {
+                      if (didRequestNewTabNavigation(event)) {
+                        openConnectionEntityInNewTab(connectionSession.left);
+                        return;
+                      }
+
+                      navigateToConnectionEntity(connectionSession.left);
+                    }}
                   />
                   <span className="bacon-connection-arrow bacon-connection-arrow-static">
                     <span className="bacon-connection-arrow-break" aria-hidden="true">
@@ -2373,7 +2411,14 @@ export default function AppX() {
                   <ConnectionEntityCard
                     entity={connectionSession.right}
                     onCardClick={() => navigateToConnectionEntity(connectionSession.right)}
-                    onNameClick={() => navigateToConnectionEntity(connectionSession.right)}
+                    onNameClick={(event) => {
+                      if (didRequestNewTabNavigation(event)) {
+                        openConnectionEntityInNewTab(connectionSession.right);
+                        return;
+                      }
+
+                      navigateToConnectionEntity(connectionSession.right);
+                    }}
                   />
                 </div>
               ) : null}
@@ -2426,8 +2471,22 @@ export default function AppX() {
                                 })
                               : undefined}
                             onNameClick={isLeftmostNode
-                              ? () => navigateToConnectionPath([...row.path].reverse())
-                              : () => navigateToConnectionEntity(entity)}
+                              ? (event) => {
+                                if (didRequestNewTabNavigation(event)) {
+                                  openConnectionPathInNewTab([...row.path].reverse());
+                                  return;
+                                }
+
+                                navigateToConnectionPath([...row.path].reverse());
+                              }
+                              : (event) => {
+                                if (didRequestNewTabNavigation(event)) {
+                                  openConnectionEntityInNewTab(entity);
+                                  return;
+                                }
+
+                                navigateToConnectionEntity(entity);
+                              }}
                           />
                           {nextEntity ? (
                             <button
