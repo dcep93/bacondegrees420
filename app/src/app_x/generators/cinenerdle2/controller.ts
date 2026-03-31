@@ -3,7 +3,6 @@ import { createBookmarkPreviewCard, type BookmarkPreviewCard } from "../../compo
 import { didRequestNewTabNavigation } from "../../index_helpers";
 import { measureAsync } from "../../perf";
 import { createGeneratorState, reduceGeneratorLifecycleEvent } from "../generator_runtime";
-import { addCinenerdleDebugLog } from "./debug_log";
 import type {
   GeneratorController,
   GeneratorLifecycleEvent,
@@ -483,15 +482,6 @@ export async function ensureSelectedCardFullstate(
     const needsFullstate =
       options.forceRefresh === true || !hasMovieFullState(selectedMovieRecord);
 
-    addCinenerdleDebugLog("controller:selected-card-fullstate", {
-      cardKey: selectedCard.key,
-      forceRefresh: options.forceRefresh ?? false,
-      hasCredits: Boolean(selectedMovieRecord?.rawTmdbMovieCreditsResponse),
-      hasDirectTmdb: hasDirectTmdbMovieSource(selectedMovieRecord),
-      kind: "movie",
-      needsFullstate,
-    });
-
     if (!needsFullstate) {
       return {
         card: selectedCard,
@@ -520,15 +510,6 @@ export async function ensureSelectedCardFullstate(
   const personTmdbId = getPersonTmdbIdFromCard(selectedCard);
   const needsFullstate =
     options.forceRefresh === true || !hasPersonFullState(selectedPersonRecord);
-
-  addCinenerdleDebugLog("controller:selected-card-fullstate", {
-    cardKey: selectedCard.key,
-    forceRefresh: options.forceRefresh ?? false,
-    hasCredits: Boolean(selectedPersonRecord?.rawTmdbMovieCreditsResponse),
-    hasDirectTmdb: hasDirectTmdbPersonSource(selectedPersonRecord),
-    kind: "person",
-    needsFullstate,
-  });
 
   if (!needsFullstate) {
     return {
@@ -564,10 +545,6 @@ export async function hydrateYoungestSelectedCardInTree(
     !selectedCard ||
     (selectedCard.kind !== "movie" && selectedCard.kind !== "person")
   ) {
-    addCinenerdleDebugLog("controller:youngest-selected-card-hydration:skip-missing-selected", {
-      selectedGenerationIndex,
-      treeRowCount: tree.length,
-    });
     return tree;
   }
 
@@ -1022,10 +999,6 @@ export async function refreshTreeForFetchedEntity(
   );
 
   if (matchingNodes.length === 0) {
-    addCinenerdleDebugLog("controller:entity-refresh:skip-missing-visible-match", {
-      request,
-      treeRowCount: tree.length,
-    });
     return null;
   }
 
@@ -1108,13 +1081,6 @@ export async function refreshTreeForFetchedEntity(
           ...updatedTree.slice(rowIndex + 2),
         ];
   }
-
-  addCinenerdleDebugLog("controller:entity-refresh:applied", {
-    matchCount: matchingNodes.length,
-    reason: request.reason,
-    request,
-    selectedRowCount: selectedRowUpdates.size,
-  });
 
   return updatedTree;
 }

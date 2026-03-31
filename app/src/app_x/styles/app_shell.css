@@ -12,6 +12,7 @@
   --bacon-shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
   --bacon-title-control-size: 52px;
   --bacon-title-matchup-vs-width: 24px;
+  --bacon-title-matchup-tile-width: calc(var(--bacon-title-control-size) * 2 / 3);
   --bacon-title-font:
     "Comic Sans MS",
     "Comic Sans",
@@ -88,7 +89,7 @@
   display: inline-block;
   color: #ff6fb5;
   font-family: var(--bacon-title-font);
-  font-size: 2rem;
+  font-size: 36px;
   font-weight: 700;
   line-height: 1;
   user-select: none;
@@ -109,14 +110,14 @@
   align-items: center;
   gap: 18px;
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
 }
 
 .bacon-title {
   margin: 0;
   color: #ff6fb5;
   font-family: var(--bacon-title-font);
-  font-size: 2.8rem;
+  font-size: 50.4px;
   font-weight: 700;
   letter-spacing: -0.04em;
   line-height: 0.95;
@@ -140,26 +141,43 @@
   align-items: center;
   isolation: isolate;
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
+  padding-inline-end: 6px;
 }
 
 .bacon-title-actions {
   margin-left: auto;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: flex-end;
   flex: 0 0 auto;
   flex-wrap: nowrap;
   height: var(--bacon-title-control-size);
+  min-height: var(--bacon-title-control-size);
   gap: 10px;
   min-width: 0;
   max-width: 100%;
   overflow: visible;
 }
 
-@media (max-width: 1080px) {
-  .bacon-title {
-    font-size: 2.35rem;
+@media (max-width: 1120px) {
+  .bacon-title-bar {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .bacon-title-actions {
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    height: auto;
+    min-height: var(--bacon-title-control-size);
+    row-gap: 8px;
+  }
+
+  .bacon-title-action-slot {
+    height: var(--bacon-title-control-size);
   }
 }
 
@@ -168,16 +186,19 @@
   align-items: stretch;
   justify-content: center;
   flex: 0 0 auto;
-  height: 100%;
+  height: var(--bacon-title-control-size);
+  min-height: var(--bacon-title-control-size);
   min-width: 0;
 }
 
 .bacon-title-action-slot > * {
-  height: 100%;
+  height: var(--bacon-title-control-size);
+  min-height: var(--bacon-title-control-size);
 }
 
 .bacon-title-action-slot-matchup {
   align-items: center;
+  height: var(--bacon-title-control-size);
 }
 
 .bacon-title-action-slot-square {
@@ -189,6 +210,7 @@
 }
 
 .bacon-title-action-slot-text {
+  height: var(--bacon-title-control-size);
   max-width: 100%;
 }
 
@@ -196,7 +218,8 @@
   position: relative;
   display: flex;
   align-items: stretch;
-  height: 100%;
+  height: var(--bacon-title-control-size);
+  min-height: var(--bacon-title-control-size);
   overflow: visible;
 }
 
@@ -230,7 +253,7 @@
 
 .bacon-copy-status-overlay-toast {
   color: var(--bacon-text);
-  font-size: 0.8rem;
+  font-size: 14.4px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-align: center;
@@ -239,7 +262,7 @@
 
 .bacon-copy-status-overlay-tooltip {
   color: var(--bacon-text-muted);
-  font-size: 0.76rem;
+  font-size: 13.68px;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-align: center;
@@ -253,7 +276,7 @@
   max-width: min(320px, calc(100vw - 140px));
   padding: 10px 14px;
   color: var(--bacon-text-muted);
-  font-size: 0.78rem;
+  font-size: 14.04px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   white-space: nowrap;
@@ -282,7 +305,7 @@
 
 .bacon-indexeddb-bootstrap-loading-label {
   color: var(--bacon-text-muted);
-  font-size: 0.8rem;
+  font-size: 14.4px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -291,7 +314,9 @@
 .bacon-title-action-button {
   appearance: none;
   box-sizing: border-box;
-  height: 100%;
+  height: var(--bacon-title-control-size);
+  min-height: var(--bacon-title-control-size);
+  max-height: var(--bacon-title-control-size);
   max-width: 100%;
   padding: 10px 16px;
   border: 1px solid var(--bacon-border-strong);
@@ -303,7 +328,7 @@
   background: var(--bacon-panel-strong);
   box-shadow: var(--bacon-shadow);
   color: var(--bacon-text);
-  font-size: 0.8rem;
+  font-size: 14.4px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -336,7 +361,9 @@
   appearance: none;
   display: grid;
   width: 100%;
-  height: 100%;
+  height: var(--bacon-title-control-size);
+  min-height: var(--bacon-title-control-size);
+  max-height: var(--bacon-title-control-size);
   padding: 0;
   border: 1px solid var(--bacon-border-strong);
   border-radius: 16px;
@@ -344,7 +371,7 @@
   background: var(--bacon-panel-strong);
   box-shadow: var(--bacon-shadow);
   color: var(--bacon-text);
-  font-size: 1.1rem;
+  font-size: 19.8px;
   cursor: pointer;
   transition:
     transform 160ms ease,
@@ -481,7 +508,7 @@
   position: relative;
   flex: 0 0 auto;
   width: max-content;
-  height: 100%;
+  height: var(--bacon-title-control-size);
 }
 
 .bacon-connection-matchup-shell-overflow-visible {
@@ -492,7 +519,7 @@
   position: relative;
   display: inline-flex;
   box-sizing: border-box;
-  height: 100%;
+  height: var(--bacon-title-control-size);
   padding: 0;
   border: 1px solid var(--bacon-border-strong);
   border-radius: 999px;
@@ -507,7 +534,7 @@
   align-items: stretch;
   gap: 0;
   width: max-content;
-  height: 100%;
+  height: var(--bacon-title-control-size);
   border-radius: inherit;
   overflow: hidden;
 }
@@ -546,9 +573,9 @@
 
 .bacon-connection-matchup-tile {
   position: relative;
-  width: auto;
-  min-width: var(--bacon-title-control-size);
-  height: 100%;
+  width: 100%;
+  min-width: 0;
+  height: var(--bacon-title-control-size);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -562,22 +589,19 @@
 .bacon-connection-matchup-tile-wrap {
   position: relative;
   display: flex;
-  flex: 1 1 0;
-  min-width: 0;
+  flex: 0 0 auto;
+  width: var(--bacon-title-matchup-tile-width);
+  min-width: var(--bacon-title-matchup-tile-width);
   align-self: stretch;
-  height: 100%;
+  height: var(--bacon-title-control-size);
 }
 
 .bacon-connection-matchup-tile-wrap-image {
-  flex: 0 0 auto;
-  aspect-ratio: 2 / 3;
-  width: auto;
+  width: var(--bacon-title-matchup-tile-width);
 }
 
 .bacon-connection-matchup-tile-wrap-placeholder {
-  flex: 0 0 auto;
-  aspect-ratio: 2 / 3;
-  width: auto;
+  width: var(--bacon-title-matchup-tile-width);
 }
 
 .bacon-connection-matchup-tile-image {
@@ -614,7 +638,7 @@
 
 .bacon-connection-matchup-fallback {
   padding: 4px;
-  font-size: 0.72rem;
+  font-size: 12.96px;
   font-weight: 800;
   line-height: 1;
   letter-spacing: 0.04em;
@@ -628,7 +652,7 @@
   width: var(--bacon-title-matchup-vs-width);
   height: 100%;
   color: var(--bacon-text-muted);
-  font-size: 0.68rem;
+  font-size: 12.24px;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1352,10 +1376,6 @@
 
   .bacon-title-brand {
     gap: 14px;
-  }
-
-  .bacon-title {
-    font-size: 1.95rem;
   }
 
   .bacon-title-actions {

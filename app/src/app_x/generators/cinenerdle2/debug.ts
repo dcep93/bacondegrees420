@@ -24,6 +24,10 @@ export {
 
 const EMPTY_DEBUG_LOG_TEXT = "[]";
 const IS_DEV_MODE = import.meta.env.DEV;
+const CLIPBOARD_PAGE_OPEN_HEARTBEAT_MS = 1000;
+
+type IntervalScheduler = typeof setInterval;
+type IntervalCanceler = typeof clearInterval;
 
 export function getCinenerdleDebugNow(): number {
   if (typeof performance !== "undefined" && typeof performance.now === "function") {
@@ -31,6 +35,34 @@ export function getCinenerdleDebugNow(): number {
   }
 
   return Date.now();
+}
+
+export function startCinenerdleClipboardPageOpenLogging(options?: {
+  setInterval?: IntervalScheduler;
+  clearInterval?: IntervalCanceler;
+}): () => void {
+  if (!IS_DEV_MODE) {
+    return () => { };
+  }
+
+  const setIntervalFn = options?.setInterval ?? globalThis.setInterval?.bind(globalThis);
+  const clearIntervalFn = options?.clearInterval ?? globalThis.clearInterval?.bind(globalThis);
+
+  if (!setIntervalFn || !clearIntervalFn) {
+    return () => { };
+  }
+
+  let secondsOpen = 0;
+  const intervalId = setIntervalFn(() => {
+    secondsOpen += 1;
+    addCinenerdleDebugLog("clipboard:page-open-heartbeat", {
+      secondsOpen,
+    });
+  }, CLIPBOARD_PAGE_OPEN_HEARTBEAT_MS);
+
+  return () => {
+    clearIntervalFn(intervalId);
+  };
 }
 
 function canUseDomClipboardFallback(): boolean {

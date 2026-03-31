@@ -26,6 +26,7 @@ import {
   copyCinenerdleTextToClipboard,
   getCinenerdleDebugEntryCount,
   getCinenerdleDebugLogText,
+  startCinenerdleClipboardPageOpenLogging,
 } from "../debug";
 
 const originalNavigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, "navigator");
@@ -338,6 +339,40 @@ describe("addCinenerdleDebugLog", () => {
 
     expect(writeText).toHaveBeenCalledWith("{\"kind\":\"movie\"}");
     expect(getCinenerdleDebugEntryCount()).toBe(0);
+  });
+
+  it("appends clipboard heartbeat entries every second while the page is open", async () => {
+    vi.useFakeTimers();
+
+    const stopLogging = startCinenerdleClipboardPageOpenLogging({
+      clearInterval,
+      setInterval,
+    });
+
+    expect(getCinenerdleDebugEntryCount()).toBe(0);
+
+    await vi.advanceTimersByTimeAsync(2100);
+
+    expect(JSON.parse(getCinenerdleDebugLogText())).toEqual([
+      expect.objectContaining({
+        event: "clipboard:page-open-heartbeat",
+        details: {
+          secondsOpen: 1,
+        },
+      }),
+      expect.objectContaining({
+        event: "clipboard:page-open-heartbeat",
+        details: {
+          secondsOpen: 2,
+        },
+      }),
+    ]);
+
+    stopLogging();
+    await vi.advanceTimersByTimeAsync(1500);
+
+    expect(getCinenerdleDebugEntryCount()).toBe(2);
+    vi.useRealTimers();
   });
 
   it("copies only bootstrap debug entries to the clipboard", async () => {

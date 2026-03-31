@@ -79,7 +79,6 @@ import {
   hydrateHashPathItems,
 } from "./generators/cinenerdle2/controller";
 import {
-  addCinenerdleDebugLog,
   copyCinenerdleBootstrapDebugLogToClipboard,
   copyCinenerdleDebugLogToClipboard,
   copyCinenerdleIndexedDbSnapshotToClipboard,
@@ -1302,7 +1301,6 @@ export default function AppX() {
   const serializedBookmarksJsonlRef = useRef("");
   const lastSyncedHashRef = useRef(normalizeHashValue(initialLocationState.hash));
   const bookmarksReturnHashRef = useRef(normalizeHashValue(initialLocationState.hash));
-  const bookmarksPageRenderCountRef = useRef(0);
   const autocompleteRequestIdRef = useRef(0);
   const connectionSessionIdRef = useRef(0);
   const connectionRowIdRef = useRef(0);
@@ -1708,34 +1706,6 @@ export default function AppX() {
   useEffect(() => {
     document.title = isBookmarksView ? "Bookmarks | BaconDegrees420" : getDocumentTitle(hashValue);
   }, [hashValue, isBookmarksView]);
-
-  useEffect(() => {
-    if (!isBookmarksView) {
-      bookmarksPageRenderCountRef.current = 0;
-      return;
-    }
-
-    bookmarksPageRenderCountRef.current += 1;
-
-    addCinenerdleDebugLog("app:bookmarks-page:render", {
-      hashValue,
-      isBookmarksJsonlEditorOpen,
-      bookmarkCount: bookmarks.length,
-      bookmarkRowCardCount: bookmarkRows.reduce(
-        (count, bookmarkRow) => count + bookmarkRow.cards.length,
-        0,
-      ),
-      pathname: appLocation.pathname,
-      renderCount: bookmarksPageRenderCountRef.current,
-    });
-  }, [
-    appLocation.pathname,
-    bookmarkRows,
-    bookmarks,
-    hashValue,
-    isBookmarksJsonlEditorOpen,
-    isBookmarksView,
-  ]);
 
   useEffect(() => {
     let cancelled = false;

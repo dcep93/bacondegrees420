@@ -341,6 +341,17 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     });
   }, [resolvedTree, scrollToCardIndex]);
 
+  const handleBubbleClick = useCallback((generationIndex: number) => {
+    if (generationIndex === 0) {
+      resolvedTree.forEach((_, rowIndex) => {
+        handleScrollToSelected(rowIndex);
+      });
+      return;
+    }
+
+    handleScrollToSelected(generationIndex);
+  }, [handleScrollToSelected, resolvedTree]);
+
   const handleCardSelect = useCallback((row: number, col: number) => {
     const currentTree = stateRef.current.tree;
     const selectedRow = currentTree?.[row];
@@ -469,7 +480,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
             {rowPresentation.hideBubble ? null : (
               <button
                 className="generator-row-bubble"
-                onClick={() => handleScrollToSelected(generationIndex)}
+                onClick={() => handleBubbleClick(generationIndex)}
                 type="button"
               >
                 {`GEN ${generationIndex}`}
