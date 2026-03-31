@@ -167,10 +167,9 @@ describe("startCinenerdleIndexedDbBootstrap", () => {
     expect(globalThis.fetch).toHaveBeenCalledWith(`${import.meta.env.BASE_URL}dump.json`);
     expect(indexedDbMock.importIndexedDbSnapshot).toHaveBeenCalledWith(
       TEST_INDEXED_DB_SNAPSHOT,
-      expect.objectContaining({
+      {
         deferSearchablePersistence: true,
-        onProgress: expect.any(Function),
-      }),
+      },
     );
     expect(bootstrapStatuses).toEqual([
       {
