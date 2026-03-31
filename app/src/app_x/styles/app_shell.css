@@ -109,14 +109,14 @@
   align-items: center;
   gap: 18px;
   min-width: 0;
-  flex: 0 1 auto;
+  flex: 1 1 auto;
 }
 
 .bacon-title {
   margin: 0;
   color: #ff6fb5;
   font-family: var(--bacon-title-font);
-  font-size: clamp(1.8rem, 3vw, 2.8rem);
+  font-size: 2.8rem;
   font-weight: 700;
   letter-spacing: -0.04em;
   line-height: 0.95;
@@ -140,6 +140,7 @@
   align-items: center;
   isolation: isolate;
   min-width: 0;
+  flex: 1 1 auto;
 }
 
 .bacon-title-actions {
@@ -147,13 +148,19 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   flex-wrap: nowrap;
   height: var(--bacon-title-control-size);
   gap: 10px;
   min-width: 0;
   max-width: 100%;
   overflow: visible;
+}
+
+@media (max-width: 1080px) {
+  .bacon-title {
+    font-size: 2.35rem;
+  }
 }
 
 .bacon-title-action-slot {
@@ -580,6 +587,7 @@
 
 .bacon-connection-matchup-tile-placeholder {
   width: 100%;
+  min-width: 0;
 }
 
 .bacon-connection-matchup-tile-wrap:focus-within {
@@ -1344,6 +1352,10 @@
 
   .bacon-title-brand {
     gap: 14px;
+  }
+
+  .bacon-title {
+    font-size: 1.95rem;
   }
 
   .bacon-title-actions {

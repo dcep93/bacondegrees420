@@ -24,6 +24,25 @@ import {
   type AppViewMode,
   type BookmarkEntry,
 } from "./bookmarks";
+import { formatClearDbBadgeText } from "./clear_db_badge";
+import ConnectionEntityCard from "./components/connection_entity_card";
+import FancyTooltip from "./components/fancy_tooltip";
+import {
+  compareRankedConnectionSuggestions,
+  compareRankedSearchableConnectionEntityRecords,
+  getConnectionSuggestionScore,
+} from "./connection_autocomplete";
+import {
+  shouldActivateConnectedDropdownSuggestion,
+  shouldResolveConnectionMatchupPreview,
+} from "./connection_matchup_helpers";
+import {
+  resolveConnectionMatchupPreview,
+  type ConnectionMatchupPreview,
+  type ConnectionMatchupPreviewEntity,
+  type YoungestSelectedCard,
+} from "./connection_matchup_preview";
+import { annotateDirectionalConnectionPathRanks } from "./connection_path_ranks";
 import Cinenerdle2, {
   CinenerdleBreakBar,
   CinenerdleEntityCard,
@@ -35,9 +54,11 @@ import {
   type CinenerdleIndexedDbBootstrapStatus,
 } from "./generators/cinenerdle2/bootstrap";
 import {
-  ESCAPE_LABEL,
-  TMDB_ICON_URL,
-} from "./generators/cinenerdle2/constants";
+  createCinenerdleOnlyPersonCard,
+  createCinenerdleRootCard,
+  createMovieRootCard,
+  createPersonRootCard,
+} from "./generators/cinenerdle2/cards";
 import {
   createCinenerdleConnectionEntity,
   createFallbackConnectionEntity,
@@ -50,6 +71,10 @@ import {
   type ConnectionEntity,
   type ConnectionSearchResult,
 } from "./generators/cinenerdle2/connection_graph";
+import {
+  ESCAPE_LABEL,
+  TMDB_ICON_URL,
+} from "./generators/cinenerdle2/constants";
 import {
   hydrateHashPathItems,
 } from "./generators/cinenerdle2/controller";
@@ -64,6 +89,10 @@ import {
   copyCinenerdleTextToClipboard,
 } from "./generators/cinenerdle2/debug";
 import {
+  CINENERDLE_DEBUG_LOG_UPDATED_EVENT,
+  getCinenerdleFetchDebugEntryCount,
+} from "./generators/cinenerdle2/debug_log";
+import {
   buildPathNodesFromSegments,
   createPathNode,
   normalizeHashValue,
@@ -71,8 +100,12 @@ import {
   serializePathNodes,
 } from "./generators/cinenerdle2/hash";
 import {
-  CINENERDLE_RECORDS_UPDATED_EVENT,
+  startIdleFetch,
+  type IdleFetchHandle,
+} from "./generators/cinenerdle2/idle_fetch";
+import {
   CINENERDLE_INDEXED_DB_FETCH_COUNT_UPDATED_EVENT,
+  CINENERDLE_RECORDS_UPDATED_EVENT,
   batchCinenerdleRecordsUpdatedEvents,
   clearIndexedDb,
   estimateIndexedDbUsageBytes,
@@ -84,18 +117,19 @@ import {
   getPersonRecordByName,
   getPersonRecordsByMovieKey,
 } from "./generators/cinenerdle2/indexed_db";
+import {
+  prepareSelectedMovie,
+  prepareSelectedPerson,
+  resolveConnectionQuery,
+} from "./generators/cinenerdle2/tmdb";
+import {
+  hasDirectTmdbMovieSource,
+  hasDirectTmdbPersonSource,
+} from "./generators/cinenerdle2/tmdb_provenance";
 import type {
   FilmRecord,
   PersonRecord,
 } from "./generators/cinenerdle2/types";
-import type {
-  CinenerdleCard,
-  CinenerdlePathNode,
-} from "./generators/cinenerdle2/view_types";
-import {
-  CINENERDLE_DEBUG_LOG_UPDATED_EVENT,
-  getCinenerdleFetchDebugEntryCount,
-} from "./generators/cinenerdle2/debug_log";
 import {
   formatMoviePathLabel,
   getAssociatedMoviesFromPersonCredits,
@@ -107,60 +141,26 @@ import {
   normalizeWhitespace,
   parseMoviePathLabel,
 } from "./generators/cinenerdle2/utils";
-import {
-  createCinenerdleOnlyPersonCard,
-  createCinenerdleRootCard,
-  createMovieRootCard,
-  createPersonRootCard,
-} from "./generators/cinenerdle2/cards";
-import ConnectionEntityCard from "./components/connection_entity_card";
-import {
-  compareRankedConnectionSuggestions,
-  compareRankedSearchableConnectionEntityRecords,
-  getConnectionSuggestionScore,
-} from "./connection_autocomplete";
-import FancyTooltip from "./components/fancy_tooltip";
-import {
-  prepareSelectedMovie,
-  prepareSelectedPerson,
-  resolveConnectionQuery,
-} from "./generators/cinenerdle2/tmdb";
-import {
-  hasDirectTmdbMovieSource,
-  hasDirectTmdbPersonSource,
-} from "./generators/cinenerdle2/tmdb_provenance";
-import {
-  startIdleFetch,
-  type IdleFetchHandle,
-} from "./generators/cinenerdle2/idle_fetch";
-import {
-  resolveConnectionMatchupPreview,
-  type ConnectionMatchupPreview,
-  type ConnectionMatchupPreviewEntity,
-  type YoungestSelectedCard,
-} from "./connection_matchup_preview";
-import {
-  shouldActivateConnectedDropdownSuggestion,
-  shouldResolveConnectionMatchupPreview,
-} from "./connection_matchup_helpers";
-import { formatIndexedDbClearConfirmationMessage } from "./indexed_db_clear_confirmation";
+import { createCardViewModel } from "./generators/cinenerdle2/view_model";
+import type {
+  CinenerdleCard,
+  CinenerdlePathNode,
+} from "./generators/cinenerdle2/view_types";
 import {
   didRequestNewTabNavigation,
   getBookmarkPreviewCardHash,
   getBookmarkPreviewCardRootHash,
   getSelectedPathTooltipEntries,
 } from "./index_helpers";
-import { formatClearDbBadgeText } from "./clear_db_badge";
-import { annotateDirectionalConnectionPathRanks } from "./connection_path_ranks";
 import {
   createIndexedDbBootstrapLoadingShellDelayManager,
   shouldShowIndexedDbBootstrapLoadingShell,
   type IndexedDbBootstrapLoadingShellDelayManager,
 } from "./indexed_db_bootstrap_loading_shell";
+import { formatIndexedDbClearConfirmationMessage } from "./indexed_db_clear_confirmation";
 import { measureAsync } from "./perf";
-import { createCardViewModel } from "./generators/cinenerdle2/view_model";
-import { getWindowKeyDownAction } from "./window_keydown";
 import "./styles/app_shell.css";
+import { getWindowKeyDownAction } from "./window_keydown";
 
 type ConnectionSuggestion = Omit<ConnectionEntity, "kind"> & {
   kind: "person" | "movie";
@@ -2770,7 +2770,7 @@ export default function AppX() {
           className="bacon-connection-matchup-tile bacon-connection-matchup-tile-placeholder"
         >
           <span className="bacon-connection-matchup-fallback">
-            {getPreviewFallbackText(label)}
+            ?
           </span>
         </span>
       </span>
