@@ -129,6 +129,7 @@
 }
 
 .bacon-title-actions {
+  height: 100%;
   margin-left: auto;
   display: flex;
   align-items: stretch;
@@ -138,7 +139,7 @@
 }
 
 .bacon-title-actions > * {
-  height: 100%;
+  align-self: stretch;
 }
 
 .bacon-copy-status {
@@ -237,12 +238,6 @@
     opacity 160ms ease;
 }
 
-.bacon-title-actions .bacon-title-action-button,
-.bacon-title-actions .bacon-title-action-icon-button,
-.bacon-title-actions .bacon-fancy-tooltip-anchor {
-  height: 100%;
-}
-
 .bacon-title-action-button:hover:not(:disabled) {
   transform: translateY(-1px);
   border-color: rgba(228, 193, 150, 0.6);
@@ -262,13 +257,13 @@
 
 .bacon-title-action-icon-button {
   appearance: none;
-  width: 44px;
-  height: 44px;
+  height: 100%;
   padding: 0;
   border: 1px solid var(--bacon-border-strong);
   border-radius: 16px;
   display: grid;
   place-items: center;
+  aspect-ratio: 1;
   background: var(--bacon-panel-strong);
   box-shadow: var(--bacon-shadow);
   color: var(--bacon-text);
@@ -580,6 +575,10 @@
   display: inline-flex;
   flex: 0 0 auto;
   overflow: visible;
+}
+
+.bacon-fancy-tooltip-anchor > * {
+  height: 100%;
 }
 
 .bacon-fancy-tooltip-anchor:focus-within {
@@ -1249,8 +1248,6 @@
   }
 
   .bacon-title-action-icon-button {
-    width: 40px;
-    height: 40px;
     border-radius: 14px;
     font-size: 1rem;
   }
