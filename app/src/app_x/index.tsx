@@ -60,6 +60,7 @@ import {
   serializePathNodes,
 } from "./generators/cinenerdle2/hash";
 import {
+  CINENERDLE_RECORDS_UPDATED_EVENT,
   CINENERDLE_INDEXED_DB_FETCH_COUNT_UPDATED_EVENT,
   clearIndexedDb,
   estimateIndexedDbUsageBytes,
@@ -873,6 +874,8 @@ export default function AppX() {
   const [youngestSelectedCard, setYoungestSelectedCard] = useState<YoungestSelectedCard | null>(null);
   const [connectionMatchupPreview, setConnectionMatchupPreview] =
     useState<ConnectionMatchupPreview | null>(null);
+  const [connectionMatchupPreviewRefreshVersion, setConnectionMatchupPreviewRefreshVersion] =
+    useState(0);
   const [cinenerdleIndexedDbBootstrapStatus, setCinenerdleIndexedDbBootstrapStatus] =
     useState<CinenerdleIndexedDbBootstrapStatus>({
       isCoreReady: false,
@@ -947,6 +950,23 @@ export default function AppX() {
 
   useEffect(() => {
     return connectCinenerdleIndexedDbBootstrap(setCinenerdleIndexedDbBootstrapStatus);
+  }, []);
+
+  useEffect(() => {
+    function handleCinenerdleRecordsUpdated() {
+      setConnectionMatchupPreviewRefreshVersion((version) => version + 1);
+    }
+
+    window.addEventListener(
+      CINENERDLE_RECORDS_UPDATED_EVENT,
+      handleCinenerdleRecordsUpdated,
+    );
+    return () => {
+      window.removeEventListener(
+        CINENERDLE_RECORDS_UPDATED_EVENT,
+        handleCinenerdleRecordsUpdated,
+      );
+    };
   }, []);
 
   useEffect(() => {
@@ -1188,7 +1208,12 @@ export default function AppX() {
     return () => {
       cancelled = true;
     };
-  }, [isBookmarksView, isCinenerdleIndexedDbBootstrapLoading, youngestSelectedCard]);
+  }, [
+    connectionMatchupPreviewRefreshVersion,
+    isBookmarksView,
+    isCinenerdleIndexedDbBootstrapLoading,
+    youngestSelectedCard,
+  ]);
 
   useEffect(() => {
     if (connectionQuery.length !== 0 || !isConnectionDropdownDismissed) {
