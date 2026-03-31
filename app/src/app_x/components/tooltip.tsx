@@ -15,6 +15,10 @@ function getTooltipEntries(content: string | string[]): string[] {
     .filter(Boolean);
 }
 
+function isStringArray(content: ReactNode | string[]): content is string[] {
+  return Array.isArray(content) && content.every((entry) => typeof entry === "string");
+}
+
 export default function Tooltip({
   anchorClassName,
   anchorProps,
@@ -40,7 +44,7 @@ export default function Tooltip({
 
   const WrapperTag = wrapperTag;
   const stringEntries =
-    typeof content === "string" || Array.isArray(content)
+    typeof content === "string" || isStringArray(content)
       ? getTooltipEntries(content)
       : null;
 
