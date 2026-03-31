@@ -1,5 +1,4 @@
 import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import "../styles/abstract_generator.css";
 import {
   applyGeneratorUpdate,
   findMatchingYoungestGenerationIndex,
@@ -8,6 +7,7 @@ import {
   isPlaceholderData,
   resolveGeneratorTree,
 } from "../generators/generator_runtime";
+import "../styles/abstract_generator.css";
 import type {
   GeneratorController,
   GeneratorNode,
@@ -240,28 +240,20 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
   ) => {
     const alignment = options?.alignment ?? "center";
     const behavior = options?.behavior ?? "smooth";
-    const row = resolvedTree[generationIndex];
-    const targetNode = row?.[cardIndex];
+    const targetNode = resolvedTree[generationIndex]?.[cardIndex];
 
-    if (!row || !targetNode) {
+    if (!targetNode) {
       return;
     }
 
-    const rowElement = rowRefs.current[generationIndex];
+    const rowTrack = rowRefs.current[generationIndex];
     const targetCard = cardRefs.current[
       `${generationIndex}:${getDataKey(targetNode.data, cardIndex)}`
     ];
 
-    if (targetCard && rowElement) {
-      const maxScrollLeft = Math.max(0, rowElement.scrollWidth - rowElement.clientWidth);
-      const centeredScrollLeft = Math.max(
-        0,
-        Math.min(
-          targetCard.offsetLeft - (rowElement.clientWidth - targetCard.offsetWidth) / 2,
-          maxScrollLeft,
-        ),
-      );
-      const trackPaddingLeft = Number.parseFloat(window.getComputedStyle(rowElement).paddingLeft) || 0;
+    if (targetCard && rowTrack) {
+      const maxScrollLeft = Math.max(0, rowTrack.scrollWidth - rowTrack.clientWidth);
+      const trackPaddingLeft = Number.parseFloat(window.getComputedStyle(rowTrack).paddingLeft) || 0;
       const startAlignedScrollLeft = Math.max(
         0,
         Math.min(
@@ -269,9 +261,24 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
           maxScrollLeft,
         ),
       );
+      const referenceIndex = resolvedTree[0]?.findIndex((node) => node.selected) ?? -1;
+      const referenceCard = referenceIndex >= 0
+        ? cardRefs.current[
+          `0:${getDataKey(resolvedTree[0][referenceIndex].data, referenceIndex)}`
+        ]
+        : null;
+      const centeredScrollLeft = Math.max(
+        0,
+        Math.min(
+          referenceCard
+            ? startAlignedScrollLeft - referenceCard.offsetLeft
+            : startAlignedScrollLeft,
+          maxScrollLeft,
+        ),
+      );
       const targetScrollLeft = alignment === "start" ? startAlignedScrollLeft : centeredScrollLeft;
 
-      scrollElementToLeft(rowElement, targetScrollLeft, behavior);
+      scrollElementToLeft(rowTrack, targetScrollLeft, behavior);
       return;
     }
 
