@@ -1075,21 +1075,6 @@ export default function AppX() {
   }, [connectionSession]);
 
   useEffect(() => {
-    if (selectedSuggestionIndex < 0) {
-      return;
-    }
-
-    const dropdownElement = connectionDropdownRef.current;
-    const selectedOption =
-      dropdownElement?.querySelector<HTMLButtonElement>(".bacon-connection-option-selected") ??
-      null;
-
-    selectedOption?.scrollIntoView({
-      block: "nearest",
-    });
-  }, [selectedSuggestionIndex, connectionSuggestions.length]);
-
-  useEffect(() => {
     if (window.location.hash === hashValue) {
       return;
     }

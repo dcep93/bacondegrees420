@@ -15,13 +15,11 @@ import {
   applyHash,
   areYoungestSelectedCardsEqual,
   getCardTmdbEntityId,
-  hasLoadedPath,
   getYoungestSelectedCard,
   getYoungestSelectedCardParent,
   getYoungestSelectedGenerationIndex,
   getPersonTmdbIdFromCard,
   matchesHighlightedConnectionEntity,
-  serializeSelectedTreePath,
 } from "./navigation";
 import {
   CINENERDLE_RECORDS_UPDATED_EVENT,
@@ -166,45 +164,6 @@ type Cinenerdle2Props = {
   resetVersion: number;
 };
 
-let pendingInitialPathLoadSnap =
-  typeof window !== "undefined" && hasLoadedPath(window.location.hash);
-const INITIAL_PATH_LOAD_VERTICAL_SNAP_DELAY_MS = 150;
-
-function getInitialPathLoadScrollTop(): number {
-  const scrollingElement = document.scrollingElement ?? document.documentElement;
-  const maxScrollTop = Math.max(0, scrollingElement.scrollHeight - window.innerHeight);
-  const generatorElement = document.querySelector<HTMLElement>(".abstract-generator");
-
-  if (!generatorElement) {
-    return maxScrollTop;
-  }
-
-  const generatorRect = generatorElement.getBoundingClientRect();
-  const generatorBottom = generatorRect.top + window.scrollY + generatorRect.height;
-
-  return Math.max(0, Math.min(generatorBottom - window.innerHeight, maxScrollTop));
-}
-
-function snapScrollToInitialPathLoadTarget(onComplete?: () => void) {
-  if (typeof window === "undefined") {
-    onComplete?.();
-    return;
-  }
-
-  window.setTimeout(() => {
-    window.requestAnimationFrame(() => {
-      window.scrollTo({
-        top: getInitialPathLoadScrollTop(),
-        behavior: "auto",
-      });
-
-      window.requestAnimationFrame(() => {
-        onComplete?.();
-      });
-    });
-  }, INITIAL_PATH_LOAD_VERTICAL_SNAP_DELAY_MS);
-}
-
 const Cinenerdle2 = memo(function Cinenerdle2({
   hashValue,
   highlightedConnectionEntity = null,
@@ -217,18 +176,11 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   resetVersion,
 }: Cinenerdle2Props) {
   const normalizedHash = normalizeHashValue(hashValue);
-  const initialShouldSnapToBottomAfterLoad = pendingInitialPathLoadSnap;
   const hashRef = useRef(normalizedHash);
-  const shouldSnapToBottomAfterLoadRef = useRef(initialShouldSnapToBottomAfterLoad);
-  const pendingExplicitFooterTopFetchScrollSuppressionRef = useRef(false);
   const lastYoungestSelectedCardRef = useRef<
     Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }> | null
   >(null);
-  const [explicitFooterTopFetchSuppressVersion, setExplicitFooterTopFetchSuppressVersion] = useState(0);
   const [recordsRefreshVersion, setRecordsRefreshVersion] = useState(0);
-  const [isAwaitingInitialPathLoadSnap, setIsAwaitingInitialPathLoadSnap] = useState(
-    initialShouldSnapToBottomAfterLoad,
-  );
 
   useLayoutEffect(() => {
     hashRef.current = normalizedHash;
@@ -241,13 +193,6 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   useEffect(() => {
     function handleRecordsUpdated() {
       setRecordsRefreshVersion((version) => version + 1);
-
-      if (!pendingExplicitFooterTopFetchScrollSuppressionRef.current) {
-        return;
-      }
-
-      pendingExplicitFooterTopFetchScrollSuppressionRef.current = false;
-      setExplicitFooterTopFetchSuppressVersion((version) => version + 1);
     }
 
     window.addEventListener(CINENERDLE_RECORDS_UPDATED_EVENT, handleRecordsUpdated);
@@ -271,12 +216,8 @@ const Cinenerdle2 = memo(function Cinenerdle2({
     },
     [onHashWrite],
   );
-  const handleExplicitFooterTopRefreshClick = useCallback(() => {
-    pendingExplicitFooterTopFetchScrollSuppressionRef.current = true;
-  }, []);
 
   const controller = useCinenerdleController({
-    onExplicitFooterTopRefreshClick: handleExplicitFooterTopRefreshClick,
     recordsRefreshVersion,
     readHash,
     writeHash,
@@ -320,10 +261,6 @@ const Cinenerdle2 = memo(function Cinenerdle2({
     };
   }, []);
   const generatorResetKey = `${resetVersion}:${navigationVersion}`;
-  const generatorScrollSessionKey = `${resetVersion}:${navigationVersion}`;
-  const suppressTreeChangeScrollKey = explicitFooterTopFetchSuppressVersion > 0
-    ? explicitFooterTopFetchSuppressVersion
-    : null;
 
   return (
     <AbstractGenerator
@@ -336,19 +273,6 @@ const Cinenerdle2 = memo(function Cinenerdle2({
       onFocusRequestMatchChange={onHighlightedConnectionEntityYoungestGenerationMatchChange}
       onTreeChange={(tree) => {
         const youngestSelectedGenerationIndex = getYoungestSelectedGenerationIndex(tree);
-
-        if (
-          shouldSnapToBottomAfterLoadRef.current &&
-          tree.length > 0 &&
-          serializeSelectedTreePath(tree) === normalizedHash
-        ) {
-          shouldSnapToBottomAfterLoadRef.current = false;
-          pendingInitialPathLoadSnap = false;
-          snapScrollToInitialPathLoadTarget(() => {
-            setIsAwaitingInitialPathLoadSnap(false);
-          });
-        }
-
         const nextYoungestSelectedCard = getYoungestSelectedCard(tree);
         const nextYoungestSelectedCardParent = getYoungestSelectedCardParent(tree);
         setTmdbLogGeneration(youngestSelectedGenerationIndex);
@@ -370,9 +294,6 @@ const Cinenerdle2 = memo(function Cinenerdle2({
       reduce={controller.reduce}
       renderCard={controller.renderCard}
       runEffect={controller.runEffect}
-      scrollSessionKey={generatorScrollSessionKey}
-      suppressTreeChangeScrollKey={suppressTreeChangeScrollKey}
-      visuallyHidden={isAwaitingInitialPathLoadSnap}
     />
   );
 });

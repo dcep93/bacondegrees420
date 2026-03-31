@@ -343,40 +343,6 @@ function renderConnectionBadge(card: RenderableCinenerdleEntityCard) {
   );
 }
 
-function getRefreshRowTrack(
-  event: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>,
-): HTMLDivElement | null {
-  const currentTarget = event.currentTarget;
-  if (!(currentTarget instanceof HTMLElement)) {
-    return null;
-  }
-
-  const rowTrack = currentTarget.closest(".generator-row-track");
-  return rowTrack instanceof HTMLDivElement ? rowTrack : null;
-}
-
-function restoreRowTrackScrollLeft(
-  rowTrack: HTMLDivElement | null,
-  scrollLeft: number | null,
-) {
-  if (!rowTrack || scrollLeft === null) {
-    return;
-  }
-
-  const restore = () => {
-    rowTrack.scrollTo({
-      left: scrollLeft,
-      behavior: "auto",
-    });
-  };
-
-  restore();
-  window.requestAnimationFrame(restore);
-  window.requestAnimationFrame(() => {
-    window.requestAnimationFrame(restore);
-  });
-}
-
 export function FooterChips({
   card,
 }: {
@@ -394,9 +360,6 @@ export function FooterChips({
     refreshState.cardKey === card.key;
 
   const handleRefresh = (event: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) => {
-    const rowTrack = getRefreshRowTrack(event);
-    const preservedScrollLeft = rowTrack?.scrollLeft ?? null;
-
     card.onExplicitFooterTopRefreshClick?.();
 
     void triggerPopularityChipRefresh(event, {
@@ -412,11 +375,9 @@ export function FooterChips({
             : {
                 cardKey: null,
                 isRefreshing: false,
-          },
+              },
         );
       },
-    }).finally(() => {
-      restoreRowTrackScrollLeft(rowTrack, preservedScrollLeft);
     });
   };
   const connectionBadge = card.hasCachedTmdbSource
