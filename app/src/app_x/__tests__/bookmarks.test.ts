@@ -1,4 +1,23 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const indexedDbMocks = vi.hoisted(() => {
+  const persistedHashes: string[] = [];
+
+  return {
+    getPersistedBookmarkHashes: vi.fn(async () => [...persistedHashes]),
+    persistedHashes,
+    replacePersistedBookmarkHashes: vi.fn(async (hashes: string[]) => {
+      persistedHashes.splice(0, persistedHashes.length, ...hashes);
+      return [...persistedHashes];
+    }),
+  };
+});
+
+vi.mock("../generators/cinenerdle2/indexed_db", () => ({
+  getPersistedBookmarkHashes: indexedDbMocks.getPersistedBookmarkHashes,
+  replacePersistedBookmarkHashes: indexedDbMocks.replacePersistedBookmarkHashes,
+}));
+
 import {
   BOOKMARKS_STORAGE_KEY,
   loadBookmarks,
@@ -7,11 +26,8 @@ import {
   replaceBookmarks,
   saveBookmarks,
   serializeBookmarksAsJsonl,
-  toggleBookmarkPreviewCardSelection,
   type BookmarkEntry,
 } from "../bookmarks";
-import type { BookmarkPreviewCard } from "../components/bookmark_preview";
-import { ESCAPE_LABEL } from "../generators/cinenerdle2/constants";
 import { createPathNode, serializePathNodes } from "../generators/cinenerdle2/hash";
 
 const MATRIX_HASH = serializePathNodes([
@@ -21,304 +37,142 @@ const KEANU_HASH = serializePathNodes([
   createPathNode("person", "Keanu Reeves"),
 ]);
 
-function createPreviewCard(overrides: Partial<BookmarkPreviewCard> = {}): BookmarkPreviewCard {
-  return {
-    key: "movie:the-matrix:1999",
-    kind: "movie",
-    name: "The Matrix",
-    imageUrl: null,
-    subtitle: "Movie",
-    subtitleDetail: "1999",
-    popularity: 99,
-    popularitySource: "TMDb movie popularity from the cached movie record.",
-    connectionCount: 12,
-    sources: [],
-    status: null,
-    hasCachedTmdbSource: true,
-    year: "1999",
-    voteAverage: 8.7,
-    voteCount: 100,
-    ...overrides,
-  };
-}
-
-function createBreakPreviewCard(
-  overrides: Partial<Extract<BookmarkPreviewCard, { kind: "break" }>> = {},
-): Extract<BookmarkPreviewCard, { kind: "break" }> {
-  return {
-    key: "break",
-    kind: "break",
-    name: ESCAPE_LABEL,
-    imageUrl: null,
-    subtitle: "",
-    subtitleDetail: "",
-    popularity: 0,
-    popularitySource: null,
-    connectionCount: null,
-    sources: [],
-    status: null,
-    hasCachedTmdbSource: false,
-    ...overrides,
-  };
-}
-
-function createBookmark(overrides: Partial<BookmarkEntry> = {}): BookmarkEntry {
-  return {
-    id: "bookmark-1",
-    hash: MATRIX_HASH,
-    savedAt: "2026-03-28T00:00:00.000Z",
-    label: "The Matrix",
-    previewCards: [createPreviewCard()],
-    selectedPreviewCardIndices: [0],
-    ...overrides,
-  };
+function createBookmark(hash: string): BookmarkEntry {
+  return { hash };
 }
 
 describe("bookmarks", () => {
   beforeEach(() => {
+    indexedDbMocks.persistedHashes.splice(0, indexedDbMocks.persistedHashes.length);
+    indexedDbMocks.getPersistedBookmarkHashes.mockClear();
+    indexedDbMocks.replacePersistedBookmarkHashes.mockClear();
+
     const storage = new Map<string, string>();
     Object.defineProperty(globalThis, "localStorage", {
       configurable: true,
       value: {
-        getItem: (key: string) => storage.get(key) ?? null,
-        setItem: (key: string, value: string) => {
-          storage.set(key, value);
+        clear: () => {
+          storage.clear();
         },
+        getItem: (key: string) => storage.get(key) ?? null,
         removeItem: (key: string) => {
           storage.delete(key);
         },
-        clear: () => {
-          storage.clear();
+        setItem: (key: string, value: string) => {
+          storage.set(key, value);
         },
       },
     });
   });
 
-  it("loads bookmarks with normalized hashes and valid selected preview indices", () => {
+  it("loads bookmarks from indexeddb when persisted hashes are present", async () => {
+    indexedDbMocks.persistedHashes.push(MATRIX_HASH, KEANU_HASH);
+
+    await expect(loadBookmarks()).resolves.toEqual([
+      createBookmark(MATRIX_HASH),
+      createBookmark(KEANU_HASH),
+    ]);
+    expect(indexedDbMocks.replacePersistedBookmarkHashes).not.toHaveBeenCalled();
+  });
+
+  it("migrates legacy localStorage bookmarks into indexeddb hashes", async () => {
     localStorage.setItem(BOOKMARKS_STORAGE_KEY, JSON.stringify([
       {
-        ...createBookmark({
-          hash: "film|The Matrix (1999)",
-          label: "  The Matrix  ",
-          selectedPreviewCardIndices: [2, 0, 0, -1],
-        }),
+        hash: "film|The Matrix (1999)",
+        previewCards: [{ kind: "movie", name: "The Matrix" }],
       },
       {
-        id: "invalid-bookmark",
-        hash: "#invalid",
+        hash: KEANU_HASH,
+      },
+      {
+        hash: "film|The Matrix (1999)",
       },
     ]));
 
-    expect(loadBookmarks()).toEqual([
-      createBookmark({
-        hash: MATRIX_HASH,
-        label: "The Matrix",
-        selectedPreviewCardIndices: [0],
-      }),
+    await expect(loadBookmarks()).resolves.toEqual([
+      createBookmark(MATRIX_HASH),
+      createBookmark(KEANU_HASH),
     ]);
+    expect(indexedDbMocks.replacePersistedBookmarkHashes).toHaveBeenCalledWith([
+      MATRIX_HASH,
+      KEANU_HASH,
+    ]);
+    expect(localStorage.getItem(BOOKMARKS_STORAGE_KEY)).toBeNull();
   });
 
   it("merges only missing bookmarks by normalized hash", () => {
-    const localBookmarks = [
-      createBookmark({
-        id: "local",
-        hash: MATRIX_HASH,
-        label: "Local Matrix",
-      }),
-    ];
-    const remoteBookmarks = [
-      createBookmark({
-        id: "remote-duplicate",
-        hash: "film|The Matrix (1999)",
-        label: "Remote Matrix",
-      }),
-      createBookmark({
-        id: "remote-missing",
-        hash: KEANU_HASH,
-        label: "Keanu Reeves",
-        previewCards: [
-          createPreviewCard({
-            key: "person:keanu-reeves",
-            kind: "person",
-            name: "Keanu Reeves",
-            subtitle: "Person",
-            subtitleDetail: "Actor",
-          }),
-        ],
-      }),
-    ];
-
-    expect(mergeMissingBookmarks(localBookmarks, remoteBookmarks)).toEqual([
-      localBookmarks[0],
-      remoteBookmarks[1],
+    expect(mergeMissingBookmarks(
+      [createBookmark(MATRIX_HASH)],
+      [
+        createBookmark("film|The Matrix (1999)"),
+        createBookmark(KEANU_HASH),
+      ],
+    )).toEqual([
+      createBookmark(MATRIX_HASH),
+      createBookmark(KEANU_HASH),
     ]);
   });
 
-  it("normalizes bookmarks before saving them", () => {
-    saveBookmarks([
-      createBookmark({
-        hash: "film|The Matrix (1999)",
-        label: "  The Matrix  ",
-        selectedPreviewCardIndices: [0, 2, 0],
-      }),
+  it("normalizes and persists bookmark hashes when saving", async () => {
+    await expect(saveBookmarks([
+      createBookmark("film|The Matrix (1999)"),
+      createBookmark(MATRIX_HASH),
+      createBookmark(KEANU_HASH),
+    ])).resolves.toEqual([
+      createBookmark(MATRIX_HASH),
+      createBookmark(KEANU_HASH),
     ]);
 
-    expect(JSON.parse(localStorage.getItem(BOOKMARKS_STORAGE_KEY) ?? "[]")).toEqual([
-      createBookmark({
-        hash: MATRIX_HASH,
-        label: "The Matrix",
-        selectedPreviewCardIndices: [0],
-      }),
+    expect(indexedDbMocks.persistedHashes).toEqual([
+      MATRIX_HASH,
+      KEANU_HASH,
     ]);
   });
 
-  it("drops selected preview indices that point at escape separators", () => {
-    saveBookmarks([
-      createBookmark({
-        previewCards: [
-          createPreviewCard(),
-          createBreakPreviewCard(),
-          createPreviewCard({
-            key: "person:keanu-reeves",
-            kind: "person",
-            name: "Keanu Reeves",
-            subtitle: "Person",
-            subtitleDetail: "Actor",
-          }),
-        ],
-        selectedPreviewCardIndices: [1, 2],
-      }),
-    ]);
-
-    expect(JSON.parse(localStorage.getItem(BOOKMARKS_STORAGE_KEY) ?? "[]")).toEqual([
-      createBookmark({
-        previewCards: [
-          createPreviewCard(),
-          createBreakPreviewCard(),
-          createPreviewCard({
-            key: "person:keanu-reeves",
-            kind: "person",
-            name: "Keanu Reeves",
-            subtitle: "Person",
-            subtitleDetail: "Actor",
-          }),
-        ],
-        selectedPreviewCardIndices: [2],
-      }),
-    ]);
-  });
-
-  it("ignores toggle requests for escape separators", () => {
-    const currentBookmarks = [
-      createBookmark({
-        previewCards: [createPreviewCard(), createBreakPreviewCard()],
-        selectedPreviewCardIndices: [0],
-      }),
-    ];
-
-    expect(toggleBookmarkPreviewCardSelection(currentBookmarks, "bookmark-1", 1)).toEqual(
-      currentBookmarks,
-    );
-  });
-
-  it("serializes normalized bookmarks as jsonl", () => {
+  it("serializes bookmarks as one hash per line", () => {
     expect(serializeBookmarksAsJsonl([
-      createBookmark({
-        hash: "film|The Matrix (1999)",
-        label: "  The Matrix  ",
-        selectedPreviewCardIndices: [0, 2, 0],
-      }),
-    ])).toBe(JSON.stringify(
-      createBookmark({
-        hash: MATRIX_HASH,
-        label: "The Matrix",
-        selectedPreviewCardIndices: [0],
-      }),
-    ));
+      createBookmark("film|The Matrix (1999)"),
+      createBookmark(KEANU_HASH),
+    ])).toBe([
+      MATRIX_HASH,
+      KEANU_HASH,
+    ].join("\n"));
   });
 
-  it("parses valid jsonl bookmark rows", () => {
-    expect(parseBookmarksJsonl([
-      JSON.stringify(createBookmark()),
-      JSON.stringify(createBookmark({
-        id: "bookmark-2",
-        hash: KEANU_HASH,
-        label: "Keanu Reeves",
-        previewCards: [
-          createPreviewCard({
-            key: "person:keanu-reeves",
-            kind: "person",
-            name: "Keanu Reeves",
-            subtitle: "Person",
-            subtitleDetail: "Actor",
-          }),
-        ],
-      })),
-    ].join("\n"))).toEqual([
-      createBookmark(),
-      createBookmark({
-        id: "bookmark-2",
-        hash: KEANU_HASH,
-        label: "Keanu Reeves",
-        previewCards: [
-          createPreviewCard({
-            key: "person:keanu-reeves",
-            kind: "person",
-            name: "Keanu Reeves",
-            subtitle: "Person",
-            subtitleDetail: "Actor",
-          }),
-        ],
-      }),
+  it("parses valid jsonl bookmark hashes and ignores blank lines", () => {
+    expect(parseBookmarksJsonl(`\n${MATRIX_HASH}\n\n${KEANU_HASH}\n`)).toEqual([
+      createBookmark(MATRIX_HASH),
+      createBookmark(KEANU_HASH),
     ]);
   });
 
-  it("ignores blank jsonl lines", () => {
-    expect(parseBookmarksJsonl(`\n${JSON.stringify(createBookmark())}\n\n`)).toEqual([
-      createBookmark(),
-    ]);
-  });
-
-  it("rejects malformed jsonl lines", () => {
+  it("rejects invalid jsonl bookmark hashes", () => {
     expect(() => parseBookmarksJsonl("{")).toThrowError(
-      "Bookmark JSONL line 1 is not valid JSON",
+      "Bookmark JSONL line 1 is not a valid hash",
     );
   });
 
-  it("rejects invalid bookmark jsonl rows", () => {
-    expect(() => parseBookmarksJsonl(JSON.stringify({
-      id: "bookmark-1",
-      hash: MATRIX_HASH,
-    }))).toThrowError("Bookmark JSONL line 1 is not a valid bookmark");
+  it("rejects duplicate jsonl bookmark hashes after normalization", () => {
+    expect(() => parseBookmarksJsonl([
+      MATRIX_HASH,
+      "film|The Matrix (1999)",
+    ].join("\n"))).toThrowError(
+      "Bookmark JSONL line 2 is a duplicate hash",
+    );
   });
 
-  it("rejects bookmarks that normalize to empty labels", () => {
-    expect(() => parseBookmarksJsonl(JSON.stringify(createBookmark({
-      label: "   ",
-    })))).toThrowError("Bookmark JSONL line 1 is not a valid bookmark");
-  });
-
-  it("replaces bookmarks with normalized entries and persists them", () => {
-    expect(replaceBookmarks([
-      createBookmark({
-        hash: "film|The Matrix (1999)",
-        label: "  The Matrix  ",
-        selectedPreviewCardIndices: [0, 2, 0],
-      }),
-    ])).toEqual([
-      createBookmark({
-        hash: MATRIX_HASH,
-        label: "The Matrix",
-        selectedPreviewCardIndices: [0],
-      }),
+  it("replaces bookmarks with normalized persisted entries", async () => {
+    await expect(replaceBookmarks([
+      createBookmark("film|The Matrix (1999)"),
+      createBookmark(KEANU_HASH),
+    ])).resolves.toEqual([
+      createBookmark(MATRIX_HASH),
+      createBookmark(KEANU_HASH),
     ]);
 
-    expect(JSON.parse(localStorage.getItem(BOOKMARKS_STORAGE_KEY) ?? "[]")).toEqual([
-      createBookmark({
-        hash: MATRIX_HASH,
-        label: "The Matrix",
-        selectedPreviewCardIndices: [0],
-      }),
+    expect(indexedDbMocks.persistedHashes).toEqual([
+      MATRIX_HASH,
+      KEANU_HASH,
     ]);
   });
 });

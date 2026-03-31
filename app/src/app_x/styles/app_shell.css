@@ -211,6 +211,9 @@
   padding: 10px 16px;
   border: 1px solid var(--bacon-border-strong);
   border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   background: var(--bacon-panel-strong);
   box-shadow: var(--bacon-shadow);
   color: var(--bacon-text);
@@ -234,6 +237,16 @@
 .bacon-title-action-button:focus-visible {
   outline: 2px solid var(--bacon-accent);
   outline-offset: 3px;
+}
+
+.bacon-title-action-badge {
+  padding: 3px 8px;
+  border: 1px solid rgba(228, 193, 150, 0.46);
+  border-radius: 999px;
+  background: rgba(228, 193, 150, 0.14);
+  color: var(--bacon-accent);
+  font-size: 0.68rem;
+  line-height: 1;
 }
 
 .bacon-title-action-icon-button {
@@ -360,7 +373,7 @@
     "Liberation Mono",
     monospace;
   font-size: 0.9rem;
-  line-height: 1.5;
+  line-height: 2em;
   outline: none;
 }
 

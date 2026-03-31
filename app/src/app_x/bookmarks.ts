@@ -1,7 +1,7 @@
 import {
-  isBookmarkPreviewCardSelectable,
-  type BookmarkPreviewCard,
-} from "./components/bookmark_preview";
+  getPersistedBookmarkHashes,
+  replacePersistedBookmarkHashes,
+} from "./generators/cinenerdle2/indexed_db";
 import { normalizeHashValue } from "./generators/cinenerdle2/hash";
 
 export const BOOKMARKS_STORAGE_KEY = "bacondegrees420.bookmarks.v1";
@@ -9,98 +9,19 @@ export const BOOKMARKS_STORAGE_KEY = "bacondegrees420.bookmarks.v1";
 export type AppViewMode = "generator" | "bookmarks";
 
 export type BookmarkEntry = {
-  id: string;
   hash: string;
-  savedAt: string;
-  label: string;
-  previewCards: BookmarkPreviewCard[];
-  selectedPreviewCardIndices: number[];
 };
 
-function sanitizeSelectedPreviewCardIndices(
-  previewCards: BookmarkPreviewCard[],
-  selectedPreviewCardIndices: number[] | undefined,
-) {
-  return Array.from(
-    new Set(
-      (selectedPreviewCardIndices ?? []).filter((value) => {
-        if (!Number.isInteger(value) || value < 0 || value >= previewCards.length) {
-          return false;
-        }
-
-        return isBookmarkPreviewCardSelectable(previewCards[value]);
-      }),
-    ),
-  ).sort((left, right) => left - right);
+function normalizeBookmarkHash(hash: string): string {
+  return normalizeHashValue(hash);
 }
 
-function normalizeBookmarkPreviewCard(card: BookmarkPreviewCard): BookmarkPreviewCard {
-  return {
-    ...card,
-    popularitySource: card.popularitySource ?? null,
-  };
-}
-
-function isBookmarkPreviewCard(value: unknown): value is BookmarkPreviewCard {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const candidate = value as Partial<BookmarkPreviewCard>;
-  return (
-    typeof candidate.key === "string" &&
-    typeof candidate.kind === "string" &&
-    typeof candidate.name === "string" &&
-    typeof candidate.subtitle === "string" &&
-    typeof candidate.subtitleDetail === "string" &&
-    typeof candidate.popularity === "number" &&
-    (
-      candidate.popularitySource === undefined ||
-      candidate.popularitySource === null ||
-      typeof candidate.popularitySource === "string"
-    ) &&
-    (candidate.connectionCount === null || typeof candidate.connectionCount === "number") &&
-    Array.isArray(candidate.sources) &&
-    typeof candidate.hasCachedTmdbSource === "boolean"
+function isBookmarkEntryLike(value: unknown): value is { hash: string } {
+  return Boolean(
+    value &&
+    typeof value === "object" &&
+    typeof (value as { hash?: unknown }).hash === "string",
   );
-}
-
-export function isBookmarkEntry(value: unknown): value is BookmarkEntry {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const candidate = value as Partial<BookmarkEntry>;
-  return (
-    typeof candidate.id === "string" &&
-    typeof candidate.hash === "string" &&
-    typeof candidate.savedAt === "string" &&
-    typeof candidate.label === "string" &&
-    Array.isArray(candidate.previewCards) &&
-    candidate.previewCards.every(isBookmarkPreviewCard) &&
-    (
-      candidate.selectedPreviewCardIndices === undefined ||
-      (
-        Array.isArray(candidate.selectedPreviewCardIndices) &&
-        candidate.selectedPreviewCardIndices.every((value) => typeof value === "number")
-      )
-    )
-  );
-}
-
-export function normalizeBookmarkEntry(bookmark: BookmarkEntry): BookmarkEntry {
-  const previewCards = bookmark.previewCards.map(normalizeBookmarkPreviewCard);
-
-  return {
-    ...bookmark,
-    hash: normalizeHashValue(bookmark.hash),
-    label: bookmark.label.trim(),
-    previewCards,
-    selectedPreviewCardIndices: sanitizeSelectedPreviewCardIndices(
-      previewCards,
-      bookmark.selectedPreviewCardIndices,
-    ),
-  };
 }
 
 export function normalizeBookmarkEntries(value: unknown): BookmarkEntry[] {
@@ -108,24 +29,32 @@ export function normalizeBookmarkEntries(value: unknown): BookmarkEntry[] {
     return [];
   }
 
-  return value
-    .filter(isBookmarkEntry)
-    .map((bookmark) => normalizeBookmarkEntry({
-      ...bookmark,
-      selectedPreviewCardIndices: bookmark.selectedPreviewCardIndices ?? [],
-    }))
-    .filter((bookmark) => bookmark.label && bookmark.previewCards.length > 0);
+  const seenHashes = new Set<string>();
+  const normalizedBookmarks: BookmarkEntry[] = [];
+
+  value.forEach((candidateBookmark) => {
+    const candidateHash =
+      typeof candidateBookmark === "string"
+        ? candidateBookmark
+        : isBookmarkEntryLike(candidateBookmark)
+          ? candidateBookmark.hash
+          : "";
+    const normalizedHash = normalizeBookmarkHash(candidateHash);
+
+    if (!normalizedHash || seenHashes.has(normalizedHash)) {
+      return;
+    }
+
+    seenHashes.add(normalizedHash);
+    normalizedBookmarks.push({
+      hash: normalizedHash,
+    });
+  });
+
+  return normalizedBookmarks;
 }
 
-export function createBookmarkId() {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-
-  return `bookmark-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-export function loadBookmarks(): BookmarkEntry[] {
+function readLegacyBookmarksFromLocalStorage(): BookmarkEntry[] {
   try {
     const rawBookmarks = localStorage.getItem(BOOKMARKS_STORAGE_KEY);
     if (!rawBookmarks) {
@@ -138,13 +67,46 @@ export function loadBookmarks(): BookmarkEntry[] {
   }
 }
 
-export function saveBookmarks(bookmarks: BookmarkEntry[]) {
-  localStorage.setItem(BOOKMARKS_STORAGE_KEY, JSON.stringify(normalizeBookmarkEntries(bookmarks)));
+async function migrateLegacyBookmarksToIndexedDb(): Promise<BookmarkEntry[]> {
+  const legacyBookmarks = readLegacyBookmarksFromLocalStorage();
+  if (legacyBookmarks.length === 0) {
+    return [];
+  }
+
+  const migratedHashes = await replacePersistedBookmarkHashes(
+    legacyBookmarks.map((bookmark) => bookmark.hash),
+  );
+
+  try {
+    localStorage.removeItem(BOOKMARKS_STORAGE_KEY);
+  } catch {
+    // Ignore localStorage cleanup failures after a successful migration write.
+  }
+
+  return migratedHashes.map((hash) => ({ hash }));
+}
+
+export async function loadBookmarks(): Promise<BookmarkEntry[]> {
+  const persistedHashes = await getPersistedBookmarkHashes();
+  if (persistedHashes.length > 0) {
+    return persistedHashes.map((hash) => ({ hash }));
+  }
+
+  return migrateLegacyBookmarksToIndexedDb();
+}
+
+export async function saveBookmarks(bookmarks: BookmarkEntry[]): Promise<BookmarkEntry[]> {
+  const normalizedBookmarks = normalizeBookmarkEntries(bookmarks);
+  const persistedHashes = await replacePersistedBookmarkHashes(
+    normalizedBookmarks.map((bookmark) => bookmark.hash),
+  );
+
+  return persistedHashes.map((hash) => ({ hash }));
 }
 
 export function serializeBookmarksAsJsonl(bookmarks: BookmarkEntry[]): string {
   return normalizeBookmarkEntries(bookmarks)
-    .map((bookmark) => JSON.stringify(bookmark))
+    .map((bookmark) => bookmark.hash)
     .join("\n");
 }
 
@@ -161,36 +123,27 @@ export function parseBookmarksJsonl(jsonlText: string): BookmarkEntry[] {
     return [];
   }
 
+  const seenHashes = new Set<string>();
+
   return parsedLines.map(({ line, lineNumber }) => {
-    let parsedValue: unknown;
-
-    try {
-      parsedValue = JSON.parse(line);
-    } catch {
-      throw new Error(`Bookmark JSONL line ${lineNumber} is not valid JSON`);
+    const normalizedHash = normalizeBookmarkHash(line);
+    if (!normalizedHash) {
+      throw new Error(`Bookmark JSONL line ${lineNumber} is not a valid hash`);
     }
 
-    if (!isBookmarkEntry(parsedValue)) {
-      throw new Error(`Bookmark JSONL line ${lineNumber} is not a valid bookmark`);
+    if (seenHashes.has(normalizedHash)) {
+      throw new Error(`Bookmark JSONL line ${lineNumber} is a duplicate hash`);
     }
 
-    const normalizedBookmark = normalizeBookmarkEntry({
-      ...parsedValue,
-      selectedPreviewCardIndices: parsedValue.selectedPreviewCardIndices ?? [],
-    });
-
-    if (!normalizedBookmark.label || normalizedBookmark.previewCards.length === 0) {
-      throw new Error(`Bookmark JSONL line ${lineNumber} is not a valid bookmark`);
-    }
-
-    return normalizedBookmark;
+    seenHashes.add(normalizedHash);
+    return {
+      hash: normalizedHash,
+    };
   });
 }
 
-export function replaceBookmarks(bookmarks: BookmarkEntry[]): BookmarkEntry[] {
-  const normalizedBookmarks = normalizeBookmarkEntries(bookmarks);
-  saveBookmarks(normalizedBookmarks);
-  return normalizedBookmarks;
+export async function replaceBookmarks(bookmarks: BookmarkEntry[]): Promise<BookmarkEntry[]> {
+  return saveBookmarks(bookmarks);
 }
 
 export function mergeMissingBookmarks(
@@ -221,74 +174,48 @@ export function upsertBookmarkEntry(
   currentBookmarks: BookmarkEntry[],
   nextBookmark: BookmarkEntry,
 ): BookmarkEntry[] {
-  const normalizedBookmark = normalizeBookmarkEntry(nextBookmark);
-  const normalizedHash = normalizedBookmark.hash;
-  const dedupedBookmarks = currentBookmarks.filter((bookmark) => bookmark.hash !== normalizedHash);
-  const nextBookmarks = [normalizedBookmark, ...dedupedBookmarks];
+  const normalizedBookmark = normalizeBookmarkEntries([nextBookmark])[0];
+  if (!normalizedBookmark) {
+    return normalizeBookmarkEntries(currentBookmarks);
+  }
 
-  saveBookmarks(nextBookmarks);
-  return nextBookmarks;
+  const dedupedBookmarks = normalizeBookmarkEntries(currentBookmarks).filter(
+    (bookmark) => bookmark.hash !== normalizedBookmark.hash,
+  );
+  return [normalizedBookmark, ...dedupedBookmarks];
 }
 
 export function removeBookmarkEntry(
   currentBookmarks: BookmarkEntry[],
-  bookmarkId: string,
+  bookmarkHash: string,
 ): BookmarkEntry[] {
-  const nextBookmarks = currentBookmarks.filter((bookmark) => bookmark.id !== bookmarkId);
-  saveBookmarks(nextBookmarks);
-  return nextBookmarks;
+  const normalizedBookmarkHash = normalizeBookmarkHash(bookmarkHash);
+  return normalizeBookmarkEntries(currentBookmarks).filter(
+    (bookmark) => bookmark.hash !== normalizedBookmarkHash,
+  );
 }
 
 export function moveBookmarkEntry(
   currentBookmarks: BookmarkEntry[],
-  bookmarkId: string,
+  bookmarkHash: string,
   direction: "up" | "down",
 ): BookmarkEntry[] {
-  const bookmarkIndex = currentBookmarks.findIndex((bookmark) => bookmark.id === bookmarkId);
+  const normalizedBookmarkHash = normalizeBookmarkHash(bookmarkHash);
+  const normalizedBookmarks = normalizeBookmarkEntries(currentBookmarks);
+  const bookmarkIndex = normalizedBookmarks.findIndex(
+    (bookmark) => bookmark.hash === normalizedBookmarkHash,
+  );
   if (bookmarkIndex < 0) {
-    return currentBookmarks;
+    return normalizedBookmarks;
   }
 
   const nextIndex = direction === "up" ? bookmarkIndex - 1 : bookmarkIndex + 1;
-  if (nextIndex < 0 || nextIndex >= currentBookmarks.length) {
-    return currentBookmarks;
+  if (nextIndex < 0 || nextIndex >= normalizedBookmarks.length) {
+    return normalizedBookmarks;
   }
 
-  const nextBookmarks = [...currentBookmarks];
+  const nextBookmarks = [...normalizedBookmarks];
   const [movedBookmark] = nextBookmarks.splice(bookmarkIndex, 1);
   nextBookmarks.splice(nextIndex, 0, movedBookmark);
-  saveBookmarks(nextBookmarks);
-  return nextBookmarks;
-}
-
-export function toggleBookmarkPreviewCardSelection(
-  currentBookmarks: BookmarkEntry[],
-  bookmarkId: string,
-  previewCardIndex: number,
-): BookmarkEntry[] {
-  const bookmarkIndex = currentBookmarks.findIndex((bookmark) => bookmark.id === bookmarkId);
-  if (bookmarkIndex < 0) {
-    return currentBookmarks;
-  }
-
-  const currentBookmark = currentBookmarks[bookmarkIndex];
-  if (previewCardIndex < 0 || previewCardIndex >= currentBookmark.previewCards.length) {
-    return currentBookmarks;
-  }
-
-  if (!isBookmarkPreviewCardSelectable(currentBookmark.previewCards[previewCardIndex])) {
-    return currentBookmarks;
-  }
-
-  const isSelected = currentBookmark.selectedPreviewCardIndices.includes(previewCardIndex);
-  const nextSelectedPreviewCardIndices = isSelected
-    ? currentBookmark.selectedPreviewCardIndices.filter((value) => value !== previewCardIndex)
-    : [...currentBookmark.selectedPreviewCardIndices, previewCardIndex];
-  const nextBookmarks = [...currentBookmarks];
-  nextBookmarks[bookmarkIndex] = normalizeBookmarkEntry({
-    ...currentBookmark,
-    selectedPreviewCardIndices: nextSelectedPreviewCardIndices,
-  });
-  saveBookmarks(nextBookmarks);
   return nextBookmarks;
 }

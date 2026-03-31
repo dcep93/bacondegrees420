@@ -907,6 +907,15 @@ async function buildCorrectivePersonHydrationTasks(
 
   return Array.from(tasksByKey.values()).sort((left, right) => left.index - right.index);
 }
+
+async function runSelectedPathHydrationTasksSequentially(
+  tasks: SelectedPathHydrationTask[],
+): Promise<void> {
+  for (const task of tasks) {
+    await task.run().catch(() => null);
+  }
+}
+
 async function resolvePersonPathNodeFromMovieContext(
   pathNode: Extract<CinenerdlePathNode, { kind: "person" }>,
   movieCard: Extract<CinenerdleCard, { kind: "movie" }> | null,
@@ -1336,9 +1345,7 @@ async function hydrateMissingSelectedPathItemsAndRedraw(
         };
       }
 
-      await Promise.allSettled(
-        hydrationTasks.map((task) => task.run()),
-      );
+      await runSelectedPathHydrationTasksSequentially(hydrationTasks);
       if (readHash() !== initialHash) {
         return {
           correctiveTaskCount: 0,
@@ -1363,9 +1370,7 @@ async function hydrateMissingSelectedPathItemsAndRedraw(
         };
       }
 
-      await Promise.allSettled(
-        correctiveTasks.map((task) => task.run()),
-      );
+      await runSelectedPathHydrationTasksSequentially(correctiveTasks);
       if (readHash() !== initialHash) {
         return {
           correctiveTaskCount: correctiveTasks.length,
@@ -1387,6 +1392,76 @@ async function hydrateMissingSelectedPathItemsAndRedraw(
         hash: readHash(),
       },
       summarizeResult: (result) => result,
+    },
+  );
+}
+
+export async function hydrateHashPathItems(
+  hashValue: string,
+  options: SelectedPathRedrawOptions = {},
+): Promise<{
+  correctiveTaskCount: number;
+  hydrationTaskCount: number;
+}> {
+  return measureAsync(
+    "controller.hydrateHashPathItems",
+    async () => {
+      const originalSelectedPathNodes = getSelectedEntityPathNodes(hashValue);
+      if (originalSelectedPathNodes.length === 0) {
+        return {
+          correctiveTaskCount: 0,
+          hydrationTaskCount: 0,
+        };
+      }
+
+      const selectedPathNodes = await resolveSelectedPathNodesForHydration(
+        getSelectedHydrationPathNodes(hashValue),
+      );
+      const hydrationTasks = await buildSelectedPathHydrationTasks(selectedPathNodes, {
+        forceRefresh: options.forceRefreshSelectedPath,
+      });
+      if (hydrationTasks.length === 0) {
+        return {
+          correctiveTaskCount: 0,
+          hydrationTaskCount: 0,
+        };
+      }
+
+      await runSelectedPathHydrationTasksSequentially(hydrationTasks);
+
+      const dailyStarterSource = shouldUseNetworkStarterSourceForHash(hashValue)
+        ? "network"
+        : "cache";
+      const refreshedTree = await buildTreeFromHash(hashValue, {
+        bypassInFlightCache: true,
+        dailyStarterSource,
+      });
+      const correctiveTasks = await buildCorrectivePersonHydrationTasks(
+        originalSelectedPathNodes,
+        refreshedTree,
+        {
+          forceRefresh: options.forceRefreshSelectedPath,
+        },
+      );
+      if (correctiveTasks.length === 0) {
+        return {
+          correctiveTaskCount: 0,
+          hydrationTaskCount: hydrationTasks.length,
+        };
+      }
+
+      await runSelectedPathHydrationTasksSequentially(correctiveTasks);
+
+      return {
+        correctiveTaskCount: correctiveTasks.length,
+        hydrationTaskCount: hydrationTasks.length,
+      };
+    },
+    {
+      always: true,
+      details: {
+        hash: hashValue,
+      },
     },
   );
 }

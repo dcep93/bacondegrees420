@@ -12,14 +12,12 @@ import {
   type MouseEvent,
 } from "react";
 import {
-  createBookmarkId,
   loadBookmarks,
   moveBookmarkEntry,
   parseBookmarksJsonl,
   removeBookmarkEntry,
-  replaceBookmarks,
+  saveBookmarks,
   serializeBookmarksAsJsonl,
-  toggleBookmarkPreviewCardSelection,
   upsertBookmarkEntry,
   type AppViewMode,
   type BookmarkEntry,
@@ -35,6 +33,10 @@ import {
   type CinenerdleIndexedDbBootstrapStatus,
 } from "./generators/cinenerdle2/bootstrap";
 import {
+  ESCAPE_LABEL,
+  TMDB_ICON_URL,
+} from "./generators/cinenerdle2/constants";
+import {
   createCinenerdleConnectionEntity,
   createFallbackConnectionEntity,
   findConnectionPathBidirectional,
@@ -46,7 +48,9 @@ import {
   type ConnectionEntity,
   type ConnectionSearchResult,
 } from "./generators/cinenerdle2/connection_graph";
-import { buildBookmarkPreviewCardsFromHash } from "./generators/cinenerdle2/controller";
+import {
+  hydrateHashPathItems,
+} from "./generators/cinenerdle2/controller";
 import {
   addCinenerdleDebugLog,
   copyCinenerdleBootstrapDebugLogToClipboard,
@@ -66,6 +70,7 @@ import {
 import {
   CINENERDLE_RECORDS_UPDATED_EVENT,
   CINENERDLE_INDEXED_DB_FETCH_COUNT_UPDATED_EVENT,
+  batchCinenerdleRecordsUpdatedEvents,
   clearIndexedDb,
   estimateIndexedDbUsageBytes,
   getAllSearchableConnectionEntities,
@@ -80,6 +85,10 @@ import type {
   FilmRecord,
   PersonRecord,
 } from "./generators/cinenerdle2/types";
+import type {
+  CinenerdleCard,
+  CinenerdlePathNode,
+} from "./generators/cinenerdle2/view_types";
 import {
   CINENERDLE_DEBUG_LOG_UPDATED_EVENT,
   getCinenerdleFetchDebugEntryCount,
@@ -91,12 +100,16 @@ import {
   getFilmKey,
   getValidTmdbEntityId,
   normalizeName,
+  normalizeTitle,
   normalizeWhitespace,
   parseMoviePathLabel,
 } from "./generators/cinenerdle2/utils";
 import {
-  isBookmarkPreviewCardSelectable,
-} from "./components/bookmark_preview";
+  createCinenerdleOnlyPersonCard,
+  createCinenerdleRootCard,
+  createMovieRootCard,
+  createPersonRootCard,
+} from "./generators/cinenerdle2/cards";
 import ConnectionEntityCard from "./components/connection_entity_card";
 import {
   compareRankedConnectionSuggestions,
@@ -142,6 +155,7 @@ import {
   type IndexedDbBootstrapLoadingShellDelayManager,
 } from "./indexed_db_bootstrap_loading_shell";
 import { measureAsync } from "./perf";
+import { createCardViewModel } from "./generators/cinenerdle2/view_model";
 import { getWindowKeyDownAction } from "./window_keydown";
 import "./styles/app_shell.css";
 
@@ -172,6 +186,23 @@ type ConnectionExclusion =
     kind: "edge";
     edgeKey: string;
   };
+
+type BookmarkRowCard =
+  | {
+    kind: "break";
+    key: string;
+    label: string;
+  }
+  | {
+    kind: "card";
+    key: string;
+    card: RenderableCinenerdleEntityCard;
+  };
+
+type BookmarkRowData = {
+  hash: string;
+  cards: BookmarkRowCard[];
+};
 
 type SelectedPathTarget =
   | {
@@ -335,52 +366,126 @@ function formatBookmarkLabel(hashValue: string): string {
   return getSelectedPathTooltipEntries(hashValue).join(" -> ");
 }
 
-function formatBookmarkSavedAt(savedAt: string): string {
-  const date = new Date(savedAt);
+function formatBookmarkIndexTooltip(bookmark: BookmarkEntry): string {
+  return getSelectedPathTooltipEntries(bookmark.hash).join("\n");
+}
 
-  if (Number.isNaN(date.valueOf())) {
-    return "";
+function createUncachedBookmarkMovieCard(
+  name: string,
+  year: string,
+): Extract<CinenerdleCard, { kind: "movie" }> {
+  return {
+    key: `movie:${normalizeTitle(name)}:${year}`,
+    kind: "movie",
+    name,
+    year,
+    popularity: 0,
+    popularitySource: "Movie details are not cached yet, so popularity is unavailable.",
+    imageUrl: null,
+    subtitle: "Movie",
+    subtitleDetail: "Not cached yet",
+    connectionCount: null,
+    sources: [{ iconUrl: TMDB_ICON_URL, label: "TMDb" }],
+    status: null,
+    voteAverage: null,
+    voteCount: null,
+    record: null,
+  };
+}
+
+async function resolveBookmarkPathCard(
+  pathNode: Extract<CinenerdlePathNode, { kind: "cinenerdle" | "movie" | "person" }>,
+): Promise<Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }>> {
+  if (pathNode.kind === "cinenerdle") {
+    return createCinenerdleRootCard(null) as Extract<
+      CinenerdleCard,
+      { kind: "cinenerdle" | "movie" | "person" }
+    >;
   }
 
-  return date.toLocaleString();
+  if (pathNode.kind === "person") {
+    const personRecord = pathNode.tmdbId
+      ? await getPersonRecordById(pathNode.tmdbId)
+      : await getPersonRecordByName(normalizeName(pathNode.name));
+
+    return (
+      personRecord
+        ? createPersonRootCard(personRecord, pathNode.name)
+        : createCinenerdleOnlyPersonCard(pathNode.name, "database only")
+    ) as Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }>;
+  }
+
+  const movieRecord = await getFilmRecordByTitleAndYear(pathNode.name, pathNode.year);
+
+  return (
+    movieRecord
+      ? createMovieRootCard(movieRecord, pathNode.name)
+      : createUncachedBookmarkMovieCard(pathNode.name, pathNode.year)
+  ) as Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }>;
 }
 
-function formatBookmarkIndexTooltip(bookmark: BookmarkEntry): string {
-  const savedAt = formatBookmarkSavedAt(bookmark.savedAt);
-  const lines = [
-    savedAt ? `Saved ${savedAt}` : "Saved bookmark",
-    ...bookmark.previewCards.map((card) => card.name),
-  ];
-
-  return lines.join("\n");
-}
-
-function createBookmarkPreviewCardViewModel(
-  card: Exclude<BookmarkEntry["previewCards"][number], { kind: "break" }>,
-  isSelected: boolean,
+function createRenderableBookmarkCard(
+  card: Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }>,
 ): RenderableCinenerdleEntityCard {
-  const sharedFields = {
-    ...card,
-    connectionRank: null,
-    connectionOrder: null,
-    connectionParentLabel: null,
-    isSelected,
-    isLocked: false,
-    isAncestorSelected: false,
-  };
+  const viewModel = createCardViewModel(card, {
+    isSelected: false,
+  });
 
-  if (card.kind === "movie") {
+  if (viewModel.kind === "break" || viewModel.kind === "dbinfo") {
+    throw new Error("Bookmark rows cannot render non-entity cards");
+  }
+
+  if (viewModel.kind === "movie") {
     return {
-      ...sharedFields,
-      kind: "movie",
-      voteAverage: card.voteAverage,
-      voteCount: card.voteCount,
+      ...viewModel,
+      onExplicitFooterTopRefreshClick: null,
+      onPopularityClick: null,
+      popularityTooltipText: null,
     };
   }
 
   return {
-    ...sharedFields,
-    kind: card.kind,
+    ...viewModel,
+    onExplicitFooterTopRefreshClick: null,
+    onPopularityClick: null,
+    popularityTooltipText: null,
+  };
+}
+
+async function buildBookmarkRowData(hashValue: string): Promise<BookmarkRowData> {
+  const bookmarkPathNodes = buildPathNodesFromSegments(parseHashSegments(hashValue)).filter(
+    (pathNode): pathNode is Extract<
+      CinenerdlePathNode,
+      { kind: "cinenerdle" | "movie" | "person" | "break" }
+    > =>
+      pathNode.kind === "cinenerdle" ||
+      pathNode.kind === "movie" ||
+      pathNode.kind === "person" ||
+      pathNode.kind === "break",
+  );
+
+  const cards = (await Promise.all(
+    bookmarkPathNodes.map(async (pathNode, index) => {
+      if (pathNode.kind === "break") {
+        return {
+          kind: "break" as const,
+          key: `${hashValue}:break:${index}`,
+          label: ESCAPE_LABEL,
+        };
+      }
+
+      const card = await resolveBookmarkPathCard(pathNode);
+      return {
+        kind: "card" as const,
+        key: `${hashValue}:${index}:${card.key}`,
+        card: createRenderableBookmarkCard(card),
+      };
+    }),
+  )).filter((card): card is BookmarkRowCard => Boolean(card));
+
+  return {
+    hash: hashValue,
+    cards,
   };
 }
 
@@ -453,11 +558,11 @@ async function hydrateConnectionEntityPresentation(
   if (!localRecord || needsDirectHydration) {
     if (entity.kind === "movie") {
       await prepareSelectedMovie(entity.name, entity.year, entity.tmdbId, {
-        forceRefresh: true,
+        forceRefresh: false,
       }).catch(() => null);
     } else {
       await prepareSelectedPerson(entity.name, entity.tmdbId, {
-        forceRefresh: true,
+        forceRefresh: false,
       }).catch(() => null);
     }
   } else if (hasPresentationData) {
@@ -859,7 +964,8 @@ function collectConnectionRowFamilyIds(
 export default function AppX() {
   const initialLocationState = readAppLocationState();
   const [appLocation, setAppLocation] = useState(initialLocationState);
-  const [bookmarks, setBookmarks] = useState<BookmarkEntry[]>(() => loadBookmarks());
+  const [bookmarks, setBookmarks] = useState<BookmarkEntry[]>([]);
+  const [bookmarkRows, setBookmarkRows] = useState<BookmarkRowData[]>([]);
   const [hashValue, setHashValue] = useState(() => initialLocationState.hash);
   const [resetVersion, setResetVersion] = useState(0);
   const [navigationVersion, setNavigationVersion] = useState(0);
@@ -885,9 +991,7 @@ export default function AppX() {
   const [isSavingBookmark, setIsSavingBookmark] = useState(false);
   const [isBookmarksTooltipSuppressed, setIsBookmarksTooltipSuppressed] = useState(false);
   const [isBookmarksJsonlEditorOpen, setIsBookmarksJsonlEditorOpen] = useState(false);
-  const [bookmarksJsonlDraft, setBookmarksJsonlDraft] =
-    useState(() => serializeBookmarksAsJsonl(bookmarks));
-  const [isBookmarksJsonlDraftDirty, setIsBookmarksJsonlDraftDirty] = useState(false);
+  const [bookmarksJsonlDraft, setBookmarksJsonlDraft] = useState("");
   const [connectionQuery, setConnectionQuery] = useState("");
   const [isResolvingConnection, setIsResolvingConnection] = useState(false);
   const [connectionSuggestions, setConnectionSuggestions] = useState<ConnectionSuggestion[]>([]);
@@ -906,6 +1010,9 @@ export default function AppX() {
     useState<string | null>(null);
   const connectionSessionRef = useRef<ConnectionSession | null>(null);
   const pendingHashWriteRef = useRef<PendingHashWrite | null>(null);
+  const bookmarksRef = useRef<BookmarkEntry[]>([]);
+  const bookmarksPersistenceRequestIdRef = useRef(0);
+  const serializedBookmarksJsonlRef = useRef("");
   const lastSyncedHashRef = useRef(normalizeHashValue(initialLocationState.hash));
   const bookmarksReturnHashRef = useRef(normalizeHashValue(initialLocationState.hash));
   const bookmarksPageRenderCountRef = useRef(0);
@@ -928,6 +1035,15 @@ export default function AppX() {
   const clearDbBadgeText = formatClearDbBadgeText(clearDbFetchCount, clearDbTotalFetchCount);
   const isConnectionInputDisabled = isResolvingConnection || isSearchablePersistencePending;
   const isAppBodyBlockedByIndexedDbBootstrap = isCinenerdleIndexedDbBootstrapLoading;
+  const serializedBookmarksJsonl = serializeBookmarksAsJsonl(bookmarks);
+  const isBookmarksJsonlDraftDirty = bookmarksJsonlDraft !== serializedBookmarksJsonl;
+  const displayedBookmarkRows =
+    bookmarkRows.length === bookmarks.length
+      ? bookmarkRows
+      : bookmarks.map((bookmark) => ({
+        hash: bookmark.hash,
+        cards: [],
+      }));
   const shouldShowIndexedDbBootstrapLoadingShellIndicator = shouldShowIndexedDbBootstrapLoadingShell({
     hasLoadingShellDelayElapsed: hasIndexedDbBootstrapLoadingShellDelayElapsed,
     status: cinenerdleIndexedDbBootstrapStatus,
@@ -951,7 +1067,36 @@ export default function AppX() {
   }, []);
 
   useEffect(() => {
+    const requestId = bookmarksPersistenceRequestIdRef.current;
+    let isActive = true;
+
+    void loadBookmarks()
+      .then((loadedBookmarks) => {
+        if (!isActive || bookmarksPersistenceRequestIdRef.current !== requestId) {
+          return;
+        }
+
+        bookmarksRef.current = loadedBookmarks;
+        setBookmarks(loadedBookmarks);
+      })
+      .catch(() => { });
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    bookmarksRef.current = bookmarks;
+  }, [bookmarks]);
+
+  useEffect(() => {
     function handleCinenerdleRecordsUpdated() {
+      void Promise.all(bookmarksRef.current.map((bookmark) => buildBookmarkRowData(bookmark.hash)))
+        .then((nextBookmarkRows) => {
+          setBookmarkRows(nextBookmarkRows);
+        })
+        .catch(() => { });
       setConnectionMatchupPreviewRefreshVersion((version) => version + 1);
     }
 
@@ -1157,12 +1302,14 @@ export default function AppX() {
   }
 
   useEffect(() => {
-    if (isBookmarksJsonlDraftDirty) {
-      return;
-    }
-
-    setBookmarksJsonlDraft(serializeBookmarksAsJsonl(bookmarks));
-  }, [bookmarks, isBookmarksJsonlDraftDirty]);
+    const previousSerializedBookmarksJsonl = serializedBookmarksJsonlRef.current;
+    serializedBookmarksJsonlRef.current = serializedBookmarksJsonl;
+    setBookmarksJsonlDraft((currentDraft) =>
+      currentDraft === previousSerializedBookmarksJsonl
+        ? serializedBookmarksJsonl
+        : currentDraft
+    );
+  }, [serializedBookmarksJsonl]);
 
   useEffect(() => {
     if (!isBookmarksJsonlEditorOpen) {
@@ -1193,18 +1340,103 @@ export default function AppX() {
       hashValue,
       isBookmarksJsonlEditorOpen,
       bookmarkCount: bookmarks.length,
+      bookmarkRowCardCount: bookmarkRows.reduce(
+        (count, bookmarkRow) => count + bookmarkRow.cards.length,
+        0,
+      ),
       pathname: appLocation.pathname,
-      previewCardCount: bookmarks.reduce(
-        (count, bookmark) => count + bookmark.previewCards.length,
-        0,
-      ),
       renderCount: bookmarksPageRenderCountRef.current,
-      selectedPreviewCardCount: bookmarks.reduce(
-        (count, bookmark) => count + bookmark.selectedPreviewCardIndices.length,
-        0,
-      ),
     });
-  });
+  }, [
+    appLocation.pathname,
+    bookmarkRows,
+    bookmarks,
+    hashValue,
+    isBookmarksJsonlEditorOpen,
+    isBookmarksView,
+  ]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (bookmarks.length === 0) {
+      setBookmarkRows([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void Promise.all(bookmarks.map((bookmark) => buildBookmarkRowData(bookmark.hash)))
+      .then((nextBookmarkRows) => {
+        if (cancelled) {
+          return;
+        }
+
+        setBookmarkRows(nextBookmarkRows);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setBookmarkRows([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [bookmarks]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (isCinenerdleIndexedDbBootstrapLoading || bookmarks.length === 0) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void batchCinenerdleRecordsUpdatedEvents(async () => {
+      for (const bookmark of bookmarks) {
+        if (cancelled) {
+          return;
+        }
+
+        await hydrateHashPathItems(bookmark.hash, {
+          forceRefreshSelectedPath: false,
+        });
+      }
+    }).catch(() => { });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [bookmarks, isCinenerdleIndexedDbBootstrapLoading]);
+
+  const persistBookmarks = useCallback(async (nextBookmarks: BookmarkEntry[]) => {
+    const requestId = bookmarksPersistenceRequestIdRef.current + 1;
+    bookmarksPersistenceRequestIdRef.current = requestId;
+    bookmarksRef.current = nextBookmarks;
+    setBookmarks(nextBookmarks);
+
+    try {
+      const persistedBookmarks = await saveBookmarks(nextBookmarks);
+      if (bookmarksPersistenceRequestIdRef.current === requestId) {
+        bookmarksRef.current = persistedBookmarks;
+        setBookmarks(persistedBookmarks);
+      }
+
+      return persistedBookmarks;
+    } catch (error: unknown) {
+      if (bookmarksPersistenceRequestIdRef.current === requestId) {
+        sayToast(
+          error instanceof Error && error.message
+            ? error.message
+            : "Bookmark save failed",
+        );
+      }
+
+      return null;
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1490,16 +1722,16 @@ export default function AppX() {
     };
   }, [handleToggleBookmarks, isBookmarksJsonlEditorOpen]);
 
-  function handleRemoveBookmark(bookmarkId: string) {
-    setBookmarks((currentBookmarks) => removeBookmarkEntry(currentBookmarks, bookmarkId));
+  function handleRemoveBookmark(bookmarkHash: string) {
+    void persistBookmarks(removeBookmarkEntry(bookmarksRef.current, bookmarkHash));
   }
 
-  function handleMoveBookmark(bookmarkId: string, direction: "up" | "down") {
-    setBookmarks((currentBookmarks) => moveBookmarkEntry(currentBookmarks, bookmarkId, direction));
+  function handleMoveBookmark(bookmarkHash: string, direction: "up" | "down") {
+    void persistBookmarks(moveBookmarkEntry(bookmarksRef.current, bookmarkHash, direction));
   }
 
-  function handleLoadBookmark(bookmark: BookmarkEntry) {
-    const normalizedBookmarkHash = normalizeHashValue(bookmark.hash);
+  function handleLoadBookmark(bookmarkHash: string) {
+    const normalizedBookmarkHash = normalizeHashValue(bookmarkHash);
     bookmarksReturnHashRef.current = normalizedBookmarkHash;
     window.history.replaceState(
       null,
@@ -1512,13 +1744,8 @@ export default function AppX() {
     });
   }
 
-  function handleLoadBookmarkPreviewCard(bookmark: BookmarkEntry, previewCardIndex: number) {
-    const previewCard = bookmark.previewCards[previewCardIndex];
-    if (!previewCard || !isBookmarkPreviewCardSelectable(previewCard)) {
-      return;
-    }
-
-    const previewCardHash = getBookmarkPreviewCardHash(bookmark.hash, previewCardIndex);
+  function handleLoadBookmarkCard(bookmarkHash: string, previewCardIndex: number) {
+    const previewCardHash = getBookmarkPreviewCardHash(bookmarkHash, previewCardIndex);
     bookmarksReturnHashRef.current = previewCardHash;
     window.history.replaceState(
       null,
@@ -1531,16 +1758,11 @@ export default function AppX() {
     });
   }
 
-  function handleOpenBookmarkPreviewCardAsRootInNewTab(
-    bookmark: BookmarkEntry,
+  function handleOpenBookmarkCardAsRootInNewTab(
+    bookmarkHash: string,
     previewCardIndex: number,
   ) {
-    const previewCard = bookmark.previewCards[previewCardIndex];
-    if (!previewCard || !isBookmarkPreviewCardSelectable(previewCard)) {
-      return;
-    }
-
-    const previewCardRootHash = getBookmarkPreviewCardRootHash(bookmark.hash, previewCardIndex);
+    const previewCardRootHash = getBookmarkPreviewCardRootHash(bookmarkHash, previewCardIndex);
     window.open(
       buildLocationHref(appLocation.basePathname, previewCardRootHash),
       "_blank",
@@ -1571,17 +1793,7 @@ export default function AppX() {
       });
   }
 
-  function handleToggleBookmarkPreviewCard(bookmarkId: string, previewCardIndex: number) {
-    setBookmarks((currentBookmarks) =>
-      toggleBookmarkPreviewCardSelection(currentBookmarks, bookmarkId, previewCardIndex)
-    );
-  }
-
   function handleOpenBookmarksJsonlEditor() {
-    if (!isBookmarksJsonlDraftDirty) {
-      setBookmarksJsonlDraft(serializeBookmarksAsJsonl(bookmarks));
-    }
-
     setIsBookmarksJsonlEditorOpen(true);
   }
 
@@ -1590,18 +1802,17 @@ export default function AppX() {
   }
 
   function handleResetBookmarksJsonlDraft() {
-    setBookmarksJsonlDraft(serializeBookmarksAsJsonl(bookmarks));
-    setIsBookmarksJsonlDraftDirty(false);
+    setBookmarksJsonlDraft(serializedBookmarksJsonl);
   }
 
-  function handleApplyBookmarksJsonl() {
+  async function handleApplyBookmarksJsonl() {
     try {
-      const nextBookmarks = replaceBookmarks(parseBookmarksJsonl(bookmarksJsonlDraft));
-      const nextBookmarksJsonlDraft = serializeBookmarksAsJsonl(nextBookmarks);
+      const persistedBookmarks = await persistBookmarks(parseBookmarksJsonl(bookmarksJsonlDraft));
+      if (!persistedBookmarks) {
+        return;
+      }
 
-      setBookmarks(nextBookmarks);
-      setBookmarksJsonlDraft(nextBookmarksJsonlDraft);
-      setIsBookmarksJsonlDraftDirty(false);
+      setBookmarksJsonlDraft(serializeBookmarksAsJsonl(persistedBookmarks));
       setIsBookmarksJsonlEditorOpen(false);
       sayToast("Bookmarks updated");
     } catch (error: unknown) {
@@ -1615,25 +1826,24 @@ export default function AppX() {
 
   function handleSaveBookmark() {
     const normalizedHash = normalizeHashValue(hashValue);
+    const existingBookmark = bookmarksRef.current.find((bookmark) => bookmark.hash === normalizedHash);
+
+    if (!normalizedHash) {
+      sayToast("Bookmark failed");
+      return;
+    }
+
     setIsSavingBookmark(true);
 
-    void buildBookmarkPreviewCardsFromHash(normalizedHash)
-      .then((previewCards) => {
-        const existingBookmark = bookmarks.find((bookmark) => bookmark.hash === normalizedHash);
-        const nextBookmark: BookmarkEntry = {
-          id: existingBookmark?.id ?? createBookmarkId(),
-          hash: normalizedHash,
-          savedAt: new Date().toISOString(),
-          label: formatBookmarkLabel(normalizedHash),
-          previewCards,
-          selectedPreviewCardIndices: existingBookmark?.selectedPreviewCardIndices ?? [],
-        };
+    void persistBookmarks(upsertBookmarkEntry(bookmarksRef.current, {
+      hash: normalizedHash,
+    }))
+      .then((persistedBookmarks) => {
+        if (!persistedBookmarks) {
+          return;
+        }
 
-        setBookmarks((currentBookmarks) => upsertBookmarkEntry(currentBookmarks, nextBookmark));
         sayToast(existingBookmark ? "Bookmark updated" : "Bookmark saved");
-      })
-      .catch(() => {
-        sayToast("Bookmark failed");
       })
       .finally(() => {
         setIsSavingBookmark(false);
@@ -2243,20 +2453,23 @@ export default function AppX() {
             </p>
           </div>
         ) : (
-          bookmarks.map((bookmark, bookmarkIndex) => (
-            <article className="bacon-bookmark-row-shell" key={bookmark.id}>
+          displayedBookmarkRows.map((bookmarkRow, bookmarkIndex) => (
+            <article className="bacon-bookmark-row-shell" key={bookmarkRow.hash}>
               <div className="bacon-bookmark-row-layout">
                 <div className="bacon-bookmark-row-actions bacon-bookmark-row-actions-left">
                   <button
                     className="bacon-title-action-icon-button"
-                    aria-label={`Move ${bookmark.label} up`}
+                    aria-label={`Move ${formatBookmarkLabel(bookmarkRow.hash)} up`}
                     disabled={bookmarkIndex === 0}
-                    onClick={() => handleMoveBookmark(bookmark.id, "up")}
+                    onClick={() => handleMoveBookmark(bookmarkRow.hash, "up")}
                     type="button"
                   >
                     ⬆️
                   </button>
-                  <FancyTooltip content={formatBookmarkIndexTooltip(bookmark)} placement="right-center">
+                  <FancyTooltip
+                    content={formatBookmarkIndexTooltip({ hash: bookmarkRow.hash })}
+                    placement="right-center"
+                  >
                     <span
                       className="bacon-bookmark-index-bubble"
                       role="note"
@@ -2266,19 +2479,19 @@ export default function AppX() {
                     </span>
                   </FancyTooltip>
                   <button
-                    aria-label={`Move ${bookmark.label} down`}
+                    aria-label={`Move ${formatBookmarkLabel(bookmarkRow.hash)} down`}
                     className="bacon-title-action-icon-button"
-                    disabled={bookmarkIndex === bookmarks.length - 1}
-                    onClick={() => handleMoveBookmark(bookmark.id, "down")}
+                    disabled={bookmarkIndex === displayedBookmarkRows.length - 1}
+                    onClick={() => handleMoveBookmark(bookmarkRow.hash, "down")}
                     type="button"
                   >
                     ⬇️
                   </button>
                   <FancyTooltip content="Load bookmark" placement="right-center">
                     <button
-                      aria-label={`Load ${bookmark.label}`}
+                      aria-label={`Load ${formatBookmarkLabel(bookmarkRow.hash)}`}
                       className="bacon-title-action-icon-button"
-                      onClick={() => handleLoadBookmark(bookmark)}
+                      onClick={() => handleLoadBookmark(bookmarkRow.hash)}
                       type="button"
                     >
                       📥
@@ -2286,9 +2499,9 @@ export default function AppX() {
                   </FancyTooltip>
                   <FancyTooltip content="Remove bookmark" placement="right-center">
                     <button
-                      aria-label={`Remove ${bookmark.label}`}
+                      aria-label={`Remove ${formatBookmarkLabel(bookmarkRow.hash)}`}
                       className="bacon-title-action-icon-button bacon-title-action-icon-button-danger"
-                      onClick={() => handleRemoveBookmark(bookmark.id)}
+                      onClick={() => handleRemoveBookmark(bookmarkRow.hash)}
                       type="button"
                     >
                       🗑️
@@ -2297,37 +2510,34 @@ export default function AppX() {
                 </div>
                 <div className="bacon-bookmark-row-body">
                   <div className="bacon-bookmark-card-row">
-                    {bookmark.previewCards.map((card, cardIndex) => {
-                      const isSelected = bookmark.selectedPreviewCardIndices.includes(cardIndex);
-
-                      if (!isBookmarkPreviewCardSelectable(card)) {
+                    {bookmarkRow.cards.map((card, cardIndex) => {
+                      if (card.kind === "break") {
                         return (
                           <div
                             className="generator-card-button generator-card-button-row-break"
-                            key={`${bookmark.id}:${cardIndex}:${card.key}`}
+                            key={card.key}
                           >
-                            <CinenerdleBreakBar label={card.name} />
+                            <CinenerdleBreakBar label={card.label} />
                           </div>
                         );
                       }
 
                       return (
                         <button
-                          aria-pressed={isSelected}
                           className="generator-card-button"
-                          key={`${bookmark.id}:${cardIndex}:${card.key}`}
-                          onClick={() => handleToggleBookmarkPreviewCard(bookmark.id, cardIndex)}
+                          key={card.key}
+                          onClick={() => handleLoadBookmarkCard(bookmarkRow.hash, cardIndex)}
                           type="button"
                         >
                           <CinenerdleEntityCard
-                            card={createBookmarkPreviewCardViewModel(card, isSelected)}
+                            card={card.card}
                             onTitleClick={(event) => {
                               if (didRequestNewTabNavigation(event)) {
-                                handleOpenBookmarkPreviewCardAsRootInNewTab(bookmark, cardIndex);
+                                handleOpenBookmarkCardAsRootInNewTab(bookmarkRow.hash, cardIndex);
                                 return;
                               }
 
-                              handleLoadBookmarkPreviewCard(bookmark, cardIndex);
+                              handleLoadBookmarkCard(bookmarkRow.hash, cardIndex);
                             }}
                           />
                         </button>
@@ -2372,7 +2582,7 @@ export default function AppX() {
                   Edit bookmarks as JSONL
                 </h2>
                 <p className="bacon-bookmarks-jsonl-modal-copy">
-                  One bookmark JSON object per line.
+                  One normalized hash per line.
                 </p>
               </div>
               <button
@@ -2395,7 +2605,6 @@ export default function AppX() {
               id="bacon-bookmarks-jsonl-textarea"
               onChange={(event) => {
                 setBookmarksJsonlDraft(event.target.value);
-                setIsBookmarksJsonlDraftDirty(true);
               }}
               ref={bookmarksJsonlTextareaRef}
               spellCheck={false}
@@ -2467,7 +2676,10 @@ export default function AppX() {
               onClick={handleOpenBookmarksJsonlEditor}
               type="button"
             >
-              Edit JSONL
+              <span>Edit JSONL</span>
+              {isBookmarksJsonlDraftDirty ? (
+                <span className="bacon-title-action-badge">Edited</span>
+              ) : null}
             </button>
           ) : null}
           <FancyTooltip
