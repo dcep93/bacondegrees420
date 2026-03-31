@@ -60,6 +60,7 @@ import {
   getFilmKey,
   getMovieKeyFromCredit,
   getValidTmdbEntityId,
+  isAllowedBfsTmdbMovieCredit,
   normalizeName,
   normalizeTitle,
   parseMoviePathLabel,
@@ -1042,7 +1043,8 @@ async function buildChildRowForPersonCard(
         return null;
       }
 
-      const movieCreditGroups = getAssociatedMovieCreditGroupsFromPersonCredits(personRecord);
+      const movieCreditGroups = getAssociatedMovieCreditGroupsFromPersonCredits(personRecord)
+        .filter((creditGroup) => creditGroup.some((credit) => isAllowedBfsTmdbMovieCredit(credit)));
       const movieCredits = movieCreditGroups.map((group) => group[0]).filter(Boolean);
       const filmRecordsById = await getFilmRecordsByIds(
         movieCredits
@@ -1100,7 +1102,6 @@ async function buildChildRowForPersonCard(
         card,
         orderedChildren,
       );
-
       return createRow(stabilizedChildren.map((child) => child.card));
     },
     {
@@ -1680,7 +1681,7 @@ export function useCinenerdleController({
                   const dailyStarterSource = shouldUseNetworkStarterSourceForHash(refreshedHash)
                     ? "network"
                     : "cache";
-                  const refreshedTree = await buildTreeFromHash(readHash(), {
+                  const refreshedTree = await buildTreeFromHash(refreshedHash, {
                     bypassInFlightCache: true,
                     dailyStarterSource,
                   });

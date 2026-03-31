@@ -141,10 +141,11 @@ export function getCardPopularityRefreshHandler(
 ): (() => Promise<void>) | null {
   if (card.kind === "movie") {
     return async () => {
+      const tmdbId = getMovieTmdbIdFromCard(card);
       await prepareSelectedMovie(
         card.name,
         card.year,
-        getMovieTmdbIdFromCard(card),
+        tmdbId,
         {
           forceRefresh: true,
         },
@@ -153,9 +154,10 @@ export function getCardPopularityRefreshHandler(
   }
 
   return async () => {
+    const tmdbId = getPersonTmdbIdFromCard(card);
     await prepareSelectedPerson(
       card.name,
-      getPersonTmdbIdFromCard(card),
+      tmdbId,
       {
         forceRefresh: true,
       },

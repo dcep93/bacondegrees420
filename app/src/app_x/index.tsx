@@ -15,7 +15,10 @@ import {
   createBookmarkId,
   loadBookmarks,
   moveBookmarkEntry,
+  parseBookmarksJsonl,
   removeBookmarkEntry,
+  replaceBookmarks,
+  serializeBookmarksAsJsonl,
   toggleBookmarkPreviewCardSelection,
   upsertBookmarkEntry,
   type AppViewMode,
@@ -138,6 +141,7 @@ import {
   type IndexedDbBootstrapLoadingShellDelayManager,
 } from "./indexed_db_bootstrap_loading_shell";
 import { measureAsync } from "./perf";
+import { getWindowKeyDownAction } from "./window_keydown";
 import "./styles/app_shell.css";
 
 type ConnectionSuggestion = Omit<ConnectionEntity, "kind"> & {
@@ -377,19 +381,6 @@ function createBookmarkPreviewCardViewModel(
     ...sharedFields,
     kind: card.kind,
   };
-}
-
-function isEditableKeyboardTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) {
-    return false;
-  }
-
-  return (
-    target.isContentEditable ||
-    target.tagName === "INPUT" ||
-    target.tagName === "TEXTAREA" ||
-    target.tagName === "SELECT"
-  );
 }
 
 function isPlaceholderPersonLabel(entity: ConnectionEntity): boolean {
@@ -892,6 +883,10 @@ export default function AppX() {
     useState(() => getCinenerdleFetchDebugEntryCount());
   const [isSavingBookmark, setIsSavingBookmark] = useState(false);
   const [isBookmarksTooltipSuppressed, setIsBookmarksTooltipSuppressed] = useState(false);
+  const [isBookmarksJsonlEditorOpen, setIsBookmarksJsonlEditorOpen] = useState(false);
+  const [bookmarksJsonlDraft, setBookmarksJsonlDraft] =
+    useState(() => serializeBookmarksAsJsonl(bookmarks));
+  const [isBookmarksJsonlDraftDirty, setIsBookmarksJsonlDraftDirty] = useState(false);
   const [connectionQuery, setConnectionQuery] = useState("");
   const [isResolvingConnection, setIsResolvingConnection] = useState(false);
   const [connectionSuggestions, setConnectionSuggestions] = useState<ConnectionSuggestion[]>([]);
@@ -919,6 +914,7 @@ export default function AppX() {
   const connectionInputWrapRef = useRef<HTMLDivElement | null>(null);
   const connectionDropdownRef = useRef<HTMLDivElement | null>(null);
   const titleRef = useRef<HTMLHeadingElement | null>(null);
+  const bookmarksJsonlTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const highlightedConnectionEntitySelectionRequestIdRef = useRef(0);
   const indexedDbBootstrapLoadingShellDelayManagerRef =
     useRef<IndexedDbBootstrapLoadingShellDelayManager | null>(null);
@@ -1168,6 +1164,27 @@ export default function AppX() {
     };
   }, [copyStatus]);
 
+  function sayToast(message: string) {
+    setCopyStatusPlacement("toast");
+    setCopyStatus(message);
+  }
+
+  useEffect(() => {
+    if (isBookmarksJsonlDraftDirty) {
+      return;
+    }
+
+    setBookmarksJsonlDraft(serializeBookmarksAsJsonl(bookmarks));
+  }, [bookmarks, isBookmarksJsonlDraftDirty]);
+
+  useEffect(() => {
+    if (!isBookmarksJsonlEditorOpen) {
+      return;
+    }
+
+    bookmarksJsonlTextareaRef.current?.focus();
+  }, [isBookmarksJsonlEditorOpen]);
+
   useEffect(() => {
     connectionSessionRef.current = null;
     setConnectionSession(null);
@@ -1354,14 +1371,12 @@ export default function AppX() {
       if (!confirmed) {
         return copyCinenerdleIndexedDbSnapshotToClipboard()
           .then(({ peopleCount, filmCount, searchableConnectionEntityCount }) => {
-            setCopyStatusPlacement("toast");
-            setCopyStatus(
+            sayToast(
               `DB copied (${peopleCount} people, ${filmCount} films, ${searchableConnectionEntityCount} search)`,
             );
           })
           .catch((error: unknown) => {
-            setCopyStatusPlacement("toast");
-            setCopyStatus(
+            sayToast(
               error instanceof Error && error.message
                 ? error.message
                 : "DB copy failed",
@@ -1379,8 +1394,7 @@ export default function AppX() {
           handleReset();
         })
         .catch((error: unknown) => {
-          setCopyStatusPlacement("toast");
-          setCopyStatus(
+          sayToast(
             error instanceof Error && error.message
               ? error.message
               : "Clear DB failed",
@@ -1441,17 +1455,18 @@ export default function AppX() {
 
   useEffect(() => {
     function handleWindowKeyDown(event: globalThis.KeyboardEvent) {
-      if (
-        event.defaultPrevented ||
-        event.metaKey ||
-        event.ctrlKey ||
-        event.altKey ||
-        isEditableKeyboardTarget(event.target)
-      ) {
+      const action = getWindowKeyDownAction({
+        event,
+        isBookmarksJsonlEditorOpen,
+      });
+
+      if (action === "close-bookmarks-jsonl-editor") {
+        event.preventDefault();
+        setIsBookmarksJsonlEditorOpen(false);
         return;
       }
 
-      if (event.key === "Escape" || event.key === "b" || event.key === "B") {
+      if (action === "toggle-bookmarks") {
         event.preventDefault();
         handleToggleBookmarks();
       }
@@ -1461,7 +1476,7 @@ export default function AppX() {
     return () => {
       window.removeEventListener("keydown", handleWindowKeyDown);
     };
-  }, [handleToggleBookmarks, isBookmarksView]);
+  }, [handleToggleBookmarks, isBookmarksJsonlEditorOpen]);
 
   function handleRemoveBookmark(bookmarkId: string) {
     setBookmarks((currentBookmarks) => removeBookmarkEntry(currentBookmarks, bookmarkId));
@@ -1550,6 +1565,42 @@ export default function AppX() {
     );
   }
 
+  function handleOpenBookmarksJsonlEditor() {
+    if (!isBookmarksJsonlDraftDirty) {
+      setBookmarksJsonlDraft(serializeBookmarksAsJsonl(bookmarks));
+    }
+
+    setIsBookmarksJsonlEditorOpen(true);
+  }
+
+  function handleCloseBookmarksJsonlEditor() {
+    setIsBookmarksJsonlEditorOpen(false);
+  }
+
+  function handleResetBookmarksJsonlDraft() {
+    setBookmarksJsonlDraft(serializeBookmarksAsJsonl(bookmarks));
+    setIsBookmarksJsonlDraftDirty(false);
+  }
+
+  function handleApplyBookmarksJsonl() {
+    try {
+      const nextBookmarks = replaceBookmarks(parseBookmarksJsonl(bookmarksJsonlDraft));
+      const nextBookmarksJsonlDraft = serializeBookmarksAsJsonl(nextBookmarks);
+
+      setBookmarks(nextBookmarks);
+      setBookmarksJsonlDraft(nextBookmarksJsonlDraft);
+      setIsBookmarksJsonlDraftDirty(false);
+      setIsBookmarksJsonlEditorOpen(false);
+      sayToast("Bookmarks updated");
+    } catch (error: unknown) {
+      sayToast(
+        error instanceof Error && error.message
+          ? error.message
+          : "Bookmark JSONL failed",
+      );
+    }
+  }
+
   function handleSaveBookmark() {
     const normalizedHash = normalizeHashValue(hashValue);
     setIsSavingBookmark(true);
@@ -1567,10 +1618,10 @@ export default function AppX() {
         };
 
         setBookmarks((currentBookmarks) => upsertBookmarkEntry(currentBookmarks, nextBookmark));
+        sayToast(existingBookmark ? "Bookmark updated" : "Bookmark saved");
       })
       .catch(() => {
-        setCopyStatusPlacement("toast");
-        setCopyStatus("Bookmark failed");
+        sayToast("Bookmark failed");
       })
       .finally(() => {
         setIsSavingBookmark(false);
@@ -2170,116 +2221,112 @@ export default function AppX() {
   }
 
   function renderBookmarksPage() {
-    if (bookmarks.length === 0) {
-      return (
-        <section className="bacon-bookmarks-page">
+    return (
+      <section className="bacon-bookmarks-page">
+        {bookmarks.length === 0 ? (
           <div className="bacon-bookmarks-empty-state">
             <p className="bacon-bookmarks-empty-title">No bookmarks yet.</p>
             <p className="bacon-bookmarks-empty-copy">
               Save the current path with `💾` and it will show up here as a row of cards.
             </p>
           </div>
-        </section>
-      );
-    }
-
-    return (
-      <section className="bacon-bookmarks-page">
-        {bookmarks.map((bookmark, bookmarkIndex) => (
-          <article className="bacon-bookmark-row-shell" key={bookmark.id}>
-            <div className="bacon-bookmark-row-layout">
-              <div className="bacon-bookmark-row-actions bacon-bookmark-row-actions-left">
-                <button
-                  aria-label={`Move ${bookmark.label} up`}
-                  className="bacon-title-action-icon-button"
-                  disabled={bookmarkIndex === 0}
-                  onClick={() => handleMoveBookmark(bookmark.id, "up")}
-                  type="button"
-                >
-                  ⬆️
-                </button>
-                <FancyTooltip content={formatBookmarkIndexTooltip(bookmark)} placement="right-center">
-                  <span
-                    className="bacon-bookmark-index-bubble"
-                    role="note"
-                    tabIndex={0}
-                  >
-                    {bookmarkIndex + 1}
-                  </span>
-                </FancyTooltip>
-                <button
-                  aria-label={`Move ${bookmark.label} down`}
-                  className="bacon-title-action-icon-button"
-                  disabled={bookmarkIndex === bookmarks.length - 1}
-                  onClick={() => handleMoveBookmark(bookmark.id, "down")}
-                  type="button"
-                >
-                  ⬇️
-                </button>
-                <FancyTooltip content="Load bookmark" placement="right-center">
+        ) : (
+          bookmarks.map((bookmark, bookmarkIndex) => (
+            <article className="bacon-bookmark-row-shell" key={bookmark.id}>
+              <div className="bacon-bookmark-row-layout">
+                <div className="bacon-bookmark-row-actions bacon-bookmark-row-actions-left">
                   <button
-                    aria-label={`Load ${bookmark.label}`}
                     className="bacon-title-action-icon-button"
-                    onClick={() => handleLoadBookmark(bookmark)}
+                    aria-label={`Move ${bookmark.label} up`}
+                    disabled={bookmarkIndex === 0}
+                    onClick={() => handleMoveBookmark(bookmark.id, "up")}
                     type="button"
                   >
-                    📥
+                    ⬆️
                   </button>
-                </FancyTooltip>
-                <FancyTooltip content="Remove bookmark" placement="right-center">
+                  <FancyTooltip content={formatBookmarkIndexTooltip(bookmark)} placement="right-center">
+                    <span
+                      className="bacon-bookmark-index-bubble"
+                      role="note"
+                      tabIndex={0}
+                    >
+                      {bookmarkIndex + 1}
+                    </span>
+                  </FancyTooltip>
                   <button
-                    aria-label={`Remove ${bookmark.label}`}
-                    className="bacon-title-action-icon-button bacon-title-action-icon-button-danger"
-                    onClick={() => handleRemoveBookmark(bookmark.id)}
+                    aria-label={`Move ${bookmark.label} down`}
+                    className="bacon-title-action-icon-button"
+                    disabled={bookmarkIndex === bookmarks.length - 1}
+                    onClick={() => handleMoveBookmark(bookmark.id, "down")}
                     type="button"
                   >
-                    🗑️
+                    ⬇️
                   </button>
-                </FancyTooltip>
-              </div>
-              <div className="bacon-bookmark-row-body">
-                <div className="bacon-bookmark-card-row">
-                  {bookmark.previewCards.map((card, cardIndex) => {
-                    const isSelected = bookmark.selectedPreviewCardIndices.includes(cardIndex);
+                  <FancyTooltip content="Load bookmark" placement="right-center">
+                    <button
+                      aria-label={`Load ${bookmark.label}`}
+                      className="bacon-title-action-icon-button"
+                      onClick={() => handleLoadBookmark(bookmark)}
+                      type="button"
+                    >
+                      📥
+                    </button>
+                  </FancyTooltip>
+                  <FancyTooltip content="Remove bookmark" placement="right-center">
+                    <button
+                      aria-label={`Remove ${bookmark.label}`}
+                      className="bacon-title-action-icon-button bacon-title-action-icon-button-danger"
+                      onClick={() => handleRemoveBookmark(bookmark.id)}
+                      type="button"
+                    >
+                      🗑️
+                    </button>
+                  </FancyTooltip>
+                </div>
+                <div className="bacon-bookmark-row-body">
+                  <div className="bacon-bookmark-card-row">
+                    {bookmark.previewCards.map((card, cardIndex) => {
+                      const isSelected = bookmark.selectedPreviewCardIndices.includes(cardIndex);
 
-                    if (!isBookmarkPreviewCardSelectable(card)) {
+                      if (!isBookmarkPreviewCardSelectable(card)) {
+                        return (
+                          <div
+                            className="generator-card-button generator-card-button-row-break"
+                            key={`${bookmark.id}:${cardIndex}:${card.key}`}
+                          >
+                            <CinenerdleBreakBar label={card.name} />
+                          </div>
+                        );
+                      }
+
                       return (
-                        <div
-                          className="generator-card-button generator-card-button-row-break"
+                        <button
+                          aria-pressed={isSelected}
+                          className="generator-card-button"
                           key={`${bookmark.id}:${cardIndex}:${card.key}`}
+                          onClick={() => handleToggleBookmarkPreviewCard(bookmark.id, cardIndex)}
+                          type="button"
                         >
-                          <CinenerdleBreakBar label={card.name} />
-                        </div>
+                          <CinenerdleEntityCard
+                            card={createBookmarkPreviewCardViewModel(card, isSelected)}
+                            onTitleClick={(event) => {
+                              if (didRequestNewTabNavigation(event)) {
+                                handleOpenBookmarkPreviewCardAsRootInNewTab(bookmark, cardIndex);
+                                return;
+                              }
+
+                              handleLoadBookmarkPreviewCard(bookmark, cardIndex);
+                            }}
+                          />
+                        </button>
                       );
-                    }
-
-                    return (
-                      <button
-                        aria-pressed={isSelected}
-                        className="generator-card-button"
-                        key={`${bookmark.id}:${cardIndex}:${card.key}`}
-                        onClick={() => handleToggleBookmarkPreviewCard(bookmark.id, cardIndex)}
-                        type="button"
-                      >
-                        <CinenerdleEntityCard
-                          card={createBookmarkPreviewCardViewModel(card, isSelected)}
-                          onTitleClick={(event) => {
-                            if (didRequestNewTabNavigation(event)) {
-                              handleOpenBookmarkPreviewCardAsRootInNewTab(bookmark, cardIndex);
-                              return;
-                            }
-
-                            handleLoadBookmarkPreviewCard(bookmark, cardIndex);
-                          }}
-                        />
-                      </button>
-                    );
-                  })}
+                    })}
+                  </div>
                 </div>
               </div>
-            </div>
-          </article>
-        ))}
+            </article>
+          ))
+        )}
       </section>
     );
   }
@@ -2290,6 +2337,76 @@ export default function AppX() {
         <span className="bacon-copy-status bacon-copy-status-toast">
           {copyStatus}
         </span>
+      ) : null}
+      {isBookmarksJsonlEditorOpen ? (
+        <div
+          className="bacon-modal-backdrop"
+          onClick={handleCloseBookmarksJsonlEditor}
+          role="presentation"
+        >
+          <div
+            aria-labelledby="bacon-bookmarks-jsonl-modal-title"
+            aria-modal="true"
+            className="bacon-modal bacon-bookmarks-jsonl-modal"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <div className="bacon-bookmarks-jsonl-modal-header">
+              <div className="bacon-bookmarks-jsonl-modal-heading">
+                <h2
+                  className="bacon-bookmarks-jsonl-modal-title"
+                  id="bacon-bookmarks-jsonl-modal-title"
+                >
+                  Edit bookmarks as JSONL
+                </h2>
+                <p className="bacon-bookmarks-jsonl-modal-copy">
+                  One bookmark JSON object per line.
+                </p>
+              </div>
+              <button
+                aria-label="Close JSONL editor"
+                className="bacon-title-action-icon-button"
+                onClick={handleCloseBookmarksJsonlEditor}
+                type="button"
+              >
+                ✕
+              </button>
+            </div>
+            <label
+              className="bacon-bookmarks-jsonl-label"
+              htmlFor="bacon-bookmarks-jsonl-textarea"
+            >
+              Bookmark JSONL
+            </label>
+            <textarea
+              className="bacon-bookmarks-jsonl-textarea"
+              id="bacon-bookmarks-jsonl-textarea"
+              onChange={(event) => {
+                setBookmarksJsonlDraft(event.target.value);
+                setIsBookmarksJsonlDraftDirty(true);
+              }}
+              ref={bookmarksJsonlTextareaRef}
+              spellCheck={false}
+              value={bookmarksJsonlDraft}
+            />
+            <div className="bacon-bookmarks-jsonl-modal-actions">
+              <button
+                className="bacon-title-action-button"
+                onClick={handleResetBookmarksJsonlDraft}
+                type="button"
+              >
+                Reset
+              </button>
+              <button
+                className="bacon-title-action-button"
+                onClick={handleApplyBookmarksJsonl}
+                type="button"
+              >
+                Apply JSONL
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
       <header className="bacon-title-bar">
         <button
@@ -2330,6 +2447,16 @@ export default function AppX() {
                 💾
               </button>
             </FancyTooltip>
+          ) : null}
+          {isBookmarksView ? (
+            <button
+              aria-label="Edit bookmarks as JSONL"
+              className="bacon-title-action-button"
+              onClick={handleOpenBookmarksJsonlEditor}
+              type="button"
+            >
+              Edit JSONL
+            </button>
           ) : null}
           <FancyTooltip
             anchorProps={{

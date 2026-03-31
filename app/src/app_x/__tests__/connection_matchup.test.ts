@@ -606,6 +606,191 @@ describe("resolveConnectionMatchupPreview", () => {
     ).toBe("No direct connection unique to the selected item");
   });
 
+  it("does not treat fallback shared people as exclusive when counterpart credits are partial", async () => {
+    const selectedMovie = makeFilmRecord({
+      id: "selected-movie-2000",
+      tmdbId: 2000,
+      title: "Selected Movie",
+      year: "2000",
+      popularity: 40,
+      personConnectionKeys: ["shared omitted", "fallback exclusive"],
+    });
+    const counterpartMovie = makeFilmRecord({
+      id: "counterpart-movie-2001",
+      tmdbId: 2001,
+      title: "Counterpart Movie",
+      year: "2001",
+      popularity: 35,
+      personConnectionKeys: ["shared omitted", "visible shared"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [{ id: 102, name: "Visible Shared", order: 0, popularity: 50 }],
+        crew: [],
+      },
+    });
+    const people = [
+      makePersonRecord({
+        id: 101,
+        tmdbId: 101,
+        name: "Shared Omitted",
+        movieConnectionKeys: ["selected movie (2000)", "counterpart movie (2001)"],
+        rawTmdbPerson: { id: 101, name: "Shared Omitted", popularity: 95 },
+      }),
+      makePersonRecord({
+        id: 103,
+        tmdbId: 103,
+        name: "Fallback Exclusive",
+        movieConnectionKeys: ["selected movie (2000)"],
+        rawTmdbPerson: { id: 103, name: "Fallback Exclusive", popularity: 80 },
+      }),
+      makePersonRecord({
+        id: 102,
+        tmdbId: 102,
+        name: "Visible Shared",
+        movieConnectionKeys: ["counterpart movie (2001)"],
+        rawTmdbPerson: { id: 102, name: "Visible Shared", popularity: 50 },
+      }),
+    ];
+
+    indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (title: string, year: string) =>
+      [selectedMovie, counterpartMovie].find(
+        (film) => film.title === title && film.year === year,
+      ) ?? null,
+    );
+    indexedDbMock.getFilmRecordsByPersonConnectionKey.mockImplementation(async (personName: string) =>
+      [selectedMovie, counterpartMovie].filter((film) =>
+        Array.isArray(film.personConnectionKeys) &&
+        film.personConnectionKeys.some(
+          (candidate) => typeof candidate === "string" && normalizeName(candidate) === normalizeName(personName),
+        ),
+      ),
+    );
+    indexedDbMock.getPersonRecordById.mockImplementation(async (id: number) =>
+      people.find((person) => person.id === id || person.tmdbId === id) ?? null,
+    );
+    indexedDbMock.getPersonRecordByName.mockImplementation(async (name: string) =>
+      people.find((person) => normalizeName(person.name) === normalizeName(name)) ?? null,
+    );
+    indexedDbMock.getPersonPopularityByNames.mockResolvedValue(new Map([
+      [normalizeName("Shared Omitted"), 95],
+    ]));
+
+    const preview = await resolveConnectionMatchupPreview({
+      key: "movie:selected movie:2000",
+      kind: "movie",
+      name: "Selected Movie",
+      year: "2000",
+      popularity: 0,
+      popularitySource: null,
+      imageUrl: null,
+      subtitle: "",
+      subtitleDetail: "",
+      connectionCount: null,
+      sources: [],
+      status: null,
+      voteAverage: null,
+      voteCount: null,
+      record: null,
+    });
+
+    expect(preview).not.toBeNull();
+    expect(preview?.counterpart.name).toBe("Counterpart Movie (2001)");
+    expect(preview?.kind).toBe("versus");
+    if (!preview || preview.kind !== "versus") {
+      throw new Error("expected a versus matchup preview");
+    }
+
+    expect(preview.spoiler.name).toBe("Fallback Exclusive");
+  });
+
+  it("includes fallback-only exclusive people when selected movie credits are partial", async () => {
+    const selectedMovie = makeFilmRecord({
+      id: "selected-movie-2000",
+      tmdbId: 2000,
+      title: "Selected Movie",
+      year: "2000",
+      popularity: 40,
+      personConnectionKeys: ["shared visible", "fallback exclusive"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [{ id: 101, name: "Shared Visible", order: 0, popularity: 75 }],
+        crew: [],
+      },
+    });
+    const counterpartMovie = makeFilmRecord({
+      id: "counterpart-movie-2001",
+      tmdbId: 2001,
+      title: "Counterpart Movie",
+      year: "2001",
+      popularity: 35,
+      personConnectionKeys: ["shared visible"],
+    });
+    const people = [
+      makePersonRecord({
+        id: 101,
+        tmdbId: 101,
+        name: "Shared Visible",
+        movieConnectionKeys: ["selected movie (2000)", "counterpart movie (2001)"],
+        rawTmdbPerson: { id: 101, name: "Shared Visible", popularity: 75 },
+      }),
+      makePersonRecord({
+        id: 102,
+        tmdbId: 102,
+        name: "Fallback Exclusive",
+        movieConnectionKeys: ["selected movie (2000)"],
+        rawTmdbPerson: { id: 102, name: "Fallback Exclusive", popularity: 90 },
+      }),
+    ];
+
+    indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (title: string, year: string) =>
+      [selectedMovie, counterpartMovie].find(
+        (film) => film.title === title && film.year === year,
+      ) ?? null,
+    );
+    indexedDbMock.getFilmRecordsByPersonConnectionKey.mockImplementation(async (personName: string) =>
+      [selectedMovie, counterpartMovie].filter((film) =>
+        Array.isArray(film.personConnectionKeys) &&
+        film.personConnectionKeys.some(
+          (candidate) => typeof candidate === "string" && normalizeName(candidate) === normalizeName(personName),
+        ),
+      ),
+    );
+    indexedDbMock.getPersonRecordById.mockImplementation(async (id: number) =>
+      people.find((person) => person.id === id || person.tmdbId === id) ?? null,
+    );
+    indexedDbMock.getPersonRecordByName.mockImplementation(async (name: string) =>
+      people.find((person) => normalizeName(person.name) === normalizeName(name)) ?? null,
+    );
+    indexedDbMock.getPersonPopularityByNames.mockResolvedValue(new Map([
+      [normalizeName("Shared Visible"), 75],
+    ]));
+
+    const preview = await resolveConnectionMatchupPreview({
+      key: "movie:selected movie:2000",
+      kind: "movie",
+      name: "Selected Movie",
+      year: "2000",
+      popularity: 0,
+      popularitySource: null,
+      imageUrl: null,
+      subtitle: "",
+      subtitleDetail: "",
+      connectionCount: null,
+      sources: [],
+      status: null,
+      voteAverage: null,
+      voteCount: null,
+      record: null,
+    });
+
+    expect(preview).not.toBeNull();
+    expect(preview?.counterpart.name).toBe("Counterpart Movie (2001)");
+    expect(preview?.kind).toBe("versus");
+    if (!preview || preview.kind !== "versus") {
+      throw new Error("expected a versus matchup preview");
+    }
+
+    expect(preview.spoiler.name).toBe("Fallback Exclusive");
+  });
+
   it("sorts shared movie connections in person counterpart tooltips by popularity", async () => {
     const memento = makeFilmRecord({
       id: "memento-2000",
@@ -862,6 +1047,122 @@ describe("resolveConnectionMatchupPreview", () => {
     }
 
     expect(preview.spoiler.name).toBe("High Exclusive (2013)");
+  });
+
+  it("does not treat fallback shared movies as exclusive when counterpart credits are partial", async () => {
+    const sharedOmittedMovie = makeFilmRecord({
+      id: "shared-omitted-2010",
+      tmdbId: 301,
+      title: "Shared Omitted",
+      year: "2010",
+      popularity: 95,
+    });
+    const fallbackExclusiveMovie = makeFilmRecord({
+      id: "fallback-exclusive-2011",
+      tmdbId: 302,
+      title: "Fallback Exclusive",
+      year: "2011",
+      popularity: 80,
+    });
+    const visibleSharedMovie = makeFilmRecord({
+      id: "visible-shared-2012",
+      tmdbId: 303,
+      title: "Visible Shared",
+      year: "2012",
+      popularity: 40,
+    });
+    const selectedPerson = makePersonRecord({
+      id: 401,
+      tmdbId: 401,
+      name: "Selected Person",
+      movieConnectionKeys: ["shared omitted (2010)", "fallback exclusive (2011)"],
+      rawTmdbPerson: { id: 401, name: "Selected Person", popularity: 50 },
+    });
+    const counterpartPerson = makePersonRecord({
+      id: 402,
+      tmdbId: 402,
+      name: "Counterpart Person",
+      movieConnectionKeys: ["shared omitted (2010)", "visible shared (2012)"],
+      rawTmdbPerson: { id: 402, name: "Counterpart Person", popularity: 45 },
+      rawTmdbMovieCreditsResponse: {
+        cast: [{ id: 303, title: "Visible Shared", release_date: "2012-01-01", popularity: 40 }],
+        crew: [],
+      },
+    });
+
+    indexedDbMock.getPersonRecordById.mockImplementation(async (id: number) => {
+      if (id === 401) {
+        return selectedPerson;
+      }
+
+      if (id === 402) {
+        return counterpartPerson;
+      }
+
+      return null;
+    });
+    indexedDbMock.getPersonRecordByName.mockImplementation(async (name: string) => {
+      if (normalizeName(name) === normalizeName("Selected Person")) {
+        return selectedPerson;
+      }
+
+      if (normalizeName(name) === normalizeName("Counterpart Person")) {
+        return counterpartPerson;
+      }
+
+      return null;
+    });
+    indexedDbMock.getPersonRecordsByMovieKey.mockImplementation(async (movieKey: string) => {
+      if (movieKey === "shared omitted (2010)") {
+        return [selectedPerson, counterpartPerson];
+      }
+
+      if (movieKey === "fallback exclusive (2011)") {
+        return [selectedPerson];
+      }
+
+      if (movieKey === "visible shared (2012)") {
+        return [counterpartPerson];
+      }
+
+      return [];
+    });
+    indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (title: string, year: string) => {
+      return [
+        sharedOmittedMovie,
+        fallbackExclusiveMovie,
+        visibleSharedMovie,
+      ].find((film) =>
+        normalizeName(film.title) === normalizeName(title) && film.year === year,
+      ) ?? null;
+    });
+    indexedDbMock.getMoviePopularityByLabels.mockResolvedValue(new Map([
+      ["shared omitted (2010)", 95],
+    ]));
+
+    const preview = await resolveConnectionMatchupPreview({
+      key: "person:401",
+      kind: "person",
+      name: "Selected Person",
+      popularity: 0,
+      popularitySource: null,
+      imageUrl: null,
+      subtitle: "",
+      subtitleDetail: "",
+      connectionCount: null,
+      sources: [],
+      status: null,
+      record: null,
+    });
+
+    expect(preview).not.toBeNull();
+    expect(preview?.counterpart.name).toBe("Counterpart Person");
+    expect(preview?.kind).toBe("versus");
+    if (!preview || preview.kind !== "versus") {
+      throw new Error("expected a versus matchup preview");
+    }
+
+    expect(preview.spoiler.name).toBe("Fallback Exclusive (2011)");
   });
 
   it("uses credit profile art for person spoilers when no cached person record exists", async () => {

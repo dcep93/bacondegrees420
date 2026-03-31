@@ -5,6 +5,7 @@ Agent rules for this subtree:
 - When debug logging is needed, record entries with the in-memory cinenerdle debug log in dev mode instead.
 - When timing or perf logging is needed, do not use `console.*`; write those entries to the in-memory cinenerdle debug log so they are copied via the existing clipboard debug tool.
 - In dev mode, clicking the `BaconDegrees420` title copies the current debug log array to the clipboard.
+- When tracing bugs that may depend on real app data, check `/Users/danielcepeda/repos/bacondegrees420/app/public/dump.json`; it is a useful real-data snapshot for reproducing and understanding issues.
 - When the user says to "reset logs", keep the clipboard debug flow and `addCinenerdleDebugLog` instrumentation available, but remove the current `addCinenerdleDebugLog` callsites so clicking the title reports `0 logs splice copied`.
 - Exception: do not remove the TMDb fetch/prefetch clipboard log callsites in `tmdb.ts` during a log reset; those should stay active.
 - Adding logs back to the clipboard flow after a reset is as simple as calling `addCinenerdleDebugLog` again at the desired callsites.

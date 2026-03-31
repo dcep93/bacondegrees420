@@ -3,7 +3,10 @@ import {
   BOOKMARKS_STORAGE_KEY,
   loadBookmarks,
   mergeMissingBookmarks,
+  parseBookmarksJsonl,
+  replaceBookmarks,
   saveBookmarks,
+  serializeBookmarksAsJsonl,
   toggleBookmarkPreviewCardSelection,
   type BookmarkEntry,
 } from "../bookmarks";
@@ -216,5 +219,106 @@ describe("bookmarks", () => {
     expect(toggleBookmarkPreviewCardSelection(currentBookmarks, "bookmark-1", 1)).toEqual(
       currentBookmarks,
     );
+  });
+
+  it("serializes normalized bookmarks as jsonl", () => {
+    expect(serializeBookmarksAsJsonl([
+      createBookmark({
+        hash: "film|The Matrix (1999)",
+        label: "  The Matrix  ",
+        selectedPreviewCardIndices: [0, 2, 0],
+      }),
+    ])).toBe(JSON.stringify(
+      createBookmark({
+        hash: MATRIX_HASH,
+        label: "The Matrix",
+        selectedPreviewCardIndices: [0],
+      }),
+    ));
+  });
+
+  it("parses valid jsonl bookmark rows", () => {
+    expect(parseBookmarksJsonl([
+      JSON.stringify(createBookmark()),
+      JSON.stringify(createBookmark({
+        id: "bookmark-2",
+        hash: KEANU_HASH,
+        label: "Keanu Reeves",
+        previewCards: [
+          createPreviewCard({
+            key: "person:keanu-reeves",
+            kind: "person",
+            name: "Keanu Reeves",
+            subtitle: "Person",
+            subtitleDetail: "Actor",
+          }),
+        ],
+      })),
+    ].join("\n"))).toEqual([
+      createBookmark(),
+      createBookmark({
+        id: "bookmark-2",
+        hash: KEANU_HASH,
+        label: "Keanu Reeves",
+        previewCards: [
+          createPreviewCard({
+            key: "person:keanu-reeves",
+            kind: "person",
+            name: "Keanu Reeves",
+            subtitle: "Person",
+            subtitleDetail: "Actor",
+          }),
+        ],
+      }),
+    ]);
+  });
+
+  it("ignores blank jsonl lines", () => {
+    expect(parseBookmarksJsonl(`\n${JSON.stringify(createBookmark())}\n\n`)).toEqual([
+      createBookmark(),
+    ]);
+  });
+
+  it("rejects malformed jsonl lines", () => {
+    expect(() => parseBookmarksJsonl("{")).toThrowError(
+      "Bookmark JSONL line 1 is not valid JSON",
+    );
+  });
+
+  it("rejects invalid bookmark jsonl rows", () => {
+    expect(() => parseBookmarksJsonl(JSON.stringify({
+      id: "bookmark-1",
+      hash: MATRIX_HASH,
+    }))).toThrowError("Bookmark JSONL line 1 is not a valid bookmark");
+  });
+
+  it("rejects bookmarks that normalize to empty labels", () => {
+    expect(() => parseBookmarksJsonl(JSON.stringify(createBookmark({
+      label: "   ",
+    })))).toThrowError("Bookmark JSONL line 1 is not a valid bookmark");
+  });
+
+  it("replaces bookmarks with normalized entries and persists them", () => {
+    expect(replaceBookmarks([
+      createBookmark({
+        hash: "film|The Matrix (1999)",
+        label: "  The Matrix  ",
+        selectedPreviewCardIndices: [0, 2, 0],
+      }),
+    ])).toEqual([
+      createBookmark({
+        hash: MATRIX_HASH,
+        label: "The Matrix",
+        selectedPreviewCardIndices: [0],
+      }),
+    ]);
+
+    expect(JSON.parse(localStorage.getItem(BOOKMARKS_STORAGE_KEY) ?? "[]")).toEqual([
+      createBookmark({
+        hash: MATRIX_HASH,
+        label: "The Matrix",
+        selectedPreviewCardIndices: [0],
+      }),
+    ]);
   });
 });

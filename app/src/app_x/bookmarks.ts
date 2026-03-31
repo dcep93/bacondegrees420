@@ -142,6 +142,57 @@ export function saveBookmarks(bookmarks: BookmarkEntry[]) {
   localStorage.setItem(BOOKMARKS_STORAGE_KEY, JSON.stringify(normalizeBookmarkEntries(bookmarks)));
 }
 
+export function serializeBookmarksAsJsonl(bookmarks: BookmarkEntry[]): string {
+  return normalizeBookmarkEntries(bookmarks)
+    .map((bookmark) => JSON.stringify(bookmark))
+    .join("\n");
+}
+
+export function parseBookmarksJsonl(jsonlText: string): BookmarkEntry[] {
+  const parsedLines = jsonlText
+    .split(/\r?\n/)
+    .map((line, index) => ({
+      line: line.trim(),
+      lineNumber: index + 1,
+    }))
+    .filter(({ line }) => Boolean(line));
+
+  if (parsedLines.length === 0) {
+    return [];
+  }
+
+  return parsedLines.map(({ line, lineNumber }) => {
+    let parsedValue: unknown;
+
+    try {
+      parsedValue = JSON.parse(line);
+    } catch {
+      throw new Error(`Bookmark JSONL line ${lineNumber} is not valid JSON`);
+    }
+
+    if (!isBookmarkEntry(parsedValue)) {
+      throw new Error(`Bookmark JSONL line ${lineNumber} is not a valid bookmark`);
+    }
+
+    const normalizedBookmark = normalizeBookmarkEntry({
+      ...parsedValue,
+      selectedPreviewCardIndices: parsedValue.selectedPreviewCardIndices ?? [],
+    });
+
+    if (!normalizedBookmark.label || normalizedBookmark.previewCards.length === 0) {
+      throw new Error(`Bookmark JSONL line ${lineNumber} is not a valid bookmark`);
+    }
+
+    return normalizedBookmark;
+  });
+}
+
+export function replaceBookmarks(bookmarks: BookmarkEntry[]): BookmarkEntry[] {
+  const normalizedBookmarks = normalizeBookmarkEntries(bookmarks);
+  saveBookmarks(normalizedBookmarks);
+  return normalizedBookmarks;
+}
+
 export function mergeMissingBookmarks(
   currentBookmarks: BookmarkEntry[],
   incomingBookmarks: unknown,

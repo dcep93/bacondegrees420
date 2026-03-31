@@ -233,7 +233,7 @@ async function createMovieChildCandidateFromParts(
 async function getMovieDirectChildren(
   movieRecord: FilmRecord,
 ): Promise<PersonChildCandidate[]> {
-  const candidatesByKey = new Map<string, PersonChildCandidate>();
+  const candidatesByLookupKey = new Map<string, PersonChildCandidate>();
   const credits = getAssociatedPeopleFromMovieCredits(movieRecord);
 
   if (credits.length > 0) {
@@ -259,13 +259,8 @@ async function getMovieDirectChildren(
         return;
       }
 
-      const currentCandidate = candidatesByKey.get(candidate.key);
-      if (!currentCandidate || candidate.popularity > currentCandidate.popularity) {
-        candidatesByKey.set(candidate.key, candidate);
-      }
+      mergePersonChildCandidate(candidatesByLookupKey, candidate);
     });
-
-    return [...candidatesByKey.values()];
   }
 
   const fallbackCandidates = await Promise.all(
@@ -274,18 +269,18 @@ async function getMovieDirectChildren(
   );
 
   fallbackCandidates.forEach((candidate) => {
-    if (candidate && !candidatesByKey.has(candidate.key)) {
-      candidatesByKey.set(candidate.key, candidate);
+    if (candidate) {
+      mergePersonChildCandidate(candidatesByLookupKey, candidate);
     }
   });
 
-  return [...candidatesByKey.values()];
+  return [...candidatesByLookupKey.values()];
 }
 
 async function getPersonDirectChildren(
   personRecord: PersonRecord,
 ): Promise<MovieChildCandidate[]> {
-  const candidatesByKey = new Map<string, MovieChildCandidate>();
+  const candidatesByLookupKey = new Map<string, MovieChildCandidate>();
   const credits = getAssociatedMoviesFromPersonCredits(personRecord);
 
   if (credits.length > 0) {
@@ -308,13 +303,8 @@ async function getPersonDirectChildren(
         return;
       }
 
-      const currentCandidate = candidatesByKey.get(candidate.key);
-      if (!currentCandidate || candidate.popularity > currentCandidate.popularity) {
-        candidatesByKey.set(candidate.key, candidate);
-      }
+      mergeMovieChildCandidate(candidatesByLookupKey, candidate);
     });
-
-    return [...candidatesByKey.values()];
   }
 
   const fallbackCandidates = await Promise.all(
@@ -325,33 +315,29 @@ async function getPersonDirectChildren(
   );
 
   fallbackCandidates.forEach((candidate) => {
-    if (candidate && !candidatesByKey.has(candidate.key)) {
-      candidatesByKey.set(candidate.key, candidate);
+    if (candidate) {
+      mergeMovieChildCandidate(candidatesByLookupKey, candidate);
     }
   });
 
-  return [...candidatesByKey.values()];
+  return [...candidatesByLookupKey.values()];
 }
 
 function getMovieConnectedPersonMatchKeys(movieRecord: FilmRecord): Set<string> {
   const connectedKeys = new Set<string>();
   const credits = getAssociatedPeopleFromMovieCredits(movieRecord);
 
-  if (credits.length > 0) {
-    credits.forEach((credit) => {
-      const personName = normalizeWhitespace(credit.name ?? "");
-      if (!personName) {
-        return;
-      }
+  credits.forEach((credit) => {
+    const personName = normalizeWhitespace(credit.name ?? "");
+    if (!personName) {
+      return;
+    }
 
-      getPersonMatchKeys(
-        personName,
-        getValidTmdbEntityId(credit.id),
-      ).forEach((matchKey) => connectedKeys.add(matchKey));
-    });
-
-    return connectedKeys;
-  }
+    getPersonMatchKeys(
+      personName,
+      getValidTmdbEntityId(credit.id),
+    ).forEach((matchKey) => connectedKeys.add(matchKey));
+  });
 
   movieRecord.personConnectionKeys.forEach((personName) => {
     getPersonMatchKeys(personName, null).forEach((matchKey) => connectedKeys.add(matchKey));
@@ -364,21 +350,17 @@ function getPersonConnectedMovieMatchKeys(personRecord: PersonRecord): Set<strin
   const connectedKeys = new Set<string>();
   const credits = getAssociatedMoviesFromPersonCredits(personRecord);
 
-  if (credits.length > 0) {
-    credits.forEach((credit) => {
-      const movieTitle = getMovieTitleFromCredit(credit);
-      if (!normalizeWhitespace(movieTitle)) {
-        return;
-      }
+  credits.forEach((credit) => {
+    const movieTitle = getMovieTitleFromCredit(credit);
+    if (!normalizeWhitespace(movieTitle)) {
+      return;
+    }
 
-      getMovieMatchKeys(
-        movieTitle,
-        getMovieYearFromCredit(credit),
-      ).forEach((matchKey) => connectedKeys.add(matchKey));
-    });
-
-    return connectedKeys;
-  }
+    getMovieMatchKeys(
+      movieTitle,
+      getMovieYearFromCredit(credit),
+    ).forEach((matchKey) => connectedKeys.add(matchKey));
+  });
 
   personRecord.movieConnectionKeys.forEach((movieKey) => {
     const movie = parseMoviePathLabel(movieKey);
@@ -483,6 +465,78 @@ async function sortSharedMovieLabelsByPopularity(
   return labelsWithPopularity
     .sort(compareSharedConnectionLabelsByPopularity)
     .map(({ label }) => label);
+}
+
+function getPersonChildCandidateQuality(candidate: PersonChildCandidate): number {
+  return (
+    (candidate.personRecord ? 8 : 0) +
+    (candidate.tmdbId !== null ? 4 : 0) +
+    (candidate.imageUrl ? 2 : 0) +
+    (candidate.popularity > 0 ? 1 : 0)
+  );
+}
+
+function shouldReplacePersonChildCandidate(
+  currentCandidate: PersonChildCandidate,
+  nextCandidate: PersonChildCandidate,
+): boolean {
+  const qualityDifference =
+    getPersonChildCandidateQuality(nextCandidate) - getPersonChildCandidateQuality(currentCandidate);
+  if (qualityDifference !== 0) {
+    return qualityDifference > 0;
+  }
+
+  if (nextCandidate.popularity !== currentCandidate.popularity) {
+    return nextCandidate.popularity > currentCandidate.popularity;
+  }
+
+  return nextCandidate.key.localeCompare(currentCandidate.key) < 0;
+}
+
+function getMovieChildCandidateQuality(candidate: MovieChildCandidate): number {
+  return (
+    (candidate.movieRecord ? 8 : 0) +
+    (candidate.tmdbId !== null ? 4 : 0) +
+    (candidate.imageUrl ? 2 : 0) +
+    (candidate.popularity > 0 ? 1 : 0)
+  );
+}
+
+function shouldReplaceMovieChildCandidate(
+  currentCandidate: MovieChildCandidate,
+  nextCandidate: MovieChildCandidate,
+): boolean {
+  const qualityDifference =
+    getMovieChildCandidateQuality(nextCandidate) - getMovieChildCandidateQuality(currentCandidate);
+  if (qualityDifference !== 0) {
+    return qualityDifference > 0;
+  }
+
+  if (nextCandidate.popularity !== currentCandidate.popularity) {
+    return nextCandidate.popularity > currentCandidate.popularity;
+  }
+
+  return nextCandidate.key.localeCompare(currentCandidate.key) < 0;
+}
+
+function mergePersonChildCandidate(
+  candidatesByLookupKey: Map<string, PersonChildCandidate>,
+  candidate: PersonChildCandidate,
+) {
+  const currentCandidate = candidatesByLookupKey.get(candidate.lookupKey);
+  if (!currentCandidate || shouldReplacePersonChildCandidate(currentCandidate, candidate)) {
+    candidatesByLookupKey.set(candidate.lookupKey, candidate);
+  }
+}
+
+function mergeMovieChildCandidate(
+  candidatesByLookupKey: Map<string, MovieChildCandidate>,
+  candidate: MovieChildCandidate,
+) {
+  const currentCandidate = candidatesByLookupKey.get(candidate.lookupKey);
+  if (!currentCandidate || shouldReplaceMovieChildCandidate(currentCandidate, candidate)) {
+    candidatesByLookupKey.set(candidate.lookupKey, candidate);
+  }
 }
 
 function buildCounterpartTooltipText(

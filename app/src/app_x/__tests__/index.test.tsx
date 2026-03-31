@@ -27,6 +27,11 @@ import {
 import {
   IndexedDbBootstrapLoadingIndicator,
 } from "../index";
+import { getWindowKeyDownAction } from "../window_keydown";
+
+function makeKeyboardTarget(tagName: string): EventTarget {
+  return { tagName } as unknown as EventTarget;
+}
 
 function makeConnectionEntity(
   overrides: Partial<ConnectionEntity> = {},
@@ -323,6 +328,50 @@ describe("Connection matchup loading state", () => {
       isConnectedToYoungestSelection: false,
     })).toBe(false);
     expect(shouldActivateConnectedDropdownSuggestion(null)).toBe(false);
+  });
+});
+
+describe("window keydown behavior", () => {
+  it("closes the bookmarks jsonl modal on escape before bookmark toggles", () => {
+    expect(getWindowKeyDownAction({
+      event: {
+        altKey: false,
+        ctrlKey: false,
+        defaultPrevented: false,
+        key: "Escape",
+        metaKey: false,
+        target: makeKeyboardTarget("TEXTAREA"),
+      },
+      isBookmarksJsonlEditorOpen: true,
+    })).toBe("close-bookmarks-jsonl-editor");
+  });
+
+  it("does not toggle bookmarks from editable fields when the modal is closed", () => {
+    expect(getWindowKeyDownAction({
+      event: {
+        altKey: false,
+        ctrlKey: false,
+        defaultPrevented: false,
+        key: "Escape",
+        metaKey: false,
+        target: makeKeyboardTarget("TEXTAREA"),
+      },
+      isBookmarksJsonlEditorOpen: false,
+    })).toBeNull();
+  });
+
+  it("toggles bookmarks from the global shortcut when the modal is closed", () => {
+    expect(getWindowKeyDownAction({
+      event: {
+        altKey: false,
+        ctrlKey: false,
+        defaultPrevented: false,
+        key: "b",
+        metaKey: false,
+        target: makeKeyboardTarget("DIV"),
+      },
+      isBookmarksJsonlEditorOpen: false,
+    })).toBe("toggle-bookmarks");
   });
 });
 

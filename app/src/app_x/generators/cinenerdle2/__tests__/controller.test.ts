@@ -941,6 +941,72 @@ describe("buildBookmarkPreviewCardsFromHash", () => {
     ]);
   });
 
+  it("excludes stunt-only crew movie credits from a person's child row", async () => {
+    const peterRecord = makePersonRecord({
+      id: 2761654,
+      tmdbId: 2761654,
+      name: "Peter Jeremijenko",
+      rawTmdbPerson: makeTmdbPersonSearchResult({
+        id: 2761654,
+        name: "Peter Jeremijenko",
+        popularity: 0.2973,
+        profile_path: null,
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({
+            id: 495128,
+            title: "Growing Young",
+            release_date: "2015-05-13",
+            character: "John",
+            popularity: 0.6799,
+          }),
+        ],
+        crew: [
+          makeMovieCredit({
+            id: 604,
+            title: "The Matrix Reloaded",
+            release_date: "2003-05-15",
+            character: undefined,
+            creditType: undefined,
+            department: "Crew",
+            job: "Stunts",
+            popularity: 12.4412,
+          }),
+          makeMovieCredit({
+            id: 605,
+            title: "The Matrix Revolutions",
+            release_date: "2003-11-05",
+            character: undefined,
+            creditType: undefined,
+            department: "Crew",
+            job: "Stunts",
+            popularity: 9.1144,
+          }),
+        ],
+      },
+    });
+
+    indexedDbMock.getPersonRecordById.mockImplementation(async (personId: number) =>
+      personId === 2761654 ? peterRecord : null,
+    );
+    indexedDbMock.getPersonRecordByName.mockImplementation(async (personName: string) =>
+      personName === "Peter Jeremijenko" ? peterRecord : null,
+    );
+    indexedDbMock.getFilmRecordsByIds.mockResolvedValue(new Map());
+    indexedDbMock.getPersonPopularityByNames.mockResolvedValue(new Map());
+    indexedDbMock.getPersonRecordCountsByMovieKeys.mockResolvedValue(new Map([
+      ["growing young (2015)", 1],
+    ]));
+
+    const tree = await buildTreeFromHash("#person|Peter+Jeremijenko");
+    const childCards = tree[1]?.map((node) => node.data) ?? [];
+
+    expect(childCards.map((card) => card.name)).toEqual([
+      "Growing Young",
+    ]);
+  });
+
   it("renders both cast and crew roles on a movie child-row person card when the same person appears twice in TMDb credits", async () => {
     const chuckLarryRecord = makeFilmRecord({
       id: 3563,
