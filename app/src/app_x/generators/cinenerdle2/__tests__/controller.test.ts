@@ -58,6 +58,7 @@ import {
   getCardPopularityTooltipText,
   hydrateYoungestSelectedCardInTree,
   reduceCinenerdleLifecycleEvent,
+  shouldSkipDailyStarterGenerationRedraw,
   shouldDispatchSelectedCardBackgroundForceRefresh,
   shouldPrefetchPopularConnectionsOnInit,
   shouldForceRefreshSelectedPathOnInit,
@@ -124,6 +125,34 @@ function makeCinenerdleRootCard(): Extract<CinenerdleCard, { kind: "cinenerdle" 
     record: null,
   };
 }
+
+describe("shouldSkipDailyStarterGenerationRedraw", () => {
+  it("skips the redraw when the refreshed root keeps the same starter cards", () => {
+    const currentTree = [
+      [{ selected: true, data: makeCinenerdleRootCard() }],
+      [{ selected: false, data: makeMovieCard({ name: "First Man", year: "2018", popularity: 22 }) }],
+    ];
+    const refreshedTree = [
+      [{ selected: true, data: makeCinenerdleRootCard() }],
+      [{ selected: false, data: makeMovieCard({ name: "First Man", year: "2018", popularity: 99 }) }],
+    ];
+
+    expect(shouldSkipDailyStarterGenerationRedraw(currentTree, refreshedTree)).toBe(true);
+  });
+
+  it("does not skip the redraw when the refreshed starter row changes", () => {
+    const currentTree = [
+      [{ selected: true, data: makeCinenerdleRootCard() }],
+      [{ selected: false, data: makeMovieCard({ name: "First Man", year: "2018" }) }],
+    ];
+    const refreshedTree = [
+      [{ selected: true, data: makeCinenerdleRootCard() }],
+      [{ selected: false, data: makeMovieCard({ name: "Heat", year: "1995" }) }],
+    ];
+
+    expect(shouldSkipDailyStarterGenerationRedraw(currentTree, refreshedTree)).toBe(false);
+  });
+});
 
 describe("getCardPopularityTooltipText", () => {
   it("uses a cached movie record timestamp before ancestor fallbacks", () => {

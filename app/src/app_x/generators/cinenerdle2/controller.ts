@@ -11,6 +11,7 @@ import type {
   GeneratorState,
   GeneratorTransition,
   GeneratorTree,
+  GeneratorTreeState,
 } from "../../types/generator";
 import {
   createCinenerdleOnlyPersonCard,
@@ -852,8 +853,47 @@ function isCinenerdleRootTree(tree: GeneratorTree<CinenerdleCard>) {
   return getSelectedCard(tree, 0)?.kind === "cinenerdle";
 }
 
+function doGeneratorRowsMatch(
+  leftRow: GeneratorNode<CinenerdleCard>[] | null | undefined,
+  rightRow: GeneratorNode<CinenerdleCard>[] | null | undefined,
+) {
+  if (!leftRow?.length && !rightRow?.length) {
+    return true;
+  }
+
+  if (!leftRow || !rightRow || leftRow.length !== rightRow.length) {
+    return false;
+  }
+
+  return leftRow.every((leftNode, index) => {
+    const rightNode = rightRow[index];
+
+    if (!rightNode) {
+      return false;
+    }
+
+    return (
+      leftNode.selected === rightNode.selected &&
+      Boolean(leftNode.disabled) === Boolean(rightNode.disabled) &&
+      cardsMatch(leftNode.data, rightNode.data)
+    );
+  });
+}
+
+export function shouldSkipDailyStarterGenerationRedraw(
+  currentTree: GeneratorTreeState<CinenerdleCard>,
+  refreshedTree: GeneratorTree<CinenerdleCard>,
+) {
+  if (!currentTree || !isCinenerdleRootTree(currentTree) || !isCinenerdleRootTree(refreshedTree)) {
+    return false;
+  }
+
+  return doGeneratorRowsMatch(currentTree[1], refreshedTree[1]);
+}
+
 async function hydrateDailyStartersAndRedraw(
   setTree: (nextTree: GeneratorTree<CinenerdleCard>) => void,
+  getTree: () => GeneratorTreeState<CinenerdleCard>,
   readHash: () => string,
 ) {
   await measureAsync(
@@ -867,6 +907,9 @@ async function hydrateDailyStartersAndRedraw(
       await hydrateCinenerdleDailyStarterMovies(starterFilms);
 
       const refreshedTree = await buildTreeFromHash(readHash());
+      if (shouldSkipDailyStarterGenerationRedraw(getTree(), refreshedTree)) {
+        return;
+      }
       setTree(refreshedTree);
     },
     {
@@ -1618,7 +1661,7 @@ export function useCinenerdleController({
         return createGeneratorState<CinenerdleCard, undefined>(undefined);
       },
       reduce: reduceCinenerdleLifecycleEvent,
-      async runEffect(effect, { applyUpdate }) {
+      async runEffect(effect, { applyUpdate, getState }) {
         if (effect.type === "load-initial-tree") {
           const initialHash = readHash();
           const initMode = getControllerInitMode(
@@ -1709,6 +1752,7 @@ export function useCinenerdleController({
                         tree: nextTreeUpdate,
                       });
                     },
+                    () => getState().tree,
                     readHash,
                   ).catch(() => { });
                 }
@@ -1739,6 +1783,7 @@ export function useCinenerdleController({
                         tree: nextTreeUpdate,
                       });
                     },
+                    () => getState().tree,
                     readHash,
                   ).catch(() => { });
                 }

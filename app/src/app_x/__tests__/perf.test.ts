@@ -7,7 +7,7 @@ describe("perf clipboard logging", () => {
     clearCinenerdleDebugLog();
   });
 
-  it("logs measured async work to the cinenerdle debug log", async () => {
+  it("does not add measured async work to the cinenerdle debug log after a log reset", async () => {
     const result = await measureAsync(
       "unit-test.async",
       async () => "done",
@@ -23,19 +23,10 @@ describe("perf clipboard logging", () => {
     );
 
     expect(result).toBe("done");
-    expect(getCinenerdleDebugEntries()).toEqual([
-      expect.objectContaining({
-        event: "perf:unit-test.async",
-        details: expect.objectContaining({
-          scope: "test",
-          status: "ok",
-          value: "done",
-        }),
-      }),
-    ]);
+    expect(getCinenerdleDebugEntries()).toEqual([]);
   });
 
-  it("logs measured sync failures to the cinenerdle debug log", () => {
+  it("does not add measured sync failures to the cinenerdle debug log after a log reset", () => {
     expect(() =>
       measureSync(
         "unit-test.sync-error",
@@ -44,31 +35,15 @@ describe("perf clipboard logging", () => {
         },
       )).toThrow("boom");
 
-    expect(getCinenerdleDebugEntries()).toEqual([
-      expect.objectContaining({
-        event: "perf:unit-test.sync-error",
-        details: expect.objectContaining({
-          errorMessage: "boom",
-          status: "error",
-        }),
-      }),
-    ]);
+    expect(getCinenerdleDebugEntries()).toEqual([]);
   });
 
-  it("logs elapsed time from perf marks", () => {
+  it("does not add elapsed-time mark entries to the cinenerdle debug log after a log reset", () => {
     markPerf("unit-test-mark");
     logPerfSinceMark("unit-test.since-mark", "unit-test-mark", {
       scope: "mark",
     });
 
-    expect(getCinenerdleDebugEntries()).toEqual([
-      expect.objectContaining({
-        event: "perf:unit-test.since-mark",
-        details: expect.objectContaining({
-          markName: "unit-test-mark",
-          scope: "mark",
-        }),
-      }),
-    ]);
+    expect(getCinenerdleDebugEntries()).toEqual([]);
   });
 });

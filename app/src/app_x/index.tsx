@@ -131,6 +131,11 @@ import {
 } from "./index_helpers";
 import { formatClearDbBadgeText } from "./clear_db_badge";
 import { annotateDirectionalConnectionPathRanks } from "./connection_path_ranks";
+import {
+  createIndexedDbBootstrapLoadingShellDelayManager,
+  shouldShowIndexedDbBootstrapLoadingShell,
+  type IndexedDbBootstrapLoadingShellDelayManager,
+} from "./indexed_db_bootstrap_loading_shell";
 import { measureAsync } from "./perf";
 import "./styles/app_shell.css";
 
@@ -875,6 +880,8 @@ export default function AppX() {
       phase: "idle",
       resetRequiredMessage: null,
     });
+  const [hasIndexedDbBootstrapLoadingShellDelayElapsed, setHasIndexedDbBootstrapLoadingShellDelayElapsed] =
+    useState(false);
   const [copyStatus, setCopyStatus] = useState("");
   const [copyStatusPlacement, setCopyStatusPlacement] = useState<"toast" | "title">("toast");
   const [clearDbFetchCount, setClearDbFetchCount] = useState(() => getCinenerdleFetchDebugEntryCount());
@@ -910,6 +917,8 @@ export default function AppX() {
   const connectionDropdownRef = useRef<HTMLDivElement | null>(null);
   const titleRef = useRef<HTMLHeadingElement | null>(null);
   const highlightedConnectionEntitySelectionRequestIdRef = useRef(0);
+  const indexedDbBootstrapLoadingShellDelayManagerRef =
+    useRef<IndexedDbBootstrapLoadingShellDelayManager | null>(null);
   const deferredConnectionQuery = useDeferredValue(connectionQuery);
   const isBookmarksView = appLocation.viewMode === "bookmarks";
   const isCinenerdleIndexedDbBootstrapLoading = !cinenerdleIndexedDbBootstrapStatus.isCoreReady;
@@ -918,6 +927,10 @@ export default function AppX() {
   const clearDbBadgeText = formatClearDbBadgeText(clearDbFetchCount, clearDbTotalFetchCount);
   const isConnectionInputDisabled = isResolvingConnection || isSearchablePersistencePending;
   const isAppBodyBlockedByIndexedDbBootstrap = isCinenerdleIndexedDbBootstrapLoading;
+  const shouldShowIndexedDbBootstrapLoadingShellIndicator = shouldShowIndexedDbBootstrapLoadingShell({
+    hasLoadingShellDelayElapsed: hasIndexedDbBootstrapLoadingShellDelayElapsed,
+    status: cinenerdleIndexedDbBootstrapStatus,
+  });
   const highestGenerationSelectedLabel = getHighestGenerationSelectedLabel(hashValue);
   const selectedPathTooltipEntries = getSelectedPathTooltipEntries(hashValue);
   const highlightedConnectionEntity =
@@ -935,6 +948,32 @@ export default function AppX() {
   useEffect(() => {
     return connectCinenerdleIndexedDbBootstrap(setCinenerdleIndexedDbBootstrapStatus);
   }, []);
+
+  useEffect(() => {
+    const delayManager = createIndexedDbBootstrapLoadingShellDelayManager({
+      clearTimeout: window.clearTimeout.bind(window),
+      onDelayElapsed: () => {
+        setHasIndexedDbBootstrapLoadingShellDelayElapsed(true);
+      },
+      onDelayReset: () => {
+        setHasIndexedDbBootstrapLoadingShellDelayElapsed(false);
+      },
+      setTimeout: window.setTimeout.bind(window),
+    });
+
+    indexedDbBootstrapLoadingShellDelayManagerRef.current = delayManager;
+
+    return () => {
+      delayManager.dispose();
+      indexedDbBootstrapLoadingShellDelayManagerRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    indexedDbBootstrapLoadingShellDelayManagerRef.current?.sync(
+      cinenerdleIndexedDbBootstrapStatus,
+    );
+  }, [cinenerdleIndexedDbBootstrapStatus]);
 
   useEffect(() => {
     let isActive = true;
@@ -2307,7 +2346,7 @@ export default function AppX() {
         </div>
       </header>
 
-      {isAppBodyBlockedByIndexedDbBootstrap ? (
+      {shouldShowIndexedDbBootstrapLoadingShellIndicator ? (
         <IndexedDbBootstrapLoadingIndicator
           phase={cinenerdleIndexedDbBootstrapStatus.phase}
           resetRequiredMessage={cinenerdleIndexedDbBootstrapStatus.resetRequiredMessage}

@@ -3,10 +3,11 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import ConnectionEntityCard from "../components/connection_entity_card";
 import type { ConnectionEntity } from "../generators/cinenerdle2/connection_graph";
+import type { CinenerdleIndexedDbBootstrapStatus } from "../generators/cinenerdle2/bootstrap";
 import {
   makeFilmRecord,
   makePersonRecord,
@@ -18,7 +19,14 @@ import {
 import { annotateDirectionalConnectionPathRanks } from "../connection_path_ranks";
 import { formatClearDbBadgeText } from "../clear_db_badge";
 import { formatIndexedDbClearConfirmationMessage } from "../indexed_db_clear_confirmation";
-import { IndexedDbBootstrapLoadingIndicator } from "../index";
+import {
+  createIndexedDbBootstrapLoadingShellDelayManager,
+  INDEXED_DB_BOOTSTRAP_LOADING_SHELL_DELAY_MS,
+  shouldShowIndexedDbBootstrapLoadingShell,
+} from "../indexed_db_bootstrap_loading_shell";
+import {
+  IndexedDbBootstrapLoadingIndicator,
+} from "../index";
 
 function makeConnectionEntity(
   overrides: Partial<ConnectionEntity> = {},
@@ -72,7 +80,27 @@ function findElementByClassName(
   return null;
 }
 
+function makeCinenerdleIndexedDbBootstrapStatus(
+  overrides: Partial<CinenerdleIndexedDbBootstrapStatus> = {},
+): CinenerdleIndexedDbBootstrapStatus {
+  return {
+    phase: "idle",
+    isCoreReady: false,
+    isSearchablePersistencePending: false,
+    resetRequiredMessage: null,
+    ...overrides,
+  };
+}
+
 describe("Connection matchup loading state", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("suppresses matchup resolution while cinenerdle bootstrap is loading", () => {
     expect(shouldResolveConnectionMatchupPreview({
       isBookmarksView: false,
@@ -147,6 +175,133 @@ describe("Connection matchup loading state", () => {
 
     expect(html).toContain("Clear DB and refresh");
     expect(html).toContain("Cached Cinenerdle data is outdated or incompatible. Clear DB and refresh.");
+  });
+
+  it("keeps the loading shell hidden when bootstrap finishes before the delay elapses", async () => {
+    const delayEvents: string[] = [];
+    const delayManager = createIndexedDbBootstrapLoadingShellDelayManager({
+      clearTimeout,
+      onDelayElapsed: () => {
+        delayEvents.push("elapsed");
+      },
+      onDelayReset: () => {
+        delayEvents.push("reset");
+      },
+      setTimeout,
+    });
+
+    delayManager.sync(makeCinenerdleIndexedDbBootstrapStatus());
+    await vi.advanceTimersByTimeAsync(INDEXED_DB_BOOTSTRAP_LOADING_SHELL_DELAY_MS - 1);
+    delayManager.sync(makeCinenerdleIndexedDbBootstrapStatus({
+      isCoreReady: true,
+      phase: "idle",
+    }));
+    await vi.advanceTimersByTimeAsync(INDEXED_DB_BOOTSTRAP_LOADING_SHELL_DELAY_MS);
+
+    expect(delayEvents).toEqual(["reset", "reset"]);
+    expect(shouldShowIndexedDbBootstrapLoadingShell({
+      hasLoadingShellDelayElapsed: false,
+      status: makeCinenerdleIndexedDbBootstrapStatus({
+        isCoreReady: true,
+        phase: "idle",
+      }),
+    })).toBe(false);
+
+    delayManager.dispose();
+  });
+
+  it("shows the loading shell after bootstrap has been blocking for at least 2 seconds", async () => {
+    const delayEvents: string[] = [];
+    const delayManager = createIndexedDbBootstrapLoadingShellDelayManager({
+      clearTimeout,
+      onDelayElapsed: () => {
+        delayEvents.push("elapsed");
+      },
+      onDelayReset: () => {
+        delayEvents.push("reset");
+      },
+      setTimeout,
+    });
+
+    delayManager.sync(makeCinenerdleIndexedDbBootstrapStatus({
+      phase: "processing",
+    }));
+    await vi.advanceTimersByTimeAsync(INDEXED_DB_BOOTSTRAP_LOADING_SHELL_DELAY_MS);
+
+    expect(delayEvents).toEqual(["reset", "elapsed"]);
+    expect(shouldShowIndexedDbBootstrapLoadingShell({
+      hasLoadingShellDelayElapsed: true,
+      status: makeCinenerdleIndexedDbBootstrapStatus({
+        phase: "processing",
+      }),
+    })).toBe(true);
+
+    delayManager.dispose();
+  });
+
+  it("hides the loading shell again once bootstrap finishes after the delay elapses", async () => {
+    const delayEvents: string[] = [];
+    const delayManager = createIndexedDbBootstrapLoadingShellDelayManager({
+      clearTimeout,
+      onDelayElapsed: () => {
+        delayEvents.push("elapsed");
+      },
+      onDelayReset: () => {
+        delayEvents.push("reset");
+      },
+      setTimeout,
+    });
+
+    delayManager.sync(makeCinenerdleIndexedDbBootstrapStatus({
+      phase: "processing",
+    }));
+    await vi.advanceTimersByTimeAsync(INDEXED_DB_BOOTSTRAP_LOADING_SHELL_DELAY_MS);
+    delayManager.sync(makeCinenerdleIndexedDbBootstrapStatus({
+      isCoreReady: true,
+      phase: "idle",
+    }));
+
+    expect(delayEvents).toEqual(["reset", "elapsed", "reset"]);
+    expect(shouldShowIndexedDbBootstrapLoadingShell({
+      hasLoadingShellDelayElapsed: false,
+      status: makeCinenerdleIndexedDbBootstrapStatus({
+        isCoreReady: true,
+        phase: "idle",
+      }),
+    })).toBe(false);
+
+    delayManager.dispose();
+  });
+
+  it("shows reset-required immediately without waiting for the loading delay", async () => {
+    const delayEvents: string[] = [];
+    const delayManager = createIndexedDbBootstrapLoadingShellDelayManager({
+      clearTimeout,
+      onDelayElapsed: () => {
+        delayEvents.push("elapsed");
+      },
+      onDelayReset: () => {
+        delayEvents.push("reset");
+      },
+      setTimeout,
+    });
+
+    delayManager.sync(makeCinenerdleIndexedDbBootstrapStatus());
+    await vi.advanceTimersByTimeAsync(1000);
+    const resetRequiredStatus = makeCinenerdleIndexedDbBootstrapStatus({
+      phase: "reset-required",
+      resetRequiredMessage: "Cached Cinenerdle data is outdated or incompatible. Clear DB and refresh.",
+    });
+    delayManager.sync(resetRequiredStatus);
+    await vi.advanceTimersByTimeAsync(INDEXED_DB_BOOTSTRAP_LOADING_SHELL_DELAY_MS);
+
+    expect(delayEvents).toEqual(["reset", "reset"]);
+    expect(shouldShowIndexedDbBootstrapLoadingShell({
+      hasLoadingShellDelayElapsed: false,
+      status: resetRequiredStatus,
+    })).toBe(true);
+
+    delayManager.dispose();
   });
 
   it("describes clear-db size as a browser estimate instead of exact reclaimed space", () => {
