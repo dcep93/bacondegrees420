@@ -3,11 +3,16 @@ import {
   AbstractGenerator,
   type AbstractGeneratorActivationRequest,
   type AbstractGeneratorFocusRequest,
+  type AbstractGeneratorTreeRefreshRequest,
 } from "../../components/abstract_generator";
 import "../../styles/cinenerdle2.css";
 import type { GeneratorNode } from "../../types/generator";
 import type { ConnectionEntity } from "./connection_graph";
-import { useCinenerdleController } from "./controller";
+import {
+  refreshTreeForFetchedCard,
+  useCinenerdleController,
+  type FetchedCardRefreshRequest,
+} from "./controller";
 import {
   normalizeHashValue,
 } from "./hash";
@@ -181,6 +186,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
     Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }> | null
   >(null);
   const [recordsRefreshVersion, setRecordsRefreshVersion] = useState(0);
+  const [cardDataRefreshRequest, setCardDataRefreshRequest] = useState<FetchedCardRefreshRequest | null>(null);
 
   useLayoutEffect(() => {
     hashRef.current = normalizedHash;
@@ -218,10 +224,21 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   );
 
   const controller = useCinenerdleController({
+    onCardDataRefreshRequested: setCardDataRefreshRequest,
     recordsRefreshVersion,
     readHash,
     writeHash,
   });
+  const treeRefreshRequest = useMemo<AbstractGeneratorTreeRefreshRequest<CinenerdleCard> | null>(() => {
+    if (!cardDataRefreshRequest) {
+      return null;
+    }
+
+    return {
+      requestKey: cardDataRefreshRequest.requestKey,
+      run: (tree) => refreshTreeForFetchedCard(tree, cardDataRefreshRequest),
+    };
+  }, [cardDataRefreshRequest]);
   const focusRequest = useMemo<AbstractGeneratorFocusRequest<CinenerdleCard> | null>(() => {
     if (!highlightedConnectionEntity) {
       return null;
@@ -294,6 +311,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
       reduce={controller.reduce}
       renderCard={controller.renderCard}
       runEffect={controller.runEffect}
+      treeRefreshRequest={treeRefreshRequest}
     />
   );
 });

@@ -3,6 +3,7 @@ import { createBookmarkPreviewCard, type BookmarkPreviewCard } from "../../compo
 import { didRequestNewTabNavigation } from "../../index_helpers";
 import { measureAsync } from "../../perf";
 import { createGeneratorState, reduceGeneratorLifecycleEvent } from "../generator_runtime";
+import { addCinenerdleDebugLog } from "./debug_log";
 import type {
   GeneratorController,
   GeneratorLifecycleEvent,
@@ -31,6 +32,7 @@ import {
 } from "./hash";
 import {
   getCinenerdleStarterFilmRecords,
+  getFilmRecordById,
   getFilmRecordByTitleAndYear,
   getFilmRecordCountsByPersonConnectionKeys,
   getFilmRecordsByIds,
@@ -44,6 +46,8 @@ import { pickBestPersonRecord } from "./records";
 import { renderBreakCard, renderDbInfoCard, renderLoggedCinenerdleCard } from "./render_card";
 import {
   fetchCinenerdleDailyStarterMovies,
+  hasHydratedMovieRecord,
+  hasHydratedPersonRecord,
   hydrateCinenerdleDailyStarterMovies,
   prefetchBestConnectionForYoungestSelectedCard,
   prefetchTopPopularUnhydratedConnections,
@@ -51,6 +55,7 @@ import {
   prepareSelectedPerson,
   setTmdbLogGeneration,
 } from "./tmdb";
+import { getYoungestSelectedGenerationIndex } from "./navigation";
 import type { FilmRecord, PersonRecord } from "./types";
 import {
   formatMoviePathLabel,
@@ -129,10 +134,17 @@ function createUncachedMovieCard(name: string, year: string): Extract<Cinenerdle
 }
 
 type CinenerdleControllerOptions = {
+  onCardDataRefreshRequested?: (request: FetchedCardRefreshRequest) => void;
   onExplicitFooterTopRefreshClick?: () => void;
   recordsRefreshVersion?: number;
   readHash: () => string;
   writeHash: (nextHash: string, mode?: "selection" | "navigation") => void;
+};
+
+export type FetchedCardRefreshRequest = {
+  card: Extract<CinenerdleCard, { kind: "movie" | "person" }>;
+  requestKey: string;
+  row: number;
 };
 
 type SelectedEntityPathNode = Extract<CinenerdlePathNode, { kind: "movie" | "person" }>;
@@ -452,7 +464,16 @@ export async function ensureSelectedCardFullstate(
   if (selectedCard.kind === "movie") {
     const selectedMovieRecord = selectedCard.record ?? null;
     const needsFullstate =
-      options.forceRefresh === true || !hasDirectTmdbMovieSource(selectedMovieRecord);
+      options.forceRefresh === true || !hasHydratedMovieRecord(selectedMovieRecord);
+
+    addCinenerdleDebugLog("controller:selected-card-fullstate", {
+      cardKey: selectedCard.key,
+      forceRefresh: options.forceRefresh ?? false,
+      hasCredits: Boolean(selectedMovieRecord?.rawTmdbMovieCreditsResponse),
+      hasDirectTmdb: hasDirectTmdbMovieSource(selectedMovieRecord),
+      kind: "movie",
+      needsFullstate,
+    });
 
     if (!needsFullstate) {
       return {
@@ -481,7 +502,16 @@ export async function ensureSelectedCardFullstate(
   const selectedPersonRecord = selectedCard.record ?? null;
   const personTmdbId = getPersonTmdbIdFromCard(selectedCard);
   const needsFullstate =
-    options.forceRefresh === true || !hasDirectTmdbPersonSource(selectedPersonRecord);
+    options.forceRefresh === true || !hasHydratedPersonRecord(selectedPersonRecord);
+
+  addCinenerdleDebugLog("controller:selected-card-fullstate", {
+    cardKey: selectedCard.key,
+    forceRefresh: options.forceRefresh ?? false,
+    hasCredits: Boolean(selectedPersonRecord?.rawTmdbMovieCreditsResponse),
+    hasDirectTmdb: hasDirectTmdbPersonSource(selectedPersonRecord),
+    kind: "person",
+    needsFullstate,
+  });
 
   if (!needsFullstate) {
     return {
@@ -510,12 +540,17 @@ export async function hydrateYoungestSelectedCardInTree(
   tree: GeneratorTree<CinenerdleCard>,
   options: SelectedCardFullstateOptions = {},
 ): Promise<GeneratorTree<CinenerdleCard>> {
-  const selectedCard = getSelectedCard(tree, tree.length - 1);
+  const selectedGenerationIndex = getYoungestSelectedGenerationIndex(tree);
+  const selectedCard = getSelectedCard(tree, selectedGenerationIndex);
 
   if (
     !selectedCard ||
     (selectedCard.kind !== "movie" && selectedCard.kind !== "person")
   ) {
+    addCinenerdleDebugLog("controller:youngest-selected-card-hydration:skip-missing-selected", {
+      selectedGenerationIndex,
+      treeRowCount: tree.length,
+    });
     return tree;
   }
 
@@ -525,7 +560,13 @@ export async function hydrateYoungestSelectedCardInTree(
     return tree;
   }
 
-  return replaceSelectedCardInLastRow(tree, fullstateResolution.card);
+  const treeWithHydratedSelectedCard = replaceSelectedCardInGeneration(
+    tree,
+    selectedGenerationIndex,
+    fullstateResolution.card,
+  );
+
+  return refreshYoungestSelectedCardAndChildRow(treeWithHydratedSelectedCard);
 }
 
 function getSelectedPathNodes(tree: GeneratorTree<CinenerdleCard>): CinenerdlePathNode[] {
@@ -606,6 +647,98 @@ async function getLocalPersonRecord(
   return chosenRecord;
 }
 
+function getMovieRecordQualityScore(movieRecord: FilmRecord | null | undefined): number {
+  if (!movieRecord) {
+    return -1;
+  }
+
+  let score = 0;
+
+  if (hasDirectTmdbMovieSource(movieRecord)) {
+    score += 16;
+  }
+
+  if (movieRecord.rawTmdbMovieCreditsResponse) {
+    score += 8;
+  }
+
+  if (movieRecord.rawTmdbMovie?.poster_path) {
+    score += 4;
+  }
+
+  if (movieRecord.personConnectionKeys.length > 0) {
+    score += 2;
+  }
+
+  if (movieRecord.fetchTimestamp) {
+    score += 1;
+  }
+
+  return score;
+}
+
+function pickBestMovieRecord(
+  ...records: Array<FilmRecord | null | undefined>
+): FilmRecord | null {
+  return records
+    .filter((record): record is FilmRecord => Boolean(record))
+    .sort((left, right) => {
+      const qualityDifference =
+        getMovieRecordQualityScore(right) - getMovieRecordQualityScore(left);
+      if (qualityDifference !== 0) {
+        return qualityDifference;
+      }
+
+      const popularityDifference = (right.popularity ?? 0) - (left.popularity ?? 0);
+      if (popularityDifference !== 0) {
+        return popularityDifference;
+      }
+
+      return formatMoviePathLabel(left.title, left.year).localeCompare(
+        formatMoviePathLabel(right.title, right.year),
+      );
+    })[0] ?? null;
+}
+
+async function getLocalMovieRecord(
+  movieName: string,
+  movieYear = "",
+  movieId?: number | string | null,
+): Promise<FilmRecord | null> {
+  const validMovieTmdbId = getValidTmdbEntityId(movieId);
+  const [movieRecordById, movieRecordByTitleAndYear] = await Promise.all([
+    validMovieTmdbId ? getFilmRecordById(validMovieTmdbId) : Promise.resolve(null),
+    movieName ? getFilmRecordByTitleAndYear(movieName, movieYear) : Promise.resolve(null),
+  ]);
+
+  return pickBestMovieRecord(movieRecordById, movieRecordByTitleAndYear);
+}
+
+async function resolveMovieParentRecord(
+  card: Extract<CinenerdleCard, { kind: "movie" }>,
+  movieRecordOverride?: FilmRecord | null,
+): Promise<FilmRecord | null> {
+  const localMovieRecord = await getLocalMovieRecord(
+    card.name,
+    card.year,
+    card.record?.tmdbId ?? card.record?.id ?? null,
+  );
+
+  return pickBestMovieRecord(movieRecordOverride, card.record, localMovieRecord);
+}
+
+async function resolvePersonParentRecord(
+  card: Extract<CinenerdleCard, { kind: "person" }>,
+  personRecordOverride?: PersonRecord | null,
+): Promise<PersonRecord | null> {
+  const localPersonRecord = await getLocalPersonRecord(
+    card.name,
+    getPersonTmdbIdFromCard(card),
+  );
+
+  return pickBestPersonRecord(personRecordOverride, card.record, localPersonRecord);
+}
+
 function getSelectedEntityPathNodes(hashValue: string): SelectedEntityPathNode[] {
   return buildPathNodesFromSegments(parseHashSegments(hashValue)).filter(
     (pathNode): pathNode is SelectedEntityPathNode =>
@@ -648,7 +781,7 @@ async function buildSelectedPathHydrationTasks(
     selectedPathNodes.map(async (pathNode, index) => {
       if (pathNode.kind === "person") {
         const existingPersonRecord = await getLocalPersonRecord(pathNode.name, pathNode.tmdbId);
-        if (!options.forceRefresh && hasDirectTmdbPersonSource(existingPersonRecord)) {
+        if (!options.forceRefresh && hasHydratedPersonRecord(existingPersonRecord)) {
           return;
         }
 
@@ -673,7 +806,7 @@ async function buildSelectedPathHydrationTasks(
         pathNode.name,
         pathNode.year,
       );
-      if (!options.forceRefresh && hasDirectTmdbMovieSource(existingMovieRecord)) {
+      if (!options.forceRefresh && hasHydratedMovieRecord(existingMovieRecord)) {
         return;
       }
 
@@ -751,7 +884,7 @@ async function buildCorrectivePersonHydrationTasks(
         resolvedPathNode.name,
         resolvedPathNode.tmdbId,
       );
-      if (!options.forceRefresh && hasDirectTmdbPersonSource(existingResolvedPersonRecord)) {
+      if (!options.forceRefresh && hasHydratedPersonRecord(existingResolvedPersonRecord)) {
         return;
       }
 
@@ -854,6 +987,66 @@ function isCinenerdleRootTree(tree: GeneratorTree<CinenerdleCard>) {
   return getSelectedCard(tree, 0)?.kind === "cinenerdle";
 }
 
+function getCardSourceSignature(card: CinenerdleCard): string {
+  return (card.sources ?? [])
+    .map((source) => `${source.label}:${source.iconUrl}`)
+    .join("|");
+}
+
+function getCardRenderStateSignature(card: CinenerdleCard): string {
+  if (card.kind === "movie") {
+    return JSON.stringify({
+      kind: card.kind,
+      key: card.key,
+      name: card.name,
+      year: card.year,
+      imageUrl: card.imageUrl,
+      subtitle: card.subtitle,
+      subtitleDetail: card.subtitleDetail,
+      popularity: card.popularity,
+      connectionCount: card.connectionCount,
+      voteAverage: card.voteAverage,
+      voteCount: card.voteCount,
+      status: card.status,
+      sources: getCardSourceSignature(card),
+      tmdbId: getValidTmdbEntityId(card.record?.tmdbId ?? card.record?.id),
+      fetchTimestamp: card.record?.fetchTimestamp ?? null,
+      hasDirectTmdb: hasDirectTmdbMovieSource(card.record),
+    });
+  }
+
+  if (card.kind === "person") {
+    return JSON.stringify({
+      kind: card.kind,
+      key: card.key,
+      name: card.name,
+      imageUrl: card.imageUrl,
+      subtitle: card.subtitle,
+      subtitleDetail: card.subtitleDetail,
+      popularity: card.popularity,
+      connectionCount: card.connectionCount,
+      status: card.status,
+      sources: getCardSourceSignature(card),
+      tmdbId: getValidTmdbEntityId(card.record?.tmdbId ?? card.record?.id),
+      fetchTimestamp: card.record?.fetchTimestamp ?? null,
+      hasDirectTmdb: hasDirectTmdbPersonSource(card.record),
+    });
+  }
+
+  return JSON.stringify({
+    kind: card.kind,
+    key: card.key,
+    name: card.name,
+    imageUrl: card.imageUrl,
+    subtitle: card.subtitle,
+    subtitleDetail: card.subtitleDetail,
+    popularity: card.popularity,
+    connectionCount: card.connectionCount,
+    status: card.status,
+    sources: getCardSourceSignature(card),
+  });
+}
+
 function doGeneratorRowsMatch(
   leftRow: GeneratorNode<CinenerdleCard>[] | null | undefined,
   rightRow: GeneratorNode<CinenerdleCard>[] | null | undefined,
@@ -876,7 +1069,8 @@ function doGeneratorRowsMatch(
     return (
       leftNode.selected === rightNode.selected &&
       Boolean(leftNode.disabled) === Boolean(rightNode.disabled) &&
-      cardsMatch(leftNode.data, rightNode.data)
+      cardsMatch(leftNode.data, rightNode.data) &&
+      getCardRenderStateSignature(leftNode.data) === getCardRenderStateSignature(rightNode.data)
     );
   });
 }
@@ -890,6 +1084,196 @@ export function shouldSkipDailyStarterGenerationRedraw(
   }
 
   return doGeneratorRowsMatch(currentTree[1], refreshedTree[1]);
+}
+
+function replaceSelectedCardInGeneration(
+  tree: GeneratorTree<CinenerdleCard>,
+  generationIndex: number,
+  nextSelectedCard: CinenerdleCard,
+): GeneratorTree<CinenerdleCard> {
+  const selectedRow = tree[generationIndex];
+  if (!selectedRow) {
+    return tree;
+  }
+
+  return tree.map((row, rowIndex) =>
+    rowIndex !== generationIndex
+      ? row
+      : row.map((node) =>
+          node.selected
+            ? {
+                ...node,
+                data: nextSelectedCard,
+              }
+            : node,
+        ),
+  );
+}
+
+async function refreshYoungestSelectedCardAndChildRow(
+  tree: GeneratorTree<CinenerdleCard>,
+): Promise<GeneratorTree<CinenerdleCard>> {
+  if (tree.length === 0) {
+    return tree;
+  }
+
+  const generationIndex = getYoungestSelectedGenerationIndex(tree);
+  const selectedCard = getSelectedCard(tree, generationIndex);
+  if (!selectedCard || selectedCard.kind === "break" || selectedCard.kind === "dbinfo") {
+    return tree;
+  }
+
+  let refreshedSelectedCard = selectedCard;
+  let resolvedChildRow: GeneratorNode<CinenerdleCard>[] | null = null;
+
+  if (selectedCard.kind === "movie") {
+    const movieRecord = await resolveMovieParentRecord(selectedCard);
+    refreshedSelectedCard = movieRecord
+      ? refreshSelectedMovieCard(selectedCard, movieRecord)
+      : selectedCard;
+    resolvedChildRow = await buildChildRowForCard(refreshedSelectedCard, {
+      movieRecord,
+    });
+  } else if (selectedCard.kind === "person") {
+    const personRecord = await resolvePersonParentRecord(selectedCard);
+    refreshedSelectedCard = personRecord
+      ? refreshSelectedPersonCard(selectedCard, personRecord)
+      : selectedCard;
+    resolvedChildRow = await buildChildRowForCard(refreshedSelectedCard, {
+      personRecord,
+    });
+  } else {
+    resolvedChildRow = await buildChildRowForCard(selectedCard);
+  }
+
+  const truncatedTree = tree.slice(0, generationIndex + 1);
+  const nextTree = refreshedSelectedCard === selectedCard
+    ? truncatedTree
+    : replaceSelectedCardInGeneration(truncatedTree, generationIndex, refreshedSelectedCard);
+
+  return resolvedChildRow && resolvedChildRow.length > 0
+    ? [...nextTree, resolvedChildRow]
+    : nextTree;
+}
+
+export async function refreshTreeForFetchedCard(
+  tree: GeneratorTree<CinenerdleCard>,
+  request: FetchedCardRefreshRequest,
+): Promise<GeneratorTree<CinenerdleCard> | null> {
+  const row = tree[request.row];
+  if (!row) {
+    addCinenerdleDebugLog("controller:row-refresh:skip-missing-row", {
+      request,
+      treeRowCount: tree.length,
+    });
+    return null;
+  }
+
+  const col = row.findIndex((node) => cardsMatch(node.data, request.card));
+  if (col < 0) {
+    addCinenerdleDebugLog("controller:row-refresh:skip-missing-card", {
+      request,
+      rowKeys: row.map((node) => node.data.key),
+    });
+    return null;
+  }
+
+  const existingNode = row[col]!;
+  const existingCard = existingNode.data;
+  let refreshedCard = existingCard;
+  let childRow: GeneratorNode<CinenerdleCard>[] | null = null;
+
+  if (existingCard.kind === "movie") {
+    const movieRecord = await resolveMovieParentRecord(existingCard);
+    refreshedCard = movieRecord
+      ? refreshSelectedMovieCard(existingCard, movieRecord)
+      : existingCard;
+
+    if (existingNode.selected) {
+      childRow = await buildChildRowForCard(refreshedCard, {
+        movieRecord,
+      });
+    }
+  } else if (existingCard.kind === "person") {
+    const personRecord = await resolvePersonParentRecord(existingCard);
+    refreshedCard = personRecord
+      ? refreshSelectedPersonCard(existingCard, personRecord)
+      : existingCard;
+
+    if (existingNode.selected) {
+      childRow = await buildChildRowForCard(refreshedCard, {
+        personRecord,
+      });
+    }
+  } else {
+    return null;
+  }
+
+  const updatedTree = tree.map((generation, generationIndex) =>
+    generationIndex !== request.row
+      ? generation
+      : generation.map((node, nodeIndex) =>
+          nodeIndex !== col
+            ? node
+            : {
+                ...node,
+                data: refreshedCard,
+              }
+        ),
+  );
+
+  addCinenerdleDebugLog("controller:row-refresh:applied", {
+    childCount: childRow?.length ?? null,
+    refreshedCard: {
+      key: refreshedCard.key,
+      kind: refreshedCard.kind,
+      name: refreshedCard.name,
+      connectionCount: refreshedCard.connectionCount,
+    },
+    request,
+    selected: existingNode.selected,
+  });
+
+  if (!existingNode.selected) {
+    return updatedTree;
+  }
+
+  if (!childRow || childRow.length === 0) {
+    return updatedTree.slice(0, request.row + 1);
+  }
+
+  return [
+    ...updatedTree.slice(0, request.row + 1),
+    childRow,
+    ...updatedTree.slice(request.row + 2),
+  ];
+}
+
+export async function refreshYoungestSelectedGenerationAfterAsyncWorkIfHashUnchanged(
+  runAsyncWork: () => Promise<void>,
+  setTree: (nextTree: GeneratorTree<CinenerdleCard>) => void,
+  getTree: () => GeneratorTreeState<CinenerdleCard>,
+  readHash: () => string,
+  expectedHash?: string,
+): Promise<boolean> {
+  const initialHash = expectedHash ?? readHash();
+  await runAsyncWork();
+  if (readHash() !== initialHash) {
+    return false;
+  }
+
+  const currentTree = getTree();
+  if (!currentTree) {
+    return false;
+  }
+
+  const refreshedTree = await refreshYoungestSelectedCardAndChildRow(currentTree);
+  if (readHash() !== initialHash) {
+    return false;
+  }
+
+  setTree(refreshedTree);
+  return true;
 }
 
 async function hydrateDailyStartersAndRedraw(
@@ -1035,10 +1419,7 @@ async function buildChildRowForPersonCard(
   return measureAsync(
     "controller.buildChildRowForPersonCard",
     async () => {
-      const personRecord =
-        personRecordOverride ??
-        card.record ??
-        (await getLocalPersonRecord(card.name, getPersonTmdbIdFromCard(card)));
+      const personRecord = await resolvePersonParentRecord(card, personRecordOverride);
       if (!personRecord) {
         return null;
       }
@@ -1123,10 +1504,7 @@ async function buildChildRowForMovieCard(
   return measureAsync(
     "controller.buildChildRowForMovieCard",
     async () => {
-      const movieRecord =
-        movieRecordOverride ??
-        card.record ??
-        (await getFilmRecordByTitleAndYear(card.name, card.year));
+      const movieRecord = await resolveMovieParentRecord(card, movieRecordOverride);
       if (!movieRecord) {
         return null;
       }
@@ -1259,7 +1637,7 @@ async function buildChildRowForMovieCard(
   );
 }
 
-async function buildChildRowForCard(
+export async function buildChildRowForCard(
   card: CinenerdleCard,
   options?: {
     personRecord?: PersonRecord | null;
@@ -1575,6 +1953,7 @@ function renderCinenerdleCard(
   col: number,
   tree: GeneratorTree<CinenerdleCard>,
   writeHash: (nextHash: string, mode?: "selection" | "navigation") => void,
+  onCardDataRefreshRequested?: (request: FetchedCardRefreshRequest) => void,
   onExplicitFooterTopRefreshClick?: () => void,
 ) {
   const card = tree[row][col].data;
@@ -1609,6 +1988,11 @@ function renderCinenerdleCard(
     window.open("https://www.cinenerdle2.app/battle", "_blank", "noopener,noreferrer");
   }
 
+  const popularityRefreshHandler =
+    card.kind === "movie" || card.kind === "person"
+      ? getCardPopularityRefreshHandler(card)
+      : null;
+
   const renderableViewModel = {
     ...viewModel,
     onExplicitFooterTopRefreshClick:
@@ -1617,7 +2001,16 @@ function renderCinenerdleCard(
         : null,
     onPopularityClick:
       card.kind === "movie" || card.kind === "person"
-        ? getCardPopularityRefreshHandler(card)
+        ? async () => {
+            await popularityRefreshHandler?.();
+            const request = {
+              card,
+              requestKey: `${row}:${card.key}:${Date.now()}`,
+              row,
+            } satisfies FetchedCardRefreshRequest;
+            addCinenerdleDebugLog("controller:row-refresh:requested", request);
+            onCardDataRefreshRequested?.(request);
+          }
         : null,
     popularityTooltipText:
       card.kind === "movie" || card.kind === "person"
@@ -1645,6 +2038,7 @@ function renderCinenerdleCard(
 }
 
 export function useCinenerdleController({
+  onCardDataRefreshRequested,
   onExplicitFooterTopRefreshClick,
   recordsRefreshVersion = 0,
   readHash,
@@ -1848,7 +2242,17 @@ export function useCinenerdleController({
                 refreshedSelectedCard.kind === "movie" ||
                 refreshedSelectedCard.kind === "person"
               ) {
-                void prefetchBestConnectionForYoungestSelectedCard(refreshedSelectedCard).catch(() => { });
+                void refreshYoungestSelectedGenerationAfterAsyncWorkIfHashUnchanged(
+                  () => prefetchBestConnectionForYoungestSelectedCard(refreshedSelectedCard),
+                  (nextTreeUpdate) => {
+                    applyUpdate({
+                      tree: nextTreeUpdate,
+                    });
+                  },
+                  () => getState().tree,
+                  readHash,
+                  nextHash,
+                ).catch(() => { });
               }
 
               return resolvedChildRow;
@@ -1884,10 +2288,11 @@ export function useCinenerdleController({
           col,
           tree,
           writeHash,
+          onCardDataRefreshRequested,
           onExplicitFooterTopRefreshClick,
         );
       },
     }),
-    [onExplicitFooterTopRefreshClick, readHash, recordsRefreshVersion, writeHash],
+    [onCardDataRefreshRequested, onExplicitFooterTopRefreshClick, readHash, recordsRefreshVersion, writeHash],
   );
 }

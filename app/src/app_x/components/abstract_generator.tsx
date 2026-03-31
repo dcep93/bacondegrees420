@@ -28,6 +28,11 @@ export type AbstractGeneratorActivationRequest<T> = {
   matchesNode: (node: GeneratorNode<T>) => boolean;
 };
 
+export type AbstractGeneratorTreeRefreshRequest<T> = {
+  requestKey: string;
+  run: (tree: GeneratorTree<T>) => Promise<GeneratorTree<T> | null>;
+};
+
 export type AbstractGeneratorProps<T, TMeta = undefined, TEffect = never> =
   GeneratorController<T, TMeta, TEffect> & {
     activationRequest?: AbstractGeneratorActivationRequest<T> | null;
@@ -51,6 +56,7 @@ export type AbstractGeneratorProps<T, TMeta = undefined, TEffect = never> =
     onTreeChange?: (tree: GeneratorTree<T>) => void;
     optimisticSelection?: boolean;
     resetKey?: number | string;
+    treeRefreshRequest?: AbstractGeneratorTreeRefreshRequest<T> | null;
   };
 
 function schedulePostSelectionWork(work: () => void) {
@@ -115,6 +121,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
   reduce,
   renderCard,
   runEffect,
+  treeRefreshRequest = null,
 }: AbstractGeneratorProps<T, TMeta, TEffect>) {
   const [initialTransition] = useState<{
     effects: TEffect[];
@@ -130,6 +137,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
   const activeLifecycleRef = useRef(0);
   const activeSelectionRef = useRef(0);
   const lastHandledActivationRequestKeyRef = useRef<string | null>(null);
+  const lastHandledTreeRefreshRequestKeyRef = useRef<string | null>(null);
   const stateRef = useRef(state);
 
   useEffect(() => {
@@ -215,6 +223,41 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     void runEffects(initialTransition.effects, lifecycleId, activeSelectionRef.current);
   }, [initialTransition, runEffects]);
 
+  useEffect(() => {
+    if (
+      treeRefreshRequest === null ||
+      treeRefreshRequest.requestKey === lastHandledTreeRefreshRequestKeyRef.current
+    ) {
+      return;
+    }
+
+    lastHandledTreeRefreshRequestKeyRef.current = treeRefreshRequest.requestKey;
+
+    if (
+      stateRef.current.renderTreeOverride !== null ||
+      stateRef.current.placeholderRowIndex !== null
+    ) {
+      return;
+    }
+
+    const lifecycleId = activeLifecycleRef.current;
+    const selectionId = activeSelectionRef.current;
+    const applyUpdate = createGuardedApplyUpdate(lifecycleId, selectionId);
+    const currentTree = resolveGeneratorTree(stateRef.current);
+
+    void treeRefreshRequest.run(currentTree)
+      .then((nextTree) => {
+        if (!nextTree) {
+          return;
+        }
+
+        applyUpdate({
+          tree: nextTree,
+        });
+      })
+      .catch(() => { });
+  }, [createGuardedApplyUpdate, treeRefreshRequest]);
+
   const resolvedTree = useMemo(
     () => resolveGeneratorTree(state),
     [state],
@@ -252,33 +295,19 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     ];
 
     if (targetCard && rowTrack) {
-      const maxScrollLeft = Math.max(0, rowTrack.scrollWidth - rowTrack.clientWidth);
-      const trackPaddingLeft = Number.parseFloat(window.getComputedStyle(rowTrack).paddingLeft) || 0;
-      const startAlignedScrollLeft = Math.max(
-        0,
-        Math.min(
-          targetCard.offsetLeft - trackPaddingLeft,
-          maxScrollLeft,
-        ),
-      );
+      const startAlignedScrollLeft = targetCard.offsetLeft - (targetCard.clientWidth / 2)
       const referenceIndex = resolvedTree[0]?.findIndex((node) => node.selected) ?? -1;
       const referenceCard = referenceIndex >= 0
         ? cardRefs.current[
-          `0:${getDataKey(resolvedTree[0][referenceIndex].data, referenceIndex)}`
+        `0:${getDataKey(resolvedTree[0][referenceIndex].data, referenceIndex)}`
         ]
         : null;
-      const centeredScrollLeft = Math.max(
-        0,
-        Math.min(
-          referenceCard
-            ? startAlignedScrollLeft - referenceCard.offsetLeft
-            : startAlignedScrollLeft,
-          maxScrollLeft,
-        ),
-      );
-      const targetScrollLeft = alignment === "start" ? startAlignedScrollLeft : centeredScrollLeft;
+      if (referenceCard) {
+        const centeredScrollLeft = startAlignedScrollLeft - referenceCard!.offsetLeft + referenceCard.clientWidth / 2
+        const targetScrollLeft = alignment === "start" ? startAlignedScrollLeft : centeredScrollLeft;
 
-      scrollElementToLeft(rowTrack, targetScrollLeft, behavior);
+        scrollElementToLeft(rowTrack, targetScrollLeft, behavior);
+      }
       return;
     }
 
@@ -296,6 +325,14 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     const selectedIndex = selectedRow?.findIndex((node) => node.selected) ?? -1;
 
     if (selectedIndex < 0) {
+      if (!selectedRow || selectedRow.length === 0) {
+        return;
+      }
+
+      scrollToCardIndex(generationIndex, 0, {
+        alignment: "start",
+        behavior: "smooth",
+      });
       return;
     }
 
@@ -419,8 +456,6 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       className="abstract-generator"
     >
       {renderedGenerations.map(({ row, generationIndex }) => {
-        const selectedCol = row.findIndex((node) => node.selected);
-        const hasSelection = selectedCol >= 0;
         const rowPresentation = getRowPresentation?.(row, generationIndex) ?? {};
 
         return (
@@ -434,7 +469,6 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
             {rowPresentation.hideBubble ? null : (
               <button
                 className="generator-row-bubble"
-                disabled={!hasSelection}
                 onClick={() => handleScrollToSelected(generationIndex)}
                 type="button"
               >

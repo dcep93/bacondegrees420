@@ -13,6 +13,7 @@ import {
 const indexedDbMock = vi.hoisted(() => ({
   getAllSearchableConnectionEntities: vi.fn(),
   getCinenerdleStarterFilmRecords: vi.fn(),
+  getFilmRecordById: vi.fn(),
   getFilmRecordCountsByPersonConnectionKeys: vi.fn(),
   getFilmRecordByTitleAndYear: vi.fn(),
   getFilmRecordsByIds: vi.fn(),
@@ -51,12 +52,15 @@ vi.mock("../tmdb", async () => {
 
 import {
   buildBookmarkPreviewCardsFromHash,
+  buildChildRowForCard,
   buildTreeFromHash,
   clearChildGenerationOrderingCache,
   ensureSelectedCardFullstate,
   getControllerInitMode,
   getCardPopularityTooltipText,
   hydrateYoungestSelectedCardInTree,
+  refreshTreeForFetchedCard,
+  refreshYoungestSelectedGenerationAfterAsyncWorkIfHashUnchanged,
   reduceCinenerdleLifecycleEvent,
   shouldSkipDailyStarterGenerationRedraw,
   shouldDispatchSelectedCardBackgroundForceRefresh,
@@ -127,17 +131,40 @@ function makeCinenerdleRootCard(): Extract<CinenerdleCard, { kind: "cinenerdle" 
 }
 
 describe("shouldSkipDailyStarterGenerationRedraw", () => {
-  it("skips the redraw when the refreshed root keeps the same starter cards", () => {
+  it("skips the redraw when the refreshed root keeps the same starter render state", () => {
     const currentTree = [
       [{ selected: true, data: makeCinenerdleRootCard() }],
       [{ selected: false, data: makeMovieCard({ name: "First Man", year: "2018", popularity: 22 }) }],
     ];
     const refreshedTree = [
       [{ selected: true, data: makeCinenerdleRootCard() }],
-      [{ selected: false, data: makeMovieCard({ name: "First Man", year: "2018", popularity: 99 }) }],
+      [{ selected: false, data: makeMovieCard({ name: "First Man", year: "2018", popularity: 22 }) }],
     ];
 
     expect(shouldSkipDailyStarterGenerationRedraw(currentTree, refreshedTree)).toBe(true);
+  });
+
+  it("does not skip the redraw when the same starter card gains richer render metadata", () => {
+    const currentTree = [
+      [{ selected: true, data: makeCinenerdleRootCard() }],
+      [{ selected: false, data: makeMovieCard({ name: "First Man", year: "2018", connectionCount: 2 }) }],
+    ];
+    const refreshedTree = [
+      [{ selected: true, data: makeCinenerdleRootCard() }],
+      [{
+        selected: false,
+        data: makeMovieCard({
+          name: "First Man",
+          year: "2018",
+          connectionCount: 84,
+          imageUrl: "https://image.tmdb.org/t/p/w185/zoolander.jpg",
+          voteAverage: 6.2,
+          voteCount: 4847,
+        }),
+      }],
+    ];
+
+    expect(shouldSkipDailyStarterGenerationRedraw(currentTree, refreshedTree)).toBe(false);
   });
 
   it("does not skip the redraw when the refreshed starter row changes", () => {
@@ -151,6 +178,306 @@ describe("shouldSkipDailyStarterGenerationRedraw", () => {
     ];
 
     expect(shouldSkipDailyStarterGenerationRedraw(currentTree, refreshedTree)).toBe(false);
+  });
+});
+
+describe("refreshYoungestSelectedGenerationAfterAsyncWorkIfHashUnchanged", () => {
+  beforeEach(() => {
+    Object.values(indexedDbMock).forEach((mock) => mock.mockReset());
+    clearChildGenerationOrderingCache();
+
+    indexedDbMock.getFilmRecordById.mockResolvedValue(null);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(null);
+    indexedDbMock.getFilmRecordsByIds.mockResolvedValue(new Map());
+    indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(new Map());
+    indexedDbMock.getMoviePopularityByLabels.mockResolvedValue(new Map());
+    indexedDbMock.getPersonRecordById.mockResolvedValue(null);
+    indexedDbMock.getPersonRecordByName.mockResolvedValue(null);
+  });
+
+  it("does not apply a refreshed youngest generation when navigation changes before async work settles", async () => {
+    const setTree = vi.fn();
+    let hashValue = "#cinenerdle";
+
+    const didRefresh = await refreshYoungestSelectedGenerationAfterAsyncWorkIfHashUnchanged(
+      async () => {
+        hashValue = "#person|David+Bowie";
+      },
+      setTree,
+      () => [[{ data: makeCinenerdleRootCard(), selected: true }]],
+      () => hashValue,
+    );
+
+    expect(didRefresh).toBe(false);
+    expect(setTree).not.toHaveBeenCalled();
+  });
+
+  it("refreshes the youngest selected card and only redraws its child row", async () => {
+    const staleMovieRecord = makeFilmRecord({
+      id: 451,
+      tmdbId: 451,
+      title: "Zoolander",
+      year: "2001",
+      personConnectionKeys: ["david bowie", "milla jovovich"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({ id: 2, name: "David Bowie", order: 1, popularity: 1.48 }),
+          makePersonCredit({ id: 8, name: "Milla Jovovich", order: 2, popularity: 7.17 }),
+        ],
+        crew: [],
+      },
+    });
+    const freshMovieRecord = makeFilmRecord({
+      id: 451,
+      tmdbId: 451,
+      title: "Zoolander",
+      year: "2001",
+      popularity: 5.4,
+      personConnectionKeys: ["david bowie", "milla jovovich", "ben stiller"],
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 451,
+        title: "Zoolander",
+        release_date: "2001-09-28",
+        vote_average: 6.22,
+        vote_count: 4847,
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({ id: 2, name: "David Bowie", order: 1, popularity: 1.48 }),
+          makePersonCredit({ id: 8, name: "Milla Jovovich", order: 2, popularity: 7.17 }),
+          makePersonCredit({ id: 9, name: "Ben Stiller", order: 3, popularity: 9.4 }),
+        ],
+        crew: [],
+      },
+    });
+    const davidBowieRecord = makePersonRecord({
+      id: 2,
+      tmdbId: 2,
+      name: "David Bowie",
+      movieConnectionKeys: ["zoolander (2001)"],
+    });
+    const millaRecord = makePersonRecord({
+      id: 8,
+      tmdbId: 8,
+      name: "Milla Jovovich",
+      movieConnectionKeys: ["zoolander (2001)"],
+    });
+    const benStillerRecord = makePersonRecord({
+      id: 9,
+      tmdbId: 9,
+      name: "Ben Stiller",
+      movieConnectionKeys: ["zoolander (2001)"],
+    });
+    const originalAncestorRow = [{ data: makeCinenerdleRootCard(), selected: true }];
+    const staleSelectedRow = [{
+      data: makeMovieCard({
+        key: "movie:451",
+        name: "Zoolander",
+        year: "2001",
+        connectionCount: 2,
+        record: staleMovieRecord,
+      }),
+      selected: true,
+    }];
+
+    indexedDbMock.getFilmRecordById.mockResolvedValue(freshMovieRecord);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(freshMovieRecord);
+    indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(
+      new Map([
+        ["David Bowie", 84],
+        ["Milla Jovovich", 75],
+        ["Ben Stiller", 84],
+      ]),
+    );
+    indexedDbMock.getPersonRecordById.mockImplementation(async (personId: number) =>
+      personId === 2 ? davidBowieRecord : personId === 8 ? millaRecord : personId === 9 ? benStillerRecord : null,
+    );
+    indexedDbMock.getPersonRecordByName.mockImplementation(async (personName: string) =>
+      personName === "David Bowie"
+        ? davidBowieRecord
+        : personName === "Milla Jovovich"
+          ? millaRecord
+          : personName === "Ben Stiller"
+            ? benStillerRecord
+            : null,
+    );
+
+    const setTree = vi.fn();
+    const currentTree = [originalAncestorRow, staleSelectedRow];
+
+    const didRefresh = await refreshYoungestSelectedGenerationAfterAsyncWorkIfHashUnchanged(
+      async () => {},
+      setTree,
+      () => currentTree,
+      () => "#cinenerdle|Zoolander+(2001)",
+    );
+
+    expect(didRefresh).toBe(true);
+    expect(setTree).toHaveBeenCalledWith([
+      originalAncestorRow,
+      [
+        expect.objectContaining({
+          selected: true,
+          data: expect.objectContaining({
+            kind: "movie",
+            name: "Zoolander",
+            connectionCount: 3,
+            voteAverage: 6.22,
+            voteCount: 4847,
+            record: freshMovieRecord,
+          }),
+        }),
+      ],
+      expect.arrayContaining([
+        expect.objectContaining({
+          data: expect.objectContaining({
+            kind: "person",
+            name: "David Bowie",
+          }),
+        }),
+      ]),
+    ]);
+  });
+});
+
+describe("refreshTreeForFetchedCard", () => {
+  beforeEach(() => {
+    Object.values(indexedDbMock).forEach((mock) => mock.mockReset());
+    clearChildGenerationOrderingCache();
+
+    indexedDbMock.getFilmRecordById.mockResolvedValue(null);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(null);
+    indexedDbMock.getFilmRecordsByIds.mockResolvedValue(new Map());
+    indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(new Map());
+    indexedDbMock.getMoviePopularityByLabels.mockResolvedValue(new Map());
+    indexedDbMock.getPersonRecordById.mockResolvedValue(null);
+    indexedDbMock.getPersonRecordByName.mockResolvedValue(null);
+  });
+
+  it("refreshes the fetched selected card row and rebuilds the next generation", async () => {
+    const staleMovieRecord = makeFilmRecord({
+      id: 451,
+      tmdbId: 451,
+      title: "Zoolander",
+      year: "2001",
+      personConnectionKeys: ["david bowie", "milla jovovich"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({ id: 2, name: "David Bowie", order: 1, popularity: 1.48 }),
+          makePersonCredit({ id: 8, name: "Milla Jovovich", order: 2, popularity: 7.17 }),
+        ],
+        crew: [],
+      },
+    });
+    const freshMovieRecord = makeFilmRecord({
+      id: 451,
+      tmdbId: 451,
+      title: "Zoolander",
+      year: "2001",
+      popularity: 5.4,
+      personConnectionKeys: ["david bowie", "milla jovovich", "ben stiller"],
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 451,
+        title: "Zoolander",
+        release_date: "2001-09-28",
+        vote_average: 6.22,
+        vote_count: 4847,
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({ id: 2, name: "David Bowie", order: 1, popularity: 1.48 }),
+          makePersonCredit({ id: 8, name: "Milla Jovovich", order: 2, popularity: 7.17 }),
+          makePersonCredit({ id: 9, name: "Ben Stiller", order: 3, popularity: 9.4 }),
+        ],
+        crew: [],
+      },
+    });
+    const davidBowieRecord = makePersonRecord({
+      id: 2,
+      tmdbId: 2,
+      name: "David Bowie",
+      movieConnectionKeys: ["zoolander (2001)"],
+    });
+    const millaRecord = makePersonRecord({
+      id: 8,
+      tmdbId: 8,
+      name: "Milla Jovovich",
+      movieConnectionKeys: ["zoolander (2001)"],
+    });
+    const benStillerRecord = makePersonRecord({
+      id: 9,
+      tmdbId: 9,
+      name: "Ben Stiller",
+      movieConnectionKeys: ["zoolander (2001)"],
+    });
+
+    indexedDbMock.getFilmRecordById.mockResolvedValue(freshMovieRecord);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(freshMovieRecord);
+    indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(
+      new Map([
+        ["David Bowie", 84],
+        ["Milla Jovovich", 75],
+        ["Ben Stiller", 84],
+      ]),
+    );
+    indexedDbMock.getPersonRecordById.mockImplementation(async (personId: number) =>
+      personId === 2 ? davidBowieRecord : personId === 8 ? millaRecord : personId === 9 ? benStillerRecord : null,
+    );
+    indexedDbMock.getPersonRecordByName.mockImplementation(async (personName: string) =>
+      personName === "David Bowie"
+        ? davidBowieRecord
+        : personName === "Milla Jovovich"
+          ? millaRecord
+          : personName === "Ben Stiller"
+            ? benStillerRecord
+            : null,
+    );
+
+    const refreshedTree = await refreshTreeForFetchedCard(
+      [
+        [{ data: makeCinenerdleRootCard(), selected: true }],
+        [{
+          data: makeMovieCard({
+            key: "movie:451",
+            name: "Zoolander",
+            year: "2001",
+            connectionCount: 2,
+            record: staleMovieRecord,
+          }),
+          selected: true,
+        }],
+        [{ data: makePersonCard({ name: "Old Child" }), selected: false }],
+      ],
+      {
+        card: makeMovieCard({
+          key: "movie:451",
+          name: "Zoolander",
+          year: "2001",
+          record: staleMovieRecord,
+        }),
+        requestKey: "req-1",
+        row: 1,
+      },
+    );
+
+    expect(refreshedTree?.[1]?.[0]).toEqual(
+      expect.objectContaining({
+        selected: true,
+        data: expect.objectContaining({
+          kind: "movie",
+          name: "Zoolander",
+          connectionCount: 3,
+          voteAverage: 6.22,
+          voteCount: 4847,
+          record: freshMovieRecord,
+        }),
+      }),
+    );
+    expect(refreshedTree?.[2]?.map((node) => node.data.name)).toEqual([
+      "David Bowie",
+      "Ben Stiller",
+      "Milla Jovovich",
+    ]);
   });
 });
 
@@ -465,6 +792,41 @@ describe("ensureSelectedCardFullstate", () => {
     expect(result.movieRecord).toBe(hydratedMovieRecord);
   });
 
+  it("refetches selected movies that have direct tmdb movie data but no credits yet", async () => {
+    const directMovieWithoutCredits = makeFilmRecord({
+      id: 321,
+      tmdbId: 321,
+      title: "Heat",
+      year: "1995",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 321,
+        title: "Heat",
+        release_date: "1995-12-15",
+      }),
+      rawTmdbMovieCreditsResponse: undefined,
+    });
+    const hydratedMovieRecord = makeFilmRecord({
+      ...directMovieWithoutCredits,
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+    });
+    const directMovieCard = makeMovieCard({
+      key: "movie:321",
+      record: directMovieWithoutCredits,
+    });
+
+    tmdbMock.prepareSelectedMovie.mockResolvedValue(hydratedMovieRecord);
+
+    const result = await ensureSelectedCardFullstate(directMovieCard);
+
+    expect(tmdbMock.prepareSelectedMovie).toHaveBeenCalledWith("Heat", "1995", 321, {
+      forceRefresh: undefined,
+    });
+    expect(result.movieRecord).toBe(hydratedMovieRecord);
+  });
+
   it("force refreshes selected movies even when full tmdb state already exists", async () => {
     const hydratedMovieRecord = makeFilmRecord({
       id: 321,
@@ -682,6 +1044,222 @@ describe("hydrateYoungestSelectedCardInTree", () => {
     expect(tmdbMock.prepareSelectedPerson).not.toHaveBeenCalled();
     expect(nextTree).toBe(tree);
   });
+
+  it("hydrates the deepest selected root movie even when the last row is just its child row", async () => {
+    const partialMovieCard = makeMovieCard({
+      key: "movie:9398",
+      name: "Zoolander",
+      year: "2001",
+      connectionCount: 2,
+      record: makeFilmRecord({
+        id: 9398,
+        tmdbId: 9398,
+        title: "Zoolander",
+        year: "2001",
+        rawTmdbMovie: makeTmdbMovieSearchResult({
+          id: 9398,
+          title: "Zoolander",
+          release_date: "2001-09-28",
+          poster_path: "/poster.jpg",
+        }),
+        personConnectionKeys: ["david bowie", "milla jovovich"],
+        rawTmdbMovieCreditsResponse: undefined,
+      }),
+    });
+    const hydratedMovieRecord = makeFilmRecord({
+      id: 9398,
+      tmdbId: 9398,
+      title: "Zoolander",
+      year: "2001",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 9398,
+        title: "Zoolander",
+        release_date: "2001-09-28",
+        poster_path: "/poster.jpg",
+      }),
+      personConnectionKeys: ["david bowie", "ben stiller", "milla jovovich"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({
+            id: 2,
+            name: "David Bowie",
+            order: 0,
+            character: "David Bowie",
+          }),
+          makePersonCredit({
+            id: 3,
+            name: "Ben Stiller",
+            order: 1,
+            character: "Derek Zoolander",
+          }),
+          makePersonCredit({
+            id: 4,
+            name: "Milla Jovovich",
+            order: 2,
+            character: "Katinka",
+          }),
+        ],
+        crew: [],
+      },
+    });
+
+    indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(
+      new Map([
+        ["david bowie", 12],
+        ["ben stiller", 20],
+        ["milla jovovich", 8],
+      ]),
+    );
+    indexedDbMock.getMoviePopularityByLabels.mockResolvedValue(new Map());
+    indexedDbMock.getPersonRecordById.mockResolvedValue(null);
+    indexedDbMock.getPersonRecordByName.mockResolvedValue(null);
+    tmdbMock.prepareSelectedMovie.mockResolvedValue(hydratedMovieRecord);
+
+    const nextTree = await hydrateYoungestSelectedCardInTree([
+      [
+        {
+          data: partialMovieCard,
+          selected: true,
+        },
+      ],
+      [
+        {
+          data: makePersonCard({
+            key: "person:2",
+            name: "David Bowie",
+          }),
+          selected: false,
+        },
+      ],
+    ]);
+
+    expect(tmdbMock.prepareSelectedMovie).toHaveBeenCalledWith("Zoolander", "2001", 9398, {
+      forceRefresh: undefined,
+    });
+    expect(nextTree[0]?.[0]?.data).toEqual(
+      expect.objectContaining({
+        key: "movie:9398",
+        record: hydratedMovieRecord,
+      }),
+    );
+    expect(nextTree[1]).toHaveLength(3);
+    expect(nextTree[1]?.map((node) => node.data.name)).toEqual([
+      "David Bowie",
+      "Ben Stiller",
+      "Milla Jovovich",
+    ]);
+  });
+});
+
+describe("buildChildRowForCard", () => {
+  beforeEach(() => {
+    Object.values(indexedDbMock).forEach((mock) => mock.mockReset());
+    clearChildGenerationOrderingCache();
+
+    indexedDbMock.getFilmRecordById.mockResolvedValue(null);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(null);
+    indexedDbMock.getFilmRecordsByIds.mockResolvedValue(new Map());
+    indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(new Map());
+    indexedDbMock.getMoviePopularityByLabels.mockResolvedValue(new Map());
+    indexedDbMock.getPersonRecordById.mockResolvedValue(null);
+    indexedDbMock.getPersonRecordByName.mockResolvedValue(null);
+  });
+
+  it("prefers the fresher indexeddb movie record over a stale embedded card record", async () => {
+    const staleMovieRecord = makeFilmRecord({
+      id: 451,
+      tmdbId: 451,
+      title: "Zoolander",
+      year: "2001",
+      personConnectionKeys: ["david bowie", "milla jovovich"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({ id: 2, name: "David Bowie", order: 1, popularity: 1.48 }),
+          makePersonCredit({ id: 8, name: "Milla Jovovich", order: 2, popularity: 7.17 }),
+        ],
+        crew: [],
+      },
+    });
+    const freshMovieRecord = makeFilmRecord({
+      id: 451,
+      tmdbId: 451,
+      title: "Zoolander",
+      year: "2001",
+      popularity: 5.4,
+      personConnectionKeys: ["david bowie", "milla jovovich", "ben stiller"],
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 451,
+        title: "Zoolander",
+        release_date: "2001-09-28",
+        vote_average: 6.22,
+        vote_count: 4847,
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({ id: 2, name: "David Bowie", order: 1, popularity: 1.48 }),
+          makePersonCredit({ id: 8, name: "Milla Jovovich", order: 2, popularity: 7.17 }),
+          makePersonCredit({ id: 9, name: "Ben Stiller", order: 3, popularity: 9.4 }),
+        ],
+        crew: [],
+      },
+    });
+    const davidBowieRecord = makePersonRecord({
+      id: 2,
+      tmdbId: 2,
+      name: "David Bowie",
+      movieConnectionKeys: ["zoolander (2001)"],
+    });
+    const millaRecord = makePersonRecord({
+      id: 8,
+      tmdbId: 8,
+      name: "Milla Jovovich",
+      movieConnectionKeys: ["zoolander (2001)"],
+    });
+    const benStillerRecord = makePersonRecord({
+      id: 9,
+      tmdbId: 9,
+      name: "Ben Stiller",
+      movieConnectionKeys: ["zoolander (2001)"],
+    });
+
+    indexedDbMock.getFilmRecordById.mockResolvedValue(freshMovieRecord);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(freshMovieRecord);
+    indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(
+      new Map([
+        ["David Bowie", 84],
+        ["Milla Jovovich", 75],
+        ["Ben Stiller", 84],
+      ]),
+    );
+    indexedDbMock.getPersonRecordById.mockImplementation(async (personId: number) =>
+      personId === 2 ? davidBowieRecord : personId === 8 ? millaRecord : personId === 9 ? benStillerRecord : null,
+    );
+    indexedDbMock.getPersonRecordByName.mockImplementation(async (personName: string) =>
+      personName === "David Bowie"
+        ? davidBowieRecord
+        : personName === "Milla Jovovich"
+          ? millaRecord
+          : personName === "Ben Stiller"
+            ? benStillerRecord
+            : null,
+    );
+
+    const childRow = await buildChildRowForCard(
+      makeMovieCard({
+        key: "movie:451",
+        name: "Zoolander",
+        year: "2001",
+        connectionCount: 2,
+        record: staleMovieRecord,
+      }),
+    );
+
+    expect(childRow?.map((node) => node.data.name)).toEqual([
+      "David Bowie",
+      "Ben Stiller",
+      "Milla Jovovich",
+    ]);
+  });
 });
 
 describe("buildBookmarkPreviewCardsFromHash", () => {
@@ -691,10 +1269,13 @@ describe("buildBookmarkPreviewCardsFromHash", () => {
     clearChildGenerationOrderingCache();
 
     indexedDbMock.getCinenerdleStarterFilmRecords.mockResolvedValue([]);
+    indexedDbMock.getFilmRecordById.mockResolvedValue(null);
     indexedDbMock.getFilmRecordsByIds.mockResolvedValue(new Map());
     indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(new Map());
     indexedDbMock.getMoviePopularityByLabels.mockResolvedValue(new Map());
     indexedDbMock.getPersonRecordCountsByMovieKeys.mockResolvedValue(new Map());
+    indexedDbMock.getPersonRecordById.mockResolvedValue(null);
+    indexedDbMock.getPersonRecordByName.mockResolvedValue(null);
     indexedDbMock.getPersonRecordsByMovieKey.mockResolvedValue([]);
     indexedDbMock.getPersonPopularityByNames.mockResolvedValue(new Map());
     tmdbMock.fetchCinenerdleDailyStarterMovies.mockResolvedValue([]);
@@ -1295,14 +1876,113 @@ describe("buildTreeFromHash", () => {
     clearChildGenerationOrderingCache();
 
     indexedDbMock.getCinenerdleStarterFilmRecords.mockResolvedValue([]);
+    indexedDbMock.getFilmRecordById.mockResolvedValue(null);
     indexedDbMock.getFilmRecordsByIds.mockResolvedValue(new Map());
     indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(new Map());
     indexedDbMock.getMoviePopularityByLabels.mockResolvedValue(new Map());
     indexedDbMock.getPersonRecordCountsByMovieKeys.mockResolvedValue(new Map());
+    indexedDbMock.getPersonRecordById.mockResolvedValue(null);
+    indexedDbMock.getPersonRecordByName.mockResolvedValue(null);
     indexedDbMock.getPersonRecordsByMovieKey.mockResolvedValue([]);
     indexedDbMock.getPersonPopularityByNames.mockResolvedValue(new Map());
     tmdbMock.fetchCinenerdleDailyStarterMovies.mockResolvedValue([]);
     tmdbMock.hydrateCinenerdleDailyStarterMovies.mockResolvedValue(undefined);
+  });
+
+  it("rebuilds a selected movie branch from the fresher cached movie record and preserves the selected child", async () => {
+    const starterMovieRecord = makeFilmRecord({
+      id: "starter-zoolander",
+      title: "Zoolander",
+      year: "2001",
+      personConnectionKeys: ["david bowie", "milla jovovich"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({ id: 2, name: "David Bowie", order: 1, popularity: 1.48 }),
+          makePersonCredit({ id: 8, name: "Milla Jovovich", order: 2, popularity: 7.17 }),
+        ],
+        crew: [],
+      },
+    });
+    const hydratedMovieRecord = makeFilmRecord({
+      id: 451,
+      tmdbId: 451,
+      title: "Zoolander",
+      year: "2001",
+      popularity: 5.4,
+      personConnectionKeys: ["david bowie", "milla jovovich", "ben stiller"],
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 451,
+        title: "Zoolander",
+        release_date: "2001-09-28",
+        vote_average: 6.22,
+        vote_count: 4847,
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({ id: 2, name: "David Bowie", order: 1, popularity: 1.48 }),
+          makePersonCredit({ id: 8, name: "Milla Jovovich", order: 2, popularity: 7.17 }),
+          makePersonCredit({ id: 9, name: "Ben Stiller", order: 3, popularity: 9.4 }),
+        ],
+        crew: [],
+      },
+    });
+    const davidBowieRecord = makePersonRecord({
+      id: 2,
+      tmdbId: 2,
+      name: "David Bowie",
+      movieConnectionKeys: ["zoolander (2001)"],
+    });
+    const millaRecord = makePersonRecord({
+      id: 8,
+      tmdbId: 8,
+      name: "Milla Jovovich",
+      movieConnectionKeys: ["zoolander (2001)"],
+    });
+    const benStillerRecord = makePersonRecord({
+      id: 9,
+      tmdbId: 9,
+      name: "Ben Stiller",
+      movieConnectionKeys: ["zoolander (2001)"],
+    });
+
+    tmdbMock.fetchCinenerdleDailyStarterMovies.mockResolvedValue([starterMovieRecord]);
+    indexedDbMock.getFilmRecordById.mockResolvedValue(hydratedMovieRecord);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (title: string, year: string) =>
+      title === "Zoolander" && year === "2001" ? hydratedMovieRecord : null,
+    );
+    indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(
+      new Map([
+        ["David Bowie", 84],
+        ["Milla Jovovich", 75],
+        ["Ben Stiller", 84],
+      ]),
+    );
+    indexedDbMock.getPersonRecordById.mockImplementation(async (personId: number) =>
+      personId === 2 ? davidBowieRecord : personId === 8 ? millaRecord : personId === 9 ? benStillerRecord : null,
+    );
+    indexedDbMock.getPersonRecordByName.mockImplementation(async (personName: string) =>
+      personName === "David Bowie"
+        ? davidBowieRecord
+        : personName === "Milla Jovovich"
+          ? millaRecord
+          : personName === "Ben Stiller"
+            ? benStillerRecord
+            : null,
+    );
+
+    const tree = await buildTreeFromHash("#cinenerdle|Zoolander+(2001)|David+Bowie");
+
+    expect(tree[2]?.map((node) => node.data.name)).toEqual([
+      "David Bowie",
+      "Ben Stiller",
+      "Milla Jovovich",
+    ]);
+    expect(tree[2]?.find((node) => node.selected)?.data).toEqual(
+      expect.objectContaining({
+        kind: "person",
+        name: "David Bowie",
+      }),
+    );
   });
 
   it("keeps person child rows in the alternating dual-merge sequence and assigns connection order from that sequence", async () => {

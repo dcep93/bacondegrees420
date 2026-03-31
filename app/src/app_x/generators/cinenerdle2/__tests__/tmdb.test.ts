@@ -155,6 +155,48 @@ describe("tmdb forced refresh helpers", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("refreshes cached direct movies that are still missing credits", async () => {
+    const directMovieWithoutCredits = makeFilmRecord({
+      id: 321,
+      tmdbId: 321,
+      title: "Heat",
+      year: "1995",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 321,
+        title: "Heat",
+        release_date: "1995-12-15",
+        popularity: 99,
+      }),
+      rawTmdbMovieCreditsResponse: undefined,
+    });
+    const fetchMock = vi.fn(async (input: string) => {
+      const url = String(input);
+      if (url.includes("/movie/321/credits")) {
+        return createJsonResponse({ cast: [], crew: [] });
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    indexedDbMock.getFilmRecordById.mockResolvedValue(directMovieWithoutCredits);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(directMovieWithoutCredits);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await prepareSelectedMovie("Heat", "1995", 321);
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        tmdbId: 321,
+        rawTmdbMovieCreditsResponse: {
+          cast: [],
+          crew: [],
+        },
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toContain("/movie/321/credits?");
+  });
+
   it("force refreshes cached movies through the exact TMDb id endpoint before refreshing credits", async () => {
     const cachedMovieRecord = makeFilmRecord({
       id: 321,

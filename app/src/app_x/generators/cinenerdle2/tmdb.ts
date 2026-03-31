@@ -1354,7 +1354,7 @@ function hasPersonMovieCredits(
   return Boolean(personRecord?.rawTmdbMovieCreditsResponse);
 }
 
-function hasHydratedMovieRecord(
+export function hasHydratedMovieRecord(
   movieRecord: FilmRecord | null | undefined,
 ): movieRecord is FilmRecord & {
   rawTmdbMovie: NonNullable<FilmRecord["rawTmdbMovie"]>;
@@ -1371,7 +1371,7 @@ function hasHydratedMovieRecord(
   );
 }
 
-function hasHydratedPersonRecord(
+export function hasHydratedPersonRecord(
   personRecord: PersonRecord | null | undefined,
 ): personRecord is PersonRecord & {
   rawTmdbPerson: NonNullable<PersonRecord["rawTmdbPerson"]>;
@@ -1644,7 +1644,7 @@ export async function prepareSelectedPerson(
     "tmdb.prepareSelectedPerson",
     async () => {
       const localPersonRecord = await getLocalPersonRecordForCard(personName, personId);
-      if (hasDirectTmdbPersonSource(localPersonRecord) && !options.forceRefresh) {
+      if (hasHydratedPersonRecord(localPersonRecord) && !options.forceRefresh) {
         return localPersonRecord;
       }
 
@@ -1710,7 +1710,7 @@ export async function prepareSelectedMovie(
         movieYear,
         movieId,
       );
-      if (hasDirectTmdbMovieSource(localMovieRecord) && !options.forceRefresh) {
+      if (hasHydratedMovieRecord(localMovieRecord) && !options.forceRefresh) {
         return localMovieRecord;
       }
 
