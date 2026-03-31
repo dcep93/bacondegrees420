@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   areYoungestSelectedCardsEqual,
   getCardTmdbEntityId,
+  getYoungestSelectedCardParent,
   getYoungestSelectedCard,
   matchesHighlightedConnectionEntity,
   serializeSelectedTreePath,
@@ -110,6 +111,16 @@ describe("cinenerdle navigation helpers", () => {
       createPersonCard({ record: { id: 60, tmdbId: 60 } as Extract<CinenerdleCard, { kind: "person" }>["record"] }),
       createPersonCard({ name: "AL PACINO", record: { id: 60, tmdbId: 60 } as Extract<CinenerdleCard, { kind: "person" }>["record"] }),
     )).toBe(true);
+  });
+
+  it("finds the youngest selected parent while skipping break rows", () => {
+    const tree: GeneratorTree<CinenerdleCard> = [
+      [{ selected: true, data: createMovieCard() }],
+      [{ selected: true, data: { key: "break", kind: "break", name: "", popularity: 0, popularitySource: null, imageUrl: null, subtitle: "", subtitleDetail: "", connectionCount: null, sources: [], status: null, record: null } }],
+      [{ selected: true, data: createPersonCard() }],
+    ];
+
+    expect(getYoungestSelectedCardParent(tree)?.kind).toBe("movie");
   });
 
   it("reads card tmdb ids from cached records", () => {
