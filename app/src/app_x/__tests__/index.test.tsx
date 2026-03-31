@@ -25,6 +25,7 @@ import {
   shouldShowIndexedDbBootstrapLoadingShell,
 } from "../indexed_db_bootstrap_loading_shell";
 import {
+  BaconTitleBar,
   BookmarksJsonlEditButton,
   BookmarksJsonlEditorModal,
   IndexedDbBootstrapLoadingIndicator,
@@ -54,6 +55,10 @@ function makeConnectionEntity(
     connectionRank: null,
     ...overrides,
   };
+}
+
+function renderMatchupPreviewStub() {
+  return <div className="matchup-preview-stub">matchup</div>;
 }
 
 function findElementByClassName(
@@ -473,6 +478,102 @@ describe("Bookmarks JSONL editor", () => {
     expect(resetDraft).toBe(serializedBookmarksJsonl);
     expect(isBookmarksJsonlDraftChanged(serializedBookmarksJsonl, resetDraft)).toBe(false);
     expect((html.match(/disabled=""/g) ?? [])).toHaveLength(2);
+  });
+});
+
+describe("BaconTitleBar", () => {
+  it("renders a left brand cluster and right action row in generator view", () => {
+    const html = renderToStaticMarkup(
+      <BaconTitleBar
+        clearDbBadgeText="12 / 34"
+        copyStatus=""
+        copyStatusPlacement="toast"
+        isBookmarksView={false}
+        isConnectionMatchupShellOverflowVisible={false}
+        isSavingBookmark={false}
+        onBookmarkSaveTooltipHide={() => { }}
+        onBookmarkSaveTooltipShow={() => { }}
+        onBookmarkToggleTooltipHide={() => { }}
+        onBookmarkToggleTooltipShow={() => { }}
+        onClearDatabase={() => { }}
+        onOpenBookmarksJsonlEditor={() => { }}
+        onReset={() => { }}
+        onSaveBookmark={() => { }}
+        onToggleBookmarks={() => { }}
+        renderConnectionMatchupPreview={renderMatchupPreviewStub}
+      />,
+    );
+
+    expect(html).toContain("bacon-title-brand");
+    expect(html).toContain("aria-label=\"Reset generator\"");
+    expect(html).toContain("BaconDegrees420");
+    expect(html).toContain("bacon-title-actions");
+    expect(html).toContain("matchup-preview-stub");
+    expect(html).toContain("aria-label=\"Save bookmark\"");
+    expect(html).toContain("aria-label=\"Open bookmarks\"");
+    expect(html).toContain("Clear DB (12 / 34)");
+    expect(html.indexOf("matchup-preview-stub")).toBeLessThan(html.indexOf("aria-label=\"Save bookmark\""));
+    expect(html.indexOf("aria-label=\"Save bookmark\"")).toBeLessThan(html.indexOf("aria-label=\"Open bookmarks\""));
+    expect(html.indexOf("aria-label=\"Open bookmarks\"")).toBeLessThan(html.indexOf("Clear DB (12 / 34)"));
+  });
+
+  it("renders bookmark tooltip copy inside the clear-db overlay anchor", () => {
+    const html = renderToStaticMarkup(
+      <BaconTitleBar
+        bookmarkOverlayMessage="Save bookmark"
+        clearDbBadgeText="1 / 2"
+        copyStatus=""
+        copyStatusPlacement="toast"
+        isBookmarksView={false}
+        isConnectionMatchupShellOverflowVisible={false}
+        isSavingBookmark={false}
+        onBookmarkSaveTooltipHide={() => { }}
+        onBookmarkSaveTooltipShow={() => { }}
+        onBookmarkToggleTooltipHide={() => { }}
+        onBookmarkToggleTooltipShow={() => { }}
+        onClearDatabase={() => { }}
+        onOpenBookmarksJsonlEditor={() => { }}
+        onReset={() => { }}
+        onSaveBookmark={() => { }}
+        onToggleBookmarks={() => { }}
+        renderConnectionMatchupPreview={() => null}
+      />,
+    );
+
+    expect(html).toContain("bacon-title-overlay-anchor");
+    expect(html).toContain("bacon-copy-status-overlay-tooltip");
+    expect(html).toContain("role=\"tooltip\"");
+    expect(html).toContain(">Save bookmark<");
+  });
+
+  it("renders the bookmarks view controls with edit as text and a clear-db anchored toast", () => {
+    const html = renderToStaticMarkup(
+      <BaconTitleBar
+        clearDbBadgeText="8 / 8"
+        copyStatus="Bookmarks updated"
+        copyStatusPlacement="toast"
+        isBookmarksView={true}
+        isConnectionMatchupShellOverflowVisible={false}
+        isSavingBookmark={false}
+        onBookmarkSaveTooltipHide={() => { }}
+        onBookmarkSaveTooltipShow={() => { }}
+        onBookmarkToggleTooltipHide={() => { }}
+        onBookmarkToggleTooltipShow={() => { }}
+        onClearDatabase={() => { }}
+        onOpenBookmarksJsonlEditor={() => { }}
+        onReset={() => { }}
+        onSaveBookmark={() => { }}
+        onToggleBookmarks={() => { }}
+        renderConnectionMatchupPreview={() => null}
+      />,
+    );
+
+    expect(html).toContain("Edit as text");
+    expect(html).toContain("aria-label=\"Edit as text\"");
+    expect(html).not.toContain("aria-label=\"Save bookmark\"");
+    expect(html).toContain("aria-label=\"Close bookmarks\"");
+    expect(html).toContain("bacon-copy-status-overlay-toast");
+    expect(html).toContain(">Bookmarks updated<");
   });
 });
 

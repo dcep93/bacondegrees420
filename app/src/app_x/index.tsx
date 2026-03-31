@@ -10,6 +10,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
   type MouseEvent,
+  type ReactNode,
   type Ref,
 } from "react";
 import {
@@ -287,6 +288,7 @@ export function BookmarksJsonlEditButton(props: {
   );
 }
 
+/* eslint-disable-next-line react-refresh/only-export-components */
 export function isBookmarksJsonlDraftChanged(
   serializedBookmarksJsonl: string,
   bookmarksJsonlDraft: string,
@@ -294,11 +296,20 @@ export function isBookmarksJsonlDraftChanged(
   return bookmarksJsonlDraft !== serializedBookmarksJsonl;
 }
 
+/* eslint-disable-next-line react-refresh/only-export-components */
 export function resetBookmarksJsonlDraft(serializedBookmarksJsonl: string): string {
   return serializedBookmarksJsonl;
 }
 
-export function BookmarksJsonlEditorModal(props: {
+export function BookmarksJsonlEditorModal({
+  bookmarksJsonlDraft,
+  isBookmarksJsonlDraftDirty,
+  onApply,
+  onChange,
+  onClose,
+  onReset,
+  textareaRef,
+}: {
   bookmarksJsonlDraft: string;
   isBookmarksJsonlDraftDirty: boolean;
   onApply: () => void;
@@ -318,7 +329,7 @@ export function BookmarksJsonlEditorModal(props: {
       <button
         aria-label="Close JSONL editor"
         className="bacon-title-action-icon-button bacon-bookmarks-jsonl-modal-close"
-        onClick={props.onClose}
+        onClick={onClose}
         type="button"
       >
         ✕
@@ -327,31 +338,201 @@ export function BookmarksJsonlEditorModal(props: {
         className="bacon-bookmarks-jsonl-textarea"
         id="bacon-bookmarks-jsonl-textarea"
         onChange={(event) => {
-          props.onChange(event.target.value);
+          onChange(event.target.value);
         }}
-        ref={props.textareaRef}
+        ref={textareaRef}
         spellCheck={false}
-        value={props.bookmarksJsonlDraft}
+        value={bookmarksJsonlDraft}
       />
       <div className="bacon-bookmarks-jsonl-modal-actions">
         <button
           className="bacon-title-action-button"
-          disabled={!props.isBookmarksJsonlDraftDirty}
-          onClick={props.onReset}
+          disabled={!isBookmarksJsonlDraftDirty}
+          onClick={onReset}
           type="button"
         >
           Reset
         </button>
         <button
           className="bacon-title-action-button"
-          disabled={!props.isBookmarksJsonlDraftDirty}
-          onClick={props.onApply}
+          disabled={!isBookmarksJsonlDraftDirty}
+          onClick={onApply}
           type="button"
         >
           Apply
         </button>
       </div>
     </div>
+  );
+}
+
+export function BaconTitleBar({
+  bookmarkOverlayMessage,
+  clearDbBadgeText,
+  copyStatus,
+  copyStatusPlacement,
+  isBookmarksView,
+  isConnectionMatchupShellOverflowVisible,
+  isSavingBookmark,
+  onBookmarkSaveTooltipHide,
+  onBookmarkSaveTooltipShow,
+  onBookmarkToggleTooltipHide,
+  onBookmarkToggleTooltipShow,
+  onClearDatabase,
+  onOpenBookmarksJsonlEditor,
+  onReset,
+  onSaveBookmark,
+  onToggleBookmarks,
+  onTitleDebugCopy,
+  renderConnectionMatchupPreview,
+  clearDbButtonRef,
+  titleRef,
+  toastStatusRef,
+}: {
+  bookmarkOverlayMessage?: string | null;
+  clearDbBadgeText: string;
+  copyStatus: string;
+  copyStatusPlacement: "toast" | "title";
+  isBookmarksView: boolean;
+  isConnectionMatchupShellOverflowVisible: boolean;
+  isSavingBookmark: boolean;
+  onBookmarkSaveTooltipHide: () => void;
+  onBookmarkSaveTooltipShow: () => void;
+  onBookmarkToggleTooltipHide: () => void;
+  onBookmarkToggleTooltipShow: () => void;
+  onClearDatabase: () => void;
+  onOpenBookmarksJsonlEditor: () => void;
+  onReset: () => void;
+  onSaveBookmark: () => void;
+  onToggleBookmarks: () => void;
+  onTitleDebugCopy?: (event: MouseEvent<HTMLElement>) => void;
+  renderConnectionMatchupPreview: () => ReactNode;
+  clearDbButtonRef?: Ref<HTMLButtonElement>;
+  titleRef?: Ref<HTMLHeadingElement>;
+  toastStatusRef?: Ref<HTMLSpanElement>;
+}) {
+  const titleCopyStatus =
+    copyStatus && copyStatusPlacement === "title" ? copyStatus : "";
+  const toastOverlayMessage =
+    copyStatus && copyStatusPlacement === "toast" ? copyStatus : "";
+  const overlayBookmarkMessage = toastOverlayMessage ? "" : bookmarkOverlayMessage ?? "";
+  const matchupPreview = renderConnectionMatchupPreview();
+
+  return (
+    <header className="bacon-title-bar">
+      <div className="bacon-title-brand">
+        <button
+          aria-label="Reset generator"
+          className="bacon-title-icon-button"
+          onClick={onReset}
+          type="button"
+        >
+          <span aria-hidden="true" className="bacon-title-icon">
+            B
+          </span>
+        </button>
+        <div className="bacon-title-wrap">
+          <h1
+            className="bacon-title"
+            onClick={onTitleDebugCopy}
+            ref={titleRef}
+          >
+            BaconDegrees420
+          </h1>
+          {titleCopyStatus ? (
+            <span className="bacon-copy-status bacon-copy-status-title">
+              {titleCopyStatus}
+            </span>
+          ) : null}
+        </div>
+      </div>
+      <div
+        className={[
+          "bacon-title-actions",
+          isConnectionMatchupShellOverflowVisible ? "bacon-title-actions-overflow-visible" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
+        {matchupPreview ? (
+          <div className="bacon-title-action-slot bacon-title-action-slot-matchup">
+            {matchupPreview}
+          </div>
+        ) : null}
+        {!isBookmarksView ? (
+          <div className="bacon-title-action-slot bacon-title-action-slot-square">
+            <button
+              aria-label="Save bookmark"
+              className="bacon-title-action-icon-button"
+              disabled={isSavingBookmark}
+              onBlur={onBookmarkSaveTooltipHide}
+              onFocus={onBookmarkSaveTooltipShow}
+              onMouseEnter={onBookmarkSaveTooltipShow}
+              onMouseLeave={onBookmarkSaveTooltipHide}
+              onClick={onSaveBookmark}
+              type="button"
+            >
+              💾
+            </button>
+          </div>
+        ) : null}
+        {isBookmarksView ? (
+          <div className="bacon-title-action-slot bacon-title-action-slot-text">
+            <BookmarksJsonlEditButton onClick={onOpenBookmarksJsonlEditor} />
+          </div>
+        ) : null}
+        <div className="bacon-title-action-slot bacon-title-action-slot-square">
+          <button
+            aria-label={isBookmarksView ? "Close bookmarks" : "Open bookmarks"}
+            className="bacon-title-action-icon-button"
+            onBlur={onBookmarkToggleTooltipHide}
+            onFocus={onBookmarkToggleTooltipShow}
+            onMouseDown={(event) => {
+              event.currentTarget.focus();
+            }}
+            onMouseEnter={onBookmarkToggleTooltipShow}
+            onMouseLeave={onBookmarkToggleTooltipHide}
+            onClick={(event) => {
+              onBookmarkToggleTooltipHide();
+              event.currentTarget.blur();
+              onToggleBookmarks();
+            }}
+            type="button"
+          >
+            {isBookmarksView ? "🎬" : "📚"}
+          </button>
+        </div>
+        <div className="bacon-title-action-slot bacon-title-action-slot-text">
+          <div className="bacon-title-overlay-anchor">
+            {toastOverlayMessage ? (
+              <span
+                className="bacon-copy-status bacon-copy-status-overlay bacon-copy-status-overlay-toast"
+                ref={toastStatusRef}
+              >
+                {toastOverlayMessage}
+              </span>
+            ) : null}
+            {overlayBookmarkMessage ? (
+              <span
+                className="bacon-copy-status bacon-copy-status-overlay bacon-copy-status-overlay-tooltip"
+                role="tooltip"
+              >
+                {overlayBookmarkMessage}
+              </span>
+            ) : null}
+            <button
+              aria-label={`Clear database (${clearDbBadgeText})`}
+              className="bacon-title-action-button bacon-clear-db-button"
+              onClick={onClearDatabase}
+              ref={clearDbButtonRef}
+              type="button"
+            >
+              {`Clear DB (${clearDbBadgeText})`}
+            </button>
+          </div>
+        </div>
+      </div>
+    </header>
   );
 }
 
@@ -1093,7 +1274,7 @@ export default function AppX() {
   const [clearDbTotalFetchCount, setClearDbTotalFetchCount] =
     useState(() => getCinenerdleFetchDebugEntryCount());
   const [isSavingBookmark, setIsSavingBookmark] = useState(false);
-  const [isBookmarksTooltipSuppressed, setIsBookmarksTooltipSuppressed] = useState(false);
+  const [bookmarkOverlayMessage, setBookmarkOverlayMessage] = useState<string | null>(null);
   const [isBookmarksJsonlEditorOpen, setIsBookmarksJsonlEditorOpen] = useState(false);
   const [bookmarksJsonlDraft, setBookmarksJsonlDraft] = useState("");
   const [connectionQuery, setConnectionQuery] = useState("");
@@ -1112,6 +1293,8 @@ export default function AppX() {
   const [isSelectedPathTooltipVisible, setIsSelectedPathTooltipVisible] = useState(false);
   const [visibleConnectionMatchupTooltipKey, setVisibleConnectionMatchupTooltipKey] =
     useState<string | null>(null);
+  const [isConnectionMatchupShellOverflowVisible, setIsConnectionMatchupShellOverflowVisible] =
+    useState(false);
   const connectionSessionRef = useRef<ConnectionSession | null>(null);
   const pendingHashWriteRef = useRef<PendingHashWrite | null>(null);
   const bookmarksRef = useRef<BookmarkEntry[]>([]);
@@ -1124,6 +1307,7 @@ export default function AppX() {
   const connectionSessionIdRef = useRef(0);
   const connectionRowIdRef = useRef(0);
   const connectionBarRef = useRef<HTMLElement | null>(null);
+  const connectionMatchupShellRef = useRef<HTMLDivElement | null>(null);
   const connectionInputWrapRef = useRef<HTMLDivElement | null>(null);
   const connectionDropdownRef = useRef<HTMLDivElement | null>(null);
   const titleRef = useRef<HTMLHeadingElement | null>(null);
@@ -1146,11 +1330,6 @@ export default function AppX() {
     serializedBookmarksJsonl,
     bookmarksJsonlDraft,
   );
-  const clearDbToastStyle: CSSProperties | undefined = clearDbButtonRef.current
-    ? {
-      width: `${Math.ceil(clearDbButtonRef.current.getBoundingClientRect().width)}px`,
-    }
-    : undefined;
   const displayedBookmarkRows =
     bookmarkRows.length === bookmarks.length
       ? bookmarkRows
@@ -1175,6 +1354,40 @@ export default function AppX() {
       Reflect.deleteProperty(window, "idleFetch");
     };
   }, []);
+
+  useEffect(() => {
+    const matchupShellElement = connectionMatchupShellRef.current;
+    const matchupShellParentElement = matchupShellElement?.parentElement ?? null;
+
+    if (!matchupShellElement || !matchupShellParentElement) {
+      setIsConnectionMatchupShellOverflowVisible(false);
+      return;
+    }
+
+    const syncConnectionMatchupShellOverflowVisibility = () => {
+      const matchupShellHeight = matchupShellElement.getBoundingClientRect().height;
+      const matchupShellParentHeight = matchupShellParentElement.getBoundingClientRect().height;
+
+      setIsConnectionMatchupShellOverflowVisible(matchupShellHeight > matchupShellParentHeight + 0.5);
+    };
+
+    syncConnectionMatchupShellOverflowVisibility();
+
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      syncConnectionMatchupShellOverflowVisibility();
+    });
+
+    resizeObserver.observe(matchupShellElement);
+    resizeObserver.observe(matchupShellParentElement);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [connectionMatchupPreview]);
 
   useEffect(() => {
     return connectCinenerdleIndexedDbBootstrap(setCinenerdleIndexedDbBootstrapStatus);
@@ -1411,6 +1624,12 @@ export default function AppX() {
   }, [copyStatus]);
 
   useEffect(() => {
+    if (copyStatusPlacement === "toast" && copyStatus) {
+      setBookmarkOverlayMessage(null);
+    }
+  }, [copyStatus, copyStatusPlacement]);
+
+  useEffect(() => {
     if (
       copyStatusPlacement !== "toast" ||
       !copyStatus ||
@@ -1449,6 +1668,18 @@ export default function AppX() {
   function sayToast(message: string) {
     setCopyStatusPlacement("toast");
     setCopyStatus(message);
+  }
+
+  function showSaveBookmarkOverlay() {
+    setBookmarkOverlayMessage(isSavingBookmark ? "Saving bookmark..." : "Save bookmark");
+  }
+
+  function hideBookmarkOverlay() {
+    setBookmarkOverlayMessage(null);
+  }
+
+  function showToggleBookmarksOverlay() {
+    setBookmarkOverlayMessage(isBookmarksView ? "Close bookmarks" : "Open bookmarks");
   }
 
   useEffect(() => {
@@ -1984,6 +2215,7 @@ export default function AppX() {
     }
 
     setIsSavingBookmark(true);
+    setBookmarkOverlayMessage("Saving bookmark...");
 
     void persistBookmarks(upsertBookmarkEntry(bookmarksRef.current, {
       hash: normalizedHash,
@@ -2496,10 +2728,22 @@ export default function AppX() {
 
   function renderConnectionMatchupTile(entity: ConnectionMatchupPreviewEntity) {
     return (
-      <span className="bacon-connection-matchup-tile-wrap">
+      <span
+        className={[
+          "bacon-connection-matchup-tile-wrap",
+          entity.imageUrl ? "bacon-connection-matchup-tile-wrap-image" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
         <span
           aria-label={entity.name}
-          className="bacon-connection-matchup-tile"
+          className={[
+            "bacon-connection-matchup-tile",
+            entity.imageUrl ? "bacon-connection-matchup-tile-image" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
         >
           {entity.imageUrl ? (
             <img
@@ -2520,10 +2764,10 @@ export default function AppX() {
 
   function renderConnectionMatchupPlaceholderTile(label: string) {
     return (
-      <span className="bacon-connection-matchup-tile-wrap">
+      <span className="bacon-connection-matchup-tile-wrap bacon-connection-matchup-tile-wrap-placeholder">
         <span
           aria-label={label}
-          className="bacon-connection-matchup-tile"
+          className="bacon-connection-matchup-tile bacon-connection-matchup-tile-placeholder"
         >
           <span className="bacon-connection-matchup-fallback">
             {getPreviewFallbackText(label)}
@@ -2551,7 +2795,17 @@ export default function AppX() {
       : connectionMatchupPreview.placeholderExplanation;
 
     return (
-      <div className="bacon-connection-matchup-shell">
+      <div
+        className={[
+          "bacon-connection-matchup-shell",
+          isConnectionMatchupShellOverflowVisible
+            ? "bacon-connection-matchup-shell-overflow-visible"
+            : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        ref={connectionMatchupShellRef}
+      >
         <div
           aria-label={`Suggested matchup: ${connectionMatchupPreview.counterpart.name} vs ${matchupRightLabel}`}
           className="bacon-connection-matchup"
@@ -2706,15 +2960,6 @@ export default function AppX() {
 
   return (
     <div className="bacon-app-shell">
-      {copyStatus && copyStatusPlacement === "toast" ? (
-        <span
-          className="bacon-copy-status bacon-copy-status-toast"
-          ref={toastStatusRef}
-          style={clearDbToastStyle}
-        >
-          {copyStatus}
-        </span>
-      ) : null}
       {isBookmarksJsonlEditorOpen ? (
         <div
           className="bacon-modal-backdrop"
@@ -2732,89 +2977,29 @@ export default function AppX() {
           />
         </div>
       ) : null}
-      <header className="bacon-title-bar">
-        <button
-          aria-label="Reset generator"
-          className="bacon-title-icon-button"
-          onClick={handleReset}
-          type="button"
-        >
-          <span aria-hidden="true" className="bacon-title-icon">
-            B
-          </span>
-        </button>
-        <div className="bacon-title-wrap">
-          <h1
-            className="bacon-title"
-            onClick={import.meta.env.DEV ? handleTitleDebugCopy : undefined}
-            ref={titleRef}
-          >
-            BaconDegrees420
-          </h1>
-          {copyStatus && copyStatusPlacement === "title" ? (
-            <span className="bacon-copy-status bacon-copy-status-title">
-              {copyStatus}
-            </span>
-          ) : null}
-        </div>
-        <div className="bacon-title-actions">
-          {renderConnectionMatchupPreview()}
-          {!isBookmarksView ? (
-            <FancyTooltip content={isSavingBookmark ? "Saving bookmark..." : "Save bookmark"}>
-              <button
-                aria-label="Save bookmark"
-                className="bacon-title-action-icon-button"
-                disabled={isSavingBookmark}
-                onClick={handleSaveBookmark}
-                type="button"
-              >
-                💾
-              </button>
-            </FancyTooltip>
-          ) : null}
-          {isBookmarksView ? (
-            <BookmarksJsonlEditButton onClick={handleOpenBookmarksJsonlEditor} />
-          ) : null}
-          <FancyTooltip
-            anchorProps={{
-              onFocus: () => setIsBookmarksTooltipSuppressed(false),
-              onMouseEnter: () => setIsBookmarksTooltipSuppressed(false),
-            }}
-            content={
-              isBookmarksTooltipSuppressed
-                ? null
-                : isBookmarksView
-                  ? "Close bookmarks"
-                  : "Open bookmarks"
-            }
-          >
-            <button
-              aria-label={isBookmarksView ? "Close bookmarks" : "Open bookmarks"}
-              className="bacon-title-action-icon-button"
-              onMouseDown={(event) => {
-                event.currentTarget.focus();
-              }}
-              onClick={(event) => {
-                setIsBookmarksTooltipSuppressed(true);
-                event.currentTarget.blur();
-                handleToggleBookmarks();
-              }}
-              type="button"
-            >
-              {isBookmarksView ? "🎬" : "📚"}
-            </button>
-          </FancyTooltip>
-          <button
-            aria-label={`Clear database (${clearDbBadgeText})`}
-            className="bacon-title-action-button bacon-clear-db-button"
-            onClick={handleClearDatabase}
-            ref={clearDbButtonRef}
-            type="button"
-          >
-            {`Clear DB (${clearDbBadgeText})`}
-          </button>
-        </div>
-      </header>
+      <BaconTitleBar
+        bookmarkOverlayMessage={bookmarkOverlayMessage}
+        clearDbBadgeText={clearDbBadgeText}
+        clearDbButtonRef={clearDbButtonRef}
+        copyStatus={copyStatus}
+        copyStatusPlacement={copyStatusPlacement}
+        isBookmarksView={isBookmarksView}
+        isConnectionMatchupShellOverflowVisible={isConnectionMatchupShellOverflowVisible}
+        isSavingBookmark={isSavingBookmark}
+        onBookmarkSaveTooltipHide={hideBookmarkOverlay}
+        onBookmarkSaveTooltipShow={showSaveBookmarkOverlay}
+        onBookmarkToggleTooltipHide={hideBookmarkOverlay}
+        onBookmarkToggleTooltipShow={showToggleBookmarksOverlay}
+        onClearDatabase={handleClearDatabase}
+        onOpenBookmarksJsonlEditor={handleOpenBookmarksJsonlEditor}
+        onReset={handleReset}
+        onSaveBookmark={handleSaveBookmark}
+        onTitleDebugCopy={import.meta.env.DEV ? handleTitleDebugCopy : undefined}
+        onToggleBookmarks={handleToggleBookmarks}
+        renderConnectionMatchupPreview={renderConnectionMatchupPreview}
+        titleRef={titleRef}
+        toastStatusRef={toastStatusRef}
+      />
 
       {shouldShowIndexedDbBootstrapLoadingShellIndicator ? (
         <IndexedDbBootstrapLoadingIndicator

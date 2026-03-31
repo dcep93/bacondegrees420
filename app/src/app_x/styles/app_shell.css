@@ -10,6 +10,8 @@
   --bacon-text-muted: rgba(255, 247, 239, 0.72);
   --bacon-accent: #d5a36c;
   --bacon-shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
+  --bacon-title-control-size: 52px;
+  --bacon-title-matchup-vs-width: 24px;
   --bacon-title-font:
     "Comic Sans MS",
     "Comic Sans",
@@ -49,17 +51,19 @@
   padding: 18px 24px;
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  justify-content: space-between;
+  flex-wrap: nowrap;
   gap: 18px;
   border-bottom: 1px solid var(--bacon-border);
   background: rgba(10, 8, 7, 0.34);
   backdrop-filter: blur(18px);
+  overflow: visible;
 }
 
 .bacon-title-icon-button {
   appearance: none;
-  width: 52px;
-  height: 52px;
+  width: var(--bacon-title-control-size);
+  height: var(--bacon-title-control-size);
   padding: 0;
   border: 1px solid var(--bacon-border-strong);
   border-radius: 18px;
@@ -100,6 +104,14 @@
     -2px 0 0 #000;
 }
 
+.bacon-title-brand {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
 .bacon-title {
   margin: 0;
   color: #ff6fb5;
@@ -108,6 +120,7 @@
   font-weight: 700;
   letter-spacing: -0.04em;
   line-height: 0.95;
+  white-space: nowrap;
   user-select: none;
   -webkit-text-stroke: 2px #000000;
   text-shadow:
@@ -126,20 +139,62 @@
   display: inline-flex;
   align-items: center;
   isolation: isolate;
+  min-width: 0;
 }
 
 .bacon-title-actions {
-  height: 100%;
   margin-left: auto;
   display: flex;
-  align-items: stretch;
-  flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+  height: var(--bacon-title-control-size);
   gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: visible;
 }
 
-.bacon-title-actions > * {
-  align-self: stretch;
+.bacon-title-action-slot {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  flex: 0 0 auto;
+  height: 100%;
+  min-width: 0;
+}
+
+.bacon-title-action-slot > * {
+  height: 100%;
+}
+
+.bacon-title-action-slot-matchup {
+  align-items: center;
+}
+
+.bacon-title-action-slot-square {
+  width: var(--bacon-title-control-size);
+}
+
+.bacon-title-action-slot-square > * {
+  width: 100%;
+}
+
+.bacon-title-action-slot-text {
+  max-width: 100%;
+}
+
+.bacon-title-overlay-anchor {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+  overflow: visible;
+}
+
+.bacon-title-actions-overflow-visible {
+  overflow: visible;
 }
 
 .bacon-copy-status {
@@ -153,21 +208,34 @@
   pointer-events: none;
 }
 
-.bacon-copy-status-toast {
-  position: fixed;
-  top: calc(env(safe-area-inset-top, 0px) + 16px);
-  right: 16px;
-  min-height: 42px;
-  padding: 10px 16px;
-  display: inline-flex;
+.bacon-copy-status-overlay {
+  position: absolute;
+  inset: 0;
+  max-width: none;
+  padding: 0 16px;
+  display: flex;
   align-items: center;
   justify-content: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bacon-copy-status-overlay-toast {
   color: var(--bacon-text);
   font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-align: center;
   text-transform: uppercase;
+}
+
+.bacon-copy-status-overlay-tooltip {
+  color: var(--bacon-text-muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-align: center;
 }
 
 .bacon-copy-status-title {
@@ -216,13 +284,15 @@
 .bacon-title-action-button {
   appearance: none;
   box-sizing: border-box;
-  min-height: 42px;
+  height: 100%;
+  max-width: 100%;
   padding: 10px 16px;
   border: 1px solid var(--bacon-border-strong);
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  white-space: nowrap;
   background: var(--bacon-panel-strong);
   box-shadow: var(--bacon-shadow);
   color: var(--bacon-text);
@@ -257,13 +327,13 @@
 
 .bacon-title-action-icon-button {
   appearance: none;
+  display: grid;
+  width: 100%;
   height: 100%;
   padding: 0;
   border: 1px solid var(--bacon-border-strong);
   border-radius: 16px;
-  display: grid;
   place-items: center;
-  aspect-ratio: 1;
   background: var(--bacon-panel-strong);
   box-shadow: var(--bacon-shadow);
   color: var(--bacon-text);
@@ -377,7 +447,8 @@
 
 .bacon-connection-bar {
   box-sizing: border-box;
-  width: 100vw;
+  width: 100%;
+  max-width: 100%;
   overflow: visible;
   padding: 14px 24px 10px;
   position: relative;
@@ -402,17 +473,19 @@
 .bacon-connection-matchup-shell {
   position: relative;
   flex: 0 0 auto;
-  width: 104px;
-  height: 52px;
+  width: max-content;
+  height: 100%;
+}
+
+.bacon-connection-matchup-shell-overflow-visible {
+  overflow: visible;
 }
 
 .bacon-connection-matchup {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  right: 0;
+  position: relative;
   display: inline-flex;
   box-sizing: border-box;
+  height: 100%;
   padding: 0;
   border: 1px solid var(--bacon-border-strong);
   border-radius: 999px;
@@ -423,9 +496,10 @@
 }
 
 .bacon-connection-matchup-content {
-  display: inline-flex;
+  display: flex;
   align-items: stretch;
   gap: 0;
+  width: max-content;
   height: 100%;
   border-radius: inherit;
   overflow: hidden;
@@ -465,10 +539,12 @@
 
 .bacon-connection-matchup-tile {
   position: relative;
-  width: 38px;
+  width: auto;
+  min-width: var(--bacon-title-control-size);
   height: 100%;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex: 0 0 auto;
   background: rgba(43, 31, 25, 0.92);
   color: var(--bacon-text);
@@ -479,9 +555,31 @@
 .bacon-connection-matchup-tile-wrap {
   position: relative;
   display: flex;
-  flex: 0 0 auto;
+  flex: 1 1 0;
+  min-width: 0;
   align-self: stretch;
   height: 100%;
+}
+
+.bacon-connection-matchup-tile-wrap-image {
+  flex: 0 0 auto;
+  aspect-ratio: 2 / 3;
+  width: auto;
+}
+
+.bacon-connection-matchup-tile-wrap-placeholder {
+  flex: 0 0 auto;
+  aspect-ratio: 2 / 3;
+  width: auto;
+}
+
+.bacon-connection-matchup-tile-image {
+  width: 100%;
+  min-width: 0;
+}
+
+.bacon-connection-matchup-tile-placeholder {
+  width: 100%;
 }
 
 .bacon-connection-matchup-tile-wrap:focus-within {
@@ -498,12 +596,12 @@
 }
 
 .bacon-connection-matchup-image {
-  position: absolute;
-  inset: 0;
   width: 100%;
   height: 100%;
   display: block;
-  object-fit: cover;
+  max-width: none;
+  object-fit: contain;
+  object-position: center;
 }
 
 .bacon-connection-matchup-fallback {
@@ -516,13 +614,13 @@
 
 .bacon-connection-matchup-vs {
   display: inline-flex;
-  flex: 0 0 28px;
+  flex: 0 0 var(--bacon-title-matchup-vs-width);
   align-items: center;
   justify-content: center;
-  width: 28px;
+  width: var(--bacon-title-matchup-vs-width);
   height: 100%;
   color: var(--bacon-text-muted);
-  font-size: 0.76rem;
+  font-size: 0.68rem;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1230,21 +1328,35 @@
 }
 
 @media (max-width: 720px) {
+  :root {
+    --bacon-title-control-size: 46px;
+  }
+
   .bacon-title-bar {
     padding: 16px 16px 14px;
     gap: 14px;
+    flex-wrap: wrap;
   }
 
   .bacon-title-icon-button {
-    width: 46px;
-    height: 46px;
     border-radius: 16px;
+  }
+
+  .bacon-title-brand {
+    gap: 14px;
   }
 
   .bacon-title-actions {
     width: 100%;
     margin-left: 0;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    height: auto;
     gap: 8px;
+  }
+
+  .bacon-title-action-slot {
+    height: var(--bacon-title-control-size);
   }
 
   .bacon-title-action-icon-button {
@@ -1253,7 +1365,6 @@
   }
 
   .bacon-title-action-button {
-    min-height: 38px;
     padding: 8px 12px;
     font-size: 0.72rem;
   }
