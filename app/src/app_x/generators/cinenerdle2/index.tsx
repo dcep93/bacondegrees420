@@ -9,7 +9,7 @@ import "../../styles/cinenerdle2.css";
 import type { GeneratorNode } from "../../types/generator";
 import type { ConnectionEntity } from "./connection_graph";
 import {
-  refreshTreeForFetchedEntity,
+  buildTreeFromHash,
   useCinenerdleController,
 } from "./controller";
 import {
@@ -279,15 +279,17 @@ const Cinenerdle2 = memo(function Cinenerdle2({
 
     return {
       requestKey: activeEntityRefreshRequest.requestKey,
-      run: async (tree) => {
+      run: async () => {
         try {
-          return await refreshTreeForFetchedEntity(tree, activeEntityRefreshRequest);
+          return await buildTreeFromHash(readHash(), {
+            bypassInFlightCache: true,
+          });
         } finally {
           setActiveEntityRefreshRequest(pendingEntityRefreshRequestsRef.current.shift() ?? null);
         }
       },
     };
-  }, [activeEntityRefreshRequest]);
+  }, [activeEntityRefreshRequest, readHash]);
   const focusRequest = useMemo<AbstractGeneratorFocusRequest<CinenerdleCard> | null>(() => {
     if (!highlightedConnectionEntity) {
       return null;

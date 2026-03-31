@@ -151,7 +151,6 @@ export default function AppX() {
     setBookmarksJsonlDraft,
   } = useBookmarksState({
     hashValue,
-    isCinenerdleIndexedDbBootstrapLoading,
     onToast: sayToast,
   });
   const {

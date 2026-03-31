@@ -12,10 +12,8 @@ import {
 import { buildBookmarkRowData, createBookmarkRowPlaceholder, type BookmarkRowData } from "./bookmark_rows";
 import { normalizeHashValue } from "./generators/cinenerdle2/hash";
 import {
-  batchCinenerdleRecordsUpdatedEvents,
   CINENERDLE_RECORDS_UPDATED_EVENT,
 } from "./generators/cinenerdle2/indexed_db";
-import { hydrateHashPathItems } from "./generators/cinenerdle2/controller";
 
 export function isBookmarksJsonlDraftChanged(
   serializedBookmarksJsonl: string,
@@ -30,11 +28,9 @@ export function resetBookmarksJsonlDraft(serializedBookmarksJsonl: string): stri
 
 export function useBookmarksState({
   hashValue,
-  isCinenerdleIndexedDbBootstrapLoading,
   onToast,
 }: {
   hashValue: string;
-  isCinenerdleIndexedDbBootstrapLoading: boolean;
   onToast: (message: string) => void;
 }) {
   const [bookmarks, setBookmarks] = useState<BookmarkEntry[]>([]);
@@ -111,32 +107,6 @@ export function useBookmarksState({
       cancelled = true;
     };
   }, [bookmarks]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    if (isCinenerdleIndexedDbBootstrapLoading || bookmarks.length === 0) {
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    void batchCinenerdleRecordsUpdatedEvents(async () => {
-      for (const bookmark of bookmarks) {
-        if (cancelled) {
-          return;
-        }
-
-        await hydrateHashPathItems(bookmark.hash, {
-          forceRefreshSelectedPath: false,
-        });
-      }
-    }).catch(() => { });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [bookmarks, isCinenerdleIndexedDbBootstrapLoading]);
 
   useEffect(() => {
     function handleCinenerdleRecordsUpdated() {
