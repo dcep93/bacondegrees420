@@ -24,14 +24,15 @@ import {
   INDEXED_DB_BOOTSTRAP_LOADING_SHELL_DELAY_MS,
   shouldShowIndexedDbBootstrapLoadingShell,
 } from "../indexed_db_bootstrap_loading_shell";
-import {
-  BaconTitleBar,
+import BaconTitleBar from "../components/bacon_title_bar";
+import BookmarksJsonlEditorModal, {
   BookmarksJsonlEditButton,
-  BookmarksJsonlEditorModal,
-  IndexedDbBootstrapLoadingIndicator,
+} from "../components/bookmarks_jsonl_editor";
+import IndexedDbBootstrapLoadingIndicator from "../components/indexed_db_bootstrap_loading_indicator";
+import {
   isBookmarksJsonlDraftChanged,
   resetBookmarksJsonlDraft,
-} from "../index";
+} from "../bookmarks_state";
 import { getWindowKeyDownAction } from "../window_keydown";
 
 function makeKeyboardTarget(tagName: string): EventTarget {
@@ -489,18 +490,13 @@ describe("BaconTitleBar", () => {
         copyStatus=""
         copyStatusPlacement="toast"
         isBookmarksView={false}
-        isConnectionMatchupShellOverflowVisible={false}
         isSavingBookmark={false}
-        onBookmarkSaveTooltipHide={() => { }}
-        onBookmarkSaveTooltipShow={() => { }}
-        onBookmarkToggleTooltipHide={() => { }}
-        onBookmarkToggleTooltipShow={() => { }}
         onClearDatabase={() => { }}
         onOpenBookmarksJsonlEditor={() => { }}
         onReset={() => { }}
         onSaveBookmark={() => { }}
         onToggleBookmarks={() => { }}
-        renderConnectionMatchupPreview={renderMatchupPreviewStub}
+        matchupPreview={renderMatchupPreviewStub()}
       />,
     );
 
@@ -520,28 +516,21 @@ describe("BaconTitleBar", () => {
   it("renders bookmark tooltip copy inside the clear-db overlay anchor", () => {
     const html = renderToStaticMarkup(
       <BaconTitleBar
-        bookmarkOverlayMessage="Save bookmark"
         clearDbBadgeText="1 / 2"
         copyStatus=""
         copyStatusPlacement="toast"
         isBookmarksView={false}
-        isConnectionMatchupShellOverflowVisible={false}
         isSavingBookmark={false}
-        onBookmarkSaveTooltipHide={() => { }}
-        onBookmarkSaveTooltipShow={() => { }}
-        onBookmarkToggleTooltipHide={() => { }}
-        onBookmarkToggleTooltipShow={() => { }}
         onClearDatabase={() => { }}
         onOpenBookmarksJsonlEditor={() => { }}
         onReset={() => { }}
         onSaveBookmark={() => { }}
         onToggleBookmarks={() => { }}
-        renderConnectionMatchupPreview={() => null}
       />,
     );
 
     expect(html).toContain("bacon-title-overlay-anchor");
-    expect(html).toContain("bacon-copy-status-overlay-tooltip");
+    expect(html).toContain("bacon-fancy-tooltip-anchor");
     expect(html).toContain("role=\"tooltip\"");
     expect(html).toContain(">Save bookmark<");
   });
@@ -553,18 +542,12 @@ describe("BaconTitleBar", () => {
         copyStatus="Bookmarks updated"
         copyStatusPlacement="toast"
         isBookmarksView={true}
-        isConnectionMatchupShellOverflowVisible={false}
         isSavingBookmark={false}
-        onBookmarkSaveTooltipHide={() => { }}
-        onBookmarkSaveTooltipShow={() => { }}
-        onBookmarkToggleTooltipHide={() => { }}
-        onBookmarkToggleTooltipShow={() => { }}
         onClearDatabase={() => { }}
         onOpenBookmarksJsonlEditor={() => { }}
         onReset={() => { }}
         onSaveBookmark={() => { }}
         onToggleBookmarks={() => { }}
-        renderConnectionMatchupPreview={() => null}
       />,
     );
 

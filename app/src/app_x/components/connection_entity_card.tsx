@@ -10,7 +10,9 @@ import {
 } from "../generators/cinenerdle2/entity_card/helpers";
 import { ConnectionCountBadge } from "../generators/cinenerdle2/entity_card/connection_count_badge";
 import type { ConnectionEntity } from "../generators/cinenerdle2/connection_graph";
-import FancyTooltip from "./fancy_tooltip";
+import { CardTitle } from "./card_ui";
+import { handleIsolatedClick, joinClassNames } from "./ui_utils";
+import Tooltip from "./tooltip";
 
 function getConnectionEntitySourceLabel(entity: ConnectionEntity) {
   return entity.kind === "cinenerdle" ? "Cinenerdle" : "TMDb";
@@ -39,15 +41,13 @@ export default function ConnectionEntityCard({
 
   return (
     <article
-      className={[
+      className={joinClassNames(
         "bacon-connection-node",
-        entity.kind === "cinenerdle" ? "bacon-connection-node-cinenerdle" : "",
-        hasImage ? "bacon-connection-node-has-image" : "",
-        onCardClick ? "bacon-connection-node-clickable" : "",
-        dimmed ? "bacon-connection-node-dimmed" : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
+        entity.kind === "cinenerdle" && "bacon-connection-node-cinenerdle",
+        hasImage && "bacon-connection-node-has-image",
+        onCardClick && "bacon-connection-node-clickable",
+        dimmed && "bacon-connection-node-dimmed",
+      )}
       onClick={onCardClick}
     >
       {hasImage ? (
@@ -62,23 +62,23 @@ export default function ConnectionEntityCard({
         </div>
       ) : null}
       <div className="bacon-connection-node-body">
-        <button
+        <CardTitle
+          as="button"
           className="bacon-connection-node-name"
-          onClick={(event: MouseEvent<HTMLButtonElement>) => {
-            event.preventDefault();
-            event.stopPropagation();
-            onNameClick?.(event);
+          onClick={(event) => {
+            handleIsolatedClick(event, (isolatedEvent) => {
+              onNameClick?.(isolatedEvent as MouseEvent<HTMLButtonElement>);
+            });
           }}
-          type="button"
         >
           {entity.label}
-        </button>
-        <FancyTooltip
+        </CardTitle>
+        <Tooltip
           anchorClassName="bacon-connection-node-meta-tooltip-anchor"
           anchorProps={{ tabIndex: 0 }}
           content={tooltipText}
           placement="top-center"
-          variant="inline"
+          variant="bacon-inline"
           wrapperTag="div"
         >
           <div className="bacon-connection-node-meta">
@@ -108,7 +108,7 @@ export default function ConnectionEntityCard({
               </span>
             ) : null}
           </div>
-        </FancyTooltip>
+        </Tooltip>
       </div>
     </article>
   );

@@ -3,6 +3,8 @@ import type {
   KeyboardEvent,
   MouseEvent,
 } from "react";
+import { CardTitle } from "../../components/card_ui";
+import { handleIsolatedClick, joinClassNames } from "../../components/ui_utils";
 import { FooterChips } from "./entity_card/chips";
 import type { RenderableCinenerdleEntityCard } from "./entity_card/types";
 
@@ -18,10 +20,10 @@ export function CinenerdleBreakBar({
   return (
     <div
       aria-label={label}
-      className={[
+      className={joinClassNames(
         "cinenerdle-break-bar",
-        className ?? "",
-      ].filter(Boolean).join(" ")}
+        className,
+      )}
       role="separator"
     >
       <span className="cinenerdle-break-bar-label">{label}</span>
@@ -58,13 +60,13 @@ export function CinenerdleEntityCard({
   return (
     <article
       aria-pressed={ariaPressed}
-      className={[
+      className={joinClassNames(
         "cinenerdle-card",
-        card.isSelected ? "cinenerdle-card-selected" : "",
-        card.isLocked ? "cinenerdle-card-locked" : "",
-        card.isAncestorSelected ? "cinenerdle-card-ancestor-selected" : "",
-        className ?? "",
-      ].filter(Boolean).join(" ")}
+        card.isSelected && "cinenerdle-card-selected",
+        card.isLocked && "cinenerdle-card-locked",
+        card.isAncestorSelected && "cinenerdle-card-ancestor-selected",
+        className,
+      )}
       onClick={onCardClick}
       onKeyDown={onCardKeyDown}
       role={role}
@@ -86,32 +88,17 @@ export function CinenerdleEntityCard({
       </div>
 
       <div className="cinenerdle-card-copy">
-        {onTitleClick && titleElement === "button" ? (
-          <button
-            className="cinenerdle-card-title"
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              onTitleClick(event);
-            }}
-            type="button"
-          >
-            {card.name}
-          </button>
-        ) : (
-          <p
-            className="cinenerdle-card-title"
-            onClick={onTitleClick
-              ? (event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  onTitleClick(event);
-                }
-              : undefined}
-          >
-            {card.name}
-          </p>
-        )}
+        <CardTitle
+          as={onTitleClick && titleElement === "button" ? "button" : "p"}
+          className="cinenerdle-card-title"
+          onClick={onTitleClick
+            ? (event) => {
+                handleIsolatedClick(event, onTitleClick);
+              }
+            : undefined}
+        >
+          {card.name}
+        </CardTitle>
         <div className="cinenerdle-card-copy-spacer" />
         <div className="cinenerdle-card-secondary">
           {creditLines.map((line, index) => (
