@@ -60,8 +60,13 @@
   scroll-behavior: smooth;
 }
 
-.generator-row-track:not(.generator-row-track-break)::before,
-.generator-row-track:not(.generator-row-track-break)::after {
+.generator-row-track-root {
+  justify-content: center;
+  padding-left: 4px;
+}
+
+.generator-row-track:not(.generator-row-track-break):not(.generator-row-track-root)::before,
+.generator-row-track:not(.generator-row-track-break):not(.generator-row-track-root)::after {
   content: "";
   flex: 0 0 100%;
   pointer-events: none;

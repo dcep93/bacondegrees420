@@ -438,6 +438,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
             <div
               className={[
                 "generator-row-track",
+                generationIndex === 0 ? "generator-row-track-root" : "",
                 rowPresentation.trackClassName ?? "",
               ].filter(Boolean).join(" ")}
               ref={(element) => {
