@@ -24,8 +24,10 @@
 .bacon-app-shell {
   position: relative;
   isolation: isolate;
+  flex: 1 0 auto;
   width: 100vw;
   min-height: 100svh;
+  min-height: 100dvh;
   margin-left: calc(50% - 50vw);
   display: flex;
   flex-direction: column;

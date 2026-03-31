@@ -46,8 +46,8 @@ import { pickBestPersonRecord } from "./records";
 import { renderBreakCard, renderDbInfoCard, renderLoggedCinenerdleCard } from "./render_card";
 import {
   fetchCinenerdleDailyStarterMovies,
-  hasHydratedMovieRecord,
-  hasHydratedPersonRecord,
+  hasMovieFullState,
+  hasPersonFullState,
   hydrateCinenerdleDailyStarterMovies,
   prefetchBestConnectionForYoungestSelectedCard,
   prefetchTopPopularUnhydratedConnections,
@@ -464,7 +464,7 @@ export async function ensureSelectedCardFullstate(
   if (selectedCard.kind === "movie") {
     const selectedMovieRecord = selectedCard.record ?? null;
     const needsFullstate =
-      options.forceRefresh === true || !hasHydratedMovieRecord(selectedMovieRecord);
+      options.forceRefresh === true || !hasMovieFullState(selectedMovieRecord);
 
     addCinenerdleDebugLog("controller:selected-card-fullstate", {
       cardKey: selectedCard.key,
@@ -502,7 +502,7 @@ export async function ensureSelectedCardFullstate(
   const selectedPersonRecord = selectedCard.record ?? null;
   const personTmdbId = getPersonTmdbIdFromCard(selectedCard);
   const needsFullstate =
-    options.forceRefresh === true || !hasHydratedPersonRecord(selectedPersonRecord);
+    options.forceRefresh === true || !hasPersonFullState(selectedPersonRecord);
 
   addCinenerdleDebugLog("controller:selected-card-fullstate", {
     cardKey: selectedCard.key,
@@ -781,7 +781,7 @@ async function buildSelectedPathHydrationTasks(
     selectedPathNodes.map(async (pathNode, index) => {
       if (pathNode.kind === "person") {
         const existingPersonRecord = await getLocalPersonRecord(pathNode.name, pathNode.tmdbId);
-        if (!options.forceRefresh && hasHydratedPersonRecord(existingPersonRecord)) {
+        if (!options.forceRefresh && hasPersonFullState(existingPersonRecord)) {
           return;
         }
 
@@ -806,7 +806,7 @@ async function buildSelectedPathHydrationTasks(
         pathNode.name,
         pathNode.year,
       );
-      if (!options.forceRefresh && hasHydratedMovieRecord(existingMovieRecord)) {
+      if (!options.forceRefresh && hasMovieFullState(existingMovieRecord)) {
         return;
       }
 
@@ -884,7 +884,7 @@ async function buildCorrectivePersonHydrationTasks(
         resolvedPathNode.name,
         resolvedPathNode.tmdbId,
       );
-      if (!options.forceRefresh && hasHydratedPersonRecord(existingResolvedPersonRecord)) {
+      if (!options.forceRefresh && hasPersonFullState(existingResolvedPersonRecord)) {
         return;
       }
 

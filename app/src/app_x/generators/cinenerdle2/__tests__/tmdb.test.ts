@@ -48,6 +48,10 @@ vi.mock("../debug_log", () => debugLogMock);
 
 import {
   fetchAndCacheMovieCredits,
+  hasHydratedMovieRecord,
+  hasHydratedPersonRecord,
+  hasMovieFullState,
+  hasPersonFullState,
   hydrateCinenerdleDailyStarterMovies,
   prefetchBestConnectionForYoungestSelectedCard,
   prefetchTopPopularUnhydratedConnections,
@@ -125,6 +129,30 @@ describe("tmdb forced refresh helpers", () => {
   afterEach(() => {
     consoleLogSpy.mockClear();
     vi.unstubAllGlobals();
+  });
+
+  it("treats hydrated as direct tmdb source even before credits arrive", () => {
+    const directMovieWithoutCredits = makeFilmRecord({
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 321,
+        title: "Heat",
+        release_date: "1995-12-15",
+      }),
+      rawTmdbMovieCreditsResponse: undefined,
+    });
+    const directPersonWithoutCredits = makePersonRecord({
+      rawTmdbPerson: makeTmdbPersonSearchResult({
+        id: 60,
+        name: "Al Pacino",
+        popularity: 77,
+      }),
+      rawTmdbMovieCreditsResponse: undefined,
+    });
+
+    expect(hasHydratedMovieRecord(directMovieWithoutCredits)).toBe(true);
+    expect(hasMovieFullState(directMovieWithoutCredits)).toBe(false);
+    expect(hasHydratedPersonRecord(directPersonWithoutCredits)).toBe(true);
+    expect(hasPersonFullState(directPersonWithoutCredits)).toBe(false);
   });
 
   it("returns hydrated cached movies without refetching unless forceRefresh is enabled", async () => {

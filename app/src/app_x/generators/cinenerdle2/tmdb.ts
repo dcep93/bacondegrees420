@@ -300,7 +300,7 @@ function getSearchRecordPersonTmdbId(
 function buildHydratedMoviePrefetchKeySet(filmRecords: FilmRecord[]): Set<string> {
   return new Set(
     filmRecords
-      .filter((filmRecord) => hasHydratedMovieRecord(filmRecord))
+      .filter((filmRecord) => hasMovieFullState(filmRecord))
       .map((filmRecord) => getMovieConnectionEntityKey(filmRecord.title, filmRecord.year)),
   );
 }
@@ -309,7 +309,7 @@ function buildHydratedPersonPrefetchKeySet(personRecords: PersonRecord[]): Set<s
   const hydratedKeys = new Set<string>();
 
   personRecords
-    .filter((personRecord) => hasHydratedPersonRecord(personRecord))
+    .filter((personRecord) => hasPersonFullState(personRecord))
     .forEach((personRecord) => {
       hydratedKeys.add(
         getPersonConnectionEntityKey(
@@ -643,7 +643,7 @@ export async function hydrateCinenerdleDailyStarterMovies(
               starterFilm.year,
               starterFilm.id,
             );
-            if (hasHydratedMovieRecord(localMovieRecord)) {
+            if (hasMovieFullState(localMovieRecord)) {
               return;
             }
 
@@ -797,7 +797,7 @@ async function buildPendingDirectMoviePrefetchQueue(
       ? null
       : await getFilmRecordByTitleAndYear(title, year);
     const resolvedExistingMovieRecord = existingMovieRecord ?? fallbackMovieRecord;
-    if (hasHydratedMovieRecord(resolvedExistingMovieRecord)) {
+    if (hasMovieFullState(resolvedExistingMovieRecord)) {
       continue;
     }
 
@@ -851,7 +851,7 @@ async function buildPendingDirectPersonPrefetchQueue(
       tmdbId ? await getPersonRecordById(tmdbId) : null,
       await getPersonRecordByName(name),
     );
-    if (hasHydratedPersonRecord(existingPersonRecord)) {
+    if (hasPersonFullState(existingPersonRecord)) {
       continue;
     }
 
@@ -891,7 +891,7 @@ async function syncDirectConnectionPrefetchQueues(
         selectedCard.name,
         selectedCard.year,
       ));
-    if (!hasHydratedMovieRecord(movieRecord)) {
+    if (!hasMovieFullState(movieRecord)) {
       return;
     }
 
@@ -905,7 +905,7 @@ async function syncDirectConnectionPrefetchQueues(
       selectedCard.name,
       getSelectedPersonCardTmdbId(selectedCard),
     ));
-  if (!hasHydratedPersonRecord(personRecord)) {
+  if (!hasPersonFullState(personRecord)) {
     return;
   }
 
@@ -920,7 +920,7 @@ async function selectEligibleMoviePrefetchCandidate(
       continue;
     }
 
-    if (hasHydratedMovieRecord(await getExistingMovieRecordForPendingCandidate(candidate))) {
+    if (hasMovieFullState(await getExistingMovieRecordForPendingCandidate(candidate))) {
       continue;
     }
 
@@ -938,7 +938,7 @@ async function selectEligiblePersonPrefetchCandidate(
       continue;
     }
 
-    if (hasHydratedPersonRecord(await getExistingPersonRecordForPendingCandidate(candidate))) {
+    if (hasPersonFullState(await getExistingPersonRecordForPendingCandidate(candidate))) {
       continue;
     }
 
@@ -1358,9 +1358,25 @@ export function hasHydratedMovieRecord(
   movieRecord: FilmRecord | null | undefined,
 ): movieRecord is FilmRecord & {
   rawTmdbMovie: NonNullable<FilmRecord["rawTmdbMovie"]>;
+} {
+  return hasDirectTmdbMovieSource(movieRecord);
+}
+
+export function hasHydratedPersonRecord(
+  personRecord: PersonRecord | null | undefined,
+): personRecord is PersonRecord & {
+  rawTmdbPerson: NonNullable<PersonRecord["rawTmdbPerson"]>;
+} {
+  return hasDirectTmdbPersonSource(personRecord);
+}
+
+export function hasMovieFullState(
+  movieRecord: FilmRecord | null | undefined,
+): movieRecord is FilmRecord & {
+  rawTmdbMovie: NonNullable<FilmRecord["rawTmdbMovie"]>;
   rawTmdbMovieCreditsResponse: NonNullable<FilmRecord["rawTmdbMovieCreditsResponse"]>;
 } {
-  if (!hasDirectTmdbMovieSource(movieRecord) || !hasMovieCredits(movieRecord ?? null)) {
+  if (!hasHydratedMovieRecord(movieRecord) || !hasMovieCredits(movieRecord ?? null)) {
     return false;
   }
 
@@ -1371,13 +1387,13 @@ export function hasHydratedMovieRecord(
   );
 }
 
-export function hasHydratedPersonRecord(
+export function hasPersonFullState(
   personRecord: PersonRecord | null | undefined,
 ): personRecord is PersonRecord & {
   rawTmdbPerson: NonNullable<PersonRecord["rawTmdbPerson"]>;
   rawTmdbMovieCreditsResponse: NonNullable<PersonRecord["rawTmdbMovieCreditsResponse"]>;
 } {
-  if (!hasDirectTmdbPersonSource(personRecord) || !hasPersonMovieCredits(personRecord ?? null)) {
+  if (!hasHydratedPersonRecord(personRecord) || !hasPersonMovieCredits(personRecord ?? null)) {
     return false;
   }
 
@@ -1452,7 +1468,7 @@ async function prefetchPopularMovieCandidate(
 
   try {
     const existingMovieRecord = await getExistingMovieRecordForPendingCandidate(candidate);
-    if (hasHydratedMovieRecord(existingMovieRecord)) {
+    if (hasMovieFullState(existingMovieRecord)) {
       return;
     }
 
@@ -1517,7 +1533,7 @@ async function prefetchPopularPersonCandidate(
 
   try {
     const existingPersonRecord = await getExistingPersonRecordForPendingCandidate(candidate);
-    if (hasHydratedPersonRecord(existingPersonRecord)) {
+    if (hasPersonFullState(existingPersonRecord)) {
       return;
     }
 
@@ -1644,7 +1660,7 @@ export async function prepareSelectedPerson(
     "tmdb.prepareSelectedPerson",
     async () => {
       const localPersonRecord = await getLocalPersonRecordForCard(personName, personId);
-      if (hasHydratedPersonRecord(localPersonRecord) && !options.forceRefresh) {
+      if (hasPersonFullState(localPersonRecord) && !options.forceRefresh) {
         return localPersonRecord;
       }
 
@@ -1710,7 +1726,7 @@ export async function prepareSelectedMovie(
         movieYear,
         movieId,
       );
-      if (hasHydratedMovieRecord(localMovieRecord) && !options.forceRefresh) {
+      if (hasMovieFullState(localMovieRecord) && !options.forceRefresh) {
         return localMovieRecord;
       }
 

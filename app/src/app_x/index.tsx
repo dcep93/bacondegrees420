@@ -48,6 +48,7 @@ import {
 } from "./generators/cinenerdle2/connection_graph";
 import { buildBookmarkPreviewCardsFromHash } from "./generators/cinenerdle2/controller";
 import {
+  addCinenerdleDebugLog,
   copyCinenerdleBootstrapDebugLogToClipboard,
   copyCinenerdleDebugLogToClipboard,
   copyCinenerdleIndexedDbSnapshotToClipboard,
@@ -907,6 +908,7 @@ export default function AppX() {
   const pendingHashWriteRef = useRef<PendingHashWrite | null>(null);
   const lastSyncedHashRef = useRef(normalizeHashValue(initialLocationState.hash));
   const bookmarksReturnHashRef = useRef(normalizeHashValue(initialLocationState.hash));
+  const bookmarksPageRenderCountRef = useRef(0);
   const autocompleteRequestIdRef = useRef(0);
   const connectionSessionIdRef = useRef(0);
   const connectionRowIdRef = useRef(0);
@@ -1178,6 +1180,31 @@ export default function AppX() {
   useEffect(() => {
     document.title = isBookmarksView ? "Bookmarks | BaconDegrees420" : getDocumentTitle(hashValue);
   }, [hashValue, isBookmarksView]);
+
+  useEffect(() => {
+    if (!isBookmarksView) {
+      bookmarksPageRenderCountRef.current = 0;
+      return;
+    }
+
+    bookmarksPageRenderCountRef.current += 1;
+
+    addCinenerdleDebugLog("app:bookmarks-page:render", {
+      hashValue,
+      isBookmarksJsonlEditorOpen,
+      bookmarkCount: bookmarks.length,
+      pathname: appLocation.pathname,
+      previewCardCount: bookmarks.reduce(
+        (count, bookmark) => count + bookmark.previewCards.length,
+        0,
+      ),
+      renderCount: bookmarksPageRenderCountRef.current,
+      selectedPreviewCardCount: bookmarks.reduce(
+        (count, bookmark) => count + bookmark.selectedPreviewCardIndices.length,
+        0,
+      ),
+    });
+  });
 
   useEffect(() => {
     let cancelled = false;
