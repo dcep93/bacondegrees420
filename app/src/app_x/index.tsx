@@ -60,6 +60,7 @@ import {
   copyCinenerdlePerfDebugLogToClipboard,
   copyCinenerdleRecoveryDebugLogToClipboard,
   copyCinenerdleSearchablePersistenceDebugLogToClipboard,
+  copyCinenerdleTextToClipboard,
 } from "./generators/cinenerdle2/debug";
 import {
   buildPathNodesFromSegments,
@@ -352,6 +353,25 @@ export function BookmarksJsonlEditorModal(props: {
       </div>
     </div>
   );
+}
+
+function formatBoundingClientRect(rect: DOMRect) {
+  const round = (value: number) => Math.round(value * 100) / 100;
+
+  return {
+    bottom: round(rect.bottom),
+    height: round(rect.height),
+    left: round(rect.left),
+    right: round(rect.right),
+    top: round(rect.top),
+    width: round(rect.width),
+    x: round(rect.x),
+    y: round(rect.y),
+  };
+}
+
+function isBookmarkToastMessage(message: string): boolean {
+  return /^Bookmarks? /.test(message);
 }
 
 type ConnectionSearchRow = {
@@ -1108,6 +1128,7 @@ export default function AppX() {
   const connectionDropdownRef = useRef<HTMLDivElement | null>(null);
   const titleRef = useRef<HTMLHeadingElement | null>(null);
   const clearDbButtonRef = useRef<HTMLButtonElement | null>(null);
+  const toastStatusRef = useRef<HTMLSpanElement | null>(null);
   const bookmarksJsonlTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const highlightedConnectionEntitySelectionRequestIdRef = useRef(0);
   const indexedDbBootstrapLoadingShellDelayManagerRef =
@@ -1388,6 +1409,42 @@ export default function AppX() {
       window.clearTimeout(timeoutId);
     };
   }, [copyStatus]);
+
+  useEffect(() => {
+    if (
+      copyStatusPlacement !== "toast" ||
+      !copyStatus ||
+      !isBookmarkToastMessage(copyStatus)
+    ) {
+      return;
+    }
+
+    let isCancelled = false;
+    const frameId = window.requestAnimationFrame(() => {
+      if (isCancelled) {
+        return;
+      }
+
+      const toastElement = toastStatusRef.current;
+      const clearDbButtonElement = clearDbButtonRef.current;
+      if (!toastElement || !clearDbButtonElement) {
+        return;
+      }
+
+      const payload = {
+        clearDb: formatBoundingClientRect(clearDbButtonElement.getBoundingClientRect()),
+        toast: formatBoundingClientRect(toastElement.getBoundingClientRect()),
+        toastMessage: copyStatus,
+      };
+
+      void copyCinenerdleTextToClipboard(JSON.stringify(payload, null, 2)).catch(() => { });
+    });
+
+    return () => {
+      isCancelled = true;
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [copyStatus, copyStatusPlacement]);
 
   function sayToast(message: string) {
     setCopyStatusPlacement("toast");
@@ -2562,6 +2619,7 @@ export default function AppX() {
                   <FancyTooltip
                     content={formatBookmarkIndexTooltip({ hash: bookmarkRow.hash })}
                     placement="right-center"
+                    tooltipClassName="bacon-bookmark-index-tooltip"
                   >
                     <span
                       className="bacon-bookmark-index-bubble"
@@ -2651,6 +2709,7 @@ export default function AppX() {
       {copyStatus && copyStatusPlacement === "toast" ? (
         <span
           className="bacon-copy-status bacon-copy-status-toast"
+          ref={toastStatusRef}
           style={clearDbToastStyle}
         >
           {copyStatus}

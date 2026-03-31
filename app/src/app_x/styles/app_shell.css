@@ -131,13 +131,18 @@
 .bacon-title-actions {
   margin-left: auto;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 10px;
 }
 
+.bacon-title-actions > * {
+  height: 100%;
+}
+
 .bacon-copy-status {
+  box-sizing: border-box;
   z-index: 120;
   max-width: min(320px, calc(100vw - 32px));
   border: 1px solid var(--bacon-border-strong);
@@ -209,6 +214,7 @@
 
 .bacon-title-action-button {
   appearance: none;
+  box-sizing: border-box;
   min-height: 42px;
   padding: 10px 16px;
   border: 1px solid var(--bacon-border-strong);
@@ -229,6 +235,12 @@
     border-color 160ms ease,
     background 160ms ease,
     opacity 160ms ease;
+}
+
+.bacon-title-actions .bacon-title-action-button,
+.bacon-title-actions .bacon-title-action-icon-button,
+.bacon-title-actions .bacon-fancy-tooltip-anchor {
+  height: 100%;
 }
 
 .bacon-title-action-button:hover:not(:disabled) {
@@ -676,6 +688,25 @@
 .bacon-fancy-tooltip-anchor:hover .bacon-fancy-tooltip-right-center,
 .bacon-fancy-tooltip-anchor:focus-within .bacon-fancy-tooltip-right-center {
   transform: translate(0, -50%);
+}
+
+.bacon-bookmark-index-tooltip {
+  max-height: min(420px, calc(100vh - 48px));
+  max-height: min(420px, calc(100dvh - 48px));
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.bacon-bookmark-index-tooltip.bacon-fancy-tooltip-right-center {
+  top: auto;
+  bottom: 0;
+  transform: translate(4px, 0);
+}
+
+.bacon-fancy-tooltip-anchor:hover .bacon-bookmark-index-tooltip.bacon-fancy-tooltip-right-center,
+.bacon-fancy-tooltip-anchor:focus-within .bacon-bookmark-index-tooltip.bacon-fancy-tooltip-right-center {
+  transform: translate(0, 0);
 }
 
 .bacon-fancy-tooltip-top-center {
