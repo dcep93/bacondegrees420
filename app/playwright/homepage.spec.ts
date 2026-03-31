@@ -847,6 +847,12 @@ test("gen 2 refresh keeps horizontal scroll stable and redraws gen 3 for the new
     ...alphaMovieCredits.slice(1).map((movie) => [movie.id, movie] as const),
     ...indiaMovieCredits.slice(1).map((movie) => [movie.id, movie] as const),
   ]);
+  const moviesByTitle = new Map(
+    [starterMovie, ...alphaMovieCredits.slice(1), ...indiaMovieCredits.slice(1)].map((movie) => [
+      movie.title,
+      movie,
+    ] as const),
+  );
   const personMovieCreditsById = new Map([
     [
       alphaPerson.id,
@@ -936,6 +942,15 @@ test("gen 2 refresh keeps horizontal scroll stable and redraws gen 3 for the new
     });
   });
 
+  await page.route("**/dump.json", async (route) => {
+    await route.fulfill(createJsonResponse({
+      format: "cinenerdle-indexed-db-snapshot",
+      version: 9,
+      people: [],
+      films: [],
+    }));
+  });
+
   await page.route("https://www.themoviedb.org/assets/**", async (route) => {
     await route.fulfill({
       status: 204,
@@ -949,12 +964,13 @@ test("gen 2 refresh keeps horizontal scroll stable and redraws gen 3 for the new
 
     if (url.pathname === "/3/search/movie") {
       const query = url.searchParams.get("query");
-      if (query !== starterMovie.title) {
+      const movie = query ? moviesByTitle.get(query) : null;
+      if (!movie) {
         throw new Error(`Unexpected movie search query: ${query}`);
       }
 
       await route.fulfill(createJsonResponse({
-        results: [starterMovie],
+        results: [movie],
       }));
       return;
     }
@@ -1093,8 +1109,10 @@ test("gen 2 refresh keeps horizontal scroll stable and redraws gen 3 for the new
       indiaMovieCreditsCount: 1,
     });
   await expect(getTmdbBadgeIcon(indiaCard)).toHaveCount(1);
+  await page.waitForTimeout(3000);
   await expectCardVisibilityWithinRow(indiaCard, gen2RowTrack, true);
   await expectCardVisibilityWithinRow(charlieCard, gen2RowTrack, true);
+  await expectCardVisibilityWithinRow(alphaCard, gen2RowTrack, false);
 
   await indiaCard.click();
 

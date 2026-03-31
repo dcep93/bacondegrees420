@@ -269,10 +269,7 @@ function PopularityChip({
 }: {
   card: RenderableCinenerdleEntityCard;
   isRefreshing: boolean;
-  onRefresh: (
-    source: "footer-top" | "popularity-chip",
-    event: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>,
-  ) => void;
+  onRefresh: (event: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) => void;
 }) {
   const tooltipText = isRefreshing
     ? "Refreshing..."
@@ -294,14 +291,14 @@ function PopularityChip({
         tooltipText ?? "",
       ].filter(Boolean).join(" ")}
       onClick={(event) => {
-        onRefresh("popularity-chip", event);
+        onRefresh(event);
       }}
       onKeyDown={(event) => {
         if (!isPopularityRefreshActivationKey(event)) {
           return;
         }
 
-        onRefresh("popularity-chip", event);
+        onRefresh(event);
       }}
       tooltipText={tooltipText ?? ""}
     >
@@ -346,6 +343,40 @@ function renderConnectionBadge(card: RenderableCinenerdleEntityCard) {
   );
 }
 
+function getRefreshRowTrack(
+  event: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>,
+): HTMLDivElement | null {
+  const currentTarget = event.currentTarget;
+  if (!(currentTarget instanceof HTMLElement)) {
+    return null;
+  }
+
+  const rowTrack = currentTarget.closest(".generator-row-track");
+  return rowTrack instanceof HTMLDivElement ? rowTrack : null;
+}
+
+function restoreRowTrackScrollLeft(
+  rowTrack: HTMLDivElement | null,
+  scrollLeft: number | null,
+) {
+  if (!rowTrack || scrollLeft === null) {
+    return;
+  }
+
+  const restore = () => {
+    rowTrack.scrollTo({
+      left: scrollLeft,
+      behavior: "auto",
+    });
+  };
+
+  restore();
+  window.requestAnimationFrame(restore);
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(restore);
+  });
+}
+
 export function FooterChips({
   card,
 }: {
@@ -362,13 +393,11 @@ export function FooterChips({
     refreshState.isRefreshing &&
     refreshState.cardKey === card.key;
 
-  const handleRefresh = (
-    source: "footer-top" | "popularity-chip",
-    event: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>,
-  ) => {
-    if (source === "footer-top") {
-      card.onExplicitFooterTopRefreshClick?.();
-    }
+  const handleRefresh = (event: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) => {
+    const rowTrack = getRefreshRowTrack(event);
+    const preservedScrollLeft = rowTrack?.scrollLeft ?? null;
+
+    card.onExplicitFooterTopRefreshClick?.();
 
     void triggerPopularityChipRefresh(event, {
       isRefreshing,
@@ -383,9 +412,11 @@ export function FooterChips({
             : {
                 cardKey: null,
                 isRefreshing: false,
-              },
+          },
         );
       },
+    }).finally(() => {
+      restoreRowTrackScrollLeft(rowTrack, preservedScrollLeft);
     });
   };
   const connectionBadge = card.hasCachedTmdbSource
@@ -420,7 +451,7 @@ export function FooterChips({
         ].filter(Boolean).join(" ")}
         onClick={card.onPopularityClick
           ? (event) => {
-              handleRefresh("footer-top", event);
+              handleRefresh(event);
             }
           : undefined}
       >
