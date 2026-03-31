@@ -115,7 +115,6 @@ export default function AppX() {
   const [clearDbFetchCount, setClearDbFetchCount] = useState(() => getCinenerdleFetchDebugEntryCount());
   const [clearDbTotalFetchCount, setClearDbTotalFetchCount] =
     useState(() => getCinenerdleFetchDebugEntryCount());
-  const [, setIsHighlightedConnectionEntityInYoungestGeneration] = useState(false);
   const titleRef = useRef<HTMLHeadingElement | null>(null);
   const clearDbButtonRef = useRef<HTMLButtonElement | null>(null);
   const toastStatusRef = useRef<HTMLSpanElement | null>(null);
@@ -161,9 +160,6 @@ export default function AppX() {
     handleConnectionInputKeyDown,
     handleConnectionSubmit,
     handleConnectionSuggestionClick,
-    handleHighlightedConnectionEntitySelectionHandled,
-    highlightedConnectionEntity,
-    highlightedConnectionEntitySelectionRequest,
     isConnectionInputDisabled,
     selectedSuggestionIndex,
     setConnectionQuery,
@@ -548,11 +544,7 @@ export default function AppX() {
           ) : (
             <Cinenerdle2
               hashValue={hashValue}
-              highlightedConnectionEntity={highlightedConnectionEntity}
-              highlightedConnectionEntitySelectionRequest={highlightedConnectionEntitySelectionRequest}
               navigationVersion={navigationVersion}
-              onHighlightedConnectionEntitySelectionHandled={handleHighlightedConnectionEntitySelectionHandled}
-              onHighlightedConnectionEntityYoungestGenerationMatchChange={setIsHighlightedConnectionEntityInYoungestGeneration}
               onYoungestSelectedCardChange={setYoungestSelectedCard}
               onHashWrite={handleHashWrite}
               resetVersion={resetVersion}

@@ -337,7 +337,6 @@ export function createCardViewModel(
     key: card.key,
     kind: card.kind,
     name: card.name,
-    isPlaceholder: card.isPlaceholder === true,
     imageUrl: card.imageUrl,
     subtitle: card.subtitle,
     subtitleDetail: card.subtitleDetail,

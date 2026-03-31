@@ -172,30 +172,6 @@ describe("CinenerdleEntityCard", () => {
     expect(html).toContain("Popularity 88.00");
   });
 
-  it("keeps the movie footer row for movie placeholders so film-row height is preserved", () => {
-    const html = renderToStaticMarkup(
-      <CinenerdleEntityCard
-        card={makeRenderableMovieCard({
-          key: "placeholder:movie",
-          isPlaceholder: true,
-          name: "Loading",
-          subtitle: "",
-          subtitleDetail: "",
-          voteAverage: null,
-          voteCount: null,
-          connectionCount: null,
-          connectionRank: null,
-          connectionOrder: null,
-          connectionParentLabel: null,
-          hasCachedTmdbSource: false,
-        })}
-      />,
-    );
-
-    expect(html).toContain("cinenerdle-card-footer-top");
-    expect(html).toContain("cinenerdle-card-footer-bottom");
-  });
-
   it("renders multiple credit lines when provided", () => {
     const html = renderToStaticMarkup(
       <CinenerdleEntityCard

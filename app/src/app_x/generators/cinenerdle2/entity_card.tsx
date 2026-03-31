@@ -1,8 +1,4 @@
-import type {
-  AriaRole,
-  KeyboardEvent,
-  MouseEvent,
-} from "react";
+import type { MouseEvent } from "react";
 import { CardTitle } from "../../components/card_ui";
 import { handleIsolatedClick, joinClassNames } from "../../components/ui_utils";
 import { FooterChips } from "./entity_card/chips";
@@ -33,23 +29,15 @@ export function CinenerdleBreakBar({
 
 export function CinenerdleEntityCard({
   card,
-  ariaPressed,
   className,
   onCardClick,
-  onCardKeyDown,
   onTitleClick,
-  role,
-  tabIndex,
   titleElement = "p",
 }: {
   card: RenderableCinenerdleEntityCard;
-  ariaPressed?: boolean;
   className?: string;
   onCardClick?: (event: MouseEvent<HTMLElement>) => void;
-  onCardKeyDown?: (event: KeyboardEvent<HTMLElement>) => void;
   onTitleClick?: (event: MouseEvent<HTMLElement>) => void;
-  role?: AriaRole;
-  tabIndex?: number;
   titleElement?: "button" | "p";
 }) {
   const creditLines =
@@ -59,7 +47,6 @@ export function CinenerdleEntityCard({
 
   return (
     <article
-      aria-pressed={ariaPressed}
       className={joinClassNames(
         "cinenerdle-card",
         card.isSelected && "cinenerdle-card-selected",
@@ -68,9 +55,6 @@ export function CinenerdleEntityCard({
         className,
       )}
       onClick={onCardClick}
-      onKeyDown={onCardKeyDown}
-      role={role}
-      tabIndex={tabIndex}
     >
       <div className="cinenerdle-card-image-shell">
         {card.imageUrl ? (

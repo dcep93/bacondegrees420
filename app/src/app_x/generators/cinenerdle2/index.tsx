@@ -1,13 +1,10 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   AbstractGenerator,
-  type AbstractGeneratorActivationRequest,
-  type AbstractGeneratorFocusRequest,
   type AbstractGeneratorTreeRefreshRequest,
 } from "../../components/abstract_generator";
 import "../../styles/cinenerdle2.css";
 import type { GeneratorNode } from "../../types/generator";
-import type { ConnectionEntity } from "./connection_graph";
 import {
   buildTreeFromHash,
   useCinenerdleController,
@@ -27,7 +24,6 @@ import {
   getYoungestSelectedCardParent,
   getYoungestSelectedGenerationIndex,
   getPersonTmdbIdFromCard,
-  matchesHighlightedConnectionEntity,
 } from "./navigation";
 import {
   CINENERDLE_RECORDS_UPDATED_EVENT,
@@ -154,17 +150,7 @@ async function logYoungestSelectedCardDatabaseEntry(
 
 type Cinenerdle2Props = {
   hashValue: string;
-  highlightedConnectionEntity?: ConnectionEntity | null;
-  highlightedConnectionEntitySelectionRequest?: {
-    requestKey: string;
-    entity: ConnectionEntity;
-  } | null;
   navigationVersion: number;
-  onHighlightedConnectionEntitySelectionHandled?: (
-    requestKey: string,
-    didSelect: boolean,
-  ) => void;
-  onHighlightedConnectionEntityYoungestGenerationMatchChange?: (didMatch: boolean) => void;
   onYoungestSelectedCardChange?: (
     card: Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }> | null,
   ) => void;
@@ -174,11 +160,7 @@ type Cinenerdle2Props = {
 
 const Cinenerdle2 = memo(function Cinenerdle2({
   hashValue,
-  highlightedConnectionEntity = null,
-  highlightedConnectionEntitySelectionRequest = null,
   navigationVersion,
-  onHighlightedConnectionEntitySelectionHandled,
-  onHighlightedConnectionEntityYoungestGenerationMatchChange,
   onYoungestSelectedCardChange,
   onHashWrite,
   resetVersion,
@@ -290,30 +272,6 @@ const Cinenerdle2 = memo(function Cinenerdle2({
       },
     };
   }, [activeEntityRefreshRequest, readHash]);
-  const focusRequest = useMemo<AbstractGeneratorFocusRequest<CinenerdleCard> | null>(() => {
-    if (!highlightedConnectionEntity) {
-      return null;
-    }
-
-    return {
-      requestKey: highlightedConnectionEntity.key,
-      targetGeneration: "youngest",
-      matchesNode: (node: GeneratorNode<CinenerdleCard>) =>
-        matchesHighlightedConnectionEntity(node.data, highlightedConnectionEntity),
-    };
-  }, [highlightedConnectionEntity]);
-  const activationRequest = useMemo<AbstractGeneratorActivationRequest<CinenerdleCard> | null>(() => {
-    if (!highlightedConnectionEntitySelectionRequest) {
-      return null;
-    }
-
-    return {
-      requestKey: highlightedConnectionEntitySelectionRequest.requestKey,
-      targetGeneration: "youngest",
-      matchesNode: (node: GeneratorNode<CinenerdleCard>) =>
-        matchesHighlightedConnectionEntity(node.data, highlightedConnectionEntitySelectionRequest.entity),
-    };
-  }, [highlightedConnectionEntitySelectionRequest]);
   const getRowPresentation = useCallback((row: GeneratorNode<CinenerdleCard>[]) => {
     const isBreakRow = row.length === 1 && row[0]?.data.kind === "break";
 
@@ -328,17 +286,24 @@ const Cinenerdle2 = memo(function Cinenerdle2({
       cardButtonClassName: "generator-card-button-row-break",
     };
   }, []);
+  const shouldAutoScrollMountedGeneration = useCallback((info: {
+    generationIndex: number;
+    tree: GeneratorNode<CinenerdleCard>[][];
+  }) => {
+    if (info.generationIndex !== 1) {
+      return false;
+    }
+
+    const rootNode = info.tree[0]?.find((node) => node.selected) ?? null;
+    return rootNode?.data.kind === "cinenerdle";
+  }, []);
   const generatorResetKey = `${resetVersion}:${navigationVersion}`;
 
   return (
     <AbstractGenerator
-      activationRequest={activationRequest}
       createInitialState={controller.createInitialState}
-      focusRequest={focusRequest}
       getRowPresentation={getRowPresentation}
       key={generatorResetKey}
-      onActivationHandled={onHighlightedConnectionEntitySelectionHandled}
-      onFocusRequestMatchChange={onHighlightedConnectionEntityYoungestGenerationMatchChange}
       onTreeChange={(tree) => {
         const youngestSelectedGenerationIndex = getYoungestSelectedGenerationIndex(tree);
         const nextYoungestSelectedCard = getYoungestSelectedCard(tree);
@@ -358,10 +323,10 @@ const Cinenerdle2 = memo(function Cinenerdle2({
         );
         onYoungestSelectedCardChange?.(nextYoungestSelectedCard);
       }}
-      optimisticSelection
       reduce={controller.reduce}
       renderCard={controller.renderCard}
       runEffect={controller.runEffect}
+      shouldAutoScrollMountedGeneration={shouldAutoScrollMountedGeneration}
       treeRefreshRequest={treeRefreshRequest}
     />
   );

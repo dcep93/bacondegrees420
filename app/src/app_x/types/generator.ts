@@ -12,8 +12,6 @@ export type GeneratorTreeState<T> = GeneratorTree<T> | null;
 
 export type GeneratorState<T, TMeta = undefined> = {
   tree: GeneratorTreeState<T>;
-  renderTreeOverride: GeneratorTreeState<T>;
-  placeholderRowIndex: number | null;
   meta: TMeta;
 };
 
@@ -26,7 +24,6 @@ export type GeneratorLifecycleEvent =
     }
   | {
       type: "select";
-      optimisticSelection: boolean;
       row: number;
       col: number;
     };
@@ -59,6 +56,7 @@ export type GeneratorEffectContext<T, TMeta = undefined> = {
   getState: () => GeneratorState<T, TMeta>;
   lifecycleId: number;
   selectionId: number;
+  scrollGenerationLikeBubble: (generationIndex: number) => Promise<void>;
 };
 
 export type GeneratorCardRenderContext<T, TMeta = undefined> = {

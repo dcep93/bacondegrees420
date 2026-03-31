@@ -62,11 +62,6 @@ export type ConnectionSuggestion = Omit<ConnectionEntity, "kind"> & {
   sortScore: number;
 };
 
-export type HighlightedConnectionEntitySelectionRequest = {
-  requestKey: string;
-  entity: ConnectionEntity;
-};
-
 function isPlaceholderPersonLabel(entity: ConnectionEntity): boolean {
   return entity.kind === "person" && /^Person \d+$/.test(entity.label);
 }
@@ -189,18 +184,13 @@ export function useConnectionSearchState({
     Record<string, number | null>
   >({});
   const [connectionSession, setConnectionSession] = useState<ConnectionSession | null>(null);
-  const [highlightedConnectionEntitySelectionRequest, setHighlightedConnectionEntitySelectionRequest] =
-    useState<HighlightedConnectionEntitySelectionRequest | null>(null);
   const connectionSessionRef = useRef<ConnectionSession | null>(null);
   const autocompleteRequestIdRef = useRef(0);
   const connectionSessionIdRef = useRef(0);
   const connectionRowIdRef = useRef(0);
-  const highlightedConnectionEntitySelectionRequestIdRef = useRef(0);
   const connectionInputWrapRef = useRef<HTMLDivElement | null>(null);
   const deferredConnectionQuery = useDeferredValue(connectionQuery);
   const youngestSelectedCardKey = youngestSelectedCard?.key ?? "";
-  const highlightedConnectionEntity =
-    selectedSuggestionIndex >= 0 ? connectionSuggestions[selectedSuggestionIndex] ?? null : null;
 
   const clearConnectionInputState = useCallback(() => {
     autocompleteRequestIdRef.current += 1;
@@ -570,11 +560,6 @@ export function useConnectionSearchState({
 
   const handleConnectionSuggestionSelection = useCallback(async (suggestion: ConnectionSuggestion) => {
     if (shouldActivateConnectedDropdownSuggestion(suggestion)) {
-      highlightedConnectionEntitySelectionRequestIdRef.current += 1;
-      setHighlightedConnectionEntitySelectionRequest({
-        requestKey: `connection-dropdown-select-${highlightedConnectionEntitySelectionRequestIdRef.current}`,
-        entity: suggestion,
-      });
       clearConnectionInputState();
       return;
     }
@@ -672,23 +657,6 @@ export function useConnectionSearchState({
     selectedSuggestionIndex,
   ]);
 
-  const handleHighlightedConnectionEntitySelectionHandled = useCallback(
-    (requestKey: string, didSelect: boolean) => {
-      setHighlightedConnectionEntitySelectionRequest((currentRequest) => {
-        if (!currentRequest || currentRequest.requestKey !== requestKey) {
-          return currentRequest;
-        }
-
-        if (!didSelect) {
-          void openConnectionRowsForEntity(currentRequest.entity);
-        }
-
-        return null;
-      });
-    },
-    [openConnectionRowsForEntity],
-  );
-
   const handleConnectionSuggestionClick = useCallback(
     (event: MouseEvent<HTMLButtonElement>, suggestion: ConnectionSuggestion) => {
       event.preventDefault();
@@ -706,9 +674,6 @@ export function useConnectionSearchState({
     handleConnectionInputKeyDown,
     handleConnectionSubmit,
     handleConnectionSuggestionClick,
-    handleHighlightedConnectionEntitySelectionHandled,
-    highlightedConnectionEntity,
-    highlightedConnectionEntitySelectionRequest,
     isConnectionInputDisabled: isResolvingConnection || isSearchablePersistencePending,
     selectedSuggestionIndex,
     serializeConnectionEntityHash,

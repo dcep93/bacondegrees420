@@ -4,7 +4,6 @@ type BaseRenderableCinenerdleEntityCard = {
   key: string;
   kind: "cinenerdle" | "person" | "movie";
   name: string;
-  isPlaceholder?: boolean;
   imageUrl: string | null;
   subtitle: string;
   subtitleDetail: string;

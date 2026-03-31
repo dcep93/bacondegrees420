@@ -46,7 +46,6 @@ export type CinenerdlePathNode =
 type BaseCard = {
   key: string;
   name: string;
-  isPlaceholder?: true;
   popularity: number;
   popularitySource: string | null;
   connectionRank?: number | null;
@@ -98,7 +97,6 @@ type BaseCardViewModel = {
   key: string;
   kind: CinenerdleCard["kind"];
   name: string;
-  isPlaceholder: boolean;
   imageUrl: string | null;
   subtitle: string;
   subtitleDetail: string;

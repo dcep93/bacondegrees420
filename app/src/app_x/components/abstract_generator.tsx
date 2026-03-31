@@ -1,10 +1,8 @@
 import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   applyGeneratorUpdate,
-  findMatchingYoungestGenerationIndex,
   getDataKey,
   isDisabledNode,
-  isPlaceholderData,
   resolveGeneratorTree,
 } from "../generators/generator_runtime";
 import "../styles/abstract_generator.css";
@@ -16,18 +14,6 @@ import type {
   GeneratorUpdate,
 } from "../types/generator";
 
-export type AbstractGeneratorFocusRequest<T> = {
-  requestKey: string;
-  targetGeneration: "youngest";
-  matchesNode: (node: GeneratorNode<T>) => boolean;
-};
-
-export type AbstractGeneratorActivationRequest<T> = {
-  requestKey: string;
-  targetGeneration: "youngest";
-  matchesNode: (node: GeneratorNode<T>) => boolean;
-};
-
 export type AbstractGeneratorTreeRefreshRequest<T> = {
   requestKey: string;
   run: (tree: GeneratorTree<T>) => Promise<GeneratorTree<T> | null>;
@@ -35,8 +21,6 @@ export type AbstractGeneratorTreeRefreshRequest<T> = {
 
 export type AbstractGeneratorProps<T, TMeta = undefined, TEffect = never> =
   GeneratorController<T, TMeta, TEffect> & {
-    activationRequest?: AbstractGeneratorActivationRequest<T> | null;
-    focusRequest?: AbstractGeneratorFocusRequest<T> | null;
     getRowPresentation?: (
       row: GeneratorNode<T>[],
       generationIndex: number,
@@ -46,15 +30,12 @@ export type AbstractGeneratorProps<T, TMeta = undefined, TEffect = never> =
       hideBubble?: boolean;
       trackClassName?: string;
     };
-    onActivationHandled?: (requestKey: string, didActivate: boolean) => void;
-    onCardSelectionAttempt?: (info: {
-      col: number;
-      node: GeneratorNode<T> | null;
-      row: number;
-    }) => void;
-    onFocusRequestMatchChange?: (didMatch: boolean) => void;
+    shouldAutoScrollMountedGeneration?: (info: {
+      generationIndex: number;
+      row: GeneratorNode<T>[];
+      tree: GeneratorTree<T>;
+    }) => boolean;
     onTreeChange?: (tree: GeneratorTree<T>) => void;
-    optimisticSelection?: boolean;
     resetKey?: number | string;
     treeRefreshRequest?: AbstractGeneratorTreeRefreshRequest<T> | null;
   };
@@ -108,19 +89,22 @@ function scrollElementToLeft(
   element.style.scrollBehavior = previousInlineScrollBehavior;
 }
 
+function waitForNextFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    schedulePostSelectionWork(() => {
+      resolve();
+    });
+  });
+}
+
 export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
-  activationRequest = null,
   createInitialState,
-  focusRequest = null,
   getRowPresentation,
-  onActivationHandled,
-  onCardSelectionAttempt,
-  onFocusRequestMatchChange,
   onTreeChange,
-  optimisticSelection = true,
   reduce,
   renderCard,
   runEffect,
+  shouldAutoScrollMountedGeneration,
   treeRefreshRequest = null,
 }: AbstractGeneratorProps<T, TMeta, TEffect>) {
   const [initialTransition] = useState<{
@@ -132,12 +116,12 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     () => initialTransition.state,
   );
   const rowRefs = useRef<Record<number, HTMLDivElement | null>>({});
-  const cardRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const mountedRef = useRef(true);
   const activeLifecycleRef = useRef(0);
   const activeSelectionRef = useRef(0);
-  const lastHandledActivationRequestKeyRef = useRef<string | null>(null);
   const lastHandledTreeRefreshRequestKeyRef = useRef<string | null>(null);
+  const mountedGenerationIndexesRef = useRef<Set<number>>(new Set());
   const stateRef = useRef(state);
 
   useEffect(() => {
@@ -190,39 +174,6 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     [],
   );
 
-  const runEffects = useCallback(async (
-    effects: TEffect[],
-    lifecycleId: number,
-    selectionId: number,
-  ) => {
-    const applyUpdate = createGuardedApplyUpdate(lifecycleId, selectionId);
-
-    for (const effect of effects) {
-      if (
-        !mountedRef.current ||
-        activeLifecycleRef.current !== lifecycleId ||
-        activeSelectionRef.current !== selectionId
-      ) {
-        return;
-      }
-
-      await runEffect(effect, {
-        applyUpdate,
-        getState: () => stateRef.current,
-        lifecycleId,
-        selectionId,
-      });
-    }
-  }, [createGuardedApplyUpdate, runEffect]);
-
-  useEffect(() => {
-    const lifecycleId = activeLifecycleRef.current + 1;
-    activeLifecycleRef.current = lifecycleId;
-    activeSelectionRef.current = 0;
-    stateRef.current = initialTransition.state;
-    void runEffects(initialTransition.effects, lifecycleId, activeSelectionRef.current);
-  }, [initialTransition, runEffects]);
-
   useEffect(() => {
     if (
       treeRefreshRequest === null ||
@@ -232,13 +183,6 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     }
 
     lastHandledTreeRefreshRequestKeyRef.current = treeRefreshRequest.requestKey;
-
-    if (
-      stateRef.current.renderTreeOverride !== null ||
-      stateRef.current.placeholderRowIndex !== null
-    ) {
-      return;
-    }
 
     const lifecycleId = activeLifecycleRef.current;
     const selectionId = activeSelectionRef.current;
@@ -352,15 +296,80 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     handleScrollToSelected(generationIndex);
   }, [handleScrollToSelected, resolvedTree]);
 
+  const scrollGenerationLikeBubble = useCallback(async (generationIndex: number) => {
+    await waitForNextFrame();
+
+    if (!mountedRef.current) {
+      return;
+    }
+
+    handleBubbleClick(generationIndex);
+  }, [handleBubbleClick]);
+
+  const runEffects = useCallback(async (
+    effects: TEffect[],
+    lifecycleId: number,
+    selectionId: number,
+  ) => {
+    const applyUpdate = createGuardedApplyUpdate(lifecycleId, selectionId);
+
+    for (const effect of effects) {
+      if (
+        !mountedRef.current ||
+        activeLifecycleRef.current !== lifecycleId ||
+        activeSelectionRef.current !== selectionId
+      ) {
+        return;
+      }
+
+      await runEffect(effect, {
+        applyUpdate,
+        getState: () => stateRef.current,
+        lifecycleId,
+        selectionId,
+        scrollGenerationLikeBubble,
+      });
+    }
+  }, [createGuardedApplyUpdate, runEffect, scrollGenerationLikeBubble]);
+
+  useEffect(() => {
+    const lifecycleId = activeLifecycleRef.current + 1;
+    activeLifecycleRef.current = lifecycleId;
+    activeSelectionRef.current = 0;
+    stateRef.current = initialTransition.state;
+    void runEffects(initialTransition.effects, lifecycleId, activeSelectionRef.current);
+  }, [initialTransition, runEffects]);
+
+  useLayoutEffect(() => {
+    const previouslyMountedGenerationIndexes = mountedGenerationIndexesRef.current;
+    const nextMountedGenerationIndexes = new Set<number>();
+
+    resolvedTree.forEach((row, generationIndex) => {
+      nextMountedGenerationIndexes.add(generationIndex);
+
+      if (
+        previouslyMountedGenerationIndexes.has(generationIndex) ||
+        !shouldAutoScrollMountedGeneration?.({
+          generationIndex,
+          row,
+          tree: resolvedTree,
+        })
+      ) {
+        return;
+      }
+
+      schedulePostSelectionWork(() => {
+        handleBubbleClick(generationIndex);
+      });
+    });
+
+    mountedGenerationIndexesRef.current = nextMountedGenerationIndexes;
+  }, [handleBubbleClick, resolvedTree, shouldAutoScrollMountedGeneration]);
+
   const handleCardSelect = useCallback((row: number, col: number) => {
     const currentTree = stateRef.current.tree;
     const selectedRow = currentTree?.[row];
     const selectedNode = selectedRow?.[col] ?? null;
-    onCardSelectionAttempt?.({
-      col,
-      node: selectedNode,
-      row,
-    });
     if (!selectedRow || !selectedNode || isDisabledNode(selectedNode)) {
       return;
     }
@@ -372,7 +381,6 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       type: "select",
       row,
       col,
-      optimisticSelection,
     });
 
     stateRef.current = transition.state;
@@ -385,80 +393,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
         nextSelectionId,
       );
     });
-  }, [onCardSelectionAttempt, optimisticSelection, reduce, runEffects]);
-
-  useLayoutEffect(() => {
-    if (
-      focusRequest === null ||
-      state.renderTreeOverride !== null ||
-      state.placeholderRowIndex !== null ||
-      resolvedTree.length === 0
-    ) {
-      onFocusRequestMatchChange?.(false);
-      return;
-    }
-
-    if (focusRequest.targetGeneration !== "youngest") {
-      onFocusRequestMatchChange?.(false);
-      return;
-    }
-
-    const { didMatch } = findMatchingYoungestGenerationIndex(
-      resolvedTree,
-      focusRequest.matchesNode,
-    );
-
-    onFocusRequestMatchChange?.(didMatch);
-  }, [
-    focusRequest,
-    onFocusRequestMatchChange,
-    resolvedTree,
-    state.placeholderRowIndex,
-    state.renderTreeOverride,
-  ]);
-
-  useLayoutEffect(() => {
-    if (
-      activationRequest === null ||
-      activationRequest.requestKey === lastHandledActivationRequestKeyRef.current
-    ) {
-      return;
-    }
-
-    lastHandledActivationRequestKeyRef.current = activationRequest.requestKey;
-
-    if (
-      state.renderTreeOverride !== null ||
-      state.placeholderRowIndex !== null ||
-      resolvedTree.length === 0 ||
-      activationRequest.targetGeneration !== "youngest"
-    ) {
-      onActivationHandled?.(activationRequest.requestKey, false);
-      return;
-    }
-
-    const { didMatch, generationIndex, matchingIndex } = findMatchingYoungestGenerationIndex(
-      resolvedTree,
-      activationRequest.matchesNode,
-    );
-
-    if (!didMatch) {
-      onActivationHandled?.(activationRequest.requestKey, false);
-      return;
-    }
-
-    schedulePostSelectionWork(() => {
-      handleCardSelect(generationIndex, matchingIndex);
-      onActivationHandled?.(activationRequest.requestKey, true);
-    });
-  }, [
-    activationRequest,
-    handleCardSelect,
-    onActivationHandled,
-    resolvedTree,
-    state.placeholderRowIndex,
-    state.renderTreeOverride,
-  ]);
+  }, [reduce, runEffects]);
 
   return (
     <section
@@ -500,27 +435,20 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
               {row.map((node, col) => {
                 const dataKey = getDataKey(node.data, col);
                 const refKey = `${generationIndex}:${dataKey}`;
-                const isPlaceholder =
-                  isPlaceholderData(node.data) || generationIndex === state.placeholderRowIndex;
 
                 return (
-                  <button
+                  <div
                     aria-disabled={isDisabledNode(node)}
-                    aria-pressed={node.selected}
                     className={[
                       "generator-card-button",
-                      isPlaceholder ? "generator-card-button-placeholder" : "",
                       isDisabledNode(node) ? "generator-card-button-disabled" : "",
                       rowPresentation.cardButtonClassName ?? "",
                     ].filter(Boolean).join(" ")}
-                    disabled={isPlaceholder}
                     key={refKey}
                     onClick={() => handleCardSelect(generationIndex, col)}
                     ref={(element) => {
                       cardRefs.current[refKey] = element;
                     }}
-                    tabIndex={isPlaceholder || isDisabledNode(node) ? -1 : undefined}
-                    type="button"
                   >
                     {renderCard({
                       row: generationIndex,
@@ -529,7 +457,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
                       tree: resolvedTree,
                       state,
                     })}
-                  </button>
+                  </div>
                 );
               })}
             </div>

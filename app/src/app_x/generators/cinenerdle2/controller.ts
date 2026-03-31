@@ -75,7 +75,7 @@ import {
   refreshSelectedMovieCard,
   refreshSelectedPersonCard,
 } from "./view_model";
-import { hasDirectTmdbMovieSource } from "./tmdb_provenance";
+import { hasDirectTmdbMovieSource, hasDirectTmdbPersonSource } from "./tmdb_provenance";
 import type { CinenerdleCard, CinenerdlePathNode } from "./view_types";
 
 export { getCardTmdbRowTooltipText } from "./view_model";
@@ -134,104 +134,11 @@ function createRow(cards: CinenerdleCard[], selectedKey?: string) {
   return cards.map((card) => createNode(card, selectedKey === card.key));
 }
 
-type PlaceholderChildCardKind = "movie" | "person";
-
-function getOptimisticPlaceholderChildKind(
-  card: CinenerdleCard,
-): PlaceholderChildCardKind | null {
-  if (card.kind === "cinenerdle" || card.kind === "person") {
-    return "movie";
-  }
-
-  if (card.kind === "movie") {
-    return "person";
-  }
-
-  return null;
-}
-
-function createCinenerdlePlaceholderCard(
-  kind: PlaceholderChildCardKind,
-): Extract<CinenerdleCard, { kind: "movie" | "person" }> {
-  if (kind === "movie") {
-    return {
-      key: "placeholder:movie",
-      kind: "movie",
-      name: "Loading",
-      year: "",
-      isPlaceholder: true,
-      popularity: 0,
-      popularitySource: null,
-      imageUrl: null,
-      subtitle: "",
-      subtitleDetail: "",
-      connectionCount: null,
-      sources: [],
-      status: null,
-      voteAverage: null,
-      voteCount: null,
-      record: null,
-    };
-  }
-
-  return {
-    key: "placeholder:person",
-    kind: "person",
-    name: "Loading",
-    isPlaceholder: true,
-    popularity: 0,
-    popularitySource: null,
-    imageUrl: null,
-    subtitle: "",
-    subtitleDetail: "",
-    connectionCount: null,
-    sources: [],
-    status: null,
-    record: null,
-  };
-}
-
-function createCinenerdlePlaceholderRow(
-  kind: PlaceholderChildCardKind,
-): GeneratorNode<CinenerdleCard>[] {
-  return [createNode(createCinenerdlePlaceholderCard(kind))];
-}
-
 export function reduceCinenerdleLifecycleEvent(
   state: GeneratorState<CinenerdleCard, undefined>,
   event: GeneratorLifecycleEvent,
 ): GeneratorTransition<CinenerdleCard, undefined, GeneratorLifecycleEffect<CinenerdleCard>> {
-  const transition = reduceGeneratorLifecycleEvent(state, event);
-
-  if (
-    event.type !== "select" ||
-    !event.optimisticSelection ||
-    transition.state.placeholderRowIndex === null ||
-    !transition.state.tree
-  ) {
-    return transition;
-  }
-
-  const selectedCard = transition.state.tree[event.row]?.[event.col]?.data;
-  if (!selectedCard) {
-    return transition;
-  }
-
-  const placeholderChildKind = getOptimisticPlaceholderChildKind(selectedCard);
-  if (!placeholderChildKind) {
-    return transition;
-  }
-
-  return {
-    ...transition,
-    state: {
-      ...transition.state,
-      renderTreeOverride: [
-        ...transition.state.tree,
-        createCinenerdlePlaceholderRow(placeholderChildKind),
-      ],
-    },
-  };
+  return reduceGeneratorLifecycleEvent(state, event);
 }
 
 function sortCardsByPopularity(cards: CinenerdleCard[]) {
@@ -446,6 +353,102 @@ async function createDailyStarterRow() {
 
 function isCinenerdleRootTree(tree: GeneratorTree<CinenerdleCard>) {
   return getSelectedCard(tree, 0)?.kind === "cinenerdle";
+}
+
+function getSelectedPathTree(
+  tree: GeneratorTree<CinenerdleCard>,
+  rowIndex: number,
+): GeneratorTree<CinenerdleCard> {
+  return tree.slice(0, rowIndex + 1);
+}
+
+function replaceTreeNodeCard(
+  tree: GeneratorTree<CinenerdleCard>,
+  rowIndex: number,
+  colIndex: number,
+  card: CinenerdleCard,
+): GeneratorTree<CinenerdleCard> {
+  return tree.map((row, currentRowIndex) =>
+    currentRowIndex === rowIndex
+      ? row.map((node, currentColIndex) =>
+          currentColIndex === colIndex
+            ? {
+                ...node,
+                data: card,
+              }
+            : node)
+      : row,
+  );
+}
+
+function appendChildRow(
+  tree: GeneratorTree<CinenerdleCard>,
+  childRow: GeneratorNode<CinenerdleCard>[] | null,
+): GeneratorTree<CinenerdleCard> {
+  return childRow && childRow.length > 0 ? [...tree, childRow] : tree;
+}
+
+async function refreshCardFromTmdb(
+  card: Extract<CinenerdleCard, { kind: "movie" | "person" }>,
+  options: {
+    skipIfAlreadyHydrated: boolean;
+  },
+): Promise<{
+  didRefresh: boolean;
+  refreshedCard: Extract<CinenerdleCard, { kind: "movie" | "person" }>;
+}> {
+  if (card.kind === "movie") {
+    const alreadyHydrated = hasDirectTmdbMovieSource(card.record);
+    if (options.skipIfAlreadyHydrated && alreadyHydrated) {
+      return {
+        didRefresh: false,
+        refreshedCard: card,
+      };
+    }
+
+    const refreshedMovieRecord = await prepareSelectedMovie(
+      card.name,
+      card.year,
+      card.record?.tmdbId ?? card.record?.id ?? null,
+      {
+        forceRefresh: true,
+      },
+    );
+    const refreshedMovieCard = refreshedMovieRecord
+      ? refreshSelectedMovieCard(card, refreshedMovieRecord)
+      : card;
+
+    await prefetchTopPopularUnhydratedConnections(refreshedMovieCard);
+    return {
+      didRefresh: true,
+      refreshedCard: refreshedMovieCard,
+    };
+  }
+
+  const alreadyHydrated = hasDirectTmdbPersonSource(card.record);
+  if (options.skipIfAlreadyHydrated && alreadyHydrated) {
+    return {
+      didRefresh: false,
+      refreshedCard: card,
+    };
+  }
+
+  const refreshedPersonRecord = await prepareSelectedPerson(
+    card.name,
+    getPersonTmdbIdFromCard(card),
+    {
+      forceRefresh: true,
+    },
+  );
+  const refreshedPersonCard = refreshedPersonRecord
+    ? refreshSelectedPersonCard(card, refreshedPersonRecord)
+    : card;
+
+  await prefetchTopPopularUnhydratedConnections(refreshedPersonCard);
+  return {
+    didRefresh: true,
+    refreshedCard: refreshedPersonCard,
+  };
 }
 
 function normalizeDailyStarterTitles(titles: string[]): string[] {
@@ -908,36 +911,9 @@ function renderCinenerdleCard(
     card.kind === "movie" || card.kind === "person"
       ? async () => {
           onExplicitTmdbRowClick?.();
-
-          if (card.kind === "movie") {
-            const refreshedMovieRecord = await prepareSelectedMovie(
-              card.name,
-              card.year,
-              card.record?.tmdbId ?? card.record?.id ?? null,
-              {
-                forceRefresh: true,
-              },
-            );
-            const refreshedMovieCard = refreshedMovieRecord
-              ? refreshSelectedMovieCard(card, refreshedMovieRecord)
-              : card;
-
-            await prefetchTopPopularUnhydratedConnections(refreshedMovieCard);
-            return;
-          }
-
-          const refreshedPersonRecord = await prepareSelectedPerson(
-            card.name,
-            getPersonTmdbIdFromCard(card),
-            {
-              forceRefresh: true,
-            },
-          );
-          const refreshedPersonCard = refreshedPersonRecord
-            ? refreshSelectedPersonCard(card, refreshedPersonRecord)
-            : card;
-
-          await prefetchTopPopularUnhydratedConnections(refreshedPersonCard);
+          await refreshCardFromTmdb(card, {
+            skipIfAlreadyHydrated: false,
+          });
         }
       : null;
 
@@ -991,7 +967,7 @@ export function useCinenerdleController({
         return createGeneratorState<CinenerdleCard, undefined>(undefined);
       },
       reduce: reduceCinenerdleLifecycleEvent,
-      async runEffect(effect, { applyUpdate }) {
+      async runEffect(effect, { applyUpdate, scrollGenerationLikeBubble }) {
         if (effect.type === "load-initial-tree") {
           const initialHash = readHash();
           const shouldBypassInFlightCache =
@@ -1037,7 +1013,8 @@ export function useCinenerdleController({
         const tree = effect.tree;
         const selectedPathNodes = getSelectedPathNodes(tree);
         const nextHash = serializePathNodes(selectedPathNodes);
-        const selectedCard = getSelectedCard(tree, tree.length - 1);
+        const selectedCard = tree[effect.row]?.[effect.col]?.data ?? null;
+        const selectedPathTree = getSelectedPathTree(tree, effect.row);
 
         if (
           selectedCard &&
@@ -1048,17 +1025,49 @@ export function useCinenerdleController({
           void measureAsync(
             "controller.afterCardSelected",
             async () => {
-              setTmdbLogGeneration(Math.max(0, tree.length - 1));
-              let resolvedChildRow: GeneratorNode<CinenerdleCard>[] | null = null;
-
-              resolvedChildRow = await buildChildRowForCard(selectedCard);
+              const initialChildRow = await buildChildRowForCard(selectedCard);
+              const initialSelectedTree = appendChildRow(selectedPathTree, initialChildRow);
               applyUpdate({
-                tree: resolvedChildRow && resolvedChildRow.length > 0
-                  ? [...tree, resolvedChildRow]
-                  : tree,
+                tree: initialSelectedTree,
               });
 
-              return resolvedChildRow;
+              setTmdbLogGeneration(Math.max(0, initialSelectedTree.length - 1));
+              await scrollGenerationLikeBubble(effect.row);
+
+              if (selectedCard.kind !== "movie" && selectedCard.kind !== "person") {
+                if (initialChildRow && initialChildRow.length > 0) {
+                  await scrollGenerationLikeBubble(effect.row + 1);
+                }
+                return initialChildRow;
+              }
+
+              const refreshResult = await refreshCardFromTmdb(selectedCard, {
+                skipIfAlreadyHydrated: true,
+              });
+              if (!refreshResult.didRefresh) {
+                if (initialChildRow && initialChildRow.length > 0) {
+                  await scrollGenerationLikeBubble(effect.row + 1);
+                }
+                return initialChildRow;
+              }
+
+              const refreshedSelectedTree = replaceTreeNodeCard(
+                selectedPathTree,
+                effect.row,
+                effect.col,
+                refreshResult.refreshedCard,
+              );
+              const refreshedChildRow = await buildChildRowForCard(refreshResult.refreshedCard);
+              const refreshedTree = appendChildRow(refreshedSelectedTree, refreshedChildRow);
+              applyUpdate({
+                tree: refreshedTree,
+              });
+
+              setTmdbLogGeneration(Math.max(0, refreshedTree.length - 1));
+              if (refreshedChildRow && refreshedChildRow.length > 0) {
+                await scrollGenerationLikeBubble(effect.row + 1);
+              }
+              return refreshedChildRow;
             },
             {
               always: true,
@@ -1074,12 +1083,12 @@ export function useCinenerdleController({
           )
             .catch(() => {
               applyUpdate({
-                tree,
+                tree: selectedPathTree,
               });
             });
         } else {
           applyUpdate({
-            tree,
+            tree: selectedPathTree,
           });
         }
 

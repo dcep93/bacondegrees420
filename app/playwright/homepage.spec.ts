@@ -423,6 +423,127 @@ test("homepage cold start only fetches mocked daily starters and starter movie c
     ]);
 });
 
+test("cinenerdle starter generation auto-scrolls when it mounts", async ({ page }) => {
+  const starterMovieTitles = [
+    "Starter Atlas",
+    "Starter Birch",
+    "Starter Cedar",
+    "Starter Drift",
+    "Starter Ember",
+    "Starter Flint",
+    "Starter Grove",
+    "Starter Harbor",
+    "Starter Ivory",
+    "Starter Juniper",
+    "Starter Kite",
+  ];
+  const starterMovies = starterMovieTitles.map((title, index) => ({
+    id: `starter-${index + 1}`,
+    title: `${title} (${2000 + index})`,
+  }));
+  const movieSearchResultsByQuery = new Map(
+    starterMovies.map((movie, index) => {
+      const titleWithoutYear = movie.title.replace(/\s+\(\d{4}\)$/, "");
+      return [
+        titleWithoutYear,
+        {
+          id: 5000 + index,
+          title: titleWithoutYear,
+          original_title: titleWithoutYear,
+          poster_path: `/starter-${index + 1}.jpg`,
+          release_date: `${2000 + index}-01-01`,
+          popularity: 100 - index,
+          vote_average: 7.1,
+          vote_count: 1000 + index,
+        },
+      ] as const;
+    }),
+  );
+
+  await page.addInitScript(() => {
+    window.localStorage.clear();
+    window.localStorage.setItem("cinenerdle2.tmdbApiKey", "key:playwright-test-key");
+    window.localStorage.setItem(
+      "cinenerdle2.dailyStarterTitles",
+      JSON.stringify([
+        "Starter Atlas (2000)",
+        "Starter Birch (2001)",
+        "Starter Cedar (2002)",
+        "Starter Drift (2003)",
+        "Starter Ember (2004)",
+        "Starter Flint (2005)",
+        "Starter Grove (2006)",
+        "Starter Harbor (2007)",
+        "Starter Ivory (2008)",
+        "Starter Juniper (2009)",
+        "Starter Kite (2010)",
+      ]),
+    );
+    window.indexedDB.deleteDatabase("cinenerdle2");
+  });
+
+  await page.route("https://www.cinenerdle2.app/api/battle-data/daily-starters?*", async (route) => {
+    await route.fulfill(createJsonResponse({
+      data: starterMovies,
+    }));
+  });
+
+  await page.route("https://api.themoviedb.org/**", async (route) => {
+    const url = new URL(route.request().url());
+
+    if (url.pathname === "/3/search/movie") {
+      const query = url.searchParams.get("query") ?? "";
+      const movie = movieSearchResultsByQuery.get(query);
+
+      if (!movie) {
+        throw new Error(`Unexpected movie search query: ${query}`);
+      }
+
+      await route.fulfill(createJsonResponse({
+        results: [movie],
+      }));
+      return;
+    }
+
+    const movieCreditsId = Number(url.pathname.match(/\/3\/movie\/(\d+)\/credits$/)?.[1] ?? NaN);
+    if (Number.isFinite(movieCreditsId)) {
+      await route.fulfill(createJsonResponse({
+        cast: [],
+        crew: [],
+      }));
+      return;
+    }
+
+    throw new Error(`Unexpected TMDb request: ${url.pathname}`);
+  });
+
+  await page.route("https://image.tmdb.org/**", async (route) => {
+    await route.fulfill({
+      status: 204,
+      body: "",
+    });
+  });
+
+  await page.route("https://www.cinenerdle2.app/icon.png", async (route) => {
+    await route.fulfill({
+      status: 204,
+      body: "",
+    });
+  });
+
+  await page.goto("/");
+
+  const gen1Row = getGenerationRow(page, 1);
+  const gen1RowTrack = gen1Row.locator(".generator-row-track");
+  const firstStarterCard = getGenerationCardByTitle(page, 1, "Starter Atlas");
+  const lastStarterCard = getGenerationCardByTitle(page, 1, "Starter Kite");
+
+  await expect(gen1Row.locator(".cinenerdle-card")).toHaveCount(11);
+  await expect.poll(() => gen1RowTrack.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+  await expectCardVisibilityWithinRow(firstStarterCard, gen1RowTrack, true);
+  await expectCardVisibilityWithinRow(lastStarterCard, gen1RowTrack, false);
+});
+
 test("Big Lebowski deep link stays sensible when there is nothing to prefetch", async ({ page }) => {
   const requests = createRouteRequestRecorder();
 
@@ -913,6 +1034,10 @@ test("gen 2 refresh keeps horizontal scroll stable and redraws gen 3 for the new
   await page.addInitScript(() => {
     window.localStorage.clear();
     window.localStorage.setItem("cinenerdle2.tmdbApiKey", "key:playwright-test-key");
+    window.localStorage.setItem(
+      "cinenerdle2.dailyStarterTitles",
+      JSON.stringify(["Mock Starter Movie (2001)"]),
+    );
     window.indexedDB.deleteDatabase("cinenerdle2");
   });
 

@@ -105,11 +105,6 @@
   cursor: default;
 }
 
-.generator-card-button-placeholder {
-  visibility: hidden;
-  pointer-events: none;
-}
-
 .generator-card-button:focus-visible,
 .generator-row-bubble:focus-visible,
 .bacon-title-icon-button:focus-visible {

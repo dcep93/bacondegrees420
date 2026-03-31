@@ -199,48 +199,32 @@ beforeEach(() => {
 });
 
 describe("reduceCinenerdleLifecycleEvent", () => {
-  it("adds a movie placeholder row after selecting a person", () => {
+  it("keeps previous descendants visible until the effect replaces them", () => {
     const state = createGeneratorState<CinenerdleCard, undefined>(undefined, [
+      [{ data: makeMovieCard(), selected: true }],
       [{ data: makeMovieCard(), selected: true }],
       [{ data: makePersonCard(), selected: true }],
     ]);
 
     const transition = reduceCinenerdleLifecycleEvent(state, {
       type: "select",
-      row: 1,
+      row: 0,
       col: 0,
-      optimisticSelection: true,
     });
 
-    expect(transition.state.placeholderRowIndex).toBe(2);
-    expect(transition.state.renderTreeOverride?.[2]?.[0]?.data).toEqual(
-      expect.objectContaining({
-        kind: "movie",
-        isPlaceholder: true,
-      }),
-    );
-  });
-
-  it("adds a person placeholder row after selecting a movie", () => {
-    const state = createGeneratorState<CinenerdleCard, undefined>(undefined, [
-      [{ data: makeCinenerdleRootCard(), selected: true }],
+    expect(transition.state.tree).toEqual([
       [{ data: makeMovieCard(), selected: true }],
+      [{ data: makeMovieCard(), selected: false }],
+      [{ data: makePersonCard(), selected: false }],
     ]);
-
-    const transition = reduceCinenerdleLifecycleEvent(state, {
-      type: "select",
-      row: 1,
-      col: 0,
-      optimisticSelection: true,
-    });
-
-    expect(transition.state.placeholderRowIndex).toBe(2);
-    expect(transition.state.renderTreeOverride?.[2]?.[0]?.data).toEqual(
+    expect(transition.effects).toEqual([
       expect.objectContaining({
-        kind: "person",
-        isPlaceholder: true,
+        type: "load-selected-card",
+        removedDescendantRows: true,
+        row: 0,
+        col: 0,
       }),
-    );
+    ]);
   });
 });
 
@@ -424,6 +408,7 @@ describe("useCinenerdleController", () => {
         getState: () => createGeneratorState<CinenerdleCard, undefined>(undefined),
         lifecycleId: 1,
         selectionId: 0,
+        scrollGenerationLikeBubble: vi.fn(),
       },
     );
 
@@ -476,6 +461,7 @@ describe("useCinenerdleController", () => {
         getState: () => createGeneratorState<CinenerdleCard, undefined>(undefined),
         lifecycleId: 1,
         selectionId: 0,
+        scrollGenerationLikeBubble: vi.fn(),
       },
     );
 
@@ -485,12 +471,17 @@ describe("useCinenerdleController", () => {
     expect(tmdbMock.hydrateCinenerdleDailyStarterMovies).not.toHaveBeenCalled();
   });
 
-  it("builds the next row without calling tmdb selection fetches", async () => {
+  it("builds the next row and skips force hydration for directly hydrated cards", async () => {
     const heatRecord = makeFilmRecord({
       id: 321,
       tmdbId: 321,
       title: "Heat",
       year: "1995",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 321,
+        title: "Heat",
+        release_date: "1995-12-15",
+      }),
       personConnectionKeys: ["al pacino"],
       rawTmdbMovieCreditsResponse: {
         cast: [
@@ -508,6 +499,7 @@ describe("useCinenerdleController", () => {
     const writeHash = vi.fn();
     const controller = renderController({ writeHash });
     const applyUpdate = vi.fn();
+    const scrollGenerationLikeBubble = vi.fn();
 
     indexedDbMock.getFilmRecordById.mockResolvedValue(heatRecord);
     indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(heatRecord);
@@ -535,6 +527,7 @@ describe("useCinenerdleController", () => {
         getState: () => createGeneratorState<CinenerdleCard, undefined>(undefined),
         lifecycleId: 1,
         selectionId: 1,
+        scrollGenerationLikeBubble,
       },
     );
 
@@ -543,10 +536,106 @@ describe("useCinenerdleController", () => {
     expect(tmdbMock.prepareSelectedMovie).not.toHaveBeenCalled();
     expect(tmdbMock.prepareSelectedPerson).not.toHaveBeenCalled();
     expect(writeHash).toHaveBeenCalledWith("#cinenerdle|Heat+(1995)", "selection");
+    expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(1, 1);
+    expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(2, 2);
     expect(applyUpdate).toHaveBeenCalledWith({
       tree: [
         [{ data: makeCinenerdleRootCard(), selected: true }],
         [{ data: makeMovieCard({ key: "movie:321", record: heatRecord }), selected: true }],
+        [expect.objectContaining({
+          data: expect.objectContaining({
+            kind: "person",
+            name: "Al Pacino",
+          }),
+        })],
+      ],
+    });
+  });
+
+  it("force hydrates connection-derived cards and redraws their subtree before scrolling children", async () => {
+    const connectionDerivedHeatRecord = makeFilmRecord({
+      id: 321,
+      tmdbId: 321,
+      title: "Heat",
+      year: "1995",
+      personConnectionKeys: ["al pacino"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({ id: 60, name: "Al Pacino", popularity: 88 }),
+        ],
+        crew: [],
+      },
+    });
+    const hydratedHeatRecord = makeFilmRecord({
+      ...connectionDerivedHeatRecord,
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 321,
+        title: "Heat",
+        release_date: "1995-12-15",
+        popularity: 99,
+      }),
+    });
+    const pacinoRecord = makePersonRecord({
+      id: 60,
+      tmdbId: 60,
+      name: "Al Pacino",
+      movieConnectionKeys: ["heat (1995)"],
+    });
+    const controller = renderController({ writeHash: vi.fn() });
+    const applyUpdate = vi.fn();
+    const scrollGenerationLikeBubble = vi.fn();
+
+    indexedDbMock.getFilmRecordById.mockResolvedValue(hydratedHeatRecord);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(hydratedHeatRecord);
+    indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(
+      new Map([["Al Pacino", 8]]),
+    );
+    indexedDbMock.getPersonRecordById.mockResolvedValue(pacinoRecord);
+    indexedDbMock.getPersonRecordByName.mockImplementation(async (personName: string) =>
+      personName === "Al Pacino" ? pacinoRecord : null,
+    );
+    tmdbMock.prepareSelectedMovie.mockResolvedValue(hydratedHeatRecord);
+
+    await controller.runEffect(
+      {
+        type: "load-selected-card",
+        removedDescendantRows: true,
+        row: 1,
+        col: 0,
+        tree: [
+          [{ data: makeCinenerdleRootCard(), selected: true }],
+          [{ data: makeMovieCard({ key: "movie:321", record: connectionDerivedHeatRecord }), selected: true }],
+          [{ data: makePersonCard(), selected: false }],
+        ],
+      },
+      {
+        applyUpdate,
+        getState: () => createGeneratorState<CinenerdleCard, undefined>(undefined),
+        lifecycleId: 1,
+        selectionId: 1,
+        scrollGenerationLikeBubble,
+      },
+    );
+
+    await flushAsyncWork();
+
+    expect(tmdbMock.prepareSelectedMovie).toHaveBeenCalledWith("Heat", "1995", 321, {
+      forceRefresh: true,
+    });
+    expect(applyUpdate).toHaveBeenCalledTimes(2);
+    expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(1, 1);
+    expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(2, 2);
+    expect(applyUpdate).toHaveBeenNthCalledWith(2, {
+      tree: [
+        [{ data: makeCinenerdleRootCard(), selected: true }],
+        [expect.objectContaining({
+          data: expect.objectContaining({
+            kind: "movie",
+            name: "Heat",
+            record: hydratedHeatRecord,
+          }),
+          selected: true,
+        })],
         [expect.objectContaining({
           data: expect.objectContaining({
             kind: "person",
