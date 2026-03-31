@@ -10,6 +10,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
   type MouseEvent,
+  type Ref,
 } from "react";
 import {
   loadBookmarks,
@@ -270,6 +271,89 @@ export function IndexedDbBootstrapLoadingIndicator(props: {
   );
 }
 
+export function BookmarksJsonlEditButton(props: {
+  onClick: () => void;
+}) {
+  return (
+    <button
+      aria-label="Edit as text"
+      className="bacon-title-action-button"
+      onClick={props.onClick}
+      type="button"
+    >
+      <span>Edit as text</span>
+    </button>
+  );
+}
+
+export function isBookmarksJsonlDraftChanged(
+  serializedBookmarksJsonl: string,
+  bookmarksJsonlDraft: string,
+): boolean {
+  return bookmarksJsonlDraft !== serializedBookmarksJsonl;
+}
+
+export function resetBookmarksJsonlDraft(serializedBookmarksJsonl: string): string {
+  return serializedBookmarksJsonl;
+}
+
+export function BookmarksJsonlEditorModal(props: {
+  bookmarksJsonlDraft: string;
+  isBookmarksJsonlDraftDirty: boolean;
+  onApply: () => void;
+  onChange: (nextDraft: string) => void;
+  onClose: () => void;
+  onReset: () => void;
+  textareaRef?: Ref<HTMLTextAreaElement>;
+}) {
+  return (
+    <div
+      aria-label="Edit as text"
+      aria-modal="true"
+      className="bacon-modal bacon-bookmarks-jsonl-modal"
+      onClick={(event) => event.stopPropagation()}
+      role="dialog"
+    >
+      <button
+        aria-label="Close JSONL editor"
+        className="bacon-title-action-icon-button bacon-bookmarks-jsonl-modal-close"
+        onClick={props.onClose}
+        type="button"
+      >
+        ✕
+      </button>
+      <textarea
+        className="bacon-bookmarks-jsonl-textarea"
+        id="bacon-bookmarks-jsonl-textarea"
+        onChange={(event) => {
+          props.onChange(event.target.value);
+        }}
+        ref={props.textareaRef}
+        spellCheck={false}
+        value={props.bookmarksJsonlDraft}
+      />
+      <div className="bacon-bookmarks-jsonl-modal-actions">
+        <button
+          className="bacon-title-action-button"
+          disabled={!props.isBookmarksJsonlDraftDirty}
+          onClick={props.onReset}
+          type="button"
+        >
+          Reset
+        </button>
+        <button
+          className="bacon-title-action-button"
+          disabled={!props.isBookmarksJsonlDraftDirty}
+          onClick={props.onApply}
+          type="button"
+        >
+          Apply
+        </button>
+      </div>
+    </div>
+  );
+}
+
 type ConnectionSearchRow = {
   id: string;
   excludedNodeKeys: string[];
@@ -438,17 +522,17 @@ function createRenderableBookmarkCard(
   if (viewModel.kind === "movie") {
     return {
       ...viewModel,
-      onExplicitFooterTopRefreshClick: null,
-      onPopularityClick: null,
-      popularityTooltipText: null,
+      onExplicitTmdbRowClick: null,
+      onTmdbRowClick: null,
+      tmdbTooltipText: null,
     };
   }
 
   return {
     ...viewModel,
-    onExplicitFooterTopRefreshClick: null,
-    onPopularityClick: null,
-    popularityTooltipText: null,
+    onExplicitTmdbRowClick: null,
+    onTmdbRowClick: null,
+    tmdbTooltipText: null,
   };
 }
 
@@ -1023,6 +1107,7 @@ export default function AppX() {
   const connectionInputWrapRef = useRef<HTMLDivElement | null>(null);
   const connectionDropdownRef = useRef<HTMLDivElement | null>(null);
   const titleRef = useRef<HTMLHeadingElement | null>(null);
+  const clearDbButtonRef = useRef<HTMLButtonElement | null>(null);
   const bookmarksJsonlTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const highlightedConnectionEntitySelectionRequestIdRef = useRef(0);
   const indexedDbBootstrapLoadingShellDelayManagerRef =
@@ -1036,7 +1121,15 @@ export default function AppX() {
   const isConnectionInputDisabled = isResolvingConnection || isSearchablePersistencePending;
   const isAppBodyBlockedByIndexedDbBootstrap = isCinenerdleIndexedDbBootstrapLoading;
   const serializedBookmarksJsonl = serializeBookmarksAsJsonl(bookmarks);
-  const isBookmarksJsonlDraftDirty = bookmarksJsonlDraft !== serializedBookmarksJsonl;
+  const isBookmarksJsonlDraftDirty = isBookmarksJsonlDraftChanged(
+    serializedBookmarksJsonl,
+    bookmarksJsonlDraft,
+  );
+  const clearDbToastStyle: CSSProperties | undefined = clearDbButtonRef.current
+    ? {
+      width: `${Math.ceil(clearDbButtonRef.current.getBoundingClientRect().width)}px`,
+    }
+    : undefined;
   const displayedBookmarkRows =
     bookmarkRows.length === bookmarks.length
       ? bookmarkRows
@@ -1802,7 +1895,7 @@ export default function AppX() {
   }
 
   function handleResetBookmarksJsonlDraft() {
-    setBookmarksJsonlDraft(serializedBookmarksJsonl);
+    setBookmarksJsonlDraft(resetBookmarksJsonlDraft(serializedBookmarksJsonl));
   }
 
   async function handleApplyBookmarksJsonl() {
@@ -2556,7 +2649,10 @@ export default function AppX() {
   return (
     <div className="bacon-app-shell">
       {copyStatus && copyStatusPlacement === "toast" ? (
-        <span className="bacon-copy-status bacon-copy-status-toast">
+        <span
+          className="bacon-copy-status bacon-copy-status-toast"
+          style={clearDbToastStyle}
+        >
           {copyStatus}
         </span>
       ) : null}
@@ -2566,67 +2662,15 @@ export default function AppX() {
           onClick={handleCloseBookmarksJsonlEditor}
           role="presentation"
         >
-          <div
-            aria-labelledby="bacon-bookmarks-jsonl-modal-title"
-            aria-modal="true"
-            className="bacon-modal bacon-bookmarks-jsonl-modal"
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-          >
-            <div className="bacon-bookmarks-jsonl-modal-header">
-              <div className="bacon-bookmarks-jsonl-modal-heading">
-                <h2
-                  className="bacon-bookmarks-jsonl-modal-title"
-                  id="bacon-bookmarks-jsonl-modal-title"
-                >
-                  Edit bookmarks as JSONL
-                </h2>
-                <p className="bacon-bookmarks-jsonl-modal-copy">
-                  One normalized hash per line.
-                </p>
-              </div>
-              <button
-                aria-label="Close JSONL editor"
-                className="bacon-title-action-icon-button"
-                onClick={handleCloseBookmarksJsonlEditor}
-                type="button"
-              >
-                ✕
-              </button>
-            </div>
-            <label
-              className="bacon-bookmarks-jsonl-label"
-              htmlFor="bacon-bookmarks-jsonl-textarea"
-            >
-              Bookmark JSONL
-            </label>
-            <textarea
-              className="bacon-bookmarks-jsonl-textarea"
-              id="bacon-bookmarks-jsonl-textarea"
-              onChange={(event) => {
-                setBookmarksJsonlDraft(event.target.value);
-              }}
-              ref={bookmarksJsonlTextareaRef}
-              spellCheck={false}
-              value={bookmarksJsonlDraft}
-            />
-            <div className="bacon-bookmarks-jsonl-modal-actions">
-              <button
-                className="bacon-title-action-button"
-                onClick={handleResetBookmarksJsonlDraft}
-                type="button"
-              >
-                Reset
-              </button>
-              <button
-                className="bacon-title-action-button"
-                onClick={handleApplyBookmarksJsonl}
-                type="button"
-              >
-                Apply JSONL
-              </button>
-            </div>
-          </div>
+          <BookmarksJsonlEditorModal
+            bookmarksJsonlDraft={bookmarksJsonlDraft}
+            isBookmarksJsonlDraftDirty={isBookmarksJsonlDraftDirty}
+            onApply={handleApplyBookmarksJsonl}
+            onChange={setBookmarksJsonlDraft}
+            onClose={handleCloseBookmarksJsonlEditor}
+            onReset={handleResetBookmarksJsonlDraft}
+            textareaRef={bookmarksJsonlTextareaRef}
+          />
         </div>
       ) : null}
       <header className="bacon-title-bar">
@@ -2670,17 +2714,7 @@ export default function AppX() {
             </FancyTooltip>
           ) : null}
           {isBookmarksView ? (
-            <button
-              aria-label="Edit bookmarks as JSONL"
-              className="bacon-title-action-button"
-              onClick={handleOpenBookmarksJsonlEditor}
-              type="button"
-            >
-              <span>Edit JSONL</span>
-              {isBookmarksJsonlDraftDirty ? (
-                <span className="bacon-title-action-badge">Edited</span>
-              ) : null}
-            </button>
+            <BookmarksJsonlEditButton onClick={handleOpenBookmarksJsonlEditor} />
           ) : null}
           <FancyTooltip
             anchorProps={{
@@ -2713,8 +2747,9 @@ export default function AppX() {
           </FancyTooltip>
           <button
             aria-label={`Clear database (${clearDbBadgeText})`}
-            className="bacon-title-action-button"
+            className="bacon-title-action-button bacon-clear-db-button"
             onClick={handleClearDatabase}
+            ref={clearDbButtonRef}
             type="button"
           >
             {`Clear DB (${clearDbBadgeText})`}

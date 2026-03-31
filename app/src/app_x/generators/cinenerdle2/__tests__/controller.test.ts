@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { createGeneratorState } from "../../generator_runtime";
 import { formatMoviePathLabel } from "../utils";
 import {
@@ -57,15 +59,16 @@ import {
   clearChildGenerationOrderingCache,
   ensureSelectedCardFullstate,
   getControllerInitMode,
-  getCardPopularityTooltipText,
+  getCardTmdbRowTooltipText,
   hydrateYoungestSelectedCardInTree,
-  refreshTreeForFetchedCard,
+  refreshTreeForFetchedEntity,
   refreshYoungestSelectedGenerationAfterAsyncWorkIfHashUnchanged,
   reduceCinenerdleLifecycleEvent,
   shouldSkipDailyStarterGenerationRedraw,
   shouldDispatchSelectedCardBackgroundForceRefresh,
   shouldPrefetchPopularConnectionsOnInit,
   shouldForceRefreshSelectedPathOnInit,
+  useCinenerdleController,
 } from "../controller";
 import { ESCAPE_LABEL } from "../constants";
 import type { CinenerdleCard } from "../view_types";
@@ -128,6 +131,32 @@ function makeCinenerdleRootCard(): Extract<CinenerdleCard, { kind: "cinenerdle" 
     status: null,
     record: null,
   };
+}
+
+function renderController(
+  overrides: Partial<Parameters<typeof useCinenerdleController>[0]> = {},
+) {
+  let controller: ReturnType<typeof useCinenerdleController> | undefined;
+
+  function Harness() {
+    // eslint-disable-next-line react-hooks/globals
+    controller = useCinenerdleController({
+      readHash: () => "",
+      recordsRefreshVersion: 0,
+      writeHash: () => { },
+      ...overrides,
+    });
+
+    return null;
+  }
+
+  renderToStaticMarkup(createElement(Harness));
+
+  if (controller === undefined) {
+    throw new Error("Failed to render controller test harness");
+  }
+
+  return controller;
 }
 
 describe("shouldSkipDailyStarterGenerationRedraw", () => {
@@ -340,7 +369,7 @@ describe("refreshYoungestSelectedGenerationAfterAsyncWorkIfHashUnchanged", () =>
   });
 });
 
-describe("refreshTreeForFetchedCard", () => {
+describe("refreshTreeForFetchedEntity", () => {
   beforeEach(() => {
     Object.values(indexedDbMock).forEach((mock) => mock.mockReset());
     clearChildGenerationOrderingCache();
@@ -433,7 +462,7 @@ describe("refreshTreeForFetchedCard", () => {
             : null,
     );
 
-    const refreshedTree = await refreshTreeForFetchedCard(
+    const refreshedTree = await refreshTreeForFetchedEntity(
       [
         [{ data: makeCinenerdleRootCard(), selected: true }],
         [{
@@ -449,14 +478,12 @@ describe("refreshTreeForFetchedCard", () => {
         [{ data: makePersonCard({ name: "Old Child" }), selected: false }],
       ],
       {
-        card: makeMovieCard({
-          key: "movie:451",
-          name: "Zoolander",
-          year: "2001",
-          record: staleMovieRecord,
-        }),
+        kind: "movie",
+        name: "Zoolander",
+        reason: "fetch",
         requestKey: "req-1",
-        row: 1,
+        tmdbId: 451,
+        year: "2001",
       },
     );
 
@@ -481,13 +508,13 @@ describe("refreshTreeForFetchedCard", () => {
   });
 });
 
-describe("getCardPopularityTooltipText", () => {
+describe("getCardTmdbRowTooltipText", () => {
   it("uses a cached movie record timestamp before ancestor fallbacks", () => {
     const movieFetchTimestamp = "2026-03-29T20:03:24.000Z";
     const parentPersonFetchTimestamp = "2026-03-29T18:00:00.000Z";
 
     expect(
-      getCardPopularityTooltipText(
+      getCardTmdbRowTooltipText(
         makeMovieCard({
           record: makeFilmRecord({
             fetchTimestamp: movieFetchTimestamp,
@@ -511,7 +538,7 @@ describe("getCardPopularityTooltipText", () => {
     const parentMovieFetchTimestamp = "2026-03-29T18:00:00.000Z";
 
     expect(
-      getCardPopularityTooltipText(
+      getCardTmdbRowTooltipText(
         makePersonCard({
           record: makePersonRecord({
             fetchTimestamp: personFetchTimestamp,
@@ -534,7 +561,7 @@ describe("getCardPopularityTooltipText", () => {
     const parentPersonFetchTimestamp = "2026-03-29T19:41:16.347Z";
 
     expect(
-      getCardPopularityTooltipText(
+      getCardTmdbRowTooltipText(
         makeMovieCard({
           record: makeFilmRecord({
             fetchTimestamp: undefined,
@@ -556,7 +583,7 @@ describe("getCardPopularityTooltipText", () => {
     const parentMovieFetchTimestamp = "2026-03-29T20:03:23.096Z";
 
     expect(
-      getCardPopularityTooltipText(
+      getCardTmdbRowTooltipText(
         makePersonCard({
           record: makePersonRecord({
             fetchTimestamp: undefined,
@@ -586,12 +613,12 @@ describe("getControllerInitMode", () => {
 });
 
 describe("shouldPrefetchPopularConnectionsOnInit", () => {
-  it("skips popularity prefetch on records-refresh cache redraws", () => {
+  it("skips tmdb prefetch on records-refresh cache redraws", () => {
     expect(shouldPrefetchPopularConnectionsOnInit("cache")).toBe(false);
   });
 
-  it("allows popularity prefetch on full init", () => {
-    expect(shouldPrefetchPopularConnectionsOnInit("full")).toBe(true);
+  it("skips tmdb prefetch on full init too", () => {
+    expect(shouldPrefetchPopularConnectionsOnInit("full")).toBe(false);
   });
 });
 
@@ -632,6 +659,119 @@ describe("shouldDispatchSelectedCardBackgroundForceRefresh", () => {
     expect(
       shouldDispatchSelectedCardBackgroundForceRefresh(null, null),
     ).toBe(false);
+  });
+});
+
+describe("useCinenerdleController click-only tmdb flow", () => {
+  beforeEach(() => {
+    Object.values(indexedDbMock).forEach((mock) => mock.mockReset());
+    Object.values(tmdbMock).forEach((mock) => mock.mockReset());
+    clearChildGenerationOrderingCache();
+
+    indexedDbMock.getCinenerdleStarterFilmRecords.mockResolvedValue([]);
+    indexedDbMock.getFilmRecordById.mockResolvedValue(null);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(null);
+    indexedDbMock.getFilmRecordsByIds.mockResolvedValue(new Map());
+    indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(new Map());
+    indexedDbMock.getMoviePopularityByLabels.mockResolvedValue(new Map());
+    indexedDbMock.getPersonRecordById.mockResolvedValue(null);
+    indexedDbMock.getPersonRecordByName.mockResolvedValue(null);
+    indexedDbMock.getPersonRecordCountsByMovieKeys.mockResolvedValue(new Map());
+    indexedDbMock.getPersonPopularityByNames.mockResolvedValue(new Map());
+    tmdbMock.fetchCinenerdleDailyStarterMovies.mockResolvedValue([]);
+  });
+
+  it("does not call tmdb while loading a deep-linked tree", async () => {
+    const heatRecord = makeFilmRecord({
+      id: 321,
+      tmdbId: 321,
+      title: "Heat",
+      year: "1995",
+    });
+    const controller = renderController({
+      readHash: () => "#film|Heat+(1995)",
+    });
+    const applyUpdate = vi.fn();
+
+    indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (title: string, year: string) =>
+      title === "Heat" && year === "1995" ? heatRecord : null,
+    );
+
+    await controller.runEffect(
+      {
+        type: "load-initial-tree",
+      },
+      {
+        applyUpdate,
+        getState: () => createGeneratorState<CinenerdleCard, undefined>(undefined),
+        lifecycleId: 1,
+        selectionId: 0,
+      },
+    );
+
+    expect(tmdbMock.prepareSelectedMovie).not.toHaveBeenCalled();
+    expect(tmdbMock.prepareSelectedPerson).not.toHaveBeenCalled();
+  });
+
+  it("does not call tmdb when selection builds the next row", async () => {
+    const heatRecord = makeFilmRecord({
+      id: 321,
+      tmdbId: 321,
+      title: "Heat",
+      year: "1995",
+      personConnectionKeys: ["al pacino"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({
+            id: 60,
+            name: "Al Pacino",
+            popularity: 88,
+          }),
+        ],
+        crew: [],
+      },
+    });
+    const pacinoRecord = makePersonRecord({
+      id: 60,
+      tmdbId: 60,
+      name: "Al Pacino",
+      movieConnectionKeys: ["heat (1995)"],
+    });
+    const controller = renderController();
+    const applyUpdate = vi.fn();
+    const tree = [
+      [{ data: makeCinenerdleRootCard(), selected: true }],
+      [{ data: makeMovieCard({ key: "movie:321", record: heatRecord }), selected: true }],
+    ];
+
+    indexedDbMock.getFilmRecordById.mockResolvedValue(heatRecord);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(heatRecord);
+    indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(
+      new Map([["Al Pacino", 8]]),
+    );
+    indexedDbMock.getPersonRecordById.mockResolvedValue(pacinoRecord);
+    indexedDbMock.getPersonRecordByName.mockImplementation(async (personName: string) =>
+      personName === "Al Pacino" ? pacinoRecord : null,
+    );
+
+    await controller.runEffect(
+      {
+        type: "load-selected-card",
+        removedDescendantRows: false,
+        row: 1,
+        col: 0,
+        tree,
+      },
+      {
+        applyUpdate,
+        getState: () => createGeneratorState<CinenerdleCard, undefined>(undefined, tree),
+        lifecycleId: 1,
+        selectionId: 1,
+      },
+    );
+
+    expect(tmdbMock.prepareSelectedMovie).not.toHaveBeenCalled();
+    expect(tmdbMock.prepareSelectedPerson).not.toHaveBeenCalled();
   });
 });
 

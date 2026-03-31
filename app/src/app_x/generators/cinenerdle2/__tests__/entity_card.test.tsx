@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { CinenerdleEntityCard, type RenderableCinenerdleEntityCard } from "../entity_card";
-import { triggerPopularityChipRefresh } from "../entity_card_helpers";
+import { triggerTmdbRowClick } from "../entity_card_helpers";
 
 function makeRenderableMovieCard(
   overrides: Partial<RenderableCinenerdleEntityCard> = {},
@@ -125,8 +125,8 @@ describe("CinenerdleEntityCard", () => {
     const html = renderToStaticMarkup(
       <CinenerdleEntityCard
         card={makeRenderableMovieCard({
-          onPopularityClick: async () => { },
-          popularityTooltipText: "TMDb data fetched 3/29/2026, 4:03:24 PM.\nClick to refetch.",
+          onTmdbRowClick: async () => { },
+          tmdbTooltipText: "TMDb data fetched 3/29/2026, 4:03:24 PM.\nClick to refetch.",
         })}
       />,
     );
@@ -135,11 +135,11 @@ describe("CinenerdleEntityCard", () => {
     expect(html).not.toContain("TMDb movie popularity from the cached movie record.");
   });
 
-  it("marks the footer top row as refreshable when a popularity refresh handler is present", () => {
+  it("marks the footer top row as refreshable when a tmdb row click handler is present", () => {
     const html = renderToStaticMarkup(
       <CinenerdleEntityCard
         card={makeRenderableMovieCard({
-          onPopularityClick: async () => { },
+          onTmdbRowClick: async () => { },
         })}
       />,
     );
@@ -147,11 +147,11 @@ describe("CinenerdleEntityCard", () => {
     expect(html).toContain("cinenerdle-card-footer-top cinenerdle-card-footer-top-refreshable");
   });
 
-  it("leaves the footer top row non-refreshable when no popularity refresh handler is present", () => {
+  it("leaves the footer top row non-refreshable when no tmdb row click handler is present", () => {
     const html = renderToStaticMarkup(
       <CinenerdleEntityCard
         card={makeRenderableMovieCard({
-          onPopularityClick: null,
+          onTmdbRowClick: null,
         })}
       />,
     );
@@ -222,13 +222,13 @@ describe("CinenerdleEntityCard", () => {
   });
 });
 
-describe("triggerPopularityChipRefresh", () => {
+describe("triggerTmdbRowClick", () => {
   it("prevents bubbling and invokes the refresh callback", async () => {
     let prevented = false;
     let stopped = false;
     let refreshCallCount = 0;
 
-    const didRefresh = await triggerPopularityChipRefresh(
+    const didRefresh = await triggerTmdbRowClick(
       {
         preventDefault: () => {
           prevented = true;
@@ -239,7 +239,7 @@ describe("triggerPopularityChipRefresh", () => {
       },
       {
         isRefreshing: false,
-        onPopularityClick: async () => {
+        onTmdbRowClick: async () => {
           refreshCallCount += 1;
         },
       },
@@ -256,7 +256,7 @@ describe("triggerPopularityChipRefresh", () => {
     let stopped = false;
     let refreshCallCount = 0;
 
-    const didRefresh = await triggerPopularityChipRefresh(
+    const didRefresh = await triggerTmdbRowClick(
       {
         preventDefault: () => {
           prevented = true;
@@ -267,7 +267,7 @@ describe("triggerPopularityChipRefresh", () => {
       },
       {
         isRefreshing: true,
-        onPopularityClick: async () => {
+        onTmdbRowClick: async () => {
           refreshCallCount += 1;
         },
       },

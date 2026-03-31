@@ -1,15 +1,15 @@
 import type { MouseEvent } from "react";
 
-export async function triggerPopularityChipRefresh(
+export async function triggerTmdbRowClick(
   event: Pick<MouseEvent<HTMLElement>, "preventDefault" | "stopPropagation">,
   options: {
     isRefreshing: boolean;
-    onPopularityClick?: (() => Promise<void> | void) | null;
+    onTmdbRowClick?: (() => Promise<void> | void) | null;
     setIsRefreshing?: (isRefreshing: boolean) => void;
   },
 ): Promise<boolean> {
-  const { isRefreshing, onPopularityClick, setIsRefreshing } = options;
-  if (!onPopularityClick) {
+  const { isRefreshing, onTmdbRowClick, setIsRefreshing } = options;
+  if (!onTmdbRowClick) {
     return false;
   }
 
@@ -22,7 +22,7 @@ export async function triggerPopularityChipRefresh(
 
   setIsRefreshing?.(true);
   try {
-    await onPopularityClick();
+    await onTmdbRowClick();
     return true;
   } finally {
     setIsRefreshing?.(false);

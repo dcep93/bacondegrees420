@@ -6,6 +6,11 @@ import {
   hydrateConnectionEntityFromSearchRecord,
 } from "./connection_graph";
 import {
+  createMovieEntityRefreshRequestFromRecord,
+  createPersonEntityRefreshRequestFromRecord,
+  dispatchEntityRefreshRequest,
+} from "./entity_refresh";
+import {
   CINENERDLE_DAILY_STARTERS_URL,
   TMDB_API_KEY_STORAGE_KEY,
 } from "./constants";
@@ -1047,6 +1052,9 @@ export async function fetchAndCachePerson(
 
       const storedPersonRecord =
         (await getPersonRecordById(person.id)) ?? mergedPersonRecord;
+      dispatchEntityRefreshRequest(
+        createPersonEntityRefreshRequestFromRecord(storedPersonRecord, reason),
+      );
       return storedPersonRecord;
     },
     {
@@ -1288,6 +1296,9 @@ export async function fetchAndCacheMovieCredits(
         );
       }
       await refreshPopularConnectionPrefetchQueues();
+      dispatchEntityRefreshRequest(
+        createMovieEntityRefreshRequestFromRecord(updatedRecord, reason),
+      );
       return updatedRecord;
     },
     {

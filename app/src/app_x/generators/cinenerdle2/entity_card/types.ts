@@ -18,9 +18,9 @@ type BaseRenderableCinenerdleEntityCard = {
   sources: CardSource[];
   status: CardStatus | null;
   hasCachedTmdbSource: boolean;
-  onExplicitFooterTopRefreshClick?: (() => void) | null;
-  onPopularityClick?: (() => Promise<void> | void) | null;
-  popularityTooltipText?: string | null;
+  onExplicitTmdbRowClick?: (() => void) | null;
+  onTmdbRowClick?: (() => Promise<void> | void) | null;
+  tmdbTooltipText?: string | null;
   isSelected: boolean;
   isLocked?: boolean;
   isAncestorSelected?: boolean;

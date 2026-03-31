@@ -25,7 +25,11 @@ import {
   shouldShowIndexedDbBootstrapLoadingShell,
 } from "../indexed_db_bootstrap_loading_shell";
 import {
+  BookmarksJsonlEditButton,
+  BookmarksJsonlEditorModal,
   IndexedDbBootstrapLoadingIndicator,
+  isBookmarksJsonlDraftChanged,
+  resetBookmarksJsonlDraft,
 } from "../index";
 import { getWindowKeyDownAction } from "../window_keydown";
 
@@ -372,6 +376,103 @@ describe("window keydown behavior", () => {
       },
       isBookmarksJsonlEditorOpen: false,
     })).toBe("toggle-bookmarks");
+  });
+});
+
+describe("Bookmarks JSONL editor", () => {
+  it("renders the bookmarks editor trigger as edit as text without an edited badge", () => {
+    const html = renderToStaticMarkup(
+      <BookmarksJsonlEditButton onClick={() => { }} />,
+    );
+
+    expect(html).toContain("Edit as text");
+    expect(html).toContain("aria-label=\"Edit as text\"");
+    expect(html).not.toContain("Edit JSONL");
+    expect(html).not.toContain("Edited");
+  });
+
+  it("renders the modal with an aria-label and no visible title or helper copy", () => {
+    const html = renderToStaticMarkup(
+      <BookmarksJsonlEditorModal
+        bookmarksJsonlDraft="movie|Heat (1995)"
+        isBookmarksJsonlDraftDirty={false}
+        onApply={() => { }}
+        onChange={() => { }}
+        onClose={() => { }}
+        onReset={() => { }}
+      />,
+    );
+
+    expect(html).toContain("aria-label=\"Edit as text\"");
+    expect(html).not.toContain("Edit bookmarks as JSONL");
+    expect(html).not.toContain("One normalized hash per line.");
+    expect(html).not.toContain("Bookmark JSONL");
+  });
+
+  it("starts with reset and apply disabled when the draft is unchanged", () => {
+    const serializedBookmarksJsonl = "movie|Heat (1995)";
+    const html = renderToStaticMarkup(
+      <BookmarksJsonlEditorModal
+        bookmarksJsonlDraft={serializedBookmarksJsonl}
+        isBookmarksJsonlDraftDirty={isBookmarksJsonlDraftChanged(
+          serializedBookmarksJsonl,
+          serializedBookmarksJsonl,
+        )}
+        onApply={() => { }}
+        onChange={() => { }}
+        onClose={() => { }}
+        onReset={() => { }}
+      />,
+    );
+
+    expect(isBookmarksJsonlDraftChanged(
+      serializedBookmarksJsonl,
+      serializedBookmarksJsonl,
+    )).toBe(false);
+    expect((html.match(/disabled=""/g) ?? [])).toHaveLength(2);
+  });
+
+  it("enables reset and apply after the textarea changes", () => {
+    const serializedBookmarksJsonl = "movie|Heat (1995)";
+    const updatedDraft = "movie|Heat (1995)\nperson|Al Pacino";
+    const html = renderToStaticMarkup(
+      <BookmarksJsonlEditorModal
+        bookmarksJsonlDraft={updatedDraft}
+        isBookmarksJsonlDraftDirty={isBookmarksJsonlDraftChanged(
+          serializedBookmarksJsonl,
+          updatedDraft,
+        )}
+        onApply={() => { }}
+        onChange={() => { }}
+        onClose={() => { }}
+        onReset={() => { }}
+      />,
+    );
+
+    expect(isBookmarksJsonlDraftChanged(serializedBookmarksJsonl, updatedDraft)).toBe(true);
+    expect(html).not.toContain("disabled");
+  });
+
+  it("restores the serialized text on reset and disables the actions again", () => {
+    const serializedBookmarksJsonl = "movie|Heat (1995)";
+    const resetDraft = resetBookmarksJsonlDraft(serializedBookmarksJsonl);
+    const html = renderToStaticMarkup(
+      <BookmarksJsonlEditorModal
+        bookmarksJsonlDraft={resetDraft}
+        isBookmarksJsonlDraftDirty={isBookmarksJsonlDraftChanged(
+          serializedBookmarksJsonl,
+          resetDraft,
+        )}
+        onApply={() => { }}
+        onChange={() => { }}
+        onClose={() => { }}
+        onReset={() => { }}
+      />,
+    );
+
+    expect(resetDraft).toBe(serializedBookmarksJsonl);
+    expect(isBookmarksJsonlDraftChanged(serializedBookmarksJsonl, resetDraft)).toBe(false);
+    expect((html.match(/disabled=""/g) ?? [])).toHaveLength(2);
   });
 });
 

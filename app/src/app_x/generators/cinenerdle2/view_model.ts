@@ -1,7 +1,6 @@
 import { createMovieRootCard, createPersonRootCard } from "./cards";
 import { TMDB_ICON_URL } from "./constants";
 import { getResolvedPersonMovieConnectionKeys } from "./records";
-import { prepareSelectedMovie, prepareSelectedPerson } from "./tmdb";
 import { hasDirectTmdbMovieSource, hasDirectTmdbPersonSource } from "./tmdb_provenance";
 import type { FilmRecord, PersonRecord } from "./types";
 import {
@@ -12,7 +11,6 @@ import {
   normalizeTitle,
 } from "./utils";
 import type { CinenerdleCard, CinenerdleCardViewModel } from "./view_types";
-import { getPersonTmdbIdFromCard } from "./navigation";
 import type { GeneratorTree } from "../../types/generator";
 
 function hasCachedTmdbSource(card: CinenerdleCard) {
@@ -25,10 +23,6 @@ function hasCachedTmdbSource(card: CinenerdleCard) {
   }
 
   return false;
-}
-
-function getMovieTmdbIdFromCard(card: Extract<CinenerdleCard, { kind: "movie" }>): number | null {
-  return getValidTmdbEntityId(card.record?.tmdbId ?? card.record?.id);
 }
 
 export function getSelectedAncestorCards(
@@ -51,13 +45,29 @@ export function cardsMatch(left: CinenerdleCard, right: CinenerdleCard) {
   }
 
   if (left.kind === "movie" && right.kind === "movie") {
+    const leftTmdbId = getValidTmdbEntityId(left.record?.tmdbId ?? left.record?.id);
+    const rightTmdbId = getValidTmdbEntityId(right.record?.tmdbId ?? right.record?.id);
+    if (leftTmdbId !== null && rightTmdbId !== null) {
+      return leftTmdbId === rightTmdbId;
+    }
+
     return (
       normalizeTitle(left.name) === normalizeTitle(right.name) &&
       left.year === right.year
     );
   }
 
-  return normalizeName(left.name) === normalizeName(right.name);
+  if (left.kind === "person" && right.kind === "person") {
+    const leftTmdbId = getValidTmdbEntityId(left.record?.tmdbId ?? left.record?.id);
+    const rightTmdbId = getValidTmdbEntityId(right.record?.tmdbId ?? right.record?.id);
+    if (leftTmdbId !== null && rightTmdbId !== null) {
+      return leftTmdbId === rightTmdbId;
+    }
+
+    return normalizeName(left.name) === normalizeName(right.name);
+  }
+
+  return false;
 }
 
 function getNearestSelectedPersonAncestor(
@@ -123,7 +133,7 @@ function getCardPopularityTimestamp(
   return hasDirectTmdbMovieSource(ancestorRecord) ? ancestorRecord?.fetchTimestamp ?? null : null;
 }
 
-export function getCardPopularityTooltipText(
+export function getCardTmdbRowTooltipText(
   card: Extract<CinenerdleCard, { kind: "movie" | "person" }>,
   ancestorCards: CinenerdleCard[],
 ): string {
@@ -134,35 +144,6 @@ export function getCardPopularityTooltipText(
   return formattedFetchedAt
     ? `TMDb data fetched ${formattedFetchedAt}.\nClick to refetch.`
     : "Not fetched from TMDb yet.\nClick to fetch.";
-}
-
-export function getCardPopularityRefreshHandler(
-  card: Extract<CinenerdleCard, { kind: "movie" | "person" }>,
-): (() => Promise<void>) | null {
-  if (card.kind === "movie") {
-    return async () => {
-      const tmdbId = getMovieTmdbIdFromCard(card);
-      await prepareSelectedMovie(
-        card.name,
-        card.year,
-        tmdbId,
-        {
-          forceRefresh: true,
-        },
-      );
-    };
-  }
-
-  return async () => {
-    const tmdbId = getPersonTmdbIdFromCard(card);
-    await prepareSelectedPerson(
-      card.name,
-      tmdbId,
-      {
-        forceRefresh: true,
-      },
-    );
-  };
 }
 
 function getRenderableSources(card: CinenerdleCard) {

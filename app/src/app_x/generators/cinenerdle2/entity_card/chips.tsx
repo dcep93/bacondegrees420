@@ -8,7 +8,7 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
-import { triggerPopularityChipRefresh } from "../entity_card_helpers";
+import { triggerTmdbRowClick } from "../entity_card_helpers";
 import {
   createHeatChipStyle,
   formatConnectionBadgeTooltipText,
@@ -256,7 +256,7 @@ function InlineTooltipAnchor({
   );
 }
 
-function isPopularityRefreshActivationKey(
+function isTmdbRowActivationKey(
   event: KeyboardEvent<HTMLElement>,
 ): boolean {
   return event.key === "Enter" || event.key === " ";
@@ -273,14 +273,14 @@ function PopularityChip({
 }) {
   const tooltipText = isRefreshing
     ? "Refreshing..."
-    : card.popularityTooltipText ?? card.popularitySource;
+    : card.tmdbTooltipText ?? card.popularitySource;
 
   const chip = renderHeatChip("Popularity", card.popularity, 100);
   if (!chip) {
     return null;
   }
 
-  if (!tooltipText && !card.onPopularityClick) {
+  if (!tooltipText && !card.onTmdbRowClick) {
     return chip;
   }
 
@@ -294,7 +294,7 @@ function PopularityChip({
         onRefresh(event);
       }}
       onKeyDown={(event) => {
-        if (!isPopularityRefreshActivationKey(event)) {
+        if (!isTmdbRowActivationKey(event)) {
           return;
         }
 
@@ -360,11 +360,11 @@ export function FooterChips({
     refreshState.cardKey === card.key;
 
   const handleRefresh = (event: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) => {
-    card.onExplicitFooterTopRefreshClick?.();
+    card.onExplicitTmdbRowClick?.();
 
-    void triggerPopularityChipRefresh(event, {
+    void triggerTmdbRowClick(event, {
       isRefreshing,
-      onPopularityClick: card.onPopularityClick,
+      onTmdbRowClick: card.onTmdbRowClick,
       setIsRefreshing: (nextIsRefreshing) => {
         setRefreshState(
           nextIsRefreshing
@@ -408,9 +408,9 @@ export function FooterChips({
       <div
         className={[
           "cinenerdle-card-footer-top",
-          card.onPopularityClick ? "cinenerdle-card-footer-top-refreshable" : "",
+          card.onTmdbRowClick ? "cinenerdle-card-footer-top-refreshable" : "",
         ].filter(Boolean).join(" ")}
-        onClick={card.onPopularityClick
+        onClick={card.onTmdbRowClick
           ? (event) => {
               handleRefresh(event);
             }

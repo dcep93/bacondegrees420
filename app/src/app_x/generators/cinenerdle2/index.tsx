@@ -9,10 +9,13 @@ import "../../styles/cinenerdle2.css";
 import type { GeneratorNode } from "../../types/generator";
 import type { ConnectionEntity } from "./connection_graph";
 import {
-  refreshTreeForFetchedCard,
+  refreshTreeForFetchedEntity,
   useCinenerdleController,
-  type FetchedCardRefreshRequest,
 } from "./controller";
+import {
+  CINENERDLE_ENTITY_REFRESH_REQUESTED_EVENT,
+  type EntityRefreshRequest,
+} from "./entity_refresh";
 import {
   normalizeHashValue,
 } from "./hash";
@@ -186,7 +189,8 @@ const Cinenerdle2 = memo(function Cinenerdle2({
     Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }> | null
   >(null);
   const [recordsRefreshVersion, setRecordsRefreshVersion] = useState(0);
-  const [cardDataRefreshRequest, setCardDataRefreshRequest] = useState<FetchedCardRefreshRequest | null>(null);
+  const [activeEntityRefreshRequest, setActiveEntityRefreshRequest] = useState<EntityRefreshRequest | null>(null);
+  const pendingEntityRefreshRequestsRef = useRef<EntityRefreshRequest[]>([]);
 
   useLayoutEffect(() => {
     hashRef.current = normalizedHash;
@@ -207,6 +211,46 @@ const Cinenerdle2 = memo(function Cinenerdle2({
     };
   }, []);
 
+  useEffect(() => {
+    function advanceEntityRefreshQueue() {
+      setActiveEntityRefreshRequest((currentRequest) => {
+        if (currentRequest) {
+          return currentRequest;
+        }
+
+        return pendingEntityRefreshRequestsRef.current.shift() ?? null;
+      });
+    }
+
+    function handleEntityRefreshRequested(event: Event) {
+      const refreshEvent = event as CustomEvent<EntityRefreshRequest>;
+      const request = refreshEvent.detail;
+      if (!request) {
+        return;
+      }
+
+      pendingEntityRefreshRequestsRef.current = [
+        ...pendingEntityRefreshRequestsRef.current.filter((pendingRequest) =>
+          pendingRequest.requestKey !== request.requestKey,
+        ),
+        request,
+      ];
+      advanceEntityRefreshQueue();
+    }
+
+    window.addEventListener(
+      CINENERDLE_ENTITY_REFRESH_REQUESTED_EVENT,
+      handleEntityRefreshRequested as EventListener,
+    );
+
+    return () => {
+      window.removeEventListener(
+        CINENERDLE_ENTITY_REFRESH_REQUESTED_EVENT,
+        handleEntityRefreshRequested as EventListener,
+      );
+    };
+  }, []);
+
   const readHash = useCallback(() => hashRef.current, [hashRef]);
   const writeHash = useCallback(
     (nextHash: string, mode: "selection" | "navigation" = "navigation") => {
@@ -224,21 +268,26 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   );
 
   const controller = useCinenerdleController({
-    onCardDataRefreshRequested: setCardDataRefreshRequest,
     recordsRefreshVersion,
     readHash,
     writeHash,
   });
   const treeRefreshRequest = useMemo<AbstractGeneratorTreeRefreshRequest<CinenerdleCard> | null>(() => {
-    if (!cardDataRefreshRequest) {
+    if (!activeEntityRefreshRequest) {
       return null;
     }
 
     return {
-      requestKey: cardDataRefreshRequest.requestKey,
-      run: (tree) => refreshTreeForFetchedCard(tree, cardDataRefreshRequest),
+      requestKey: activeEntityRefreshRequest.requestKey,
+      run: async (tree) => {
+        try {
+          return await refreshTreeForFetchedEntity(tree, activeEntityRefreshRequest);
+        } finally {
+          setActiveEntityRefreshRequest(pendingEntityRefreshRequestsRef.current.shift() ?? null);
+        }
+      },
     };
-  }, [cardDataRefreshRequest]);
+  }, [activeEntityRefreshRequest]);
   const focusRequest = useMemo<AbstractGeneratorFocusRequest<CinenerdleCard> | null>(() => {
     if (!highlightedConnectionEntity) {
       return null;
