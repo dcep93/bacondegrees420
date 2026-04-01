@@ -26,6 +26,7 @@ import type {
   FilmRecord,
   PersonRecord,
   SearchableConnectionEntityRecord,
+  TmdbGenre,
   TmdbMovieCredit,
   TmdbMovieCreditsResponse,
   TmdbMovieSearchResult,
@@ -60,7 +61,7 @@ const REQUIRED_OBJECT_STORE_NAMES = [
 export const CINENERDLE_RECORDS_UPDATED_EVENT = "cinenerdle:records-updated";
 export const CINENERDLE_INDEXED_DB_FETCH_COUNT_UPDATED_EVENT =
   "cinenerdle:indexed-db-fetch-count-updated";
-const INDEXED_DB_SNAPSHOT_VERSION = 9 as const;
+const INDEXED_DB_SNAPSHOT_VERSION = 10 as const;
 const INDEXED_DB_FETCH_COUNT_KEY = "tmdbFetchCount";
 const INDEXED_DB_BOOKMARK_HASHES_KEY = "bookmarkHashes";
 
@@ -258,7 +259,7 @@ function createStoredPersonRecord(
   return createPersonSnapshotFromPersonRecord(personRecord);
 }
 
-function createStoredFilmRecord(
+export function createStoredFilmRecord(
   filmRecord: FilmRecord,
 ): StoredFilmRecord {
   return createSnapshotFilmRecord(
@@ -1839,6 +1840,7 @@ export type IndexedDbSnapshotFilm = {
   releaseDate: string;
   fromTmdb: {
     fetchTimestamp: string;
+    genres: TmdbGenre[];
   } | null;
   personConnectionKeys: string[];
   people: IndexedDbSnapshotConnection[];
@@ -2142,6 +2144,22 @@ function getRequiredSnapshotFetchTimestamp(
   return normalizedFetchTimestamp;
 }
 
+function normalizeSnapshotTmdbGenres(
+  genres: TmdbGenre[] | null | undefined,
+): TmdbGenre[] {
+  return (genres ?? []).flatMap((genre) => {
+    const normalizedName = genre.name?.trim();
+    if (!Number.isFinite(genre.id) || !normalizedName) {
+      return [];
+    }
+
+    return [{
+      id: genre.id,
+      name: normalizedName,
+    }];
+  });
+}
+
 function createPersonSnapshotFromPersonRecord(
   personRecord: PersonRecord,
 ): IndexedDbSnapshotPerson {
@@ -2232,6 +2250,7 @@ function createSnapshotFilmRecord(
             filmRecord.fetchTimestamp,
             `film "${filmRecord.title}"`,
           ),
+          genres: normalizeSnapshotTmdbGenres(filmRecord.rawTmdbMovie.genres),
         }
       : null,
     personConnectionKeys: Array.from(
@@ -2284,6 +2303,7 @@ function createTmdbMovieFromSnapshot(
     popularity: filmSnapshot.popularity,
     vote_average: filmSnapshot.voteAverage ?? undefined,
     vote_count: filmSnapshot.voteCount ?? undefined,
+    genres: filmSnapshot.fromTmdb?.genres,
   };
 }
 

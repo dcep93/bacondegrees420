@@ -295,7 +295,7 @@ describe("buildChildRowForCard", () => {
 });
 
 describe("buildTreeFromHash", () => {
-  it("stops on unresolved continuation nodes instead of reconstructing disconnected branches", async () => {
+  it("keeps unresolved continuation nodes visible as standalone selected rows", async () => {
     const heatRecord = makeFilmRecord({
       id: 321,
       tmdbId: 321,
@@ -333,7 +333,7 @@ describe("buildTreeFromHash", () => {
 
     const tree = await buildTreeFromHash("#cinenerdle|Heat+(1995)|Someone+Else");
 
-    expect(tree).toHaveLength(3);
+    expect(tree).toHaveLength(4);
     expect(tree[1]?.find((node) => node.selected)?.data).toEqual(
       expect.objectContaining({
         kind: "movie",
@@ -342,6 +342,13 @@ describe("buildTreeFromHash", () => {
     );
     expect(tree[2]?.map((node) => node.data.name)).toEqual(["Al Pacino"]);
     expect(tree[2]?.some((node) => node.selected)).toBe(false);
+    expect(tree[3]?.find((node) => node.selected)?.data).toEqual(
+      expect.objectContaining({
+        kind: "person",
+        name: "Someone Else",
+        subtitle: "Crew",
+      }),
+    );
   });
 });
 

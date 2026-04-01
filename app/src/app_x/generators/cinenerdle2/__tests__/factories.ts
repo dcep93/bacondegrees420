@@ -2,6 +2,7 @@ import type {
   CinenerdleDailyStarter,
   FilmRecord,
   PersonRecord,
+  TmdbGenre,
   TmdbMovieCredit,
   TmdbMovieSearchResult,
   TmdbPersonCredit,
@@ -51,6 +52,7 @@ export function makeTmdbMovieSearchResult(
     popularity: pickOverride(overrides, "popularity", 88),
     vote_average: pickOverride(overrides, "vote_average", 8.2),
     vote_count: pickOverride(overrides, "vote_count", 9000),
+    genres: pickOverride(overrides, "genres", undefined as TmdbGenre[] | undefined),
   };
 }
 

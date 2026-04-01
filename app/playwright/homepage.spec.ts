@@ -13,6 +13,32 @@ const TRUE_GRIT_DETAILS_URL =
   "https://api.themoviedb.org/3/movie/44214";
 const TRUE_GRIT_CREDITS_URL =
   "https://api.themoviedb.org/3/movie/44214/credits";
+const MATTHEW_SAHARA_PENELOPE_HASH =
+  "/#person|Matthew+McConaughey|Sahara+(2005)|Pen%C3%A9lope+Cruz|Sahara+(2005)";
+const MIXED_DEEP_LINK_HASH =
+  "/#film|Fool's+Gold+(2008)|Matthew+McConaughey|A+Time+to+Kill+(1996)|Sandra+Bullock|A+Time+to+Kill+(1996)|Samuel+L.+Jackson|Snakes+on+a+Plane+(2006)|Samuel+L.+Jackson";
+const MATTHEW_SEARCH_URL =
+  "https://api.themoviedb.org/3/search/person?query=Matthew McConaughey";
+const MATTHEW_DETAILS_URL =
+  "https://api.themoviedb.org/3/person/10297";
+const MATTHEW_MOVIE_CREDITS_URL =
+  "https://api.themoviedb.org/3/person/10297/movie_credits";
+const PENELOPE_SEARCH_URL =
+  "https://api.themoviedb.org/3/search/person?query=Penélope Cruz";
+const PENELOPE_DETAILS_URL =
+  "https://api.themoviedb.org/3/person/6941";
+const PENELOPE_MOVIE_CREDITS_URL =
+  "https://api.themoviedb.org/3/person/6941/movie_credits";
+const SAHARA_SEARCH_URL =
+  "https://api.themoviedb.org/3/search/movie?query=Sahara";
+const SAHARA_DETAILS_URL =
+  "https://api.themoviedb.org/3/movie/7364";
+const SAHARA_CREDITS_URL =
+  "https://api.themoviedb.org/3/movie/7364/credits";
+
+type ClipboardWindow = Window & {
+  __copiedTexts?: string[];
+};
 
 type RouteRequestRecorder = {
   record: (url: string) => void;
@@ -119,6 +145,34 @@ function createJsonResponse(body: unknown) {
 function delay(ms: number) {
   return new Promise<void>((resolve) => {
     setTimeout(resolve, ms);
+  });
+}
+
+async function installClipboardCapture(page: Page) {
+  await page.addInitScript(() => {
+    const copiedTexts: string[] = [];
+    Object.defineProperty(window, "__copiedTexts", {
+      configurable: true,
+      value: copiedTexts,
+    });
+
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText(text: string) {
+          copiedTexts.push(text);
+          return Promise.resolve();
+        },
+      },
+    });
+  });
+}
+
+async function getLastCopiedJson(page: Page): Promise<unknown> {
+  return page.evaluate(() => {
+    const copiedTexts = (window as ClipboardWindow).__copiedTexts ?? [];
+    const copiedText = copiedTexts[copiedTexts.length - 1] ?? "[]";
+    return JSON.parse(copiedText);
   });
 }
 
@@ -321,7 +375,7 @@ test("bare movie-title submits stay unresolved after dismissing suggestions", as
   await page.route("**/dump.json", async (route) => {
     await route.fulfill(createJsonResponse({
       format: "cinenerdle-indexed-db-snapshot",
-      version: 9,
+      version: 10,
       people: [
         {
           tmdbId: 60,
@@ -346,6 +400,7 @@ test("bare movie-title submits stay unresolved after dismissing suggestions", as
           releaseDate: "1995-12-15",
           fromTmdb: {
             fetchTimestamp: "2026-03-28T12:00:00.000Z",
+            genres: [],
           },
           personConnectionKeys: ["al pacino"],
           people: [],
@@ -384,7 +439,7 @@ test("bare movie-title suggestions still work with Enter and click selection", a
   await page.route("**/dump.json", async (route) => {
     await route.fulfill(createJsonResponse({
       format: "cinenerdle-indexed-db-snapshot",
-      version: 9,
+      version: 10,
       people: [
         {
           tmdbId: 60,
@@ -409,6 +464,7 @@ test("bare movie-title suggestions still work with Enter and click selection", a
           releaseDate: "1995-12-15",
           fromTmdb: {
             fetchTimestamp: "2026-03-28T12:00:00.000Z",
+            genres: [],
           },
           personConnectionKeys: ["al pacino"],
           people: [],
@@ -770,7 +826,7 @@ test("Big Lebowski deep link stays sensible when there is nothing to prefetch", 
     });
 });
 
-test("Big Lebowski deep link stays sensible when prefetch hydrates an unconnected person", async ({ page }) => {
+test("Big Lebowski deep link renders movie-credit children when playwright prefetch is skipped", async ({ page }) => {
   const requests = createRouteRequestRecorder();
 
   await primeCinenerdlePage(page);
@@ -827,12 +883,12 @@ test("Big Lebowski deep link stays sensible when prefetch hydrates an unconnecte
     .toEqual({
       hasSearch: true,
       hasMovieCredits: true,
-      hasPersonDetails: true,
-      hasPersonMovieCredits: true,
+      hasPersonDetails: false,
+      hasPersonMovieCredits: false,
     });
 });
 
-test("Big Lebowski deep link updates a connected prefetched person with a connection badge", async ({ page }) => {
+test("Big Lebowski deep link keeps person badges unresolved when playwright prefetch is skipped", async ({ page }) => {
   const requests = createRouteRequestRecorder();
 
   await primeCinenerdlePage(page);
@@ -887,7 +943,6 @@ test("Big Lebowski deep link updates a connected prefetched person with a connec
   const jeffBridgesCard = getCinenerdleCardByTitle(page, "Jeff Bridges");
   await expect(jeffBridgesCard).toBeVisible();
   await expect(jeffBridgesCard.locator(".cinenerdle-card-count")).toHaveCount(0);
-  await expect(jeffBridgesCard.locator(".cinenerdle-card-count")).toBeVisible();
 
   await expect
     .poll(() => {
@@ -906,9 +961,9 @@ test("Big Lebowski deep link updates a connected prefetched person with a connec
     .toEqual({
       hasSearch: true,
       hasMovieCredits: true,
-      hasPersonDetails: true,
-      hasPersonMovieCredits: true,
-      hasFollowOnMoviePrefetch: true,
+      hasPersonDetails: false,
+      hasPersonMovieCredits: false,
+      hasFollowOnMoviePrefetch: false,
     });
 });
 
@@ -987,6 +1042,625 @@ test("clicking the connection badge side of a footer-top row refetches TMDb data
       personDetailsCount: 2,
       personMovieCreditsCount: 2,
     });
+});
+
+test("deep links render full hash paths, hydrate unique entities once, and revisit from IndexedDB without refetching", async ({
+  page,
+}) => {
+  const firstPhaseRequests = createRouteRequestRecorder();
+  const context = page.context();
+
+  await installClipboardCapture(page);
+  await primeCinenerdlePage(page);
+
+  await page.route("**/dump.json", async (route) => {
+    await route.fulfill(createJsonResponse({
+      format: "cinenerdle-indexed-db-snapshot",
+      version: 10,
+      people: [],
+      films: [],
+    }));
+  });
+
+  await page.route("https://api.themoviedb.org/**", async (route) => {
+    firstPhaseRequests.record(route.request().url());
+    const url = new URL(route.request().url());
+
+    await delay(120);
+
+    if (url.pathname === "/3/search/person") {
+      const query = url.searchParams.get("query");
+      if (query === "Matthew McConaughey") {
+        await route.fulfill(createJsonResponse({
+          results: [{
+            id: 10297,
+            name: "Matthew McConaughey",
+            popularity: 18.4,
+            profile_path: "/matthew.jpg",
+          }],
+        }));
+        return;
+      }
+
+      if (query === "Penélope Cruz") {
+        await route.fulfill(createJsonResponse({
+          results: [{
+            id: 6941,
+            name: "Penélope Cruz",
+            popularity: 14.7,
+            profile_path: "/penelope.jpg",
+          }],
+        }));
+        return;
+      }
+
+      throw new Error(`Unexpected person search query: ${query}`);
+    }
+
+    if (url.pathname === "/3/search/movie") {
+      const query = url.searchParams.get("query");
+      if (query !== "Sahara") {
+        throw new Error(`Unexpected movie search query: ${query}`);
+      }
+
+      await route.fulfill(createJsonResponse({
+        results: [{
+          id: 7364,
+          title: "Sahara",
+          original_title: "Sahara",
+          poster_path: "/sahara.jpg",
+          release_date: "2005-04-08",
+          popularity: 21.1,
+          vote_average: 5.9,
+          vote_count: 1534,
+        }],
+      }));
+      return;
+    }
+
+    if (url.pathname === "/3/person/10297") {
+      await route.fulfill(createJsonResponse({
+        id: 10297,
+        name: "Matthew McConaughey",
+        popularity: 18.4,
+        profile_path: "/matthew.jpg",
+      }));
+      return;
+    }
+
+    if (url.pathname === "/3/person/10297/movie_credits") {
+      await route.fulfill(createJsonResponse({
+        cast: [{
+          id: 7364,
+          title: "Sahara",
+          original_title: "Sahara",
+          poster_path: "/sahara.jpg",
+          release_date: "2005-04-08",
+          popularity: 21.1,
+          vote_average: 5.9,
+          vote_count: 1534,
+          character: "Dirk Pitt",
+        }],
+        crew: [],
+      }));
+      return;
+    }
+
+    if (url.pathname === "/3/person/6941") {
+      await route.fulfill(createJsonResponse({
+        id: 6941,
+        name: "Penélope Cruz",
+        popularity: 14.7,
+        profile_path: "/penelope.jpg",
+      }));
+      return;
+    }
+
+    if (url.pathname === "/3/person/6941/movie_credits") {
+      await route.fulfill(createJsonResponse({
+        cast: [{
+          id: 7364,
+          title: "Sahara",
+          original_title: "Sahara",
+          poster_path: "/sahara.jpg",
+          release_date: "2005-04-08",
+          popularity: 21.1,
+          vote_average: 5.9,
+          vote_count: 1534,
+          character: "Eva Rojas",
+        }],
+        crew: [],
+      }));
+      return;
+    }
+
+    if (url.pathname === "/3/movie/7364") {
+      await route.fulfill(createJsonResponse({
+        id: 7364,
+        title: "Sahara",
+        original_title: "Sahara",
+        poster_path: "/sahara.jpg",
+        release_date: "2005-04-08",
+        popularity: 21.1,
+        vote_average: 5.9,
+        vote_count: 1534,
+      }));
+      return;
+    }
+
+    if (url.pathname === "/3/movie/7364/credits") {
+      await route.fulfill(createJsonResponse({
+        cast: [
+          {
+            id: 10297,
+            name: "Matthew McConaughey",
+            popularity: 18.4,
+            profile_path: "/matthew.jpg",
+            character: "Dirk Pitt",
+            known_for_department: "Acting",
+            order: 0,
+          },
+          {
+            id: 6941,
+            name: "Penélope Cruz",
+            popularity: 14.7,
+            profile_path: "/penelope.jpg",
+            character: "Eva Rojas",
+            known_for_department: "Acting",
+            order: 1,
+          },
+        ],
+        crew: [],
+      }));
+      return;
+    }
+
+    throw new Error(`Unexpected TMDb request: ${url.pathname}`);
+  });
+
+  await page.goto(MATTHEW_SAHARA_PENELOPE_HASH);
+
+  await expect(getGenerationCardByTitle(page, 0, "Matthew McConaughey")).toBeVisible();
+  await expect(getGenerationCardByTitle(page, 1, "Sahara")).toBeVisible();
+  await expect(getGenerationCardByTitle(page, 2, "Penélope Cruz")).toBeVisible();
+  await expect(getGenerationCardByTitle(page, 3, "Sahara")).toBeVisible();
+  await expect(page.locator(".cinenerdle-card-detail", { hasText: "Not cached yet" })).toHaveCount(2);
+  await expect(page.locator(".cinenerdle-card-subtitle", { hasText: "Crew" })).toHaveCount(2);
+
+  await expect
+    .poll(() => ({
+      total: getTmdbRequests(firstPhaseRequests).length,
+      matthewSearchCount: countRecordedRequests(firstPhaseRequests, MATTHEW_SEARCH_URL),
+      matthewDetailsCount: countRecordedRequests(firstPhaseRequests, MATTHEW_DETAILS_URL),
+      matthewMovieCreditsCount: countRecordedRequests(firstPhaseRequests, MATTHEW_MOVIE_CREDITS_URL),
+      penelopeSearchCount: countRecordedRequests(firstPhaseRequests, PENELOPE_SEARCH_URL),
+      penelopeDetailsCount: countRecordedRequests(firstPhaseRequests, PENELOPE_DETAILS_URL),
+      penelopeMovieCreditsCount: countRecordedRequests(firstPhaseRequests, PENELOPE_MOVIE_CREDITS_URL),
+      saharaSearchCount: countRecordedRequests(firstPhaseRequests, SAHARA_SEARCH_URL),
+      saharaDetailsCount: countRecordedRequests(firstPhaseRequests, SAHARA_DETAILS_URL),
+      saharaCreditsCount: countRecordedRequests(firstPhaseRequests, SAHARA_CREDITS_URL),
+    }))
+    .toEqual({
+      total: 9,
+      matthewSearchCount: 1,
+      matthewDetailsCount: 1,
+      matthewMovieCreditsCount: 1,
+      penelopeSearchCount: 1,
+      penelopeDetailsCount: 1,
+      penelopeMovieCreditsCount: 1,
+      saharaSearchCount: 1,
+      saharaDetailsCount: 1,
+      saharaCreditsCount: 1,
+    });
+
+  await page.locator(".bacon-title").click();
+
+  await expect
+    .poll(async () => {
+      const copiedEntries = await getLastCopiedJson(page);
+      if (!Array.isArray(copiedEntries)) {
+        return -1;
+      }
+
+      return copiedEntries.filter((entry) =>
+        typeof entry === "object" &&
+        entry !== null &&
+        "event" in entry &&
+        typeof entry.event === "string" &&
+        entry.event.startsWith("prefetch skipped in playwright for ")
+      ).length;
+    })
+    .toBe(3);
+
+  await page.close();
+
+  const mixedRequests = createRouteRequestRecorder();
+  let activeMixedRequests = mixedRequests;
+  const page2 = await context.newPage();
+
+  await primeCinenerdlePage(page2);
+
+  await page2.route("**/dump.json", async (route) => {
+    await route.fulfill(createJsonResponse({
+      format: "cinenerdle-indexed-db-snapshot",
+      version: 10,
+      people: [
+        {
+          tmdbId: 10297,
+          name: "Matthew McConaughey",
+          movieConnectionKeys: ["contact (1997)"],
+          popularity: 18.4,
+          fromTmdb: {
+            fetchTimestamp: "2026-03-28T12:00:00.000Z",
+            profilePath: "/matthew.jpg",
+          },
+        },
+      ],
+      films: [
+        {
+          tmdbId: 8619,
+          title: "Fool's Gold",
+          year: "2008",
+          posterPath: "/fools-gold.jpg",
+          popularity: 14.1,
+          voteAverage: 5.7,
+          voteCount: 987,
+          releaseDate: "2008-02-08",
+          fromTmdb: null,
+          personConnectionKeys: [],
+          people: [],
+        },
+        {
+          tmdbId: 3133,
+          title: "A Time to Kill",
+          year: "1996",
+          posterPath: "/a-time-to-kill.jpg",
+          popularity: 17.8,
+          voteAverage: 7.4,
+          voteCount: 1644,
+          releaseDate: "1996-07-24",
+          fromTmdb: null,
+          personConnectionKeys: ["sandra bullock", "kevin spacey"],
+          people: [],
+        },
+        {
+          tmdbId: 686,
+          title: "Contact",
+          year: "1997",
+          posterPath: "/contact.jpg",
+          popularity: 18.9,
+          voteAverage: 7.4,
+          voteCount: 4661,
+          releaseDate: "1997-07-11",
+          fromTmdb: null,
+          personConnectionKeys: ["matthew mcconaughey"],
+          people: [
+            {
+              personTmdbId: 10297,
+              roleType: "cast",
+              role: "Palmer Joss",
+              order: 0,
+              profilePath: "/matthew.jpg",
+              fetchTimestamp: "2026-03-28T12:00:00.000Z",
+            },
+          ],
+        },
+      ],
+    }));
+  });
+
+  await page2.route("https://api.themoviedb.org/**", async (route) => {
+    activeMixedRequests.record(route.request().url());
+    const url = new URL(route.request().url());
+
+    await delay(120);
+
+    if (url.pathname === "/3/search/person") {
+      const query = url.searchParams.get("query");
+      if (query === "Sandra Bullock") {
+        await route.fulfill(createJsonResponse({
+          results: [{
+            id: 18277,
+            name: "Sandra Bullock",
+            popularity: 16.2,
+            profile_path: "/sandra.jpg",
+          }],
+        }));
+        return;
+      }
+
+      if (query === "Samuel L. Jackson") {
+        await route.fulfill(createJsonResponse({
+          results: [{
+            id: 2231,
+            name: "Samuel L. Jackson",
+            popularity: 20.1,
+            profile_path: "/samuel.jpg",
+          }],
+        }));
+        return;
+      }
+
+      throw new Error(`Unexpected mixed-scenario person search query: ${query}`);
+    }
+
+    if (url.pathname === "/3/search/movie") {
+      const query = url.searchParams.get("query");
+      if (query !== "Snakes on a Plane") {
+        throw new Error(`Unexpected mixed-scenario movie search query: ${query}`);
+      }
+
+      await route.fulfill(createJsonResponse({
+        results: [{
+          id: 326,
+          title: "Snakes on a Plane",
+          original_title: "Snakes on a Plane",
+          poster_path: "/snakes-on-a-plane.jpg",
+          release_date: "2006-08-17",
+          popularity: 16.6,
+          vote_average: 5.5,
+          vote_count: 1802,
+        }],
+      }));
+      return;
+    }
+
+    if (url.pathname === "/3/movie/8619") {
+      await route.fulfill(createJsonResponse({
+        id: 8619,
+        title: "Fool's Gold",
+        original_title: "Fool's Gold",
+        poster_path: "/fools-gold.jpg",
+        release_date: "2008-02-08",
+        popularity: 14.1,
+        vote_average: 5.7,
+        vote_count: 987,
+      }));
+      return;
+    }
+
+    if (url.pathname === "/3/movie/8619/credits") {
+      await route.fulfill(createJsonResponse({
+        cast: [{
+          id: 10297,
+          name: "Matthew McConaughey",
+          popularity: 18.4,
+          profile_path: "/matthew.jpg",
+          character: "Ben Finnegan",
+          known_for_department: "Acting",
+          order: 0,
+        }],
+        crew: [],
+      }));
+      return;
+    }
+
+    if (url.pathname === "/3/movie/3133") {
+      await route.fulfill(createJsonResponse({
+        id: 3133,
+        title: "A Time to Kill",
+        original_title: "A Time to Kill",
+        poster_path: "/a-time-to-kill.jpg",
+        release_date: "1996-07-24",
+        popularity: 17.8,
+        vote_average: 7.4,
+        vote_count: 1644,
+      }));
+      return;
+    }
+
+    if (url.pathname === "/3/movie/3133/credits") {
+      await route.fulfill(createJsonResponse({
+        cast: [
+          {
+            id: 18277,
+            name: "Sandra Bullock",
+            popularity: 16.2,
+            profile_path: "/sandra.jpg",
+            character: "Ellen Roark",
+            known_for_department: "Acting",
+            order: 0,
+          },
+          {
+            id: 2231,
+            name: "Samuel L. Jackson",
+            popularity: 20.1,
+            profile_path: "/samuel.jpg",
+            character: "Carl Lee Hailey",
+            known_for_department: "Acting",
+            order: 1,
+          },
+        ],
+        crew: [],
+      }));
+      return;
+    }
+
+    if (url.pathname === "/3/person/18277") {
+      await route.fulfill(createJsonResponse({
+        id: 18277,
+        name: "Sandra Bullock",
+        popularity: 16.2,
+        profile_path: "/sandra.jpg",
+      }));
+      return;
+    }
+
+    if (url.pathname === "/3/person/18277/movie_credits") {
+      await route.fulfill(createJsonResponse({
+        cast: [{
+          id: 3133,
+          title: "A Time to Kill",
+          original_title: "A Time to Kill",
+          poster_path: "/a-time-to-kill.jpg",
+          release_date: "1996-07-24",
+          popularity: 17.8,
+          vote_average: 7.4,
+          vote_count: 1644,
+          character: "Ellen Roark",
+        }],
+        crew: [],
+      }));
+      return;
+    }
+
+    if (url.pathname === "/3/person/2231") {
+      await route.fulfill(createJsonResponse({
+        id: 2231,
+        name: "Samuel L. Jackson",
+        popularity: 20.1,
+        profile_path: "/samuel.jpg",
+      }));
+      return;
+    }
+
+    if (url.pathname === "/3/person/2231/movie_credits") {
+      await route.fulfill(createJsonResponse({
+        cast: [
+          {
+            id: 3133,
+            title: "A Time to Kill",
+            original_title: "A Time to Kill",
+            poster_path: "/a-time-to-kill.jpg",
+            release_date: "1996-07-24",
+            popularity: 17.8,
+            vote_average: 7.4,
+            vote_count: 1644,
+            character: "Carl Lee Hailey",
+          },
+          {
+            id: 326,
+            title: "Snakes on a Plane",
+            original_title: "Snakes on a Plane",
+            poster_path: "/snakes-on-a-plane.jpg",
+            release_date: "2006-08-17",
+            popularity: 16.6,
+            vote_average: 5.5,
+            vote_count: 1802,
+            character: "Neville Flynn",
+          },
+        ],
+        crew: [],
+      }));
+      return;
+    }
+
+    if (url.pathname === "/3/movie/326") {
+      await route.fulfill(createJsonResponse({
+        id: 326,
+        title: "Snakes on a Plane",
+        original_title: "Snakes on a Plane",
+        poster_path: "/snakes-on-a-plane.jpg",
+        release_date: "2006-08-17",
+        popularity: 16.6,
+        vote_average: 5.5,
+        vote_count: 1802,
+      }));
+      return;
+    }
+
+    if (url.pathname === "/3/movie/326/credits") {
+      await route.fulfill(createJsonResponse({
+        cast: [{
+          id: 2231,
+          name: "Samuel L. Jackson",
+          popularity: 20.1,
+          profile_path: "/samuel.jpg",
+          character: "Neville Flynn",
+          known_for_department: "Acting",
+          order: 0,
+        }],
+        crew: [],
+      }));
+      return;
+    }
+
+    throw new Error(`Unexpected mixed-scenario TMDb request: ${url.pathname}`);
+  });
+
+  await page2.goto(MIXED_DEEP_LINK_HASH);
+
+  await expect(getGenerationCardByTitle(page2, 0, "Fool's Gold")).toBeVisible();
+  await expect(getGenerationCardByTitle(page2, 0, "Fool's Gold").locator(".cinenerdle-card-count")).toHaveCount(0);
+  await expect(getGenerationCardByTitle(page2, 1, "Matthew McConaughey")).toBeVisible();
+  await expect(getGenerationCardByTitle(page2, 1, "Matthew McConaughey").locator(".cinenerdle-card-count")).toHaveCount(1);
+  await expect(getGenerationCardByTitle(page2, 2, "A Time to Kill")).toBeVisible();
+  await expect(getGenerationCardByTitle(page2, 2, "A Time to Kill").locator(".cinenerdle-card-count")).toHaveCount(0);
+  await expect(getGenerationRow(page2, 3).locator(".cinenerdle-card")).toHaveCount(2);
+  await expect(getGenerationCardByTitle(page2, 3, "Sandra Bullock")).toBeVisible();
+  await expect(getGenerationCardByTitle(page2, 4, "A Time to Kill")).toBeVisible();
+  await expect(getGenerationCardByTitle(page2, 5, "Samuel L. Jackson")).toBeVisible();
+  await expect(getGenerationCardByTitle(page2, 6, "Snakes on a Plane")).toBeVisible();
+  await expect(getGenerationCardByTitle(page2, 7, "Samuel L. Jackson")).toBeVisible();
+  await expect(
+    getGenerationCardByTitle(page2, 6, "Snakes on a Plane").locator(".cinenerdle-card-detail", {
+      hasText: "Not cached yet",
+    }),
+  ).toHaveCount(1);
+
+  await expect
+    .poll(() => ({
+      foolsGoldDetailsCount: countRecordedRequests(
+        activeMixedRequests,
+        "https://api.themoviedb.org/3/movie/8619",
+      ),
+      foolsGoldCreditsCount: countRecordedRequests(
+        activeMixedRequests,
+        "https://api.themoviedb.org/3/movie/8619/credits",
+      ),
+      aTimeToKillDetailsCount: countRecordedRequests(
+        activeMixedRequests,
+        "https://api.themoviedb.org/3/movie/3133",
+      ),
+      aTimeToKillCreditsCount: countRecordedRequests(
+        activeMixedRequests,
+        "https://api.themoviedb.org/3/movie/3133/credits",
+      ),
+      sandraSearchCount: countRecordedRequests(
+        activeMixedRequests,
+        "https://api.themoviedb.org/3/search/person?query=Sandra Bullock",
+      ),
+      samuelSearchCount: countRecordedRequests(
+        activeMixedRequests,
+        "https://api.themoviedb.org/3/search/person?query=Samuel L. Jackson",
+      ),
+      snakesSearchCount: countRecordedRequests(
+        activeMixedRequests,
+        "https://api.themoviedb.org/3/search/movie?query=Snakes on a Plane",
+      ),
+    }))
+    .toEqual({
+      foolsGoldDetailsCount: 1,
+      foolsGoldCreditsCount: 1,
+      aTimeToKillDetailsCount: 1,
+      aTimeToKillCreditsCount: 1,
+      sandraSearchCount: 1,
+      samuelSearchCount: 1,
+      snakesSearchCount: 1,
+    });
+
+  await expect
+    .poll(async () => {
+      const sandraBadgeCount = await getCinenerdleCardByTitle(page2, "Sandra Bullock").locator(".cinenerdle-card-count").count();
+      const samuelBadgeCount = await getCinenerdleCardByTitle(page2, "Samuel L. Jackson").locator(".cinenerdle-card-count").count();
+      const snakesBadgeCount = await getCinenerdleCardByTitle(page2, "Snakes on a Plane").locator(".cinenerdle-card-count").count();
+      const uncachedDetailCount = await page2.locator(".cinenerdle-card-detail", { hasText: "Not cached yet" }).count();
+
+      return (
+        sandraBadgeCount >= 1 &&
+        samuelBadgeCount >= 2 &&
+        snakesBadgeCount >= 1 &&
+        uncachedDetailCount === 0
+      );
+    })
+    .toBe(true);
+
+  const revisitRequests = createRouteRequestRecorder();
+  activeMixedRequests = revisitRequests;
+
+  await page2.goto(MIXED_DEEP_LINK_HASH);
+  await expect(getCinenerdleCardByTitle(page2, "Snakes on a Plane").first()).toBeVisible();
+  await expect.poll(() => getTmdbRequests(revisitRequests).length).toBe(0);
 });
 
 test("gen 2 refresh keeps horizontal scroll stable and redraws gen 3 for the newly selected person", async ({
@@ -1255,7 +1929,7 @@ test("gen 2 refresh keeps horizontal scroll stable and redraws gen 3 for the new
   await page.route("**/dump.json", async (route) => {
     await route.fulfill(createJsonResponse({
       format: "cinenerdle-indexed-db-snapshot",
-      version: 9,
+      version: 10,
       people: [],
       films: [],
     }));
@@ -1451,7 +2125,7 @@ test("deep descendant selection renders cached DB children before the delayed TM
   await page.route("**/dump.json", async (route) => {
     await route.fulfill(createJsonResponse({
       format: "cinenerdle-indexed-db-snapshot",
-      version: 9,
+      version: 10,
       people: [
         {
           tmdbId: 1001,
@@ -1491,6 +2165,7 @@ test("deep descendant selection renders cached DB children before the delayed TM
           releaseDate: "2001-06-15",
           fromTmdb: {
             fetchTimestamp: "2026-03-28T12:00:00.000Z",
+            genres: [],
           },
           personConnectionKeys: ["alpha one", "india nine"],
           people: [],
@@ -1506,6 +2181,7 @@ test("deep descendant selection renders cached DB children before the delayed TM
           releaseDate: "2003-02-14",
           fromTmdb: {
             fetchTimestamp: "2026-03-28T12:00:00.000Z",
+            genres: [],
           },
           personConnectionKeys: ["alpha one"],
           people: [],
@@ -1521,6 +2197,7 @@ test("deep descendant selection renders cached DB children before the delayed TM
           releaseDate: "2004-03-19",
           fromTmdb: {
             fetchTimestamp: "2026-03-28T12:00:00.000Z",
+            genres: [],
           },
           personConnectionKeys: ["alpha one"],
           people: [],
@@ -1536,6 +2213,7 @@ test("deep descendant selection renders cached DB children before the delayed TM
           releaseDate: "2011-01-21",
           fromTmdb: {
             fetchTimestamp: "2026-03-28T12:00:00.000Z",
+            genres: [],
           },
           personConnectionKeys: ["india nine"],
           people: [],
@@ -1551,6 +2229,7 @@ test("deep descendant selection renders cached DB children before the delayed TM
           releaseDate: "2012-02-17",
           fromTmdb: {
             fetchTimestamp: "2026-03-28T12:00:00.000Z",
+            genres: [],
           },
           personConnectionKeys: ["india nine"],
           people: [],

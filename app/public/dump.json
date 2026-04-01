@@ -1,6 +1,6 @@
 {
   "format": "cinenerdle-indexed-db-snapshot",
-  "version": 9,
+  "version": 10,
   "people": [
     {
       "tmdbId": 36,
@@ -8661,7 +8661,8 @@
       "voteCount": 1943,
       "releaseDate": "2006-08-17",
       "fromTmdb": {
-        "fetchTimestamp": "2026-04-01T18:41:52.423Z"
+        "fetchTimestamp": "2026-04-01T18:41:52.423Z",
+        "genres": []
       },
       "personConnectionKeys": [
         "samuel l. jackson",
@@ -9062,7 +9063,8 @@
       "voteCount": 12857,
       "releaseDate": "2006-06-29",
       "fromTmdb": {
-        "fetchTimestamp": "2026-04-01T18:41:09.002Z"
+        "fetchTimestamp": "2026-04-01T18:41:09.002Z",
+        "genres": []
       },
       "personConnectionKeys": [
         "meryl streep",
@@ -10024,7 +10026,8 @@
       "voteCount": 2900,
       "releaseDate": "1996-07-24",
       "fromTmdb": {
-        "fetchTimestamp": "2026-04-01T18:40:41.155Z"
+        "fetchTimestamp": "2026-04-01T18:40:41.155Z",
+        "genres": []
       },
       "personConnectionKeys": [
         "matthew mcconaughey",
@@ -10974,7 +10977,8 @@
       "voteCount": 593,
       "releaseDate": "1997-02-14",
       "fromTmdb": {
-        "fetchTimestamp": "2026-04-01T18:39:41.619Z"
+        "fetchTimestamp": "2026-04-01T18:39:41.619Z",
+        "genres": []
       },
       "personConnectionKeys": [
         "matthew perry",
@@ -12083,7 +12087,8 @@
       "voteCount": 4834,
       "releaseDate": "2002-08-09",
       "fromTmdb": {
-        "fetchTimestamp": "2026-04-01T18:41:52.582Z"
+        "fetchTimestamp": "2026-04-01T18:41:52.582Z",
+        "genres": []
       },
       "personConnectionKeys": [
         "vin diesel",
@@ -12838,7 +12843,8 @@
       "voteCount": 1567,
       "releaseDate": "2008-02-07",
       "fromTmdb": {
-        "fetchTimestamp": "2026-04-01T18:39:41.618Z"
+        "fetchTimestamp": "2026-04-01T18:39:41.618Z",
+        "genres": []
       },
       "personConnectionKeys": [
         "matthew mcconaughey",
@@ -14652,7 +14658,8 @@
       "voteCount": 335,
       "releaseDate": "1994-12-23",
       "fromTmdb": {
-        "fetchTimestamp": "2026-04-01T18:39:41.620Z"
+        "fetchTimestamp": "2026-04-01T18:39:41.620Z",
+        "genres": []
       },
       "personConnectionKeys": [
         "paul newman",
@@ -15599,7 +15606,8 @@
       "voteCount": 146,
       "releaseDate": "2008-06-05",
       "fromTmdb": {
-        "fetchTimestamp": "2026-04-01T18:39:41.621Z"
+        "fetchTimestamp": "2026-04-01T18:39:41.621Z",
+        "genres": []
       },
       "personConnectionKeys": [
         "daniel craig",
@@ -16141,7 +16149,8 @@
       "voteCount": 199,
       "releaseDate": "2003-10-03",
       "fromTmdb": {
-        "fetchTimestamp": "2026-04-01T18:39:41.623Z"
+        "fetchTimestamp": "2026-04-01T18:39:41.623Z",
+        "genres": []
       },
       "personConnectionKeys": [
         "ryan reynolds",
@@ -17067,7 +17076,8 @@
       "voteCount": 81,
       "releaseDate": "2001-03-03",
       "fromTmdb": {
-        "fetchTimestamp": "2026-04-01T18:39:41.622Z"
+        "fetchTimestamp": "2026-04-01T18:39:41.622Z",
+        "genres": []
       },
       "personConnectionKeys": [
         "steve zahn",
@@ -17645,7 +17655,8 @@
       "voteCount": 36856,
       "releaseDate": "2012-04-25",
       "fromTmdb": {
-        "fetchTimestamp": "2026-04-01T18:41:44.246Z"
+        "fetchTimestamp": "2026-04-01T18:41:44.246Z",
+        "genres": []
       },
       "personConnectionKeys": [
         "robert downey jr.",
@@ -19573,7 +19584,8 @@
       "voteCount": 49,
       "releaseDate": "1998-08-28",
       "fromTmdb": {
-        "fetchTimestamp": "2026-04-01T18:39:41.623Z"
+        "fetchTimestamp": "2026-04-01T18:39:41.623Z",
+        "genres": []
       },
       "personConnectionKeys": [
         "gregory nava",
@@ -22551,7 +22563,8 @@
       "voteCount": 39236,
       "releaseDate": "2014-11-05",
       "fromTmdb": {
-        "fetchTimestamp": "2026-04-01T18:40:14.043Z"
+        "fetchTimestamp": "2026-04-01T18:40:14.043Z",
+        "genres": []
       },
       "personConnectionKeys": [
         "matthew mcconaughey",
@@ -24983,7 +24996,8 @@
       "voteCount": 27426,
       "releaseDate": "2019-04-24",
       "fromTmdb": {
-        "fetchTimestamp": "2026-04-01T18:41:55.084Z"
+        "fetchTimestamp": "2026-04-01T18:41:55.084Z",
+        "genres": []
       },
       "personConnectionKeys": [
         "robert downey jr.",
@@ -28369,7 +28383,8 @@
       "voteCount": 290,
       "releaseDate": "2018-10-31",
       "fromTmdb": {
-        "fetchTimestamp": "2026-04-01T18:39:41.620Z"
+        "fetchTimestamp": "2026-04-01T18:39:41.620Z",
+        "genres": []
       },
       "personConnectionKeys": [
         "tiffany haddish",
@@ -29085,7 +29100,8 @@
       "voteCount": 102,
       "releaseDate": "2023-05-12",
       "fromTmdb": {
-        "fetchTimestamp": "2026-04-01T18:39:41.621Z"
+        "fetchTimestamp": "2026-04-01T18:39:41.621Z",
+        "genres": []
       },
       "personConnectionKeys": [
         "charlie day",
@@ -31055,7 +31071,8 @@
       "voteCount": 7366,
       "releaseDate": "2022-08-03",
       "fromTmdb": {
-        "fetchTimestamp": "2026-04-01T18:40:51.143Z"
+        "fetchTimestamp": "2026-04-01T18:40:51.143Z",
+        "genres": []
       },
       "personConnectionKeys": [
         "brad pitt",
@@ -33691,7 +33708,8 @@
       "voteCount": 233,
       "releaseDate": "2026-02-11",
       "fromTmdb": {
-        "fetchTimestamp": "2026-04-01T18:40:41.203Z"
+        "fetchTimestamp": "2026-04-01T18:40:41.203Z",
+        "genres": []
       },
       "personConnectionKeys": [
         "chris hemsworth",

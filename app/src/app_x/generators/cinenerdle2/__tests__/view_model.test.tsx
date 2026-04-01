@@ -149,10 +149,40 @@ describe("createCardViewModel provenance gating", () => {
     const cardViewModel = createCardViewModel(makeMovieCard(), { isSelected: false });
 
     expect(cardViewModel.hasCachedTmdbSource).toBe(true);
+    expect(cardViewModel.isExcluded).toBe(false);
 
     const html = renderToStaticMarkup(
       <CinenerdleEntityCard card={asRenderableEntityCard(cardViewModel)} />,
     );
     expect(html).toContain("cinenerdle-card-count");
+  });
+
+  it("marks documentary movies as excluded in the card view model", () => {
+    const cardViewModel = createCardViewModel(
+      makeMovieCard({
+        sources: [{ iconUrl: "https://img.test/tmdb.png", label: "TMDb" }],
+        record: makeFilmRecord({
+          tmdbSource: "direct-film-fetch",
+          rawTmdbMovie: makeTmdbMovieSearchResult({
+            genres: [
+              { id: 99, name: "Documentary" },
+              { id: 36, name: "History" },
+            ],
+          }),
+          rawTmdbMovieCreditsResponse: {
+            cast: [],
+            crew: [],
+          },
+        }),
+      }),
+      { isSelected: false },
+    );
+
+    expect(cardViewModel.isExcluded).toBe(true);
+
+    const html = renderToStaticMarkup(
+      <CinenerdleEntityCard card={asRenderableEntityCard(cardViewModel)} />,
+    );
+    expect(html).toContain("filter:grayscale(1)");
   });
 });

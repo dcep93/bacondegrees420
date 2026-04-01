@@ -44,6 +44,7 @@ import { renderBreakCard, renderDbInfoCard, renderLoggedCinenerdleCard } from ".
 import { readCinenerdleDailyStarterTitles } from "./starter_storage";
 import {
   fetchCinenerdleDailyStarterMovies,
+  hydrateHashPath,
   hydrateCinenerdleDailyStarterMovies,
   prefetchTopPopularUnhydratedConnections,
   prepareSelectedMovie,
@@ -177,6 +178,14 @@ function getSelectedPathNodes(tree: GeneratorTree<CinenerdleCard>): CinenerdlePa
     .map((row) => row.find((node) => node.selected)?.data ?? null)
     .filter((card): card is CinenerdleCard => card !== null)
     .map((card) => getPathNodeFromCard(card));
+}
+
+function shouldHydrateHashPathOnInit(hashValue: string): boolean {
+  const entityNodeCount = buildPathNodesFromSegments(parseHashSegments(hashValue)).filter(
+    (pathNode) => pathNode.kind === "movie" || pathNode.kind === "person",
+  ).length;
+
+  return entityNodeCount === 1 || entityNodeCount >= 3;
 }
 
 function getPersonTmdbIdFromCard(
@@ -881,6 +890,66 @@ async function createCinenerdleRootTree(
   return tree;
 }
 
+async function createSelectedCardFromPathNode(
+  pathNode: Extract<CinenerdlePathNode, { kind: "movie" | "person" }>,
+): Promise<Extract<CinenerdleCard, { kind: "movie" | "person" }>> {
+  if (pathNode.kind === "person") {
+    const personRecord = await getLocalPersonRecord(pathNode.name, pathNode.tmdbId);
+    return personRecord
+      ? createPersonRootCard(personRecord, pathNode.name)
+      : createCinenerdleOnlyPersonCard(pathNode.name, "database only") as Extract<
+          CinenerdleCard,
+          { kind: "person" }
+        >;
+  }
+
+  const movieRecord = await getLocalMovieRecord(pathNode.name, pathNode.year);
+  return movieRecord
+    ? createMovieRootCard(movieRecord, pathNode.name)
+    : createUncachedMovieCard(pathNode.name, pathNode.year) as Extract<
+        CinenerdleCard,
+        { kind: "movie" }
+      >;
+}
+
+async function createSelectedTreeFromPathNode(
+  pathNode: Extract<CinenerdlePathNode, { kind: "movie" | "person" }>,
+): Promise<GeneratorTree<CinenerdleCard>> {
+  const selectedCard = await createSelectedCardFromPathNode(pathNode);
+  const tree: GeneratorTree<CinenerdleCard> = [[createNode(selectedCard, true)]];
+  const childRow = await buildChildRowForCard(selectedCard);
+
+  if (childRow && childRow.length > 0) {
+    tree.push(childRow);
+  }
+
+  return tree;
+}
+
+async function appendStandaloneSelectedPathNode(
+  tree: GeneratorTree<CinenerdleCard>,
+  pathNode: Extract<CinenerdlePathNode, { kind: "movie" | "person" }>,
+  nextPathNode?: Extract<CinenerdlePathNode, { kind: "movie" | "person" }>,
+): Promise<GeneratorTree<CinenerdleCard>> {
+  const selectedCard = await createSelectedCardFromPathNode(pathNode);
+  const nextTree: GeneratorTree<CinenerdleCard> = [
+    ...tree,
+    [createNode(selectedCard, true)],
+  ];
+  const childRow = await buildChildRowForCard(selectedCard);
+
+  if (
+    childRow &&
+    childRow.length > 0 &&
+    nextPathNode &&
+    findCardIndex(childRow, nextPathNode) >= 0
+  ) {
+    nextTree.push(childRow);
+  }
+
+  return nextTree;
+}
+
 async function createRootTreeFromPathNode(
   pathNode: Extract<CinenerdlePathNode, { kind: "cinenerdle" | "movie" | "person" }>,
 ): Promise<GeneratorTree<CinenerdleCard> | null> {
@@ -888,34 +957,7 @@ async function createRootTreeFromPathNode(
     return createCinenerdleRootTree();
   }
 
-  if (pathNode.kind === "person") {
-    const personRecord = await getLocalPersonRecord(pathNode.name, pathNode.tmdbId);
-    const rootCard = personRecord
-      ? createPersonRootCard(personRecord, pathNode.name)
-      : createCinenerdleOnlyPersonCard(pathNode.name, "database only");
-
-    const tree: GeneratorTree<CinenerdleCard> = [[createNode(rootCard, true)]];
-    const childRow = await buildChildRowForCard(rootCard);
-
-    if (childRow && childRow.length > 0) {
-      tree.push(childRow);
-    }
-
-    return tree;
-  }
-
-  const movieRecord = await getFilmRecordByTitleAndYear(pathNode.name, pathNode.year);
-  const rootCard = movieRecord
-    ? createMovieRootCard(movieRecord, pathNode.name)
-    : createUncachedMovieCard(pathNode.name, pathNode.year);
-  const tree: GeneratorTree<CinenerdleCard> = [[createNode(rootCard, true)]];
-  const childRow = await buildChildRowForCard(rootCard);
-
-  if (childRow && childRow.length > 0) {
-    tree.push(childRow);
-  }
-
-  return tree;
+  return createSelectedTreeFromPathNode(pathNode);
 }
 
 function findCardIndex(
@@ -991,7 +1033,8 @@ export async function buildTreeFromHash(
 
       let tree = rootTree;
 
-      for (const pathNode of continuationPathNodes) {
+      for (let index = 0; index < continuationPathNodes.length; index += 1) {
+        const pathNode = continuationPathNodes[index];
         if (pathNode.kind === "break") {
           continue;
         }
@@ -1000,14 +1043,21 @@ export async function buildTreeFromHash(
           continue;
         }
 
+        const nextPathNode = continuationPathNodes
+          .slice(index + 1)
+          .find((candidate): candidate is Extract<CinenerdlePathNode, { kind: "movie" | "person" }> =>
+            candidate.kind === "movie" || candidate.kind === "person");
+
         const lastRow = tree[tree.length - 1];
         if (!lastRow) {
-          break;
+          tree = await appendStandaloneSelectedPathNode(tree, pathNode, nextPathNode);
+          continue;
         }
 
         const selectedIndex = findCardIndex(lastRow, pathNode);
         if (selectedIndex < 0) {
-          break;
+          tree = await appendStandaloneSelectedPathNode(tree, pathNode, nextPathNode);
+          continue;
         }
 
         const nextRow = selectCardInRow(lastRow, selectedIndex);
@@ -1161,6 +1211,9 @@ export function useCinenerdleController({
                   tree: hydratedNextTree,
                 });
                 setTmdbLogGeneration(Math.max(0, hydratedNextTree.length - 1));
+                if (shouldHydrateHashPathOnInit(initialHash)) {
+                  void hydrateHashPath(initialHash).catch(() => { });
+                }
                 if (isCinenerdleRootTree(hydratedNextTree)) {
                   void syncDailyStartersWithCache().catch(() => { });
                 }
@@ -1170,6 +1223,9 @@ export function useCinenerdleController({
                   tree: fallbackTree,
                 });
                 setTmdbLogGeneration(Math.max(0, fallbackTree.length - 1));
+                if (shouldHydrateHashPathOnInit(initialHash)) {
+                  void hydrateHashPath(initialHash).catch(() => { });
+                }
                 if (isCinenerdleRootTree(fallbackTree)) {
                   void syncDailyStartersWithCache().catch(() => { });
                 }
@@ -1206,7 +1262,17 @@ export function useCinenerdleController({
                   ? await resolveInitialSelectedCard(selectedCard)
                   : {
                       selectedCard,
+                      movieRecord: undefined,
+                      personRecord: undefined,
                     };
+              const initialMovieRecord =
+                initialSelection.selectedCard.kind === "movie"
+                  ? initialSelection.movieRecord ?? null
+                  : undefined;
+              const initialPersonRecord =
+                initialSelection.selectedCard.kind === "person"
+                  ? initialSelection.personRecord ?? null
+                  : undefined;
               const initialSelectedTreeBase =
                 initialSelection.selectedCard === selectedCard
                   ? selectedPathTree
@@ -1217,14 +1283,8 @@ export function useCinenerdleController({
                       initialSelection.selectedCard,
                     );
               const initialChildRow = await buildChildRowForCard(initialSelection.selectedCard, {
-                movieRecord:
-                  initialSelection.selectedCard.kind === "movie"
-                    ? (initialSelection.movieRecord ?? null)
-                    : undefined,
-                personRecord:
-                  initialSelection.selectedCard.kind === "person"
-                    ? (initialSelection.personRecord ?? null)
-                    : undefined,
+                movieRecord: initialMovieRecord,
+                personRecord: initialPersonRecord,
               });
               const initialSelectedTree = appendChildRow(initialSelectedTreeBase, initialChildRow);
               applyUpdate({

@@ -135,6 +135,12 @@ function renderConnectionBadge(card: RenderableCinenerdleEntityCard) {
       connectionCount={card.connectionCount}
       connectionRank={card.connectionRank}
       iconAlt="TMDb"
+      iconStyle={card.isExcluded
+        ? {
+            filter: "grayscale(1)",
+            opacity: 0.9,
+          }
+        : undefined}
       iconUrl={tmdbSourceIconUrl}
     />
   );

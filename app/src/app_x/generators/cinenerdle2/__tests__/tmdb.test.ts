@@ -1401,6 +1401,40 @@ describe("tmdb forced refresh helpers", () => {
     expect(indexedDbMock.getAllSearchableConnectionEntities).not.toHaveBeenCalled();
     expect(connectionGraphMock.hydrateConnectionEntityFromSearchRecord).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(debugLogMock.addCinenerdleDebugLog).not.toHaveBeenCalled();
+  });
+
+  it("records a debug entry when a selected-card prefetch is skipped under playwright", async () => {
+    vi.stubGlobal("navigator", {
+      webdriver: true,
+    });
+
+    await prefetchTopPopularUnhydratedConnections({
+      key: "movie:321",
+      kind: "movie",
+      name: "Heat",
+      year: "1995",
+      popularity: 88,
+      popularitySource: null,
+      imageUrl: null,
+      subtitle: "1995",
+      subtitleDetail: "",
+      connectionCount: 1,
+      sources: [],
+      status: null,
+      voteAverage: null,
+      voteCount: null,
+      record: makeFilmRecord({
+        id: 321,
+        tmdbId: 321,
+        title: "Heat",
+        year: "1995",
+      }),
+    });
+
+    expect(debugLogMock.addCinenerdleDebugLog).toHaveBeenCalledWith(
+      "prefetch skipped in playwright for movie:Heat",
+    );
   });
 
   it("rebuilds the direct queue when the selected endpoint changes", async () => {

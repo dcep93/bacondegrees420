@@ -1,5 +1,6 @@
 import { createMovieRootCard, createPersonRootCard } from "./cards";
 import { TMDB_ICON_URL } from "./constants";
+import { isExcludedFilmRecord, isExcludedPersonRecord } from "./exclusion";
 import { getResolvedPersonMovieConnectionKeys } from "./records";
 import { hasDirectTmdbMovieSource, hasDirectTmdbPersonSource } from "./tmdb_provenance";
 import type { FilmRecord, PersonRecord } from "./types";
@@ -20,6 +21,18 @@ function hasCachedTmdbSource(card: CinenerdleCard) {
 
   if (card.kind === "person") {
     return hasDirectTmdbPersonSource(card.record);
+  }
+
+  return false;
+}
+
+function isExcludedCard(card: CinenerdleCard): boolean {
+  if (card.kind === "movie") {
+    return isExcludedFilmRecord(card.record);
+  }
+
+  if (card.kind === "person") {
+    return isExcludedPersonRecord(card.record);
   }
 
   return false;
@@ -353,6 +366,7 @@ export function createCardViewModel(
     isLocked: options.isLocked ?? false,
     isAncestorSelected: options.isAncestorSelected ?? false,
     hasCachedTmdbSource: hasCachedTmdbSource(card),
+    isExcluded: isExcludedCard(card),
   };
 
   if (card.kind === "dbinfo") {

@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { isExcludedFilmRecord } from "../exclusion";
+import { makeFilmRecord, makeTmdbMovieSearchResult } from "./factories";
 
 const originalIndexedDbDescriptor = Object.getOwnPropertyDescriptor(globalThis, "indexedDB");
 const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
@@ -135,5 +137,61 @@ describe("deleteCinenerdleIndexedDbDatabase", () => {
     const { deleteCinenerdleIndexedDbDatabase } = await import("../indexed_db");
 
     await expect(deleteCinenerdleIndexedDbDatabase()).rejects.toThrow("Delete failed");
+  });
+});
+
+describe("IndexedDB snapshot film genre preservation", () => {
+  it("stores direct-film genres in snapshots and preserves exclusion after inflation", async () => {
+    const { createStoredFilmRecord, inflateIndexedDbSnapshot } = await import("../indexed_db");
+    const filmRecord = makeFilmRecord({
+      id: 670431,
+      tmdbId: 670431,
+      title: "Normandy: The Great Crusade",
+      year: "1994",
+      fetchTimestamp: "2026-04-01T16:00:00.000Z",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 670431,
+        title: "Normandy: The Great Crusade",
+        original_title: "Normandy: The Great Crusade",
+        poster_path: "/nQ0CIlWL1qA4pD6Om4peiGv8SvY.jpg",
+        release_date: "1994-01-01",
+        popularity: 0.8187,
+        vote_average: 10,
+        vote_count: 1,
+        genres: [
+          { id: 99, name: "Documentary" },
+          { id: 36, name: "History" },
+        ],
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+      personConnectionKeys: [],
+      tmdbSource: "direct-film-fetch",
+    });
+
+    const storedFilm = createStoredFilmRecord(filmRecord);
+
+    expect(storedFilm.fromTmdb).toEqual({
+      fetchTimestamp: "2026-04-01T16:00:00.000Z",
+      genres: [
+        { id: 99, name: "Documentary" },
+        { id: 36, name: "History" },
+      ],
+    });
+
+    const inflatedSnapshot = inflateIndexedDbSnapshot({
+      format: "cinenerdle-indexed-db-snapshot",
+      version: 10,
+      people: [],
+      films: [storedFilm],
+    });
+
+    expect(inflatedSnapshot.films[0]?.rawTmdbMovie?.genres).toEqual([
+      { id: 99, name: "Documentary" },
+      { id: 36, name: "History" },
+    ]);
+    expect(isExcludedFilmRecord(inflatedSnapshot.films[0])).toBe(true);
   });
 });

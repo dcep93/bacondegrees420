@@ -1,5 +1,9 @@
 import { measureAsync } from "../../perf";
-import { createDailyStarterFilmRecord } from "./cards";
+import {
+  createDailyStarterFilmRecord,
+  createMovieRootCard,
+  createPersonRootCard,
+} from "./cards";
 import {
   getMovieConnectionEntityKey,
   getPersonConnectionEntityKey,
@@ -15,6 +19,10 @@ import {
   TMDB_API_KEY_STORAGE_KEY,
 } from "./constants";
 import { addCinenerdleDebugLog } from "./debug_log";
+import {
+  buildPathNodesFromSegments,
+  parseHashSegments,
+} from "./hash";
 import {
   getAllFilmRecords,
   getAllPersonRecords,
@@ -70,6 +78,7 @@ import {
   parseMoviePathLabel,
 } from "./utils";
 import type { CinenerdleCard } from "./view_types";
+import type { CinenerdlePathNode } from "./view_types";
 
 export type ConnectionTarget =
   | {
@@ -590,6 +599,79 @@ async function fetchTmdbCredits<T>(pathname: string): Promise<T> {
   const url = new URL(`https://api.themoviedb.org/3/${pathname}`);
   url.searchParams.set("api_key", apiKey);
   return fetchJson<T>(url.toString());
+}
+
+function chooseBestPersonSearchResult(
+  results: TmdbPersonSearchResult[] | undefined,
+  personName: string,
+): TmdbPersonSearchResult | null {
+  const normalizedPersonName = normalizeName(personName);
+
+  return (results ?? [])
+    .filter((result) => Boolean(getValidTmdbEntityId(result.id)))
+    .sort((left, right) => {
+      const leftExactMatch = normalizeName(left.name ?? "") === normalizedPersonName;
+      const rightExactMatch = normalizeName(right.name ?? "") === normalizedPersonName;
+      if (leftExactMatch !== rightExactMatch) {
+        return rightExactMatch ? 1 : -1;
+      }
+
+      const popularityDifference = (right.popularity ?? 0) - (left.popularity ?? 0);
+      if (popularityDifference !== 0) {
+        return popularityDifference;
+      }
+
+      return normalizeName(left.name ?? "").localeCompare(normalizeName(right.name ?? ""));
+    })[0] ?? null;
+}
+
+async function fetchAndCacheMovieFromSearch(
+  movieName: string,
+  movieYear = "",
+  reason: "fetch" | "prefetch" = "fetch",
+  options: FetchAndCacheOptions & {
+    logContext?: FetchLogContext;
+  } = {},
+): Promise<FilmRecord | null> {
+  const searchPayload = await fetchTmdbSearch<TmdbMovieSearchResult>(
+    "search/movie",
+    movieName,
+  );
+  const movie = chooseBestMovieSearchResult(searchPayload.results, movieName, movieYear);
+  const tmdbId = getValidTmdbEntityId(movie?.id);
+
+  if (!tmdbId) {
+    return movieName ? await getFilmRecordByTitleAndYear(movieName, movieYear) : null;
+  }
+
+  return fetchAndCacheMovieById(tmdbId, {
+    movieName,
+    movieYear,
+    reason,
+    skipFollowOnPrefetch: options.skipFollowOnPrefetch,
+    logContext: options.logContext,
+  });
+}
+
+async function fetchAndCachePersonFromSearch(
+  personName: string,
+  reason: "fetch" | "prefetch" = "fetch",
+  options: FetchAndCacheOptions & {
+    logContext?: FetchLogContext;
+  } = {},
+): Promise<PersonRecord | null> {
+  const searchPayload = await fetchTmdbSearch<TmdbPersonSearchResult>(
+    "search/person",
+    personName,
+  );
+  const person = chooseBestPersonSearchResult(searchPayload.results, personName);
+  const tmdbId = getValidTmdbEntityId(person?.id);
+
+  if (!tmdbId) {
+    return personName ? await getPersonRecordByName(personName) : null;
+  }
+
+  return fetchAndCachePerson(personName, reason, tmdbId, options);
 }
 
 async function resolveCinenerdleDailyStarterTmdbId(
@@ -1516,6 +1598,11 @@ export async function prefetchTopPopularUnhydratedConnections(
   selectedCard: SelectedPrefetchCard | null = null,
 ): Promise<void> {
   if (shouldSkipPopularConnectionPrefetch()) {
+    if (selectedCard) {
+      addCinenerdleDebugLog(
+        `prefetch skipped in playwright for ${selectedCard.kind}:${selectedCard.name}`,
+      );
+    }
     return;
   }
 
@@ -1768,6 +1855,157 @@ export async function prepareSelectedMovie(
 
   inFlightSelectedMoviePreparations.set(preparationKey, preparationPromise);
   return preparationPromise;
+}
+
+function getHashPathHydrationKey(
+  pathNode: Extract<CinenerdlePathNode, { kind: "movie" | "person" }>,
+  localMovieRecord: FilmRecord | null,
+  localPersonRecord: PersonRecord | null,
+): string {
+  if (pathNode.kind === "movie") {
+    const tmdbId = getValidTmdbEntityId(localMovieRecord?.tmdbId ?? localMovieRecord?.id);
+    if (tmdbId !== null) {
+      return `movie:${tmdbId}`;
+    }
+
+    return `movie:${normalizeTitle(pathNode.name)}:${pathNode.year.trim()}`;
+  }
+
+  const tmdbId = getValidTmdbEntityId(
+    pathNode.tmdbId ?? localPersonRecord?.tmdbId ?? localPersonRecord?.id,
+  );
+  if (tmdbId !== null) {
+    return `person:${tmdbId}`;
+  }
+
+  return `person:${normalizeName(pathNode.name)}`;
+}
+
+type HashPathHydrationPlanItem =
+  | {
+      kind: "movie";
+      name: string;
+      year: string;
+      localMovieRecord: FilmRecord | null;
+    }
+  | {
+      kind: "person";
+      name: string;
+      tmdbId: number | null;
+      localPersonRecord: PersonRecord | null;
+    };
+
+async function hydrateHashPathNode(
+  planItem: HashPathHydrationPlanItem,
+): Promise<{
+  didHydrate: boolean;
+  selectedCard: SelectedPrefetchCard | null;
+}> {
+  if (planItem.kind === "movie") {
+    if (hasMovieFullState(planItem.localMovieRecord)) {
+      return {
+        didHydrate: false,
+        selectedCard: createMovieRootCard(planItem.localMovieRecord, planItem.name),
+      };
+    }
+
+    const resolvedMovieRecord = planItem.localMovieRecord
+      ? await prepareSelectedMovie(
+          planItem.name,
+          planItem.year,
+          planItem.localMovieRecord.tmdbId ?? planItem.localMovieRecord.id,
+        )
+      : await batchCinenerdleRecordsUpdatedEvents(() =>
+          fetchAndCacheMovieFromSearch(planItem.name, planItem.year, "fetch", {
+            skipFollowOnPrefetch: true,
+          }),
+        );
+
+    return {
+      didHydrate: true,
+      selectedCard: resolvedMovieRecord
+        ? createMovieRootCard(resolvedMovieRecord, planItem.name)
+        : null,
+    };
+  }
+
+  if (hasPersonFullState(planItem.localPersonRecord)) {
+    return {
+      didHydrate: false,
+      selectedCard: createPersonRootCard(planItem.localPersonRecord, planItem.name),
+    };
+  }
+
+  const resolvedPersonRecord = planItem.localPersonRecord
+    ? await prepareSelectedPerson(
+        planItem.name,
+        planItem.tmdbId ?? planItem.localPersonRecord.tmdbId ?? planItem.localPersonRecord.id,
+      )
+    : await batchCinenerdleRecordsUpdatedEvents(() =>
+        fetchAndCachePersonFromSearch(planItem.name, "fetch", {
+          skipFollowOnPrefetch: true,
+        }),
+      );
+
+  return {
+    didHydrate: true,
+    selectedCard: resolvedPersonRecord
+      ? createPersonRootCard(resolvedPersonRecord, planItem.name)
+      : null,
+  };
+}
+
+export async function hydrateHashPath(hashValue: string): Promise<void> {
+  const pathNodes = buildPathNodesFromSegments(parseHashSegments(hashValue)).filter(
+    (pathNode): pathNode is Extract<CinenerdlePathNode, { kind: "movie" | "person" }> =>
+      pathNode.kind === "movie" || pathNode.kind === "person",
+  );
+  const hydratedKeys = new Set<string>();
+  const hydrationPlan: HashPathHydrationPlanItem[] = [];
+
+  for (const pathNode of pathNodes) {
+    const [localMovieRecord, localPersonRecord] = await Promise.all([
+      pathNode.kind === "movie"
+        ? getLocalMovieRecordForCard(pathNode.name, pathNode.year)
+        : Promise.resolve(null),
+      pathNode.kind === "person"
+        ? getLocalPersonRecordForCard(pathNode.name, pathNode.tmdbId)
+        : Promise.resolve(null),
+    ]);
+    const hydrationKey = getHashPathHydrationKey(
+      pathNode,
+      localMovieRecord,
+      localPersonRecord,
+    );
+
+    if (hydratedKeys.has(hydrationKey)) {
+      continue;
+    }
+
+    hydratedKeys.add(hydrationKey);
+    hydrationPlan.push(
+      pathNode.kind === "movie"
+        ? {
+            kind: "movie",
+            localMovieRecord,
+            name: pathNode.name,
+            year: pathNode.year,
+          }
+        : {
+            kind: "person",
+            localPersonRecord,
+            name: pathNode.name,
+            tmdbId: pathNode.tmdbId,
+          },
+    );
+  }
+
+  for (const planItem of hydrationPlan) {
+    const hydrationResult = await hydrateHashPathNode(planItem);
+    if (hydrationResult.didHydrate && hydrationResult.selectedCard) {
+      await prefetchTopPopularUnhydratedConnections(hydrationResult.selectedCard);
+    }
+  }
 }
 
 function getPersonPopularity(record: PersonRecord | null): number {

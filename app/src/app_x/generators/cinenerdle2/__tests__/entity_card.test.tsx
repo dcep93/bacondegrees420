@@ -22,6 +22,7 @@ function makeRenderableMovieCard(
     sources: [{ iconUrl: "https://img.test/tmdb.svg", label: "TMDb" }],
     status: null,
     hasCachedTmdbSource: true,
+    isExcluded: false,
     isSelected: false,
     isLocked: false,
     isAncestorSelected: false,
@@ -195,6 +196,22 @@ describe("CinenerdleEntityCard", () => {
     expect(html).toContain("2007 • Cast as");
     expect(html).toContain("Charles &#x27;Chuck&#x27; Levine");
     expect(html).toContain("2007 • Producer");
+  });
+
+  it("renders excluded movie badge icons in greyscale without changing the rest of the card", () => {
+    const html = renderToStaticMarkup(
+      <CinenerdleEntityCard
+        card={makeRenderableMovieCard({
+          isExcluded: true,
+        })}
+      />,
+    );
+
+    expect(html).toContain("cinenerdle-card-count-icon");
+    expect(html).toContain("filter:grayscale(1)");
+    expect(html).toContain("opacity:0.9");
+    expect(html).toContain("#3 / 12");
+    expect(html).toContain("Popularity 88.00");
   });
 });
 

@@ -17,6 +17,7 @@ type BaseRenderableCinenerdleEntityCard = {
   sources: CardSource[];
   status: CardStatus | null;
   hasCachedTmdbSource: boolean;
+  isExcluded: boolean;
   onExplicitTmdbRowClick?: (() => void) | null;
   onTmdbRowClick?: (() => Promise<void> | void) | null;
   tmdbTooltipText?: string | null;

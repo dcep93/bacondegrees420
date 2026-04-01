@@ -17,6 +17,11 @@ export type TmdbPersonSearchResult = {
   popularity?: number;
 };
 
+export type TmdbGenre = {
+  id: number;
+  name: string;
+};
+
 export type TmdbMovieSearchResult = {
   id: number;
   title?: string;
@@ -26,6 +31,7 @@ export type TmdbMovieSearchResult = {
   popularity?: number;
   vote_average?: number;
   vote_count?: number;
+  genres?: TmdbGenre[];
 };
 
 export type TmdbMovieCredit = {
