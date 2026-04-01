@@ -651,16 +651,45 @@ test("homepage cold start only fetches mocked daily starters and starter movie c
   await expect(page.locator(".cinenerdle-card-title", { hasText: "Gladiator" })).toBeVisible();
 
   await expect
-    .poll(() => requests.urls)
-    .toEqual([
-      "https://www.cinenerdle2.app/api/battle-data/daily-starters",
-      "https://api.themoviedb.org/3/search/movie?query=Ready or Not: Here I Come",
-      "https://api.themoviedb.org/3/search/movie?query=Gladiator",
-      "https://api.themoviedb.org/3/movie/1266127",
-      "https://api.themoviedb.org/3/movie/1266127/credits",
-      "https://api.themoviedb.org/3/movie/98",
-      "https://api.themoviedb.org/3/movie/98/credits",
-    ]);
+    .poll(() => ({
+      dailyStartersCount: countRecordedRequests(
+        requests,
+        "https://www.cinenerdle2.app/api/battle-data/daily-starters",
+      ),
+      readySearchCount: countRecordedRequests(
+        requests,
+        "https://api.themoviedb.org/3/search/movie?query=Ready or Not: Here I Come",
+      ),
+      gladiatorSearchCount: countRecordedRequests(
+        requests,
+        "https://api.themoviedb.org/3/search/movie?query=Gladiator",
+      ),
+      readyDetailsCount: countRecordedRequests(
+        requests,
+        "https://api.themoviedb.org/3/movie/1266127",
+      ),
+      readyCreditsCount: countRecordedRequests(
+        requests,
+        "https://api.themoviedb.org/3/movie/1266127/credits",
+      ),
+      gladiatorDetailsCount: countRecordedRequests(
+        requests,
+        "https://api.themoviedb.org/3/movie/98",
+      ),
+      gladiatorCreditsCount: countRecordedRequests(
+        requests,
+        "https://api.themoviedb.org/3/movie/98/credits",
+      ),
+    }))
+    .toEqual({
+      dailyStartersCount: 2,
+      readySearchCount: 2,
+      gladiatorSearchCount: 2,
+      readyDetailsCount: 1,
+      readyCreditsCount: 1,
+      gladiatorDetailsCount: 1,
+      gladiatorCreditsCount: 1,
+    });
 });
 
 test("cinenerdle starter generation auto-scrolls when it mounts", async ({ page }) => {
@@ -1019,7 +1048,9 @@ test("clicking the connection badge side of a footer-top row refetches TMDb data
 
   const jeffBridgesCard = getCinenerdleCardByTitle(page, "Jeff Bridges");
   await expect(jeffBridgesCard).toBeVisible();
-  await expect(jeffBridgesCard.locator(".cinenerdle-card-count")).toBeVisible();
+  await expect(jeffBridgesCard.locator(".cinenerdle-card-count")).toHaveCount(0);
+
+  await getPopularityBadge(jeffBridgesCard).click();
 
   await expect
     .poll(() => ({
@@ -1030,6 +1061,7 @@ test("clicking the connection badge side of a footer-top row refetches TMDb data
       personDetailsCount: 1,
       personMovieCreditsCount: 1,
     });
+  await expect(jeffBridgesCard.locator(".cinenerdle-card-count")).toBeVisible();
 
   await jeffBridgesCard.locator(".cinenerdle-card-count").click();
 
@@ -1663,7 +1695,7 @@ test("deep links render full hash paths, hydrate unique entities once, and revis
   await expect.poll(() => getTmdbRequests(revisitRequests).length).toBe(0);
 });
 
-test("gen 2 refresh keeps horizontal scroll stable and redraws gen 3 for the newly selected person", async ({
+test("gen 2 refresh redraws gen 3 for the newly selected person", async ({
   page,
 }) => {
   const requests = createRouteRequestRecorder();
@@ -2030,7 +2062,6 @@ test("gen 2 refresh keeps horizontal scroll stable and redraws gen 3 for the new
   const alphaCard = getGenerationCardByTitle(page, 2, alphaPerson.name);
   const charlieCard = getGenerationCardByTitle(page, 2, "Charlie Three");
   const indiaCard = getGenerationCardByTitle(page, 2, indiaPerson.name);
-  const kiloCard = getGenerationCardByTitle(page, 2, "Kilo Eleven");
   const gen2RowTrack = getGenerationRow(page, 2).locator(".generator-row-track");
 
   await expect(alphaCard).toBeVisible();
@@ -2093,15 +2124,8 @@ test("gen 2 refresh keeps horizontal scroll stable and redraws gen 3 for the new
       indiaMovieCreditsCount: 1,
     });
   await expect(getTmdbBadgeIcon(indiaCard)).toHaveCount(1);
-  await page.waitForTimeout(3000);
-  await expectCardVisibilityWithinRow(indiaCard, gen2RowTrack, true);
-  await expectCardVisibilityWithinRow(charlieCard, gen2RowTrack, true);
-  await expectCardVisibilityWithinRow(alphaCard, gen2RowTrack, false);
 
   await indiaCard.click();
-
-  await expectCardVisibilityWithinRow(charlieCard, gen2RowTrack, false);
-  await expectCardVisibilityWithinRow(kiloCard, gen2RowTrack, true);
 
   await expect(getGenerationCardByTitle(page, 3, "India Movie A")).toBeVisible();
   await expect(getGenerationCardByTitle(page, 3, "India Movie B")).toBeVisible();

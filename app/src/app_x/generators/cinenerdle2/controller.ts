@@ -114,6 +114,7 @@ type BuildTreeOptions = {
 };
 
 const inFlightTreeBuilds = new Map<string, Promise<GeneratorTree<CinenerdleCard>>>();
+let syncDailyStartersWithCachePromise: Promise<void> | null = null;
 
 function createNode(
   data: CinenerdleCard,
@@ -481,16 +482,26 @@ function doDailyStarterTitlesMatch(left: string[], right: string[]): boolean {
 }
 
 async function syncDailyStartersWithCache(): Promise<void> {
-  const cachedStarterTitles = readCinenerdleDailyStarterTitles();
-  const fetchedStarterFilms = await fetchCinenerdleDailyStarterMovies();
-  const nextStarterTitles = readCinenerdleDailyStarterTitles();
-
-  if (!doDailyStarterTitlesMatch(cachedStarterTitles, nextStarterTitles)) {
-    window.location.reload();
-    return;
+  if (syncDailyStartersWithCachePromise) {
+    return syncDailyStartersWithCachePromise;
   }
 
-  await hydrateCinenerdleDailyStarterMovies(fetchedStarterFilms);
+  syncDailyStartersWithCachePromise = (async () => {
+    const cachedStarterTitles = readCinenerdleDailyStarterTitles();
+    const fetchedStarterFilms = await fetchCinenerdleDailyStarterMovies();
+    const nextStarterTitles = readCinenerdleDailyStarterTitles();
+
+    if (!doDailyStarterTitlesMatch(cachedStarterTitles, nextStarterTitles)) {
+      window.location.reload();
+      return;
+    }
+
+    await hydrateCinenerdleDailyStarterMovies(fetchedStarterFilms);
+  })().finally(() => {
+    syncDailyStartersWithCachePromise = null;
+  });
+
+  return syncDailyStartersWithCachePromise;
 }
 
 async function buildChildRowForPersonCard(

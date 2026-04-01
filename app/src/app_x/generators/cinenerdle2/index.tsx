@@ -58,10 +58,16 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   const [recordsRefreshVersion, setRecordsRefreshVersion] = useState(0);
   const [activeEntityRefreshRequest, setActiveEntityRefreshRequest] = useState<EntityRefreshRequest | null>(null);
   const pendingEntityRefreshRequestsRef = useRef<EntityRefreshRequest[]>([]);
+  const recordsRefreshScheduledRef = useRef(false);
+  const activeEntityRefreshRequestRef = useRef<EntityRefreshRequest | null>(null);
 
   useLayoutEffect(() => {
     hashRef.current = normalizedHash;
   }, [normalizedHash]);
+
+  useLayoutEffect(() => {
+    activeEntityRefreshRequestRef.current = activeEntityRefreshRequest;
+  }, [activeEntityRefreshRequest]);
 
   useEffect(() => {
     primeTmdbApiKeyOnInit();
@@ -69,7 +75,23 @@ const Cinenerdle2 = memo(function Cinenerdle2({
 
   useEffect(() => {
     function handleRecordsUpdated() {
-      setRecordsRefreshVersion((version) => version + 1);
+      if (recordsRefreshScheduledRef.current) {
+        return;
+      }
+
+      recordsRefreshScheduledRef.current = true;
+      queueMicrotask(() => {
+        recordsRefreshScheduledRef.current = false;
+
+        if (
+          activeEntityRefreshRequestRef.current ||
+          pendingEntityRefreshRequestsRef.current.length > 0
+        ) {
+          return;
+        }
+
+        setRecordsRefreshVersion((version) => version + 1);
+      });
     }
 
     window.addEventListener(CINENERDLE_RECORDS_UPDATED_EVENT, handleRecordsUpdated);
