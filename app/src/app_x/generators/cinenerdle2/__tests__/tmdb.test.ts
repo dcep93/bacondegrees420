@@ -1380,6 +1380,29 @@ describe("tmdb forced refresh helpers", () => {
     ).toHaveLength(1);
   });
 
+  it("skips popular connection prefetch while running under playwright", async () => {
+    const fetchMock = vi.fn();
+
+    indexedDbMock.getAllSearchableConnectionEntities.mockResolvedValue([
+      {
+        key: "person:12",
+        type: "person" as const,
+        nameLower: "tom brady",
+        popularity: 10,
+      },
+    ]);
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("navigator", {
+      webdriver: true,
+    });
+
+    await prefetchTopPopularUnhydratedConnections();
+
+    expect(indexedDbMock.getAllSearchableConnectionEntities).not.toHaveBeenCalled();
+    expect(connectionGraphMock.hydrateConnectionEntityFromSearchRecord).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("rebuilds the direct queue when the selected endpoint changes", async () => {
     const selectedMovieRecordA = makeFilmRecord({
       id: 401,

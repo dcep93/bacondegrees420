@@ -258,6 +258,10 @@ let syncPopularConnectionPrefetchQueuesPromise: Promise<void> | null = null;
 let prefetchTopPopularUnhydratedConnectionsPromise: Promise<void> | null = null;
 const TMDB_API_KEY_PREFIX = "key:";
 const POPULAR_CONNECTION_PREFETCH_COUNT = 1;
+
+function shouldSkipPopularConnectionPrefetch(): boolean {
+  return typeof navigator !== "undefined" && navigator.webdriver === true;
+}
 let pendingPopularMoviePrefetchQueue: PendingPopularMoviePrefetch[] = [];
 let pendingPopularPersonPrefetchQueue: PendingPopularPersonPrefetch[] = [];
 let pendingDirectMoviePrefetchQueue: PendingPopularMoviePrefetch[] = [];
@@ -1511,6 +1515,10 @@ async function prefetchPopularPersonCandidate(
 export async function prefetchTopPopularUnhydratedConnections(
   selectedCard: SelectedPrefetchCard | null = null,
 ): Promise<void> {
+  if (shouldSkipPopularConnectionPrefetch()) {
+    return;
+  }
+
   if (prefetchTopPopularUnhydratedConnectionsPromise) {
     return prefetchTopPopularUnhydratedConnectionsPromise;
   }
