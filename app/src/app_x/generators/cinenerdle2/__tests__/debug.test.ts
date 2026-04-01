@@ -25,9 +25,8 @@ import {
   copyCinenerdleSearchablePersistenceDebugLogToClipboard,
   copyCinenerdleTextToClipboard,
   getCinenerdleDebugEntryCount,
-  getCinenerdleDebugLogText,
-  startCinenerdleClipboardPageOpenLogging,
 } from "../debug";
+import { getCinenerdleDebugEntries } from "../debug_log";
 
 const originalNavigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, "navigator");
 const originalDocumentDescriptor = Object.getOwnPropertyDescriptor(globalThis, "document");
@@ -264,7 +263,7 @@ describe("addCinenerdleDebugLog", () => {
     });
 
     expect(getCinenerdleDebugEntryCount()).toBe(1);
-    expect(JSON.parse(getCinenerdleDebugLogText())).toEqual([
+    expect(getCinenerdleDebugEntries()).toEqual([
       expect.objectContaining({
         event: "unit-test:event",
         details: {
@@ -341,40 +340,6 @@ describe("addCinenerdleDebugLog", () => {
     expect(getCinenerdleDebugEntryCount()).toBe(0);
   });
 
-  it("appends clipboard heartbeat entries every second while the page is open", async () => {
-    vi.useFakeTimers();
-
-    const stopLogging = startCinenerdleClipboardPageOpenLogging({
-      clearInterval,
-      setInterval,
-    });
-
-    expect(getCinenerdleDebugEntryCount()).toBe(0);
-
-    await vi.advanceTimersByTimeAsync(2100);
-
-    expect(JSON.parse(getCinenerdleDebugLogText())).toEqual([
-      expect.objectContaining({
-        event: "clipboard:page-open-heartbeat",
-        details: {
-          secondsOpen: 1,
-        },
-      }),
-      expect.objectContaining({
-        event: "clipboard:page-open-heartbeat",
-        details: {
-          secondsOpen: 2,
-        },
-      }),
-    ]);
-
-    stopLogging();
-    await vi.advanceTimersByTimeAsync(1500);
-
-    expect(getCinenerdleDebugEntryCount()).toBe(2);
-    vi.useRealTimers();
-  });
-
   it("copies only bootstrap debug entries to the clipboard", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
 
@@ -407,7 +372,7 @@ describe("addCinenerdleDebugLog", () => {
         },
       }),
     ]);
-    expect(JSON.parse(getCinenerdleDebugLogText())).toEqual([
+    expect(getCinenerdleDebugEntries()).toEqual([
       expect.objectContaining({
         event: "other:event",
         details: {
@@ -449,7 +414,7 @@ describe("addCinenerdleDebugLog", () => {
         },
       }),
     ]);
-    expect(JSON.parse(getCinenerdleDebugLogText())).toEqual([
+    expect(getCinenerdleDebugEntries()).toEqual([
       expect.objectContaining({
         event: "bootstrap:start",
         details: {
@@ -499,7 +464,7 @@ describe("addCinenerdleDebugLog", () => {
         },
       }),
     ]);
-    expect(JSON.parse(getCinenerdleDebugLogText())).toEqual([
+    expect(getCinenerdleDebugEntries()).toEqual([
       expect.objectContaining({
         event: "bootstrap:start",
         details: {
@@ -577,7 +542,7 @@ describe("addCinenerdleDebugLog", () => {
         ],
       }),
     );
-    expect(JSON.parse(getCinenerdleDebugLogText())).toEqual([
+    expect(getCinenerdleDebugEntries()).toEqual([
       expect.objectContaining({
         event: "other:event",
       }),

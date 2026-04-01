@@ -1000,14 +1000,11 @@ async function selectEligiblePersonPrefetchCandidate(
 }
 
 async function selectNextMoviePrefetchCandidate(
-  options: {
-    directOnly?: boolean;
-  } = {},
 ): Promise<PendingPopularMoviePrefetch | null> {
   const directCandidate = await selectEligibleMoviePrefetchCandidate(
     pendingDirectMoviePrefetchQueue,
   );
-  if (directCandidate || options.directOnly) {
+  if (directCandidate) {
     return directCandidate;
   }
 
@@ -1015,14 +1012,11 @@ async function selectNextMoviePrefetchCandidate(
 }
 
 async function selectNextPersonPrefetchCandidate(
-  options: {
-    directOnly?: boolean;
-  } = {},
 ): Promise<PendingPopularPersonPrefetch | null> {
   const directCandidate = await selectEligiblePersonPrefetchCandidate(
     pendingDirectPersonPrefetchQueue,
   );
-  if (directCandidate || options.directOnly) {
+  if (directCandidate) {
     return directCandidate;
   }
 
@@ -1384,58 +1378,6 @@ export function hasPersonFullState(
   return (
     getResolvedPersonMovieConnectionKeys(resolvedPersonRecord).length === 0 ||
     getAllowedConnectedTmdbMovieCredits(resolvedPersonRecord).length > 0
-  );
-}
-
-export async function prefetchBestConnectionForYoungestSelectedCard(
-  selectedCard: Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }> | null,
-): Promise<void> {
-  await measureAsync(
-    "tmdb.prefetchBestConnectionForYoungestSelectedCard",
-    async () => {
-      if (!selectedCard || selectedCard.kind === "cinenerdle") {
-        await syncDirectConnectionPrefetchQueues(null);
-        return;
-      }
-
-      await syncDirectConnectionPrefetchQueues(selectedCard, {
-        maxCandidateCount: 8,
-      });
-
-      if (selectedCard.kind === "movie") {
-        const personCandidate = await selectNextPersonPrefetchCandidate({
-          directOnly: true,
-        });
-        if (!personCandidate) {
-          return;
-        }
-
-        await prefetchPopularPersonCandidate(personCandidate, {
-          index: 1,
-          total: 1,
-        });
-        return;
-      }
-
-      const movieCandidate = await selectNextMoviePrefetchCandidate({
-        directOnly: true,
-      });
-      if (!movieCandidate) {
-        return;
-      }
-
-      await prefetchPopularMovieCandidate(movieCandidate, {
-        index: 1,
-        total: 1,
-      });
-    },
-    {
-      always: true,
-      details: {
-        selectedCardKey: selectedCard?.key ?? "",
-        selectedCardKind: selectedCard?.kind ?? "none",
-      },
-    },
   );
 }
 

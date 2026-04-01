@@ -12,9 +12,11 @@ import {
 } from "../controller";
 import {
   makeFilmRecord,
+  makeMovieCredit,
   makePersonCredit,
   makePersonRecord,
   makeTmdbMovieSearchResult,
+  makeTmdbPersonSearchResult,
 } from "./factories";
 import type { CinenerdleCard } from "../view_types";
 
@@ -535,6 +537,11 @@ describe("useCinenerdleController", () => {
 
     expect(tmdbMock.prepareSelectedMovie).not.toHaveBeenCalled();
     expect(tmdbMock.prepareSelectedPerson).not.toHaveBeenCalled();
+    expect(tmdbMock.prefetchTopPopularUnhydratedConnections).toHaveBeenCalledTimes(1);
+    expect(tmdbMock.prefetchTopPopularUnhydratedConnections).toHaveBeenCalledWith(
+      makeMovieCard({ key: "movie:321", record: heatRecord }),
+    );
+    expect(applyUpdate).toHaveBeenCalledTimes(1);
     expect(writeHash).toHaveBeenCalledWith("#cinenerdle|Heat+(1995)", "selection");
     expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(1, 1);
     expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(2, 2);
@@ -546,6 +553,91 @@ describe("useCinenerdleController", () => {
           data: expect.objectContaining({
             kind: "person",
             name: "Al Pacino",
+          }),
+        })],
+      ],
+    });
+  });
+
+  it("builds the next row and still prefetches for directly hydrated person cards", async () => {
+    const heatRecord = makeFilmRecord({
+      id: 321,
+      tmdbId: 321,
+      title: "Heat",
+      year: "1995",
+      popularity: 66,
+      personConnectionKeys: ["al pacino"],
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 321,
+        title: "Heat",
+        release_date: "1995-12-15",
+      }),
+    });
+    const pacinoRecord = makePersonRecord({
+      id: 60,
+      tmdbId: 60,
+      name: "Al Pacino",
+      movieConnectionKeys: ["heat (1995)"],
+      rawTmdbPerson: makeTmdbPersonSearchResult({
+        id: 60,
+        name: "Al Pacino",
+        popularity: 88,
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({ id: 321, title: "Heat", release_date: "1995-12-15", popularity: 66 }),
+        ],
+        crew: [],
+      },
+    });
+    const controller = renderController({ writeHash: vi.fn() });
+    const applyUpdate = vi.fn();
+    const scrollGenerationLikeBubble = vi.fn();
+
+    indexedDbMock.getFilmRecordsByIds.mockResolvedValue(new Map([[321, heatRecord]]));
+    indexedDbMock.getPersonPopularityByNames.mockResolvedValue(new Map([["al pacino", 88]]));
+    indexedDbMock.getPersonRecordCountsByMovieKeys.mockResolvedValue(new Map([["heat (1995)", 8]]));
+
+    await controller.runEffect(
+      {
+        type: "load-selected-card",
+        removedDescendantRows: false,
+        row: 1,
+        col: 0,
+        tree: [
+          [{ data: makeCinenerdleRootCard(), selected: true }],
+          [{ data: makePersonCard({ key: "person:60", record: pacinoRecord }), selected: true }],
+        ],
+      },
+      {
+        applyUpdate,
+        getState: () => createGeneratorState<CinenerdleCard, undefined>(undefined),
+        lifecycleId: 1,
+        selectionId: 1,
+        scrollGenerationLikeBubble,
+      },
+    );
+
+    await flushAsyncWork();
+
+    expect(tmdbMock.prepareSelectedMovie).not.toHaveBeenCalled();
+    expect(tmdbMock.prepareSelectedPerson).not.toHaveBeenCalled();
+    expect(tmdbMock.prefetchTopPopularUnhydratedConnections).toHaveBeenCalledTimes(1);
+    expect(tmdbMock.prefetchTopPopularUnhydratedConnections).toHaveBeenCalledWith(
+      makePersonCard({ key: "person:60", record: pacinoRecord }),
+    );
+    expect(applyUpdate).toHaveBeenCalledTimes(1);
+    expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(1, 1);
+    expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(2, 2);
+    expect(applyUpdate).toHaveBeenCalledWith({
+      tree: [
+        [{ data: makeCinenerdleRootCard(), selected: true }],
+        [{ data: makePersonCard({ key: "person:60", record: pacinoRecord }), selected: true }],
+        [expect.objectContaining({
+          data: expect.objectContaining({
+            kind: "movie",
+            name: "Heat",
+            record: heatRecord,
           }),
         })],
       ],

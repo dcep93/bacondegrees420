@@ -2,10 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   areYoungestSelectedCardsEqual,
   getCardTmdbEntityId,
-  getYoungestSelectedCardParent,
   getYoungestSelectedCard,
-  matchesHighlightedConnectionEntity,
-  serializeSelectedTreePath,
 } from "../navigation";
 import type { GeneratorTree } from "../../../types/generator";
 import type { CinenerdleCard } from "../view_types";
@@ -54,52 +51,6 @@ function createPersonCard(
 }
 
 describe("cinenerdle navigation helpers", () => {
-  it("matches movies by normalized title and year or tmdb id", () => {
-    expect(matchesHighlightedConnectionEntity(
-      createMovieCard(),
-      {
-        key: "movie:heat:1995",
-        kind: "movie",
-        name: "heat",
-        year: "1995",
-        tmdbId: null,
-        label: "Heat (1995)",
-        connectionCount: 1,
-        hasCachedTmdbSource: false,
-      },
-    )).toBe(true);
-
-    expect(matchesHighlightedConnectionEntity(
-      createMovieCard({
-        record: {
-          id: 949,
-          tmdbId: 949,
-        } as Extract<CinenerdleCard, { kind: "movie" }>["record"],
-      }),
-      {
-        key: "movie:heat:1995",
-        kind: "movie",
-        name: "Different",
-        year: "2000",
-        tmdbId: 949,
-        label: "Different (2000)",
-        connectionCount: 1,
-        hasCachedTmdbSource: false,
-      },
-    )).toBe(true);
-  });
-
-  it("serializes selected tree paths including break rows and person tmdb ids", () => {
-    const tree: GeneratorTree<CinenerdleCard> = [
-      [{ selected: true, data: { key: "cinenerdle", kind: "cinenerdle", name: "cinenerdle", popularity: 0, popularitySource: null, imageUrl: null, subtitle: "", subtitleDetail: "", connectionCount: null, sources: [], status: null, record: null } }],
-      [{ selected: true, data: createMovieCard() }],
-      [{ selected: true, data: { key: "break", kind: "break", name: "ESCAPE", popularity: 0, popularitySource: null, imageUrl: null, subtitle: "", subtitleDetail: "", connectionCount: null, sources: [], status: null, record: null } }],
-      [{ selected: true, data: createPersonCard({ record: { id: 60, tmdbId: 60 } as Extract<CinenerdleCard, { kind: "person" }>["record"] }) }],
-    ];
-
-    expect(serializeSelectedTreePath(tree)).toBe("#cinenerdle|Heat+(1995)||Al+Pacino");
-  });
-
   it("finds the youngest selected content card and compares it by identity", () => {
     const tree: GeneratorTree<CinenerdleCard> = [
       [{ selected: true, data: createMovieCard() }],
@@ -111,16 +62,6 @@ describe("cinenerdle navigation helpers", () => {
       createPersonCard({ record: { id: 60, tmdbId: 60 } as Extract<CinenerdleCard, { kind: "person" }>["record"] }),
       createPersonCard({ name: "AL PACINO", record: { id: 60, tmdbId: 60 } as Extract<CinenerdleCard, { kind: "person" }>["record"] }),
     )).toBe(true);
-  });
-
-  it("finds the youngest selected parent while skipping break rows", () => {
-    const tree: GeneratorTree<CinenerdleCard> = [
-      [{ selected: true, data: createMovieCard() }],
-      [{ selected: true, data: { key: "break", kind: "break", name: "", popularity: 0, popularitySource: null, imageUrl: null, subtitle: "", subtitleDetail: "", connectionCount: null, sources: [], status: null, record: null } }],
-      [{ selected: true, data: createPersonCard() }],
-    ];
-
-    expect(getYoungestSelectedCardParent(tree)?.kind).toBe("movie");
   });
 
   it("reads card tmdb ids from cached records", () => {

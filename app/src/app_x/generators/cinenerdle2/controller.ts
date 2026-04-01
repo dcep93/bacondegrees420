@@ -400,6 +400,7 @@ async function refreshCardFromTmdb(
   if (card.kind === "movie") {
     const alreadyHydrated = hasDirectTmdbMovieSource(card.record);
     if (options.skipIfAlreadyHydrated && alreadyHydrated) {
+      await prefetchTopPopularUnhydratedConnections(card);
       return {
         didRefresh: false,
         refreshedCard: card,
@@ -427,6 +428,7 @@ async function refreshCardFromTmdb(
 
   const alreadyHydrated = hasDirectTmdbPersonSource(card.record);
   if (options.skipIfAlreadyHydrated && alreadyHydrated) {
+    await prefetchTopPopularUnhydratedConnections(card);
     return {
       didRefresh: false,
       refreshedCard: card,

@@ -8,10 +8,8 @@ import {
   createMovieRootCard,
   createPersonAssociationCard,
   createPersonRootCard,
-  createRootDatabaseInfoCard,
 } from "../cards";
 import { CINENERDLE_ICON_URL, TMDB_ICON_URL, TMDB_POSTER_BASE_URL } from "../constants";
-import type { DbInfoCard } from "../view_types";
 import { getMovieCardKey, getPersonCardKey } from "../utils";
 import {
   makeFilmRecord,
@@ -22,13 +20,6 @@ import {
   makeTmdbMovieSearchResult,
   makeTmdbPersonSearchResult,
 } from "./factories";
-
-function getSummaryItemValue(
-  card: DbInfoCard,
-  label: string,
-) {
-  return card.summaryItems.find((item) => item.label === label)?.value;
-}
 
 describe("root cards", () => {
   it("creates the cinenerdle root card", () => {
@@ -232,127 +223,6 @@ describe("daily starter records and cards", () => {
         name: "The Tournament",
       }),
     );
-  });
-});
-
-describe("database info cards", () => {
-  it("creates uncached movie database info cards", () => {
-    const card = createRootDatabaseInfoCard(
-      {
-        kind: "movie",
-        name: "Heat",
-        year: "1995",
-      },
-      null,
-    ) as DbInfoCard;
-
-    expect(card.kind).toBe("dbinfo");
-    expect(card.subtitle).toBe("Heat (1995)");
-    expect(card.subtitleDetail).toBe("Not cached yet");
-    expect(card.recordKind).toBe("movie");
-    expect(getSummaryItemValue(card, "Cached")).toBe("No");
-    expect(getSummaryItemValue(card, "TMDb ID")).toBe("-");
-    expect(JSON.parse(card.body)).toEqual({
-      cached: false,
-      kind: "movie",
-      title: "Heat",
-      year: "1995",
-    });
-  });
-
-  it("creates cached person database info cards with formatted summary values", () => {
-    const personRecord = makePersonRecord({
-      id: 9,
-      tmdbId: 123,
-      movieConnectionKeys: ["heat (1995)", "insomnia (2002)"],
-      rawTmdbPerson: makeTmdbPersonSearchResult({
-        id: 123,
-        name: "Kenneth Collard",
-        popularity: 12.3456,
-        profile_path: "/kenneth.jpg",
-      }),
-      rawTmdbMovieCreditsResponse: {
-        cast: [makeMovieCredit({ id: 1 })],
-        crew: [makeMovieCredit({ id: 2, creditType: undefined, character: undefined })],
-      },
-      fetchTimestamp: "2026-03-28T12:00:00.000Z",
-    });
-    const card = createRootDatabaseInfoCard(
-      {
-        kind: "person",
-        name: "Kenneth Collard",
-      },
-      {
-        ...personRecord,
-        name: "Kenneth Collard",
-      },
-    ) as DbInfoCard;
-
-    expect(card.subtitle).toBe("Kenneth Collard");
-    expect(card.subtitleDetail).toBe("IndexedDB record");
-    expect(getSummaryItemValue(card, "Cached")).toBe("Yes");
-    expect(getSummaryItemValue(card, "TMDb ID")).toBe("123");
-    expect(getSummaryItemValue(card, "Popularity")).toBe("12.35");
-    expect(getSummaryItemValue(card, "Movies")).toBe("2");
-    expect(getSummaryItemValue(card, "Profile")).toBe("Yes");
-    expect(getSummaryItemValue(card, "Credits")).toBe("Yes");
-    expect(JSON.parse(card.body)).toEqual({
-      cached: true,
-      kind: "person",
-      name: "Kenneth Collard",
-      id: 9,
-      tmdbId: 123,
-      popularity: 12.3456,
-      movieConnectionCount: 2,
-      castCreditCount: 1,
-      crewCreditCount: 1,
-      hasTmdbPerson: true,
-      hasTmdbMovieCredits: true,
-      profilePath: "/kenneth.jpg",
-      fetchTimestamp: "2026-03-28T12:00:00.000Z",
-    });
-  });
-
-  it("uses the requested movie metadata when cached title and year are empty", () => {
-    const filmRecord = makeFilmRecord({
-      title: "",
-      year: "",
-      tmdbId: null,
-      popularity: 0,
-      personConnectionKeys: [],
-      rawTmdbMovie: undefined,
-      rawTmdbMovieCreditsResponse: undefined,
-      fetchTimestamp: undefined,
-    });
-    const card = createRootDatabaseInfoCard(
-      {
-        kind: "movie",
-        name: "Heat",
-        year: "1995",
-      },
-      filmRecord,
-    ) as DbInfoCard;
-
-    expect(JSON.parse(card.body)).toEqual({
-      cached: true,
-      kind: "movie",
-      title: "Heat",
-      year: "1995",
-      id: 50,
-      tmdbId: null,
-      popularity: 0,
-      voteAverage: null,
-      voteCount: null,
-      castCount: 0,
-      crewCount: 0,
-      connectionCount: 0,
-      hasTmdbMovie: false,
-      hasTmdbCredits: false,
-      posterPath: null,
-      fetchTimestamp: null,
-    });
-    expect(getSummaryItemValue(card, "Rating")).toBe("-");
-    expect(getSummaryItemValue(card, "Credits")).toBe("No");
   });
 });
 

@@ -16,7 +16,6 @@ import {
   mergePersonRecords,
   pickBestPersonRecord,
   getResolvedPersonMovieConnectionKeys,
-  shouldPreferNextFetchedField,
 } from "./records";
 import {
   hasDirectTmdbMovieSource,
@@ -40,7 +39,6 @@ import {
   formatMoviePathLabel,
   getValidTmdbEntityId,
   getAssociatedPeopleFromMovieCredits,
-  getAssociatedPeopleFromMovieCreditsForSnapshot,
   getAllowedConnectedTmdbMovieCredits,
   getFilmKey,
   getMovieTitleFromCredit,
@@ -48,13 +46,9 @@ import {
   normalizeName,
   parseMoviePathLabel,
   normalizeTitle,
-  normalizeWhitespace,
 } from "./utils";
 import { measureAsync } from "../../perf";
-import {
-  resetCinenerdleValidationAlertState,
-  throwCinenerdleValidationError,
-} from "./validation";
+import { throwCinenerdleValidationError } from "./validation";
 
 const REQUIRED_OBJECT_STORE_NAMES = [
   PEOPLE_STORE_NAME,
@@ -2120,14 +2114,6 @@ export async function prepareSearchableConnectionEntitiesForStartup(): Promise<{
   };
 }
 
-function resetIndexedDbSnapshotValidationState(): void {
-  resetCinenerdleValidationAlertState();
-}
-
-function normalizeSnapshotPersonName(name: string): string {
-  return normalizeWhitespace(name);
-}
-
 function getRequiredSnapshotTmdbId(
   tmdbId: number | string | null | undefined,
   label: string,
@@ -2184,78 +2170,6 @@ function createPersonSnapshotFromPersonRecord(
           profilePath: personRecord.rawTmdbPerson.profile_path ?? null,
         }
       : null,
-  };
-}
-
-function createPersonSnapshotFromFilmCredit(
-  credit: TmdbPersonCredit,
-): IndexedDbSnapshotPerson {
-  const personTmdbId = getValidTmdbEntityId(credit.id);
-  if (personTmdbId === null) {
-    throwCinenerdleValidationError(
-      `Cannot export snapshot: film credit person "${credit.name ?? ""}" is missing a numeric TMDb id.`,
-    );
-  }
-
-  return {
-    tmdbId: personTmdbId,
-    name: credit.name ?? "",
-    movieConnectionKeys: [],
-    popularity: credit.popularity ?? 0,
-    fromTmdb: null,
-  };
-}
-
-function assertPersonSnapshotsAgree(
-  standalonePerson: IndexedDbSnapshotPerson,
-  derivedPerson: IndexedDbSnapshotPerson,
-): void {
-  if (
-    normalizeSnapshotPersonName(standalonePerson.name) !==
-      normalizeSnapshotPersonName(derivedPerson.name)
-  ) {
-    throwCinenerdleValidationError(
-      `Cannot export snapshot: conflicting person data for TMDb person ${derivedPerson.tmdbId}.`,
-      {
-        reason: "conflicting-person-data",
-        tmdbId: derivedPerson.tmdbId,
-        standalonePerson,
-        derivedPerson,
-      },
-    );
-  }
-}
-
-function mergeSnapshotPersonPopularity(
-  existingPersonSnapshot: IndexedDbSnapshotPerson,
-  nextPopularity: number,
-  existingPopularityFetchTimestamp: string | undefined,
-  nextPopularityFetchTimestamp: string | undefined,
-): {
-  personSnapshot: IndexedDbSnapshotPerson;
-  popularityFetchTimestamp: string | undefined;
-} {
-  const mergedPopularity =
-    mergeFetchedFieldValue(
-      existingPersonSnapshot.popularity,
-      nextPopularity,
-      existingPopularityFetchTimestamp,
-      nextPopularityFetchTimestamp,
-    ) ?? 0;
-
-  return {
-    personSnapshot: {
-      ...existingPersonSnapshot,
-      popularity: mergedPopularity,
-    },
-    popularityFetchTimestamp: shouldPreferNextFetchedField(
-      existingPersonSnapshot.popularity,
-      nextPopularity,
-      existingPopularityFetchTimestamp,
-      nextPopularityFetchTimestamp,
-    )
-      ? nextPopularityFetchTimestamp
-      : existingPopularityFetchTimestamp,
   };
 }
 
@@ -2335,112 +2249,6 @@ function createSnapshotFilmRecord(
         personTmdbId === null ? undefined : peopleByTmdbId.get(personTmdbId),
       );
     }),
-  };
-}
-
-export function buildIndexedDbSnapshot(
-  snapshot: LiveIndexedDbSnapshot,
-): IndexedDbSnapshot {
-  resetIndexedDbSnapshotValidationState();
-
-  const peopleByTmdbId = new Map<number, IndexedDbSnapshotPerson>();
-  const personPopularityFetchTimestampByTmdbId = new Map<number, string | undefined>();
-  [...(snapshot.people ?? [])]
-    .sort((left, right) => left.name.localeCompare(right.name) || left.id - right.id)
-    .forEach((personRecord) => {
-      const personSnapshot = createPersonSnapshotFromPersonRecord(personRecord);
-      const existingSnapshot = peopleByTmdbId.get(personSnapshot.tmdbId);
-      const popularityFetchTimestamp = personRecord.fetchTimestamp;
-
-      if (existingSnapshot) {
-        assertPersonSnapshotsAgree(existingSnapshot, personSnapshot);
-        const mergedPerson = mergeSnapshotPersonPopularity(
-          existingSnapshot,
-          personSnapshot.popularity,
-          personPopularityFetchTimestampByTmdbId.get(personSnapshot.tmdbId),
-          popularityFetchTimestamp,
-        );
-        peopleByTmdbId.set(personSnapshot.tmdbId, {
-          ...mergedPerson.personSnapshot,
-          movieConnectionKeys: Array.from(
-            new Set([
-              ...existingSnapshot.movieConnectionKeys,
-              ...personSnapshot.movieConnectionKeys,
-            ]),
-          ),
-          fromTmdb: personSnapshot.fromTmdb ?? existingSnapshot.fromTmdb,
-        });
-        personPopularityFetchTimestampByTmdbId.set(
-          personSnapshot.tmdbId,
-          mergedPerson.popularityFetchTimestamp,
-        );
-        return;
-      }
-
-      peopleByTmdbId.set(personSnapshot.tmdbId, personSnapshot);
-      personPopularityFetchTimestampByTmdbId.set(
-        personSnapshot.tmdbId,
-        popularityFetchTimestamp,
-      );
-    });
-
-  const films = [...(snapshot.films ?? [])]
-    .sort((left, right) =>
-      left.title.localeCompare(right.title) ||
-      left.year.localeCompare(right.year) ||
-      String(left.id).localeCompare(String(right.id)))
-    .map((filmRecord) => {
-      const filmCredits = getAssociatedPeopleFromMovieCreditsForSnapshot(filmRecord);
-
-      filmCredits.forEach((credit) => {
-        const derivedPerson = createPersonSnapshotFromFilmCredit(credit);
-        const existingSnapshot = peopleByTmdbId.get(derivedPerson.tmdbId);
-        const derivedPopularityFetchTimestamp =
-          credit.fetchTimestamp ?? filmRecord.fetchTimestamp;
-
-        if (existingSnapshot) {
-          assertPersonSnapshotsAgree(existingSnapshot, derivedPerson);
-          const mergedPerson = mergeSnapshotPersonPopularity(
-            existingSnapshot,
-            derivedPerson.popularity,
-            personPopularityFetchTimestampByTmdbId.get(derivedPerson.tmdbId),
-            derivedPopularityFetchTimestamp,
-          );
-          peopleByTmdbId.set(derivedPerson.tmdbId, {
-            ...mergedPerson.personSnapshot,
-            movieConnectionKeys: Array.from(
-              new Set([
-                ...existingSnapshot.movieConnectionKeys,
-                ...derivedPerson.movieConnectionKeys,
-              ]),
-            ),
-          });
-          personPopularityFetchTimestampByTmdbId.set(
-            derivedPerson.tmdbId,
-            mergedPerson.popularityFetchTimestamp,
-          );
-          return;
-        }
-
-        peopleByTmdbId.set(derivedPerson.tmdbId, derivedPerson);
-        personPopularityFetchTimestampByTmdbId.set(
-          derivedPerson.tmdbId,
-          derivedPopularityFetchTimestamp,
-        );
-      });
-
-      return createSnapshotFilmRecord(filmRecord, filmCredits, peopleByTmdbId);
-    });
-
-  const people = Array.from(peopleByTmdbId.values()).sort(
-    (left, right) => left.name.localeCompare(right.name) || left.tmdbId - right.tmdbId,
-  );
-
-  return {
-    format: "cinenerdle-indexed-db-snapshot",
-    version: INDEXED_DB_SNAPSHOT_VERSION,
-    people,
-    films,
   };
 }
 

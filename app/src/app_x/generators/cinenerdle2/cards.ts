@@ -6,7 +6,7 @@ import type {
   TmdbMovieCredit,
   TmdbPersonCredit,
 } from "./types";
-import type { CardCreditLine, CinenerdleCard, DbInfoSummaryItem } from "./view_types";
+import type { CardCreditLine, CinenerdleCard } from "./view_types";
 import {
   formatFallbackPersonDisplayName,
   getCinenerdleMovieId,
@@ -124,132 +124,6 @@ function getPersonAssociationCreditLines(
         : credit.job?.trim() || credit.department?.trim() || "Crew",
     subtitleDetail: credit.creditType === "cast" ? credit.character?.trim() ?? "" : "",
   })));
-}
-
-function buildMovieDbInfoSummary(
-  item: {
-    name: string;
-    year?: string;
-  },
-  record: FilmRecord | null,
-) {
-  if (!record) {
-    return {
-      cached: false,
-      kind: "movie",
-      title: item.name,
-      year: item.year ?? "",
-    };
-  }
-
-  return {
-    cached: true,
-    kind: "movie",
-    title: record.title || item.name,
-    year: record.year || item.year || "",
-    id: record.id,
-    tmdbId: record.tmdbId,
-    popularity: record.popularity,
-    voteAverage: record.rawTmdbMovie?.vote_average ?? null,
-    voteCount: record.rawTmdbMovie?.vote_count ?? null,
-    castCount: record.rawTmdbMovieCreditsResponse?.cast?.length ?? 0,
-    crewCount: record.rawTmdbMovieCreditsResponse?.crew?.length ?? 0,
-    connectionCount: record.personConnectionKeys.length,
-    hasTmdbMovie: Boolean(record.rawTmdbMovie),
-    hasTmdbCredits: Boolean(record.rawTmdbMovieCreditsResponse),
-    posterPath: record.rawTmdbMovie?.poster_path ?? null,
-    fetchTimestamp: record.fetchTimestamp ?? null,
-  };
-}
-
-function buildPersonDbInfoSummary(
-  item: {
-    name: string;
-  },
-  record: PersonRecord | null,
-) {
-  if (!record) {
-    return {
-      cached: false,
-      kind: "person",
-      name: item.name,
-    };
-  }
-
-  return {
-    cached: true,
-    kind: "person",
-    name: record.name || item.name,
-    id: record.id,
-    tmdbId: record.tmdbId,
-    popularity: record.rawTmdbPerson?.popularity ?? null,
-    movieConnectionCount: record.movieConnectionKeys.length,
-    castCreditCount: record.rawTmdbMovieCreditsResponse?.cast?.length ?? 0,
-    crewCreditCount: record.rawTmdbMovieCreditsResponse?.crew?.length ?? 0,
-    hasTmdbPerson: Boolean(record.rawTmdbPerson),
-    hasTmdbMovieCredits: Boolean(record.rawTmdbMovieCreditsResponse),
-    profilePath: record.rawTmdbPerson?.profile_path ?? null,
-    fetchTimestamp: record.fetchTimestamp ?? null,
-  };
-}
-
-function formatSummaryValue(value: number | string | boolean | null | undefined): string {
-  if (value === null || value === undefined || value === "") {
-    return "-";
-  }
-
-  if (typeof value === "boolean") {
-    return value ? "Yes" : "No";
-  }
-
-  if (typeof value === "number") {
-    return Number.isInteger(value) ? String(value) : value.toFixed(2);
-  }
-
-  return value;
-}
-
-function buildMovieDbInfoItems(
-  item: {
-    name: string;
-    year?: string;
-  },
-  record: FilmRecord | null,
-): DbInfoSummaryItem[] {
-  const summary = buildMovieDbInfoSummary(item, record);
-
-  return [
-    { label: "Cached", value: formatSummaryValue(summary.cached) },
-    { label: "TMDb ID", value: formatSummaryValue(summary.tmdbId) },
-    { label: "Year", value: formatSummaryValue(summary.year) },
-    { label: "Popularity", value: formatSummaryValue(summary.popularity) },
-    { label: "Rating", value: formatSummaryValue(summary.voteAverage) },
-    { label: "Votes", value: formatSummaryValue(summary.voteCount) },
-    { label: "Cast", value: formatSummaryValue(summary.castCount) },
-    { label: "Crew", value: formatSummaryValue(summary.crewCount) },
-    { label: "Links", value: formatSummaryValue(summary.connectionCount) },
-    { label: "Credits", value: formatSummaryValue(summary.hasTmdbCredits) },
-  ];
-}
-
-function buildPersonDbInfoItems(
-  item: {
-    name: string;
-  },
-  record: PersonRecord | null,
-): DbInfoSummaryItem[] {
-  const summary = buildPersonDbInfoSummary(item, record);
-
-  return [
-    { label: "Cached", value: formatSummaryValue(summary.cached) },
-    { label: "TMDb ID", value: formatSummaryValue(summary.tmdbId) },
-    { label: "Popularity", value: formatSummaryValue(summary.popularity) },
-    { label: "Movies", value: formatSummaryValue(summary.movieConnectionCount) },
-    { label: "Cast", value: formatSummaryValue(summary.castCreditCount) },
-    { label: "Crew", value: formatSummaryValue(summary.crewCreditCount) },
-    { label: "Profile", value: formatSummaryValue(summary.hasTmdbPerson) },
-    { label: "Credits", value: formatSummaryValue(summary.hasTmdbMovieCredits) },
-  ];
 }
 
 export function createCinenerdleRootCard(connectionCount: number | null): CinenerdleCard {
@@ -389,70 +263,6 @@ export function createMovieRootCard(
     voteAverage: movieRecord.rawTmdbMovie?.vote_average ?? null,
     voteCount: movieRecord.rawTmdbMovie?.vote_count ?? null,
     record: movieRecord,
-  };
-}
-
-export function createRootDatabaseInfoCard(
-  item: {
-    kind: "movie" | "person";
-    name: string;
-    year?: string;
-  },
-  record: FilmRecord | PersonRecord | null,
-): CinenerdleCard {
-  const summaryLine =
-    item.kind === "movie"
-      ? `${item.name}${item.year ? ` (${item.year})` : ""}`
-      : item.name;
-  const body = JSON.stringify(
-    item.kind === "movie"
-      ? buildMovieDbInfoSummary(
-          {
-            name: item.name,
-            year: item.year,
-          },
-          record as FilmRecord | null,
-        )
-      : buildPersonDbInfoSummary(
-          {
-            name: item.name,
-          },
-          record as PersonRecord | null,
-        ),
-    null,
-    2,
-  );
-
-  return {
-    key: `dbinfo:${item.kind}:${item.name}:${item.kind === "movie" ? item.year ?? "" : ""}`,
-    kind: "dbinfo",
-    name: "Database Info",
-    popularity: 0,
-    popularitySource: null,
-    imageUrl: null,
-    subtitle: summaryLine,
-    subtitleDetail: record ? "IndexedDB record" : "Not cached yet",
-    connectionCount: null,
-    sources: [],
-    status: null,
-    body,
-    recordKind: item.kind,
-    summaryItems:
-      item.kind === "movie"
-        ? buildMovieDbInfoItems(
-            {
-              name: item.name,
-              year: item.year,
-            },
-            record as FilmRecord | null,
-          )
-        : buildPersonDbInfoItems(
-            {
-              name: item.name,
-            },
-            record as PersonRecord | null,
-          ),
-    record,
   };
 }
 
