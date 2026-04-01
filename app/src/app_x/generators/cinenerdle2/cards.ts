@@ -291,11 +291,13 @@ export function createDailyStarterFilmRecord(
 
   const title = titleAndYear.title;
   const year = titleAndYear.year;
+  const tmdbId = getValidTmdbEntityId(starter.tmdbId);
+  const fallbackId = starter.id ?? getCinenerdleMovieId(title, year);
 
   return {
-    id: starter.id ?? getCinenerdleMovieId(title, year),
-    tmdbId: null,
-    lookupKey: String(starter.id ?? getCinenerdleMovieId(title, year)),
+    id: tmdbId ?? fallbackId,
+    tmdbId,
+    lookupKey: String(tmdbId ?? fallbackId),
     title,
     titleLower: normalizeTitle(title),
     year,

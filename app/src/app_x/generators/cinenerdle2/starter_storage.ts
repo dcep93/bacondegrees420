@@ -1,11 +1,49 @@
 import { CINENERDLE_DAILY_STARTER_TITLES_STORAGE_KEY } from "./constants";
 import { formatMoviePathLabel, normalizeTitle } from "./utils";
 
+export type CinenerdleDailyStarterCacheEntry = {
+  title: string;
+  tmdbId: number | null;
+};
+
 function canUseLocalStorage(): boolean {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
 }
 
-export function readCinenerdleDailyStarterTitles(): string[] {
+function normalizeStarterCacheEntry(
+  value: unknown,
+): CinenerdleDailyStarterCacheEntry | null {
+  if (typeof value === "string") {
+    const title = value.trim();
+    return title
+      ? {
+          title,
+          tmdbId: null,
+        }
+      : null;
+  }
+
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const rawTitle = "title" in value ? value.title : "";
+  const rawTmdbId = "tmdbId" in value ? value.tmdbId : null;
+  const title = typeof rawTitle === "string" ? rawTitle.trim() : "";
+  const tmdbId =
+    typeof rawTmdbId === "number" && Number.isInteger(rawTmdbId) && rawTmdbId > 0
+      ? rawTmdbId
+      : null;
+
+  return title
+    ? {
+        title,
+        tmdbId,
+      }
+    : null;
+}
+
+export function readCinenerdleDailyStarterEntries(): CinenerdleDailyStarterCacheEntry[] {
   if (!canUseLocalStorage()) {
     return [];
   }
@@ -18,28 +56,47 @@ export function readCinenerdleDailyStarterTitles(): string[] {
   try {
     const parsedValue = JSON.parse(rawValue);
     return Array.isArray(parsedValue)
-      ? parsedValue.filter((value): value is string => typeof value === "string")
+      ? parsedValue.flatMap((value) => {
+          const normalizedEntry = normalizeStarterCacheEntry(value);
+          return normalizedEntry ? [normalizedEntry] : [];
+        })
       : [];
   } catch {
     return [];
   }
 }
 
-export function writeCinenerdleDailyStarterTitles(titles: string[]): void {
+export function writeCinenerdleDailyStarterEntries(
+  entries: CinenerdleDailyStarterCacheEntry[],
+): void {
   if (!canUseLocalStorage()) {
     return;
   }
 
-  const uniqueTitles = Array.from(
-    new Set(
-      titles
-        .map((title) => title.trim())
-        .filter(Boolean),
-    ),
+  const uniqueEntries = Array.from(
+    new Map(
+      entries
+        .map((entry) => normalizeStarterCacheEntry(entry))
+        .filter((entry): entry is CinenerdleDailyStarterCacheEntry => entry !== null)
+        .map((entry) => [normalizeTitle(entry.title), entry] as const),
+    ).values(),
   );
   window.localStorage.setItem(
     CINENERDLE_DAILY_STARTER_TITLES_STORAGE_KEY,
-    JSON.stringify(uniqueTitles),
+    JSON.stringify(uniqueEntries),
+  );
+}
+
+export function readCinenerdleDailyStarterTitles(): string[] {
+  return readCinenerdleDailyStarterEntries().map((entry) => entry.title);
+}
+
+export function writeCinenerdleDailyStarterTitles(titles: string[]): void {
+  writeCinenerdleDailyStarterEntries(
+    titles.map((title) => ({
+      title,
+      tmdbId: null,
+    })),
   );
 }
 

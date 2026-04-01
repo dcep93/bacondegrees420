@@ -155,6 +155,7 @@ describe("startIdleFetch", () => {
       "Top Movie",
       "2001",
       "prefetch",
+      null,
     );
     expect(tmdbMock.fetchAndCachePerson).not.toHaveBeenCalledWith(
       "Low Person",
@@ -165,6 +166,7 @@ describe("startIdleFetch", () => {
       "Low",
       "2000",
       "prefetch",
+      null,
     );
 
     handle.stop();
@@ -240,6 +242,7 @@ describe("startIdleFetch", () => {
       "Starter",
       "2001",
       "prefetch",
+      null,
     );
     expect(tmdbMock.fetchAndCachePerson).toHaveBeenCalledWith(
       "Starter Person",
@@ -258,6 +261,7 @@ describe("startIdleFetch", () => {
       "New Movie",
       "2005",
       "prefetch",
+      null,
     );
 
     handle.stop();

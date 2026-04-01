@@ -47,6 +47,7 @@ vi.mock("../connection_graph", () => connectionGraphMock);
 vi.mock("../debug_log", () => debugLogMock);
 
 import {
+  fetchCinenerdleDailyStarterMovies,
   fetchAndCacheMovieCredits,
   hasHydratedMovieRecord,
   hasHydratedPersonRecord,
@@ -57,6 +58,7 @@ import {
   prefetchTopPopularUnhydratedConnections,
   prepareSelectedMovie,
   prepareSelectedPerson,
+  resolveConnectionQuery,
 } from "../tmdb";
 
 function createJsonResponse(payload: unknown) {
@@ -467,50 +469,25 @@ describe("tmdb forced refresh helpers", () => {
     );
   });
 
-  it("logs a single combined movie line when credits fetch has to resolve the movie first", async () => {
+  it("does not remote-fetch movie credits when the movie has no tmdb id", async () => {
     const unresolvedMovieRecord = makeFilmRecord({
       id: "gran-torino-2007",
       tmdbId: null,
       title: "Gran Torino",
       year: "2007",
     });
-    const fetchMock = vi.fn(async (input: string) => {
-      const url = String(input);
-      if (url.includes("/search/movie")) {
-        return createJsonResponse({
-          results: [
-            makeTmdbMovieSearchResult({
-              id: 321,
-              title: "Gran Torino",
-              release_date: "2007-12-14",
-              popularity: 88,
-            }),
-          ],
-        });
-      }
-
-      if (url.includes("/movie/321/credits")) {
-        return createJsonResponse({ cast: [], crew: [] });
-      }
-
-      throw new Error(`Unexpected fetch: ${url}`);
-    });
+    const fetchMock = vi.fn();
 
     indexedDbMock.getFilmRecordById.mockResolvedValue(null);
     indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(null);
     vi.stubGlobal("fetch", fetchMock);
 
-    await fetchAndCacheMovieCredits(unresolvedMovieRecord, "fetch");
+    const result = await fetchAndCacheMovieCredits(unresolvedMovieRecord, "fetch");
 
-    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("/movie/321/credits"))).toHaveLength(1);
-    expect(
-      consoleLogSpy.mock.calls.filter(
-        ([event]) => event === "gen 0 movie 1 / 1 fetch Gran Torino (2007) pop 88",
-      ),
-    ).toHaveLength(1);
-    expect(debugLogMock.addCinenerdleDebugLog).toHaveBeenCalledWith(
-      "gen 0 movie 1 / 1 fetch Gran Torino (2007) pop 88",
-    );
+    expect(result).toBe(unresolvedMovieRecord);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(consoleLogSpy).not.toHaveBeenCalled();
+    expect(debugLogMock.addCinenerdleDebugLog).not.toHaveBeenCalled();
   });
 
   it("logs raw person responses with the requested format", async () => {
@@ -588,6 +565,63 @@ describe("tmdb forced refresh helpers", () => {
     expect(indexedDbMock.saveFilmRecord).not.toHaveBeenCalled();
   });
 
+  it("searches starter titles once to cache tmdb ids alongside titles", async () => {
+    const storage = {
+      getItem: vi.fn().mockReturnValue("key:test-api-key"),
+      setItem: vi.fn(),
+    };
+    const fetchMock = vi.fn(async (input: string) => {
+      const url = String(input);
+      if (url === "https://www.cinenerdle2.app/api/battle-data/daily-starters?") {
+        return createJsonResponse({
+          data: [
+            {
+              id: "starter-heat",
+              title: "Heat (1995)",
+            },
+          ],
+        });
+      }
+
+      if (url.includes("/search/movie?") && url.includes("query=Heat")) {
+        return createJsonResponse({
+          results: [
+            makeTmdbMovieSearchResult({
+              id: 321,
+              title: "Heat",
+              release_date: "1995-12-15",
+              popularity: 99,
+            }),
+          ],
+        });
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    vi.stubGlobal("localStorage", storage);
+    vi.stubGlobal("window", {
+      prompt: vi.fn(),
+      localStorage: storage,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const starterFilms = await fetchCinenerdleDailyStarterMovies();
+
+    expect(starterFilms).toEqual([
+      expect.objectContaining({
+        id: 321,
+        tmdbId: 321,
+        title: "Heat",
+        year: "1995",
+      }),
+    ]);
+    expect(storage.setItem).toHaveBeenCalledWith(
+      "cinenerdle2.dailyStarterTitles",
+      JSON.stringify([{ title: "Heat (1995)", tmdbId: 321 }]),
+    );
+  });
+
   it("auto-fetches cached movies that do not have top-level TMDb movie data yet", async () => {
     const placeholderMovieRecord = makeFilmRecord({
       id: 321,
@@ -646,7 +680,7 @@ describe("tmdb forced refresh helpers", () => {
     await prepareSelectedMovie("Heat", "1995", 321);
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fetchMock.mock.calls[0]?.[0]).toContain("/search/movie?");
+    expect(fetchMock.mock.calls[0]?.[0]).toContain("/movie/321?");
     expect(fetchMock.mock.calls[1]?.[0]).toContain("/movie/321/credits?");
   });
 
@@ -696,28 +730,8 @@ describe("tmdb forced refresh helpers", () => {
     expect(fetchMock.mock.calls[1]?.[0]).toContain("/person/60/movie_credits?");
   });
 
-  it("coalesces overlapping selected movie fetches for uncached movies", async () => {
-    const fetchMock = vi.fn(async (input: string) => {
-      const url = String(input);
-      if (url.includes("/search/movie")) {
-        return createJsonResponse({
-          results: [
-            makeTmdbMovieSearchResult({
-              id: 934433,
-              title: "La Snob",
-              release_date: "2024-01-01",
-              popularity: 1.38,
-            }),
-          ],
-        });
-      }
-
-      if (url.includes("/movie/934433/credits")) {
-        return createJsonResponse({ cast: [], crew: [] });
-      }
-
-      throw new Error(`Unexpected fetch: ${url}`);
-    });
+  it("coalesces overlapping selected movie fetches for uncached movies without remote fallback", async () => {
+    const fetchMock = vi.fn();
 
     indexedDbMock.getFilmRecordById.mockResolvedValue(null);
     indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(null);
@@ -729,19 +743,14 @@ describe("tmdb forced refresh helpers", () => {
     ]);
 
     expect(firstResult).toBe(secondResult);
-    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("/search/movie"))).toHaveLength(1);
-    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("/movie/934433/credits"))).toHaveLength(1);
-    expect(
-      consoleLogSpy.mock.calls.filter(
-        ([event]) => event === "gen 0 movie 1 / 1 fetch La Snob (2024) pop 1.38",
-      ),
-    ).toHaveLength(1);
+    expect(firstResult).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("does not fan out into global popular prefetches after a selected fetch", async () => {
     const searchRecords = [
       {
-        key: "person:tom-brady",
+        key: "person:12",
         type: "person" as const,
         nameLower: "tom brady",
         popularity: 10,
@@ -814,7 +823,7 @@ describe("tmdb forced refresh helpers", () => {
         popularity: 2,
       },
       {
-        key: "person:tom-brady",
+        key: "person:12",
         type: "person" as const,
         nameLower: "tom brady",
         popularity: 10,
@@ -823,33 +832,19 @@ describe("tmdb forced refresh helpers", () => {
     const fetchMock = vi.fn(async (input: string) => {
       const url = String(input);
 
-      if (url.includes("/search/movie")) {
-        return createJsonResponse({
-          results: [
-            makeTmdbMovieSearchResult({
-              id: 321,
-              title: "Gran Torino",
-              release_date: "2007-12-14",
-              popularity: 9,
-            }),
-          ],
-        });
+      if (url.includes("/movie/321?")) {
+        return createJsonResponse(
+          makeTmdbMovieSearchResult({
+            id: 321,
+            title: "Gran Torino",
+            release_date: "2007-12-14",
+            popularity: 9,
+          }),
+        );
       }
 
       if (url.includes("/movie/321/credits")) {
         return createJsonResponse({ cast: [], crew: [] });
-      }
-
-      if (url.includes("/search/person")) {
-        return createJsonResponse({
-          results: [
-            makeTmdbPersonSearchResult({
-              id: 12,
-              name: "Tom Brady",
-              popularity: 10,
-            }),
-          ],
-        });
       }
 
       if (url.includes("/person/12?")) {
@@ -871,7 +866,19 @@ describe("tmdb forced refresh helpers", () => {
 
     indexedDbMock.getAllSearchableConnectionEntities.mockResolvedValue(searchRecords);
     indexedDbMock.getFilmRecordById.mockResolvedValue(null);
-    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(null);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (movieName: string, movieYear: string) =>
+      movieName.toLowerCase() === "gran torino" && movieYear === "2007"
+        ? makeFilmRecord({
+            id: 321,
+            tmdbId: 321,
+            title: "Gran Torino",
+            year: "2007",
+            tmdbSource: "connection-derived",
+            rawTmdbMovie: undefined,
+            rawTmdbMovieCreditsResponse: undefined,
+          })
+        : null,
+    );
     indexedDbMock.getPersonRecordById.mockResolvedValue(null);
     indexedDbMock.getPersonRecordByName.mockResolvedValue(null);
     vi.stubGlobal("fetch", fetchMock);
@@ -889,16 +896,16 @@ describe("tmdb forced refresh helpers", () => {
             : {
                 key: searchRecord.key,
                 kind: "person",
-                name: searchRecord.key === "person:tom-brady" ? "Tom Brady" : "Side Character",
+                name: searchRecord.key === "person:12" ? "Tom Brady" : "Side Character",
                 year: "",
-                tmdbId: searchRecord.key === "person:tom-brady" ? 12 : null,
+                tmdbId: searchRecord.key === "person:12" ? 12 : null,
               },
         ),
     );
 
     await prefetchTopPopularUnhydratedConnections();
 
-    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/search/movie"))).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/movie/321?"))).toBe(true);
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/movie/321/credits"))).toBe(true);
     expect(consoleLogSpy).toHaveBeenCalledWith(
       "gen 1 movie 1 / 1 prefetch Gran Torino (2007) pop 9",
@@ -1060,7 +1067,7 @@ describe("tmdb forced refresh helpers", () => {
     });
     const searchRecords = [
       {
-        key: "person:global-choice",
+        key: "person:222",
         type: "person" as const,
         nameLower: "global choice",
         popularity: 99,
@@ -1068,18 +1075,6 @@ describe("tmdb forced refresh helpers", () => {
     ];
     const fetchMock = vi.fn(async (input: string) => {
       const url = String(input);
-
-      if (url.includes("/search/person")) {
-        return createJsonResponse({
-          results: [
-            makeTmdbPersonSearchResult({
-              id: 222,
-              name: "Global Choice",
-              popularity: 99,
-            }),
-          ],
-        });
-      }
 
       if (url.includes("/person/222?")) {
         return createJsonResponse(
@@ -1126,7 +1121,7 @@ describe("tmdb forced refresh helpers", () => {
     });
 
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/person/111?"))).toBe(false);
-    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/search/person"))).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/person/222?"))).toBe(true);
     expect(consoleLogSpy).toHaveBeenCalledWith(
       "gen 1 person 1 / 1 prefetch Global Choice pop 99",
       expect.objectContaining({
@@ -1432,17 +1427,15 @@ describe("tmdb forced refresh helpers", () => {
     const fetchMock = vi.fn(async (input: string) => {
       const url = String(input);
 
-      if (url.includes("/search/movie")) {
-        return createJsonResponse({
-          results: [
-            makeTmdbMovieSearchResult({
-              id: 321,
-              title: "Gran Torino",
-              release_date: "2007-12-14",
-              popularity: 9,
-            }),
-          ],
-        });
+      if (url.includes("/movie/321?")) {
+        return createJsonResponse(
+          makeTmdbMovieSearchResult({
+            id: 321,
+            title: "Gran Torino",
+            release_date: "2007-12-14",
+            popularity: 9,
+          }),
+        );
       }
 
       if (url.includes("/movie/321/credits")) {
@@ -1469,7 +1462,19 @@ describe("tmdb forced refresh helpers", () => {
 
     indexedDbMock.getAllSearchableConnectionEntities.mockResolvedValue(searchRecordsBeforeMovie);
     indexedDbMock.getFilmRecordById.mockResolvedValue(null);
-    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(null);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (movieName: string, movieYear: string) =>
+      movieName.toLowerCase() === "gran torino" && movieYear === "2007"
+        ? makeFilmRecord({
+            id: 321,
+            tmdbId: 321,
+            title: "Gran Torino",
+            year: "2007",
+            tmdbSource: "connection-derived",
+            rawTmdbMovie: undefined,
+            rawTmdbMovieCreditsResponse: undefined,
+          })
+        : null,
+    );
     indexedDbMock.getPersonRecordById.mockResolvedValue(null);
     indexedDbMock.getPersonRecordByName.mockResolvedValue(null);
     vi.stubGlobal("fetch", fetchMock);
@@ -1656,20 +1661,15 @@ describe("tmdb forced refresh helpers", () => {
     const fetchMock = vi.fn(async (input: string) => {
       const url = String(input);
 
-      if (url.includes("/search/movie?") && url.includes("Needs+Prefetch")) {
-        return createJsonResponse({
-          page: 1,
-          results: [
-            makeTmdbMovieSearchResult({
-              id: 102,
-              title: "Needs Prefetch",
-              release_date: "2019-01-01",
-              popularity: 55,
-            }),
-          ],
-          total_pages: 1,
-          total_results: 1,
-        });
+      if (url.includes("/movie/102?")) {
+        return createJsonResponse(
+          makeTmdbMovieSearchResult({
+            id: 102,
+            title: "Needs Prefetch",
+            release_date: "2019-01-01",
+            popularity: 55,
+          }),
+        );
       }
 
       if (url.includes("/movie/102/credits")) {
@@ -1717,6 +1717,20 @@ describe("tmdb forced refresh helpers", () => {
       "Hydrated Hit",
       "2020",
     );
-    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("Needs+Prefetch"))).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/movie/102?"))).toBe(true);
+  });
+
+  it("does not remote-resolve unmatched connection queries", async () => {
+    const fetchMock = vi.fn();
+
+    indexedDbMock.getAllSearchableConnectionEntities.mockResolvedValue([]);
+    indexedDbMock.getPersonRecordByName.mockResolvedValue(null);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(null);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const target = await resolveConnectionQuery("La Snob (2024)");
+
+    expect(target).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

@@ -582,8 +582,8 @@ export function mergePersonRecords(
 
 export function buildPersonRecord(
   person: TmdbPersonSearchResult,
-  searchResponse: { results?: TmdbPersonSearchResult[] },
   movieCreditsResponse: PersonRecord["rawTmdbMovieCreditsResponse"],
+  searchResponse?: { results?: TmdbPersonSearchResult[] },
 ): PersonRecord {
   return withDerivedPersonFields({
     id: person.id,

@@ -313,6 +313,7 @@ async function fetchIdleFetchSearchRecord(
     entity.name,
     entity.year,
     "prefetch",
+    entity.tmdbId,
   );
 
   return Boolean(fetchedMovieRecord);

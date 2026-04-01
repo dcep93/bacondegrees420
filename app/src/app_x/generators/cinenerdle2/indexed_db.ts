@@ -6,7 +6,7 @@ import {
   PEOPLE_STORE_NAME,
   SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME,
 } from "./constants";
-import { createDailyStarterFilmRecordFromTitle } from "./cards";
+import { createDailyStarterFilmRecord } from "./cards";
 import { normalizeHashValue } from "./hash";
 import {
   buildPersonRecordFromFilmCredit,
@@ -22,7 +22,7 @@ import {
   hasDirectTmdbMovieSource,
   hasDirectTmdbPersonSource,
 } from "./tmdb_provenance";
-import { readCinenerdleDailyStarterTitles } from "./starter_storage";
+import { readCinenerdleDailyStarterEntries } from "./starter_storage";
 import type {
   FilmRecord,
   PersonRecord,
@@ -1751,14 +1751,16 @@ export async function getCinenerdleStarterFilmRecords(): Promise<FilmRecord[]> {
   return measureAsync(
     "idb.getCinenerdleStarterFilmRecords",
     async () => {
-      const starterTitles = readCinenerdleDailyStarterTitles();
+      const starterEntries = readCinenerdleDailyStarterEntries();
       const starterRecords = await Promise.all(
-        starterTitles.map(async (starterTitle) => {
-          const starterRecord = createDailyStarterFilmRecordFromTitle(starterTitle);
-          const cachedFilmRecord = await getFilmRecordByTitleAndYear(
-            starterRecord.title,
-            starterRecord.year,
-          );
+        starterEntries.map(async (starterEntry) => {
+          const starterRecord = createDailyStarterFilmRecord(starterEntry);
+          const cachedFilmRecord =
+            (starterEntry.tmdbId ? await getFilmRecordById(starterEntry.tmdbId) : null) ??
+            (await getFilmRecordByTitleAndYear(
+              starterRecord.title,
+              starterRecord.year,
+            ));
 
           if (!cachedFilmRecord) {
             return starterRecord;

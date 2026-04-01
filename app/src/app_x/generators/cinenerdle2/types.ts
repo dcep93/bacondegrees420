@@ -1,5 +1,6 @@
 export type CinenerdleDailyStarter = {
   id?: string | number | null;
+  tmdbId?: number | null;
   title?: string | null;
   posterUrl?: string | null;
   genres?: string[] | null;

@@ -701,7 +701,7 @@ describe("buildPersonRecord", () => {
       crew: [],
     };
 
-    const personRecord = buildPersonRecord(person, searchResponse, movieCreditsResponse);
+    const personRecord = buildPersonRecord(person, movieCreditsResponse, searchResponse);
 
     expect(personRecord).toEqual({
       id: 321,

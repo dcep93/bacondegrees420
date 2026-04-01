@@ -97,6 +97,28 @@ function waitForNextFrame(): Promise<void> {
   });
 }
 
+async function waitForGenerationToRender<T, TMeta>(
+  generationIndex: number,
+  options: {
+    getState: () => GeneratorState<T, TMeta>;
+    getRowElement: (index: number) => HTMLDivElement | null | undefined;
+  },
+): Promise<void> {
+  const maxFrames = 5;
+
+  for (let frame = 0; frame < maxFrames; frame += 1) {
+    const tree = resolveGeneratorTree(options.getState());
+    const hasGeneration = Boolean(tree[generationIndex]?.length);
+    const hasRowElement = Boolean(options.getRowElement(generationIndex));
+
+    if (hasGeneration && hasRowElement) {
+      return;
+    }
+
+    await waitForNextFrame();
+  }
+}
+
 export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
   createInitialState,
   getRowPresentation,
@@ -123,6 +145,12 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
   const lastHandledTreeRefreshRequestKeyRef = useRef<string | null>(null);
   const mountedGenerationIndexesRef = useRef<Set<number>>(new Set());
   const stateRef = useRef(state);
+  const handleBubbleClickRef = useRef<((generationIndex: number) => void) | null>(null);
+  const runEffectsRef = useRef<null | ((
+    effects: TEffect[],
+    lifecycleId: number,
+    selectionId: number,
+  ) => Promise<void>)>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -296,15 +324,23 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     handleScrollToSelected(generationIndex);
   }, [handleScrollToSelected, resolvedTree]);
 
+  useLayoutEffect(() => {
+    handleBubbleClickRef.current = handleBubbleClick;
+  }, [handleBubbleClick]);
+
   const scrollGenerationLikeBubble = useCallback(async (generationIndex: number) => {
     await waitForNextFrame();
+    await waitForGenerationToRender(generationIndex, {
+      getState: () => stateRef.current,
+      getRowElement: (index) => rowRefs.current[index],
+    });
 
     if (!mountedRef.current) {
       return;
     }
 
-    handleBubbleClick(generationIndex);
-  }, [handleBubbleClick]);
+    handleBubbleClickRef.current?.(generationIndex);
+  }, []);
 
   const runEffects = useCallback(async (
     effects: TEffect[],
@@ -333,12 +369,22 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
   }, [createGuardedApplyUpdate, runEffect, scrollGenerationLikeBubble]);
 
   useEffect(() => {
+    runEffectsRef.current = runEffects;
+  }, [runEffects]);
+
+  useEffect(() => {
     const lifecycleId = activeLifecycleRef.current + 1;
     activeLifecycleRef.current = lifecycleId;
     activeSelectionRef.current = 0;
     stateRef.current = initialTransition.state;
-    void runEffects(initialTransition.effects, lifecycleId, activeSelectionRef.current);
-  }, [initialTransition, runEffects]);
+    // Initialization should only run on mount/reset. Re-running it on tree changes
+    // cancels queued selection effects by resetting the active selection id.
+    void runEffectsRef.current?.(
+      initialTransition.effects,
+      lifecycleId,
+      activeSelectionRef.current,
+    );
+  }, [initialTransition]);
 
   useLayoutEffect(() => {
     const previouslyMountedGenerationIndexes = mountedGenerationIndexesRef.current;
@@ -370,6 +416,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     const currentTree = stateRef.current.tree;
     const selectedRow = currentTree?.[row];
     const selectedNode = selectedRow?.[col] ?? null;
+
     if (!selectedRow || !selectedNode || isDisabledNode(selectedNode)) {
       return;
     }
