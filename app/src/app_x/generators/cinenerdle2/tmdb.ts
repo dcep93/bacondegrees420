@@ -1039,11 +1039,20 @@ export async function fetchAndCachePerson(
         return personName ? await getPersonRecordByName(personName) : null;
       }
 
-      const person = await fetchTmdbCredits<TmdbPersonSearchResult>(
-        `person/${validPreferredPersonId}`,
-      );
-      const creditsPayload = await fetchTmdbCredits<TmdbPersonMovieCreditsResponse>(
-        `person/${person.id}/movie_credits`,
+      const [person, creditsPayload] = await Promise.all([
+        fetchTmdbCredits<TmdbPersonSearchResult>(
+          `person/${validPreferredPersonId}`,
+        ),
+        fetchTmdbCredits<TmdbPersonMovieCreditsResponse>(
+          `person/${validPreferredPersonId}/movie_credits`,
+        ),
+      ]);
+      const fetchTimestamp = new Date().toISOString();
+      const personRecord = buildPersonRecord(
+        person,
+        creditsPayload,
+        undefined,
+        fetchTimestamp,
       );
       logRawTmdbPersonResponse(
         reason,
@@ -1057,11 +1066,6 @@ export async function fetchAndCachePerson(
           popularity: person.popularity ?? null,
         },
       );
-      const fetchTimestamp = new Date().toISOString();
-      const personRecord = {
-        ...buildPersonRecord(person, creditsPayload),
-        fetchTimestamp,
-      };
       const existingPersonRecord = pickBestPersonRecord(
         await getPersonRecordById(person.id),
         await getPersonRecordByName(person.name ?? personName),
@@ -1143,6 +1147,34 @@ export async function fetchAndCacheMovie(
   });
 }
 
+function createTimestampedMovieCreditsResponse(
+  creditsPayload: TmdbMovieCreditsResponse,
+  fetchTimestamp: string,
+): TmdbMovieCreditsResponse {
+  return {
+    cast: creditsPayload.cast?.map((credit) => ({ ...credit, fetchTimestamp })) ?? [],
+    crew: creditsPayload.crew?.map((credit) => ({ ...credit, fetchTimestamp })) ?? [],
+  };
+}
+
+function buildMovieRecordWithCredits(
+  movieRecord: FilmRecord,
+  tmdbId: number,
+  creditsPayload: TmdbMovieCreditsResponse,
+  fetchTimestamp: string,
+): FilmRecord {
+  return withDerivedFilmFields({
+    ...movieRecord,
+    id: tmdbId,
+    tmdbId,
+    rawTmdbMovieCreditsResponse: createTimestampedMovieCreditsResponse(
+      creditsPayload,
+      fetchTimestamp,
+    ),
+    fetchTimestamp,
+  });
+}
+
 async function fetchAndCacheMovieById(
   tmdbId: number,
   options: {
@@ -1162,22 +1194,27 @@ async function fetchAndCacheMovieById(
   return measureAsync(
     "tmdb.fetchAndCacheMovieById",
     async () => {
-      const exactMovie = await fetchTmdbCredits<TmdbMovieSearchResult>(`movie/${tmdbId}`);
+      const [exactMovie, creditsPayload] = await Promise.all([
+        fetchTmdbCredits<TmdbMovieSearchResult>(`movie/${tmdbId}`),
+        fetchTmdbCredits<TmdbMovieCreditsResponse>(`movie/${tmdbId}/credits`),
+      ]);
       const existingRecord =
         (await getFilmRecordById(tmdbId)) ??
         (movieName ? await getFilmRecordByTitleAndYear(movieName, movieYear) : null);
-      const filmRecord = buildFilmRecord(existingRecord, exactMovie);
+      const fetchTimestamp = new Date().toISOString();
+      const filmRecord = buildFilmRecord(existingRecord, exactMovie, fetchTimestamp);
+      const hydratedMovieRecord = buildMovieRecordWithCredits(
+        filmRecord,
+        tmdbId,
+        creditsPayload,
+        fetchTimestamp,
+      );
 
-      await saveFilmRecord(filmRecord);
-      const storedMovieRecord = (await getFilmRecordById(tmdbId)) ?? filmRecord;
-      const hydratedMovieRecord = await fetchAndCacheMovieCredits(
-        storedMovieRecord,
-        reason,
-        {
-          skipFollowOnPrefetch: options.skipFollowOnPrefetch,
-          logContext: options.logContext,
-          suppressLog: true,
-        },
+      await saveFilmRecord(hydratedMovieRecord);
+      await refreshPopularConnectionPrefetchQueues();
+      const storedMovieRecord = (await getFilmRecordById(tmdbId)) ?? hydratedMovieRecord;
+      dispatchEntityRefreshRequest(
+        createMovieEntityRefreshRequestFromRecord(storedMovieRecord, reason),
       );
       logRawTmdbMovieResponse(
         reason,
@@ -1185,7 +1222,7 @@ async function fetchAndCacheMovieById(
         filmRecord.year || movieYear,
         {
           movie: exactMovie,
-          credits: hydratedMovieRecord?.rawTmdbMovieCreditsResponse ?? null,
+          credits: creditsPayload,
         },
         {
           ...options.logContext,
@@ -1234,16 +1271,12 @@ export async function fetchAndCacheMovieCredits(
         `movie/${tmdbId}/credits`,
       );
       const fetchTimestamp = new Date().toISOString();
-      const updatedRecord = withDerivedFilmFields({
-        ...resolvedMovieRecord,
-        id: tmdbId,
+      const updatedRecord = buildMovieRecordWithCredits(
+        resolvedMovieRecord,
         tmdbId,
-        rawTmdbMovieCreditsResponse: {
-          cast: creditsPayload.cast?.map((credit) => ({ ...credit, fetchTimestamp })) ?? [],
-          crew: creditsPayload.crew?.map((credit) => ({ ...credit, fetchTimestamp })) ?? [],
-        },
+        creditsPayload,
         fetchTimestamp,
-      });
+      );
 
       await saveFilmRecord(updatedRecord);
       if (!options.suppressLog) {
@@ -1737,11 +1770,6 @@ function getMovieLabelNameLower(movieName: string, movieYear = ""): string {
   return normalizeTitle(formatMoviePathLabel(movieName, movieYear));
 }
 
-function getTitleOnlyMovieLabelNameLower(movieLabel: string): string {
-  const match = normalizeTitle(movieLabel).match(/^(.*) \((\d{4})\)$/);
-  return match ? match[1] : normalizeTitle(movieLabel);
-}
-
 function isExactPersonMatch(record: PersonRecord | null, query: string): boolean {
   return normalizeName(record?.name ?? "") === normalizeName(query);
 }
@@ -1872,10 +1900,9 @@ export async function resolveConnectionQuery(
       const exactPersonRecord = getValidConnectionPersonRecord(
         await getPersonRecordByName(normalizedQuery),
       );
-      const exactMovieRecord = await getFilmRecordByTitleAndYear(
-        parsedMovie.name,
-        parsedMovie.year,
-      );
+      const exactMovieRecord = parsedMovie.year
+        ? await getFilmRecordByTitleAndYear(parsedMovie.name, parsedMovie.year)
+        : null;
       const exactPersonSearchRecord =
         searchRecords.find(
           (record) =>
@@ -1889,22 +1916,7 @@ export async function resolveConnectionQuery(
             record.nameLower === getMovieLabelNameLower(parsedMovie.name, parsedMovie.year),
         ) ?? null)
         : null;
-      const titleOnlyMovieSearchRecords = parsedMovie.year
-        ? []
-        : searchRecords.filter(
-          (record) =>
-            record.type === "movie" &&
-            getTitleOnlyMovieLabelNameLower(record.nameLower) === normalizeTitle(parsedMovie.name),
-        );
-
-      const resolvedMovieSearchRecord =
-        exactMovieSearchRecord ??
-        (exactMovieRecord
-          ? titleOnlyMovieSearchRecords.find(
-            (record) =>
-              record.nameLower === getMovieLabelNameLower(exactMovieRecord.title, exactMovieRecord.year),
-          ) ?? null
-          : titleOnlyMovieSearchRecords[0] ?? null);
+      const resolvedMovieSearchRecord = exactMovieSearchRecord;
       const localTarget = pickBestConnectionTarget(
         normalizedQuery,
         exactMovieRecord?.title ?? parsedMovie.name,

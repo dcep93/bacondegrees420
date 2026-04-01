@@ -271,9 +271,9 @@ describe("buildChildRowForCard", () => {
       personId === 60 ? pacinoRecord : personId === 61 ? deniroRecord : null,
     );
     indexedDbMock.getPersonRecordByName.mockImplementation(async (personName: string) =>
-      personName === "Al Pacino"
+      personName.toLowerCase() === "al pacino"
         ? pacinoRecord
-        : personName === "Robert De Niro"
+        : personName.toLowerCase() === "robert de niro"
           ? deniroRecord
           : null,
     );
@@ -644,47 +644,78 @@ describe("useCinenerdleController", () => {
     });
   });
 
-  it("force hydrates connection-derived cards and redraws their subtree before scrolling children", async () => {
+  it("renders a DB-backed movie subtree before force hydrating a connection-derived selection", async () => {
     const connectionDerivedHeatRecord = makeFilmRecord({
       id: 321,
       tmdbId: 321,
       title: "Heat",
       year: "1995",
       personConnectionKeys: ["al pacino"],
-      rawTmdbMovieCreditsResponse: {
-        cast: [
-          makePersonCredit({ id: 60, name: "Al Pacino", popularity: 88 }),
-        ],
-        crew: [],
-      },
+    });
+    const locallyCachedHeatRecord = makeFilmRecord({
+      ...connectionDerivedHeatRecord,
+      popularity: 88,
+      personConnectionKeys: ["al pacino", "robert de niro"],
     });
     const hydratedHeatRecord = makeFilmRecord({
-      ...connectionDerivedHeatRecord,
+      ...locallyCachedHeatRecord,
       rawTmdbMovie: makeTmdbMovieSearchResult({
         id: 321,
         title: "Heat",
         release_date: "1995-12-15",
         popularity: 99,
       }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({ id: 60, name: "Al Pacino", order: 0, popularity: 88 }),
+          makePersonCredit({ id: 61, name: "Robert De Niro", order: 1, popularity: 87 }),
+        ],
+        crew: [],
+      },
     });
     const pacinoRecord = makePersonRecord({
       id: 60,
       tmdbId: 60,
       name: "Al Pacino",
       movieConnectionKeys: ["heat (1995)"],
+      rawTmdbPerson: makeTmdbPersonSearchResult({
+        id: 60,
+        name: "Al Pacino",
+        popularity: 88,
+      }),
+    });
+    const deniroRecord = makePersonRecord({
+      id: 61,
+      tmdbId: 61,
+      name: "Robert De Niro",
+      movieConnectionKeys: ["heat (1995)"],
+      rawTmdbPerson: makeTmdbPersonSearchResult({
+        id: 61,
+        name: "Robert De Niro",
+        popularity: 87,
+      }),
     });
     const controller = renderController({ writeHash: vi.fn() });
     const applyUpdate = vi.fn();
     const scrollGenerationLikeBubble = vi.fn();
 
-    indexedDbMock.getFilmRecordById.mockResolvedValue(hydratedHeatRecord);
-    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(hydratedHeatRecord);
+    indexedDbMock.getFilmRecordById.mockResolvedValue(locallyCachedHeatRecord);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(locallyCachedHeatRecord);
     indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(
-      new Map([["Al Pacino", 8]]),
+      new Map([
+        ["al pacino", 8],
+        ["robert de niro", 7],
+      ]),
     );
-    indexedDbMock.getPersonRecordById.mockResolvedValue(pacinoRecord);
+    indexedDbMock.getPersonRecordById.mockImplementation(async (personId: number) =>
+      personId === 60 ? pacinoRecord : personId === 61 ? deniroRecord : null,
+    );
     indexedDbMock.getPersonRecordByName.mockImplementation(async (personName: string) =>
-      personName === "Al Pacino" ? pacinoRecord : null,
+      personName === "Al Pacino"
+        ? pacinoRecord
+        : personName === "Robert De Niro"
+          ? deniroRecord
+          : null,
     );
     tmdbMock.prepareSelectedMovie.mockResolvedValue(hydratedHeatRecord);
 
@@ -717,24 +748,169 @@ describe("useCinenerdleController", () => {
     expect(applyUpdate).toHaveBeenCalledTimes(2);
     expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(1, 1);
     expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(2, 2);
-    expect(applyUpdate).toHaveBeenNthCalledWith(2, {
-      tree: [
-        [{ data: makeCinenerdleRootCard(), selected: true }],
-        [expect.objectContaining({
-          data: expect.objectContaining({
-            kind: "movie",
-            name: "Heat",
-            record: hydratedHeatRecord,
-          }),
-          selected: true,
-        })],
-        [expect.objectContaining({
-          data: expect.objectContaining({
-            kind: "person",
-            name: "Al Pacino",
-          }),
-        })],
-      ],
+    const firstTree = applyUpdate.mock.calls[0]?.[0]?.tree;
+    const secondTree = applyUpdate.mock.calls[1]?.[0]?.tree;
+
+    expect(firstTree?.[1]?.[0]).toEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        kind: "movie",
+        name: "Heat",
+        record: locallyCachedHeatRecord,
+      }),
+      selected: true,
+    }));
+    expect(firstTree?.[2]?.map((node: { data: CinenerdleCard }) => node.data.name)).toEqual([
+      "Al Pacino",
+      "Robert De Niro",
+    ]);
+    expect(secondTree?.[1]?.[0]).toEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        kind: "movie",
+        name: "Heat",
+        record: hydratedHeatRecord,
+      }),
+      selected: true,
+    }));
+    expect(secondTree?.[2]?.map((node: { data: CinenerdleCard }) => node.data.name)).toEqual([
+      "Al Pacino",
+      "Robert De Niro",
+    ]);
+  });
+
+  it("renders a DB-backed person subtree before force hydrating a connection-derived selection", async () => {
+    const sparsePacinoRecord = makePersonRecord({
+      id: 60,
+      tmdbId: 60,
+      name: "Al Pacino",
+      movieConnectionKeys: ["heat (1995)"],
     });
+    const locallyCachedPacinoRecord = makePersonRecord({
+      ...sparsePacinoRecord,
+      fetchTimestamp: "2026-03-31T12:00:00.000Z",
+      movieConnectionKeys: ["heat (1995)", "scarface (1983)"],
+    });
+    const hydratedPacinoRecord = makePersonRecord({
+      ...locallyCachedPacinoRecord,
+      rawTmdbPerson: makeTmdbPersonSearchResult({
+        id: 60,
+        name: "Al Pacino",
+        popularity: 88,
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({
+            id: 321,
+            title: "Heat",
+            release_date: "1995-12-15",
+            popularity: 66,
+            order: 1,
+          }),
+          makeMovieCredit({
+            id: 322,
+            title: "Scarface",
+            release_date: "1983-12-09",
+            popularity: 92,
+            order: 0,
+          }),
+        ],
+        crew: [],
+      },
+    });
+    const heatRecord = makeFilmRecord({
+      id: 321,
+      tmdbId: 321,
+      title: "Heat",
+      year: "1995",
+      popularity: 66,
+      personConnectionKeys: ["al pacino"],
+    });
+    const scarfaceRecord = makeFilmRecord({
+      id: 322,
+      tmdbId: 322,
+      title: "Scarface",
+      year: "1983",
+      popularity: 92,
+      personConnectionKeys: ["al pacino"],
+    });
+    const controller = renderController({ writeHash: vi.fn() });
+    const applyUpdate = vi.fn();
+    const scrollGenerationLikeBubble = vi.fn();
+
+    indexedDbMock.getPersonRecordById.mockResolvedValue(locallyCachedPacinoRecord);
+    indexedDbMock.getPersonRecordByName.mockResolvedValue(locallyCachedPacinoRecord);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (title: string, year: string) =>
+      title.toLowerCase() === "heat" && year === "1995"
+        ? heatRecord
+        : title.toLowerCase() === "scarface" && year === "1983"
+          ? scarfaceRecord
+          : null,
+    );
+    indexedDbMock.getPersonRecordCountsByMovieKeys.mockResolvedValue(
+      new Map([
+        ["heat (1995)", 8],
+        ["scarface (1983)", 6],
+      ]),
+    );
+    indexedDbMock.getPersonPopularityByNames.mockResolvedValue(
+      new Map([["al pacino", 88]]),
+    );
+    tmdbMock.prepareSelectedPerson.mockResolvedValue(hydratedPacinoRecord);
+
+    await controller.runEffect(
+      {
+        type: "load-selected-card",
+        removedDescendantRows: true,
+        row: 1,
+        col: 0,
+        tree: [
+          [{ data: makeCinenerdleRootCard(), selected: true }],
+          [{ data: makePersonCard({ key: "person:60", record: sparsePacinoRecord }), selected: true }],
+          [{ data: makeMovieCard(), selected: false }],
+        ],
+      },
+      {
+        applyUpdate,
+        getState: () => createGeneratorState<CinenerdleCard, undefined>(undefined),
+        lifecycleId: 1,
+        selectionId: 1,
+        scrollGenerationLikeBubble,
+      },
+    );
+
+    await flushAsyncWork();
+
+    expect(tmdbMock.prepareSelectedPerson).toHaveBeenCalledWith("Al Pacino", 60, {
+      forceRefresh: true,
+    });
+    expect(applyUpdate).toHaveBeenCalledTimes(2);
+    expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(1, 1);
+    expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(2, 2);
+    const firstTree = applyUpdate.mock.calls[0]?.[0]?.tree;
+    const secondTree = applyUpdate.mock.calls[1]?.[0]?.tree;
+
+    expect(firstTree?.[1]?.[0]).toEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        kind: "person",
+        name: "Al Pacino",
+        record: locallyCachedPacinoRecord,
+      }),
+      selected: true,
+    }));
+    expect(firstTree?.[2]?.map((node: { data: CinenerdleCard }) => node.data.name)).toEqual([
+      "Scarface",
+      "Heat",
+    ]);
+    expect(secondTree?.[1]?.[0]).toEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        kind: "person",
+        name: "Al Pacino",
+        record: hydratedPacinoRecord,
+      }),
+      selected: true,
+    }));
+    expect(secondTree?.[2]?.map((node: { data: CinenerdleCard }) => node.data.name)).toEqual([
+      "Scarface",
+      "Heat",
+    ]);
   });
 });

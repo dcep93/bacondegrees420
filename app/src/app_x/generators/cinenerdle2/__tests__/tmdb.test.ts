@@ -66,6 +66,26 @@ function createJsonResponse(payload: unknown) {
   };
 }
 
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error?: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+
+  return {
+    promise,
+    resolve,
+    reject,
+  };
+}
+
+async function flushAsyncWork(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 describe("tmdb forced refresh helpers", () => {
   const consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => { });
 
@@ -287,8 +307,94 @@ describe("tmdb forced refresh helpers", () => {
     expect(fetchMock.mock.calls[0]?.[0]).toContain("/movie/321?");
     expect(fetchMock.mock.calls[1]?.[0]).toContain("/movie/321/credits?");
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/search/movie"))).toBe(false);
-    expect(indexedDbMock.saveFilmRecord).toHaveBeenCalledTimes(2);
+    expect(indexedDbMock.saveFilmRecord).toHaveBeenCalledTimes(1);
     expect(indexedDbMock.batchCinenerdleRecordsUpdatedEvents).toHaveBeenCalledTimes(1);
+  });
+
+  it("starts movie details and credits in parallel and saves only after both payloads resolve", async () => {
+    const cachedMovieRecord = makeFilmRecord({
+      id: 321,
+      tmdbId: 321,
+      title: "Heat",
+      year: "1995",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 321,
+        title: "Heat",
+        release_date: "1995-12-15",
+        popularity: 50,
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+    });
+    const requestedUrls: string[] = [];
+    const movieDeferred = createDeferred<ReturnType<typeof makeTmdbMovieSearchResult>>();
+    const creditsDeferred = createDeferred<{ cast: []; crew: [] }>();
+    let storedMovieRecord = cachedMovieRecord;
+    const fetchMock = vi.fn((input: string) => {
+      const url = String(input);
+      requestedUrls.push(url);
+
+      if (url.includes("/movie/321/credits")) {
+        return Promise.resolve(createJsonResponse(creditsDeferred.promise));
+      }
+
+      if (url.includes("/movie/321?")) {
+        return Promise.resolve(createJsonResponse(movieDeferred.promise));
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    indexedDbMock.getFilmRecordById.mockImplementation(async () => storedMovieRecord);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(cachedMovieRecord);
+    indexedDbMock.saveFilmRecord.mockImplementation(async (record) => {
+      storedMovieRecord = record;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const preparePromise = prepareSelectedMovie("Heat", "1995", 321, {
+      forceRefresh: true,
+    });
+
+    await flushAsyncWork();
+
+    expect(requestedUrls.some((url) => url.includes("/movie/321?"))).toBe(true);
+    expect(requestedUrls.some((url) => url.includes("/movie/321/credits?"))).toBe(true);
+    expect(indexedDbMock.saveFilmRecord).not.toHaveBeenCalled();
+
+    movieDeferred.resolve(
+      makeTmdbMovieSearchResult({
+        id: 321,
+        title: "Heat",
+        release_date: "1995-12-15",
+        popularity: 99,
+      }),
+    );
+
+    await flushAsyncWork();
+
+    expect(indexedDbMock.saveFilmRecord).not.toHaveBeenCalled();
+
+    creditsDeferred.resolve({ cast: [], crew: [] });
+
+    await preparePromise;
+
+    expect(indexedDbMock.saveFilmRecord).toHaveBeenCalledTimes(1);
+    expect(indexedDbMock.saveFilmRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tmdbId: 321,
+        rawTmdbMovie: expect.objectContaining({
+          id: 321,
+          title: "Heat",
+        }),
+        rawTmdbMovieCreditsResponse: {
+          cast: [],
+          crew: [],
+        },
+      }),
+    );
   });
 
   it("force refreshes cached people instead of returning early", async () => {
@@ -340,6 +446,93 @@ describe("tmdb forced refresh helpers", () => {
     expect(indexedDbMock.savePersonRecord).toHaveBeenCalledTimes(1);
     expect(indexedDbMock.saveFilmRecords).toHaveBeenCalledTimes(1);
     expect(indexedDbMock.batchCinenerdleRecordsUpdatedEvents).toHaveBeenCalledTimes(1);
+  });
+
+  it("starts person details and credits in parallel and saves only after both payloads resolve", async () => {
+    const cachedPersonRecord = makePersonRecord({
+      id: 60,
+      tmdbId: 60,
+      name: "Al Pacino",
+      rawTmdbPerson: makeTmdbPersonSearchResult({
+        id: 60,
+        name: "Al Pacino",
+        popularity: 77,
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+      fetchTimestamp: "2026-03-28T12:00:00.000Z",
+    });
+    const requestedUrls: string[] = [];
+    const personDeferred = createDeferred<ReturnType<typeof makeTmdbPersonSearchResult>>();
+    const creditsDeferred = createDeferred<{ cast: []; crew: [] }>();
+    let storedPersonRecord = cachedPersonRecord;
+    const fetchMock = vi.fn((input: string) => {
+      const url = String(input);
+      requestedUrls.push(url);
+
+      if (url.includes("/person/60/movie_credits")) {
+        return Promise.resolve(createJsonResponse(creditsDeferred.promise));
+      }
+
+      if (url.includes("/person/60?")) {
+        return Promise.resolve(createJsonResponse(personDeferred.promise));
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    indexedDbMock.getPersonRecordById.mockImplementation(async () => storedPersonRecord);
+    indexedDbMock.getPersonRecordByName.mockImplementation(async () => storedPersonRecord);
+    indexedDbMock.savePersonRecord.mockImplementation(async (record) => {
+      storedPersonRecord = record;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const preparePromise = prepareSelectedPerson("Al Pacino", 60, {
+      forceRefresh: true,
+    });
+
+    await flushAsyncWork();
+
+    expect(requestedUrls.some((url) => url.includes("/person/60?"))).toBe(true);
+    expect(requestedUrls.some((url) => url.includes("/person/60/movie_credits?"))).toBe(true);
+    expect(indexedDbMock.savePersonRecord).not.toHaveBeenCalled();
+    expect(indexedDbMock.saveFilmRecords).not.toHaveBeenCalled();
+
+    personDeferred.resolve(
+      makeTmdbPersonSearchResult({
+        id: 60,
+        name: "Al Pacino",
+        popularity: 88,
+      }),
+    );
+
+    await flushAsyncWork();
+
+    expect(indexedDbMock.savePersonRecord).not.toHaveBeenCalled();
+    expect(indexedDbMock.saveFilmRecords).not.toHaveBeenCalled();
+
+    creditsDeferred.resolve({ cast: [], crew: [] });
+
+    await preparePromise;
+
+    expect(indexedDbMock.savePersonRecord).toHaveBeenCalledTimes(1);
+    expect(indexedDbMock.saveFilmRecords).toHaveBeenCalledTimes(1);
+    expect(indexedDbMock.savePersonRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tmdbId: 60,
+        rawTmdbPerson: expect.objectContaining({
+          id: 60,
+          name: "Al Pacino",
+        }),
+        rawTmdbMovieCreditsResponse: {
+          cast: [],
+          crew: [],
+        },
+      }),
+    );
   });
 
   it("stores person-derived films like Scream VI as partial connection-derived records", async () => {
@@ -1521,5 +1714,79 @@ describe("tmdb forced refresh helpers", () => {
 
     expect(target).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("resolves year-qualified movie queries as movies", async () => {
+    const filmRecord = makeFilmRecord({
+      id: 321,
+      tmdbId: 321,
+      title: "Heat",
+      year: "1995",
+      popularity: 99,
+    });
+
+    indexedDbMock.getAllSearchableConnectionEntities.mockResolvedValue([
+      {
+        key: "movie:heat:1995",
+        type: "movie",
+        nameLower: "heat (1995)",
+        popularity: 99,
+      },
+    ]);
+    indexedDbMock.getPersonRecordByName.mockResolvedValue(null);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(filmRecord);
+
+    const target = await resolveConnectionQuery("Heat (1995)");
+
+    expect(target).toEqual({
+      kind: "movie",
+      name: "Heat",
+      year: "1995",
+    });
+    expect(indexedDbMock.getFilmRecordByTitleAndYear).toHaveBeenCalledWith("Heat", "1995");
+  });
+
+  it("does not resolve bare movie title submits as movies", async () => {
+    indexedDbMock.getAllSearchableConnectionEntities.mockResolvedValue([
+      {
+        key: "movie:heat:1995",
+        type: "movie",
+        nameLower: "heat (1995)",
+        popularity: 99,
+      },
+    ]);
+    indexedDbMock.getPersonRecordByName.mockResolvedValue(null);
+
+    const target = await resolveConnectionQuery("Heat");
+
+    expect(target).toBeNull();
+    expect(indexedDbMock.getFilmRecordByTitleAndYear).not.toHaveBeenCalled();
+    expect(connectionGraphMock.hydrateConnectionEntityFromSearchRecord).not.toHaveBeenCalled();
+  });
+
+  it("still resolves exact person-name submits without a movie year", async () => {
+    const personRecord = makePersonRecord({
+      id: 60,
+      tmdbId: 60,
+      name: "Al Pacino",
+      movieConnectionKeys: ["heat (1995)"],
+      rawTmdbPerson: makeTmdbPersonSearchResult({
+        id: 60,
+        name: "Al Pacino",
+        popularity: 77,
+      }),
+    });
+
+    indexedDbMock.getAllSearchableConnectionEntities.mockResolvedValue([]);
+    indexedDbMock.getPersonRecordByName.mockResolvedValue(personRecord);
+
+    const target = await resolveConnectionQuery("Al Pacino");
+
+    expect(target).toEqual({
+      kind: "person",
+      name: "Al Pacino",
+      tmdbId: 60,
+    });
+    expect(indexedDbMock.getFilmRecordByTitleAndYear).not.toHaveBeenCalled();
   });
 });

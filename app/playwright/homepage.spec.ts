@@ -122,12 +122,41 @@ function delay(ms: number) {
   });
 }
 
+async function seedCinenerdleStorage(
+  page: Page,
+  options: {
+    dailyStarterTitles?: string[];
+  } = {},
+) {
+  await page.addInitScript(
+    ({ dailyStarterTitles }) => {
+      const dailyStarterStorageKey = "cinenerdle2.dailyStarterTitles";
+      const existingDailyStarterTitles = window.localStorage.getItem(dailyStarterStorageKey);
+
+      window.localStorage.clear();
+
+      if (existingDailyStarterTitles !== null) {
+        window.localStorage.setItem(dailyStarterStorageKey, existingDailyStarterTitles);
+      }
+
+      if (dailyStarterTitles) {
+        window.localStorage.setItem(
+          dailyStarterStorageKey,
+          JSON.stringify(dailyStarterTitles),
+        );
+      }
+
+      window.localStorage.setItem("cinenerdle2.tmdbApiKey", "key:playwright-test-key");
+      window.indexedDB.deleteDatabase("cinenerdle2");
+    },
+    {
+      dailyStarterTitles: options.dailyStarterTitles ?? null,
+    },
+  );
+}
+
 async function primeCinenerdlePage(page: Page) {
-  await page.addInitScript(() => {
-    window.localStorage.clear();
-    window.localStorage.setItem("cinenerdle2.tmdbApiKey", "key:playwright-test-key");
-    window.indexedDB.deleteDatabase("cinenerdle2");
-  });
+  await seedCinenerdleStorage(page);
 
   await page.route("https://www.cinenerdle2.app/api/battle-data/daily-starters?*", async (route) => {
     await route.fulfill(createJsonResponse({ data: [] }));
@@ -286,6 +315,134 @@ async function mockBigLebowskiDeepLinkScenario(
   });
 }
 
+test("bare movie-title submits stay unresolved after dismissing suggestions", async ({ page }) => {
+  await primeCinenerdlePage(page);
+
+  await page.route("**/dump.json", async (route) => {
+    await route.fulfill(createJsonResponse({
+      format: "cinenerdle-indexed-db-snapshot",
+      version: 9,
+      people: [
+        {
+          tmdbId: 60,
+          name: "Al Pacino",
+          movieConnectionKeys: ["heat (1995)"],
+          popularity: 77,
+          fromTmdb: {
+            fetchTimestamp: "2026-03-28T12:00:00.000Z",
+            profilePath: "/al-pacino.jpg",
+          },
+        },
+      ],
+      films: [
+        {
+          tmdbId: 321,
+          title: "Heat",
+          year: "1995",
+          posterPath: "/heat.jpg",
+          popularity: 88,
+          voteAverage: 8.2,
+          voteCount: 9000,
+          releaseDate: "1995-12-15",
+          fromTmdb: {
+            fetchTimestamp: "2026-03-28T12:00:00.000Z",
+          },
+          personConnectionKeys: ["al pacino"],
+          people: [],
+        },
+      ],
+    }));
+  });
+
+  await page.route("https://api.themoviedb.org/**", async (route) => {
+    throw new Error(`Unexpected TMDb request: ${route.request().url()}`);
+  });
+
+  await page.goto("/");
+
+  const connectionInput = page.locator(".bacon-connection-input");
+  const heatSuggestion = page
+    .locator(".bacon-connection-option")
+    .filter({ hasText: "Heat (1995)" });
+
+  await expect(connectionInput).toBeEnabled();
+
+  await connectionInput.fill("Heat");
+  await expect(heatSuggestion).toBeVisible();
+
+  await connectionInput.press("Escape");
+  await expect(page.locator(".bacon-connection-dropdown")).toHaveCount(0);
+
+  await connectionInput.press("Enter");
+
+  await expect(connectionInput).toHaveValue("Heat");
+});
+
+test("bare movie-title suggestions still work with Enter and click selection", async ({ page }) => {
+  await primeCinenerdlePage(page);
+
+  await page.route("**/dump.json", async (route) => {
+    await route.fulfill(createJsonResponse({
+      format: "cinenerdle-indexed-db-snapshot",
+      version: 9,
+      people: [
+        {
+          tmdbId: 60,
+          name: "Al Pacino",
+          movieConnectionKeys: ["heat (1995)"],
+          popularity: 77,
+          fromTmdb: {
+            fetchTimestamp: "2026-03-28T12:00:00.000Z",
+            profilePath: "/al-pacino.jpg",
+          },
+        },
+      ],
+      films: [
+        {
+          tmdbId: 321,
+          title: "Heat",
+          year: "1995",
+          posterPath: "/heat.jpg",
+          popularity: 88,
+          voteAverage: 8.2,
+          voteCount: 9000,
+          releaseDate: "1995-12-15",
+          fromTmdb: {
+            fetchTimestamp: "2026-03-28T12:00:00.000Z",
+          },
+          personConnectionKeys: ["al pacino"],
+          people: [],
+        },
+      ],
+    }));
+  });
+
+  await page.route("https://api.themoviedb.org/**", async (route) => {
+    throw new Error(`Unexpected TMDb request: ${route.request().url()}`);
+  });
+
+  await page.goto("/");
+
+  const connectionInput = page.locator(".bacon-connection-input");
+  const heatSuggestion = page
+    .locator(".bacon-connection-option")
+    .filter({ hasText: "Heat (1995)" });
+
+  await expect(connectionInput).toBeEnabled();
+
+  await connectionInput.fill("Heat");
+  await expect(heatSuggestion).toBeVisible();
+
+  await connectionInput.press("Enter");
+  await expect(connectionInput).toHaveValue("");
+
+  await connectionInput.fill("Heat");
+  await expect(heatSuggestion).toBeVisible();
+
+  await heatSuggestion.click();
+  await expect(connectionInput).toHaveValue("");
+});
+
 test("homepage cold start only fetches mocked daily starters and starter movie credits", async ({ page }) => {
   const requests = createRouteRequestRecorder();
   const starterMovies = [
@@ -299,11 +456,7 @@ test("homepage cold start only fetches mocked daily starters and starter movie c
     },
   ];
 
-  await page.addInitScript(() => {
-    window.localStorage.clear();
-    window.localStorage.setItem("cinenerdle2.tmdbApiKey", "key:playwright-test-key");
-    window.indexedDB.deleteDatabase("cinenerdle2");
-  });
+  await seedCinenerdleStorage(page);
 
   await page.route("https://www.cinenerdle2.app/api/battle-data/daily-starters?*", async (route) => {
     requests.record(route.request().url());
@@ -366,6 +519,35 @@ test("homepage cold start only fetches mocked daily starters and starter movie c
       throw new Error(`Unexpected movie search query: ${query}`);
     }
 
+    const movieDetailsId = url.pathname.match(/\/movie\/(\d+)$/)?.[1] ?? "";
+    if (movieDetailsId === "1266127") {
+      await route.fulfill(createJsonResponse({
+        id: 1266127,
+        title: "Ready or Not: Here I Come",
+        original_title: "Ready or Not: Here I Come",
+        poster_path: "/ready-or-not-2.jpg",
+        release_date: "2026-04-10",
+        popularity: 60.28,
+        vote_average: 7.2,
+        vote_count: 100,
+      }));
+      return;
+    }
+
+    if (movieDetailsId === "98") {
+      await route.fulfill(createJsonResponse({
+        id: 98,
+        title: "Gladiator",
+        original_title: "Gladiator",
+        poster_path: "/gladiator.jpg",
+        release_date: "2000-05-04",
+        popularity: 20.33,
+        vote_average: 8.22,
+        vote_count: 20658,
+      }));
+      return;
+    }
+
     const movieId = url.pathname.match(/\/movie\/(\d+)\/credits$/)?.[1] ?? "";
 
     if (movieId === "1266127") {
@@ -418,7 +600,9 @@ test("homepage cold start only fetches mocked daily starters and starter movie c
       "https://www.cinenerdle2.app/api/battle-data/daily-starters",
       "https://api.themoviedb.org/3/search/movie?query=Ready or Not: Here I Come",
       "https://api.themoviedb.org/3/search/movie?query=Gladiator",
+      "https://api.themoviedb.org/3/movie/1266127",
       "https://api.themoviedb.org/3/movie/1266127/credits",
+      "https://api.themoviedb.org/3/movie/98",
       "https://api.themoviedb.org/3/movie/98/credits",
     ]);
 });
@@ -460,26 +644,20 @@ test("cinenerdle starter generation auto-scrolls when it mounts", async ({ page 
     }),
   );
 
-  await page.addInitScript(() => {
-    window.localStorage.clear();
-    window.localStorage.setItem("cinenerdle2.tmdbApiKey", "key:playwright-test-key");
-    window.localStorage.setItem(
-      "cinenerdle2.dailyStarterTitles",
-      JSON.stringify([
-        "Starter Atlas (2000)",
-        "Starter Birch (2001)",
-        "Starter Cedar (2002)",
-        "Starter Drift (2003)",
-        "Starter Ember (2004)",
-        "Starter Flint (2005)",
-        "Starter Grove (2006)",
-        "Starter Harbor (2007)",
-        "Starter Ivory (2008)",
-        "Starter Juniper (2009)",
-        "Starter Kite (2010)",
-      ]),
-    );
-    window.indexedDB.deleteDatabase("cinenerdle2");
+  await seedCinenerdleStorage(page, {
+    dailyStarterTitles: [
+      "Starter Atlas (2000)",
+      "Starter Birch (2001)",
+      "Starter Cedar (2002)",
+      "Starter Drift (2003)",
+      "Starter Ember (2004)",
+      "Starter Flint (2005)",
+      "Starter Grove (2006)",
+      "Starter Harbor (2007)",
+      "Starter Ivory (2008)",
+      "Starter Juniper (2009)",
+      "Starter Kite (2010)",
+    ],
   });
 
   await page.route("https://www.cinenerdle2.app/api/battle-data/daily-starters?*", async (route) => {
@@ -511,6 +689,19 @@ test("cinenerdle starter generation auto-scrolls when it mounts", async ({ page 
         cast: [],
         crew: [],
       }));
+      return;
+    }
+
+    const movieDetailsId = Number(url.pathname.match(/\/3\/movie\/(\d+)$/)?.[1] ?? NaN);
+    if (Number.isFinite(movieDetailsId)) {
+      const movie = Array.from(movieSearchResultsByQuery.values()).find(
+        (candidate) => candidate.id === movieDetailsId,
+      );
+      if (!movie) {
+        throw new Error(`Unexpected movie details request: ${url.pathname}`);
+      }
+
+      await route.fulfill(createJsonResponse(movie));
       return;
     }
 
@@ -1031,14 +1222,8 @@ test("gen 2 refresh keeps horizontal scroll stable and redraws gen 3 for the new
     height: 900,
   });
 
-  await page.addInitScript(() => {
-    window.localStorage.clear();
-    window.localStorage.setItem("cinenerdle2.tmdbApiKey", "key:playwright-test-key");
-    window.localStorage.setItem(
-      "cinenerdle2.dailyStarterTitles",
-      JSON.stringify(["Mock Starter Movie (2001)"]),
-    );
-    window.indexedDB.deleteDatabase("cinenerdle2");
+  await seedCinenerdleStorage(page, {
+    dailyStarterTitles: ["Mock Starter Movie (2001)"],
   });
 
   await page.route("https://www.cinenerdle2.app/api/battle-data/daily-starters?*", async (route) => {
@@ -1248,4 +1433,306 @@ test("gen 2 refresh keeps horizontal scroll stable and redraws gen 3 for the new
   await expect(getGenerationCardByTitle(page, 3, "India Movie B")).toBeVisible();
   await expect(getGenerationCardByTitle(page, 3, "Alpha Movie A")).toHaveCount(0);
   await expect(gen3Row.locator(".cinenerdle-card")).toHaveCount(7);
+});
+
+test("deep descendant selection renders cached DB children before the delayed TMDb refresh completes", async ({
+  page,
+}) => {
+  const requests = createRouteRequestRecorder();
+  let releaseIndiaMovieCredits: (() => void) | null = null;
+  const indiaMovieCreditsGate = new Promise<void>((resolve) => {
+    releaseIndiaMovieCredits = resolve;
+  });
+  const indiaDetailsUrl = "https://api.themoviedb.org/3/person/1009";
+  const indiaMovieCreditsUrl = "https://api.themoviedb.org/3/person/1009/movie_credits";
+
+  await primeCinenerdlePage(page);
+
+  await page.route("**/dump.json", async (route) => {
+    await route.fulfill(createJsonResponse({
+      format: "cinenerdle-indexed-db-snapshot",
+      version: 9,
+      people: [
+        {
+          tmdbId: 1001,
+          name: "Alpha One",
+          movieConnectionKeys: [
+            "mock starter movie (2001)",
+            "alpha movie a (2003)",
+            "alpha movie b (2004)",
+          ],
+          popularity: 500,
+          fromTmdb: {
+            fetchTimestamp: "2026-03-28T12:00:00.000Z",
+            profilePath: "/1001.jpg",
+          },
+        },
+        {
+          tmdbId: 1009,
+          name: "India Nine",
+          movieConnectionKeys: [
+            "mock starter movie (2001)",
+            "india movie a (2011)",
+            "india movie b (2012)",
+          ],
+          popularity: 40,
+          fromTmdb: null,
+        },
+      ],
+      films: [
+        {
+          tmdbId: 9001,
+          title: "Mock Starter Movie",
+          year: "2001",
+          posterPath: "/mock-starter-movie.jpg",
+          popularity: 95.5,
+          voteAverage: 7.4,
+          voteCount: 8100,
+          releaseDate: "2001-06-15",
+          fromTmdb: {
+            fetchTimestamp: "2026-03-28T12:00:00.000Z",
+          },
+          personConnectionKeys: ["alpha one", "india nine"],
+          people: [],
+        },
+        {
+          tmdbId: 2101,
+          title: "Alpha Movie A",
+          year: "2003",
+          posterPath: "/alpha-a.jpg",
+          popularity: 90,
+          voteAverage: 7.1,
+          voteCount: 4100,
+          releaseDate: "2003-02-14",
+          fromTmdb: {
+            fetchTimestamp: "2026-03-28T12:00:00.000Z",
+          },
+          personConnectionKeys: ["alpha one"],
+          people: [],
+        },
+        {
+          tmdbId: 2102,
+          title: "Alpha Movie B",
+          year: "2004",
+          posterPath: "/alpha-b.jpg",
+          popularity: 88,
+          voteAverage: 7.2,
+          voteCount: 3900,
+          releaseDate: "2004-03-19",
+          fromTmdb: {
+            fetchTimestamp: "2026-03-28T12:00:00.000Z",
+          },
+          personConnectionKeys: ["alpha one"],
+          people: [],
+        },
+        {
+          tmdbId: 2201,
+          title: "India Movie A",
+          year: "2011",
+          posterPath: "/india-a.jpg",
+          popularity: 72,
+          voteAverage: 6.8,
+          voteCount: 2800,
+          releaseDate: "2011-01-21",
+          fromTmdb: {
+            fetchTimestamp: "2026-03-28T12:00:00.000Z",
+          },
+          personConnectionKeys: ["india nine"],
+          people: [],
+        },
+        {
+          tmdbId: 2202,
+          title: "India Movie B",
+          year: "2012",
+          posterPath: "/india-b.jpg",
+          popularity: 70,
+          voteAverage: 6.9,
+          voteCount: 2600,
+          releaseDate: "2012-02-17",
+          fromTmdb: {
+            fetchTimestamp: "2026-03-28T12:00:00.000Z",
+          },
+          personConnectionKeys: ["india nine"],
+          people: [],
+        },
+      ],
+    }));
+  });
+
+  await page.route("https://api.themoviedb.org/**", async (route) => {
+    requests.record(route.request().url());
+    const url = new URL(route.request().url());
+
+    if (url.pathname === "/3/person/1009") {
+      await route.fulfill(createJsonResponse({
+        id: 1009,
+        name: "India Nine",
+        popularity: 40,
+        profile_path: "/1009.jpg",
+      }));
+      return;
+    }
+
+    const personDetailsId = Number(url.pathname.match(/^\/3\/person\/(\d+)$/)?.[1] ?? NaN);
+    if (Number.isFinite(personDetailsId)) {
+      await route.fulfill(createJsonResponse({
+        id: personDetailsId,
+        name: personDetailsId === 1001 ? "Alpha One" : `Person ${personDetailsId}`,
+        popularity: personDetailsId === 1001 ? 500 : 0,
+        profile_path: `/${personDetailsId}.jpg`,
+      }));
+      return;
+    }
+
+    if (url.pathname === "/3/person/1009/movie_credits") {
+      await indiaMovieCreditsGate;
+      await route.fulfill(createJsonResponse({
+        cast: [
+          {
+            id: 9001,
+            title: "Mock Starter Movie",
+            original_title: "Mock Starter Movie",
+            poster_path: "/mock-starter-movie.jpg",
+            release_date: "2001-06-15",
+            popularity: 95.5,
+            vote_average: 7.4,
+            vote_count: 8100,
+            character: "India Nine Character",
+          },
+          {
+            id: 2201,
+            title: "India Movie A",
+            original_title: "India Movie A",
+            poster_path: "/india-a.jpg",
+            release_date: "2011-01-21",
+            popularity: 72,
+            vote_average: 6.8,
+            vote_count: 2800,
+            character: "India Role 1",
+          },
+          {
+            id: 2202,
+            title: "India Movie B",
+            original_title: "India Movie B",
+            poster_path: "/india-b.jpg",
+            release_date: "2012-02-17",
+            popularity: 70,
+            vote_average: 6.9,
+            vote_count: 2600,
+            character: "India Role 2",
+          },
+        ],
+        crew: [],
+      }));
+      return;
+    }
+
+    const personMovieCreditsId = Number(
+      url.pathname.match(/^\/3\/person\/(\d+)\/movie_credits$/)?.[1] ?? NaN,
+    );
+    if (Number.isFinite(personMovieCreditsId)) {
+      await route.fulfill(createJsonResponse({
+        cast: [],
+        crew: [],
+      }));
+      return;
+    }
+
+    const movieDetailsId = Number(url.pathname.match(/^\/3\/movie\/(\d+)$/)?.[1] ?? NaN);
+    if (Number.isFinite(movieDetailsId)) {
+      const movieById = new Map([
+        [2101, {
+          id: 2101,
+          title: "Alpha Movie A",
+          original_title: "Alpha Movie A",
+          poster_path: "/alpha-a.jpg",
+          release_date: "2003-02-14",
+          popularity: 90,
+          vote_average: 7.1,
+          vote_count: 4100,
+        }],
+        [2102, {
+          id: 2102,
+          title: "Alpha Movie B",
+          original_title: "Alpha Movie B",
+          poster_path: "/alpha-b.jpg",
+          release_date: "2004-03-19",
+          popularity: 88,
+          vote_average: 7.2,
+          vote_count: 3900,
+        }],
+        [2201, {
+          id: 2201,
+          title: "India Movie A",
+          original_title: "India Movie A",
+          poster_path: "/india-a.jpg",
+          release_date: "2011-01-21",
+          popularity: 72,
+          vote_average: 6.8,
+          vote_count: 2800,
+        }],
+        [2202, {
+          id: 2202,
+          title: "India Movie B",
+          original_title: "India Movie B",
+          poster_path: "/india-b.jpg",
+          release_date: "2012-02-17",
+          popularity: 70,
+          vote_average: 6.9,
+          vote_count: 2600,
+        }],
+      ]).get(movieDetailsId);
+
+      if (movieById) {
+        await route.fulfill(createJsonResponse(movieById));
+        return;
+      }
+    }
+
+    const movieCreditsId = Number(url.pathname.match(/^\/3\/movie\/(\d+)\/credits$/)?.[1] ?? NaN);
+    if (Number.isFinite(movieCreditsId)) {
+      await route.fulfill(createJsonResponse({
+        cast: [],
+        crew: [],
+      }));
+      return;
+    }
+
+    throw new Error(`Unexpected TMDb request: ${url.pathname}`);
+  });
+
+  await page.goto("/#film|Mock+Starter+Movie+(2001)|Alpha+One");
+
+  const alphaCard = getGenerationCardByTitle(page, 1, "Alpha One");
+  const indiaCard = getGenerationCardByTitle(page, 1, "India Nine");
+
+  await expect(alphaCard).toBeVisible();
+  await expect(indiaCard).toBeVisible();
+  await expect(getTmdbBadgeIcon(indiaCard)).toHaveCount(0);
+  await expect(getGenerationCardByTitle(page, 2, "Alpha Movie A")).toBeVisible();
+  await expect(getGenerationCardByTitle(page, 2, "India Movie A")).toHaveCount(0);
+
+  await indiaCard.click();
+
+  await expect
+    .poll(() => ({
+      indiaDetailsCount: countRecordedRequests(requests, indiaDetailsUrl),
+      indiaMovieCreditsCount: countRecordedRequests(requests, indiaMovieCreditsUrl),
+    }))
+    .toEqual({
+      indiaDetailsCount: 1,
+      indiaMovieCreditsCount: 1,
+    });
+
+  await expect(getGenerationCardByTitle(page, 2, "India Movie A")).toBeVisible();
+  await expect(getGenerationCardByTitle(page, 2, "India Movie B")).toBeVisible();
+  await expect(getGenerationCardByTitle(page, 2, "Alpha Movie A")).toHaveCount(0);
+  await expect(getTmdbBadgeIcon(indiaCard)).toHaveCount(0);
+
+  releaseIndiaMovieCredits?.();
+
+  await expect(getTmdbBadgeIcon(indiaCard)).toHaveCount(1);
+  await expect(getGenerationCardByTitle(page, 2, "India Movie A")).toBeVisible();
+  await expect(getGenerationCardByTitle(page, 2, "India Movie B")).toBeVisible();
+  await expect(getGenerationCardByTitle(page, 2, "Alpha Movie A")).toHaveCount(0);
 });

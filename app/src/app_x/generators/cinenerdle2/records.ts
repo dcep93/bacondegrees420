@@ -392,15 +392,15 @@ export function withDerivedFilmFields(filmRecord: FilmRecord): FilmRecord {
 export function buildFilmRecord(
   existingFilmRecord: FilmRecord | null,
   tmdbFilm: TmdbMovieSearchResult,
+  fetchTimestamp = new Date().toISOString(),
 ): FilmRecord {
   assertFilmRecordMatchesTmdbFilm(existingFilmRecord, tmdbFilm);
 
-  const nextFetchTimestamp = new Date().toISOString();
   const mergedTmdbMovie = mergeFetchedTmdbMovie(
     existingFilmRecord?.rawTmdbMovie,
     tmdbFilm,
     existingFilmRecord?.fetchTimestamp,
-    nextFetchTimestamp,
+    fetchTimestamp,
   );
 
   const title =
@@ -423,13 +423,13 @@ export function buildFilmRecord(
         existingFilmRecord?.popularity,
         tmdbFilm.popularity,
         existingFilmRecord?.fetchTimestamp,
-        nextFetchTimestamp,
+        fetchTimestamp,
       ) ??
       0,
     personConnectionKeys: existingFilmRecord?.personConnectionKeys ?? [],
     tmdbSource: "direct-film-fetch",
     rawTmdbMovie: mergedTmdbMovie,
-    fetchTimestamp: nextFetchTimestamp,
+    fetchTimestamp,
     rawTmdbMovieCreditsResponse: existingFilmRecord?.rawTmdbMovieCreditsResponse,
   });
 }
@@ -584,6 +584,7 @@ export function buildPersonRecord(
   person: TmdbPersonSearchResult,
   movieCreditsResponse: PersonRecord["rawTmdbMovieCreditsResponse"],
   searchResponse?: { results?: TmdbPersonSearchResult[] },
+  fetchTimestamp = new Date().toISOString(),
 ): PersonRecord {
   return withDerivedPersonFields({
     id: person.id,
@@ -596,6 +597,6 @@ export function buildPersonRecord(
     rawTmdbPerson: person,
     rawTmdbPersonSearchResponse: searchResponse,
     rawTmdbMovieCreditsResponse: movieCreditsResponse,
-    fetchTimestamp: new Date().toISOString(),
+    fetchTimestamp,
   });
 }

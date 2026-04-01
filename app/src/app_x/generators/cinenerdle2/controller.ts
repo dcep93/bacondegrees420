@@ -52,6 +52,7 @@ import {
 } from "./tmdb";
 import type { FilmRecord, PersonRecord } from "./types";
 import {
+  formatFallbackPersonDisplayName,
   formatMoviePathLabel,
   getAssociatedMovieCreditGroupsFromPersonCredits,
   getAssociatedPersonCreditGroupsFromMovieCredits,
@@ -497,6 +498,54 @@ async function buildChildRowForPersonCard(
 
       const movieCreditGroups = getAssociatedMovieCreditGroupsFromPersonCredits(personRecord)
         .filter((creditGroup) => creditGroup.some((credit) => isAllowedBfsTmdbMovieCredit(credit)));
+      if (movieCreditGroups.length === 0) {
+        const movieKeys = Array.from(
+          new Set(personRecord.movieConnectionKeys.map((movieKey) => normalizeTitle(movieKey)).filter(Boolean)),
+        );
+        if (movieKeys.length === 0) {
+          return null;
+        }
+
+        const fallbackFilms = await Promise.all(
+          movieKeys.map(async (movieKey) => {
+            const parsedMovie = parseMoviePathLabel(movieKey);
+            return {
+              movieKey,
+              parsedMovie,
+              movieRecord: await getFilmRecordByTitleAndYear(parsedMovie.name, parsedMovie.year),
+            };
+          }),
+        );
+        const popularityByPersonName = await getPersonPopularityByNames(
+          fallbackFilms.flatMap(({ movieRecord }) => movieRecord?.personConnectionKeys ?? []),
+        );
+        const connectionCounts = await getPersonRecordCountsByMovieKeys(movieKeys);
+        const connectionParentLabel = card.name;
+        const childCards = sortCardsByPopularity(
+          fallbackFilms.map(({ movieKey, parsedMovie, movieRecord }) => ({
+            ...(movieRecord
+              ? createMovieRootCard(movieRecord, parsedMovie.name)
+              : createUncachedMovieCard(parsedMovie.name, parsedMovie.year)),
+            connectionCount: Math.max(
+              movieRecord?.personConnectionKeys.length ?? 0,
+              connectionCounts.get(movieKey) ?? 0,
+              1,
+            ),
+            connectionRank: getParentPersonRankForMovie(
+              movieRecord,
+              personRecord,
+              popularityByPersonName,
+            ),
+            connectionParentLabel,
+          })),
+        ).map((childCard, index) => ({
+          ...childCard,
+          connectionOrder: index + 1,
+        }));
+
+        return createRow(childCards);
+      }
+
       const movieCredits = movieCreditGroups.map((group) => group[0]).filter(Boolean);
       const filmRecordsById = await getFilmRecordsByIds(
         movieCredits
@@ -563,6 +612,86 @@ async function buildChildRowForMovieCard(
       }
 
       const tmdbCreditGroups = getAssociatedPersonCreditGroupsFromMovieCredits(movieRecord);
+      if (tmdbCreditGroups.length === 0) {
+        const personNames = Array.from(
+          new Set(movieRecord.personConnectionKeys.map((personName) => normalizeName(personName)).filter(Boolean)),
+        );
+        if (personNames.length === 0) {
+          return null;
+        }
+
+        const cachedPersonRecords = await Promise.all(
+          personNames.map(async (personName) => [
+            personName,
+            await getLocalPersonRecord(personName),
+          ] as const),
+        );
+        const movieLabels = Array.from(
+          new Set(
+            cachedPersonRecords.flatMap(([, personRecord]) =>
+              personRecord
+                ? personRecord.movieConnectionKeys.map((movieKey) => {
+                    const parsedMovie = parseMoviePathLabel(movieKey);
+                    return formatMoviePathLabel(parsedMovie.name, parsedMovie.year);
+                  })
+                : [],
+            ),
+          ),
+        );
+        const moviePopularityByLabel = await getMoviePopularityByLabels(movieLabels);
+        const popularityByMovieKey = new Map(
+          movieLabels.map((movieLabel) => {
+            const parsedMovie = parseMoviePathLabel(movieLabel);
+            return [
+              getFilmKey(parsedMovie.name, parsedMovie.year),
+              moviePopularityByLabel.get(normalizeTitle(movieLabel)) ?? 0,
+            ] as const;
+          }),
+        );
+        const filmConnectionCounts = await getFilmRecordCountsByPersonConnectionKeys(personNames);
+        const connectionParentLabel = formatMoviePathLabel(card.name, card.year);
+        const childCards = sortCardsByPopularity(
+          cachedPersonRecords.map(([personName, personRecord]) => {
+            const displayName =
+              personRecord?.name ?? formatFallbackPersonDisplayName(personName);
+            return {
+              ...(personRecord
+                ? createPersonRootCard(personRecord, displayName)
+                : {
+                    key: `person:${normalizeName(displayName)}`,
+                    kind: "person" as const,
+                    name: displayName,
+                    popularity: 0,
+                    popularitySource: "Popularity is unavailable, so this card falls back to 0.",
+                    imageUrl: null,
+                    subtitle: "",
+                    subtitleDetail: "",
+                    connectionCount: 1,
+                    sources: [{ iconUrl: TMDB_ICON_URL, label: "TMDb" }],
+                    status: null,
+                    record: null,
+                  }),
+              connectionCount: getResolvedPersonConnectionCount(
+                displayName,
+                personRecord,
+                filmConnectionCounts,
+              ),
+              connectionRank: getParentMovieRankForPerson(
+                movieRecord,
+                personRecord,
+                popularityByMovieKey,
+              ),
+              connectionParentLabel,
+            };
+          }),
+        ).map((childCard, index) => ({
+          ...childCard,
+          connectionOrder: index + 1,
+        }));
+
+        return createRow(childCards);
+      }
+
       const tmdbCredits = tmdbCreditGroups.map((group) => group[0]).filter(Boolean);
       const filmConnectionCounts = await getFilmRecordCountsByPersonConnectionKeys(
         tmdbCredits.map((credit) => credit.name ?? ""),
@@ -690,6 +819,51 @@ export async function buildChildRowForCard(
   }
 
   return childRow;
+}
+
+async function resolveInitialSelectedCard(
+  card: Extract<CinenerdleCard, { kind: "movie" | "person" }>,
+): Promise<{
+  selectedCard: Extract<CinenerdleCard, { kind: "movie" | "person" }>;
+  movieRecord?: FilmRecord | null;
+  personRecord?: PersonRecord | null;
+}> {
+  if (card.kind === "movie") {
+    const localMovieRecord = await getLocalMovieRecord(
+      card.name,
+      card.year,
+      card.record?.tmdbId ?? card.record?.id ?? null,
+    );
+    const movieRecord =
+      localMovieRecord &&
+      localMovieRecord.personConnectionKeys.length > (card.record?.personConnectionKeys.length ?? 0)
+        ? localMovieRecord
+        : await resolveMovieParentRecord(card, localMovieRecord);
+    return {
+      selectedCard:
+        movieRecord && !hasDirectTmdbMovieSource(card.record)
+          ? refreshSelectedMovieCard(card, movieRecord)
+          : card,
+      movieRecord,
+    };
+  }
+
+  const localPersonRecord = await getLocalPersonRecord(
+    card.name,
+    getPersonTmdbIdFromCard(card),
+  );
+  const personRecord =
+    localPersonRecord &&
+    localPersonRecord.movieConnectionKeys.length > (card.record?.movieConnectionKeys.length ?? 0)
+      ? localPersonRecord
+      : await resolvePersonParentRecord(card, localPersonRecord);
+  return {
+    selectedCard:
+      personRecord && !hasDirectTmdbPersonSource(card.record)
+        ? refreshSelectedPersonCard(card, personRecord)
+        : card,
+    personRecord,
+  };
 }
 
 async function createCinenerdleRootTree(
@@ -1027,8 +1201,32 @@ export function useCinenerdleController({
           void measureAsync(
             "controller.afterCardSelected",
             async () => {
-              const initialChildRow = await buildChildRowForCard(selectedCard);
-              const initialSelectedTree = appendChildRow(selectedPathTree, initialChildRow);
+              const initialSelection =
+                selectedCard.kind === "movie" || selectedCard.kind === "person"
+                  ? await resolveInitialSelectedCard(selectedCard)
+                  : {
+                      selectedCard,
+                    };
+              const initialSelectedTreeBase =
+                initialSelection.selectedCard === selectedCard
+                  ? selectedPathTree
+                  : replaceTreeNodeCard(
+                      selectedPathTree,
+                      effect.row,
+                      effect.col,
+                      initialSelection.selectedCard,
+                    );
+              const initialChildRow = await buildChildRowForCard(initialSelection.selectedCard, {
+                movieRecord:
+                  initialSelection.selectedCard.kind === "movie"
+                    ? (initialSelection.movieRecord ?? null)
+                    : undefined,
+                personRecord:
+                  initialSelection.selectedCard.kind === "person"
+                    ? (initialSelection.personRecord ?? null)
+                    : undefined,
+              });
+              const initialSelectedTree = appendChildRow(initialSelectedTreeBase, initialChildRow);
               applyUpdate({
                 tree: initialSelectedTree,
               });
@@ -1036,14 +1234,17 @@ export function useCinenerdleController({
               setTmdbLogGeneration(Math.max(0, initialSelectedTree.length - 1));
               await scrollGenerationLikeBubble(effect.row);
 
-              if (selectedCard.kind !== "movie" && selectedCard.kind !== "person") {
+              if (
+                initialSelection.selectedCard.kind !== "movie" &&
+                initialSelection.selectedCard.kind !== "person"
+              ) {
                 if (initialChildRow && initialChildRow.length > 0) {
                   await scrollGenerationLikeBubble(effect.row + 1);
                 }
                 return initialChildRow;
               }
 
-              const refreshResult = await refreshCardFromTmdb(selectedCard, {
+              const refreshResult = await refreshCardFromTmdb(initialSelection.selectedCard, {
                 skipIfAlreadyHydrated: true,
               });
               if (!refreshResult.didRefresh) {
@@ -1054,7 +1255,7 @@ export function useCinenerdleController({
               }
 
               const refreshedSelectedTree = replaceTreeNodeCard(
-                selectedPathTree,
+                initialSelectedTreeBase,
                 effect.row,
                 effect.col,
                 refreshResult.refreshedCard,
