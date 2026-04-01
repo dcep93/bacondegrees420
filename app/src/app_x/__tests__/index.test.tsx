@@ -13,7 +13,7 @@ import {
   makePersonRecord,
 } from "../generators/cinenerdle2/__tests__/factories";
 import {
-  shouldActivateConnectedDropdownSuggestion,
+  shouldSelectConnectedDropdownSuggestionAsYoungest,
   shouldResolveConnectionMatchupPreview,
 } from "../connection_matchup_helpers";
 import { annotateDirectionalConnectionPathRanks } from "../connection_path_ranks";
@@ -330,14 +330,14 @@ describe("Connection matchup loading state", () => {
     expect(formatClearDbBadgeText(12, 0)).toBe("0 / 0");
   });
 
-  it("activates highlighted connected dropdown suggestions instead of opening connection search", () => {
-    expect(shouldActivateConnectedDropdownSuggestion({
+  it("treats highlighted connected dropdown suggestions as youngest-selection targets", () => {
+    expect(shouldSelectConnectedDropdownSuggestionAsYoungest({
       isConnectedToYoungestSelection: true,
     })).toBe(true);
-    expect(shouldActivateConnectedDropdownSuggestion({
+    expect(shouldSelectConnectedDropdownSuggestionAsYoungest({
       isConnectedToYoungestSelection: false,
     })).toBe(false);
-    expect(shouldActivateConnectedDropdownSuggestion(null)).toBe(false);
+    expect(shouldSelectConnectedDropdownSuggestionAsYoungest(null)).toBe(false);
   });
 });
 

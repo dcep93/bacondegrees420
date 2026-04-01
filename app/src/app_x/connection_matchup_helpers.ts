@@ -13,7 +13,7 @@ export function shouldResolveConnectionMatchupPreview(params: {
   );
 }
 
-export function shouldActivateConnectedDropdownSuggestion(
+export function shouldSelectConnectedDropdownSuggestionAsYoungest(
   suggestion: { isConnectedToYoungestSelection: boolean } | null,
 ): boolean {
   return Boolean(suggestion?.isConnectedToYoungestSelection);

@@ -152,24 +152,6 @@ export default function AppX() {
     hashValue,
     onToast: sayToast,
   });
-  const {
-    connectionInputWrapRef,
-    connectionQuery,
-    connectionSession,
-    connectionSuggestions,
-    handleConnectionInputKeyDown,
-    handleConnectionSubmit,
-    handleConnectionSuggestionClick,
-    isConnectionInputDisabled,
-    selectedSuggestionIndex,
-    setConnectionQuery,
-    setSelectedSuggestionIndex,
-    spawnAlternativeConnectionRow,
-  } = useConnectionSearchState({
-    hashValue,
-    isSearchablePersistencePending,
-    youngestSelectedCard,
-  });
   const shouldShowIndexedDbBootstrapLoadingShellIndicator = shouldShowIndexedDbBootstrapLoadingShell({
     hasLoadingShellDelayElapsed: hasIndexedDbBootstrapLoadingShellDelayElapsed,
     status: cinenerdleIndexedDbBootstrapStatus,
@@ -188,6 +170,26 @@ export default function AppX() {
     },
     [openHashInNewTab],
   );
+
+  const {
+    connectionInputWrapRef,
+    connectionQuery,
+    connectionSession,
+    connectionSuggestions,
+    handleConnectionInputKeyDown,
+    handleConnectionSubmit,
+    handleConnectionSuggestionClick,
+    isConnectionInputDisabled,
+    selectedSuggestionIndex,
+    setConnectionQuery,
+    setSelectedSuggestionIndex,
+    spawnAlternativeConnectionRow,
+  } = useConnectionSearchState({
+    hashValue,
+    isSearchablePersistencePending,
+    onSelectConnectionEntity: navigateToConnectionEntity,
+    youngestSelectedCard,
+  });
 
   const navigateToConnectionPath = useCallback(
     (path: ConnectionEntity[]) => {

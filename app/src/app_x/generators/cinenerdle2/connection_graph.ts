@@ -298,24 +298,6 @@ export async function hydrateConnectionEntityFromSearchRecord(
       return createConnectionEntityFromPersonRecord(personRecord);
     }
 
-    if (parsedPerson.tmdbId) {
-      const fallbackLabel = createReadableFallbackLabel(searchRecord.nameLower || `person ${parsedPerson.tmdbId}`);
-      const entity: ConnectionEntity = {
-        key: searchRecord.key,
-        kind: "person",
-        name: fallbackLabel,
-        year: "",
-        tmdbId: parsedPerson.tmdbId,
-        label: fallbackLabel,
-        connectionCount: 1,
-        hasCachedTmdbSource: false,
-        imageUrl: null,
-        connectionRank: null,
-      };
-
-      return entity;
-    }
-
     const matchingFilms = await getFilmRecordsByPersonConnectionKey(searchRecord.nameLower);
     const personName =
       findOriginalPersonNameInFilms(matchingFilms, searchRecord.nameLower) ??
@@ -326,7 +308,7 @@ export async function hydrateConnectionEntityFromSearchRecord(
       kind: "person",
       name: personName,
       year: "",
-      tmdbId: null,
+      tmdbId: parsedPerson.tmdbId,
       label: personName,
       connectionCount: Math.max(matchingFilms.length, 1),
       hasCachedTmdbSource: false,

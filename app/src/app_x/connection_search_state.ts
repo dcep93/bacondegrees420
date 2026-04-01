@@ -14,10 +14,9 @@ import {
   compareRankedSearchableConnectionEntityRecords,
   getConnectionSuggestionScore,
 } from "./connection_autocomplete";
-import { shouldActivateConnectedDropdownSuggestion } from "./connection_matchup_helpers";
+import { shouldSelectConnectedDropdownSuggestionAsYoungest } from "./connection_matchup_helpers";
 import { annotateDirectionalConnectionPathRanks } from "./connection_path_ranks";
 import { measureAsync } from "./perf";
-import { serializeConnectionEntityHash, serializeConnectionPathHash } from "./connection_hash";
 import {
   collectConnectionRowFamilyIds,
   createSearchingConnectionRow,
@@ -62,29 +61,26 @@ export type ConnectionSuggestion = Omit<ConnectionEntity, "kind"> & {
   sortScore: number;
 };
 
-function isPlaceholderPersonLabel(entity: ConnectionEntity): boolean {
-  return entity.kind === "person" && /^Person \d+$/.test(entity.label);
-}
+type ConnectionRowSearchParams = {
+  excludedEdgeKeys: string[];
+  excludedNodeKeys: string[];
+  left: ConnectionEntity;
+  right: ConnectionEntity;
+  rowId: string;
+  sessionId: string;
+};
 
-function mergeHydratedConnectionEntity(
-  originalEntity: ConnectionEntity,
-  hydratedEntity: ConnectionEntity,
-): ConnectionEntity {
-  if (
-    originalEntity.kind === "person" &&
-    hydratedEntity.kind === "person" &&
-    originalEntity.key === hydratedEntity.key &&
-    originalEntity.label.trim() &&
-    isPlaceholderPersonLabel(hydratedEntity)
-  ) {
-    return {
-      ...hydratedEntity,
-      name: originalEntity.name,
-      label: originalEntity.label,
-    };
-  }
+type SelectableConnectionEntity = ConnectionEntity & {
+  kind: "movie" | "person";
+};
 
-  return hydratedEntity;
+function getConnectionOrderToYoungestSelection(
+  youngestSelectedConnectionOrders: Record<string, number | null>,
+  key: string,
+): number | null {
+  return Object.hasOwn(youngestSelectedConnectionOrders, key)
+    ? youngestSelectedConnectionOrders[key] ?? null
+    : null;
 }
 
 async function getPersonRecordForConnectionEntity(
@@ -143,8 +139,15 @@ async function hydrateConnectionEntityPresentation(
   }
 
   return hydrateConnectionEntityFromKey(entity.key)
-    .then((hydratedEntity) => mergeHydratedConnectionEntity(entity, hydratedEntity))
     .catch(() => entity);
+}
+
+async function hydrateConnectionEntityForRowSearch(
+  entity: ConnectionEntity,
+): Promise<ConnectionEntity> {
+  return hydrateConnectionEntityFromKey(entity.key)
+    .then((hydratedEntity) => hydrateConnectionEntityPresentation(hydratedEntity))
+    .catch(() => createFallbackConnectionEntity(entity));
 }
 
 async function annotateConnectionPathRanks(path: ConnectionEntity[]): Promise<ConnectionEntity[]> {
@@ -166,13 +169,211 @@ async function annotateConnectionPathRanks(path: ConnectionEntity[]): Promise<Co
   });
 }
 
+async function buildConnectionSuggestions(params: {
+  query: string;
+  isStale: () => boolean;
+  youngestSelectedConnectionOrders: Record<string, number | null>;
+}): Promise<ConnectionSuggestion[]> {
+  const { query, isStale, youngestSelectedConnectionOrders } = params;
+  const directConnectionKeys = new Set(Object.keys(youngestSelectedConnectionOrders));
+  const searchRecords = await getAllSearchableConnectionEntities();
+
+  if (isStale()) {
+    return [];
+  }
+
+  const candidateRecords = searchRecords
+    .map((record) => ({
+      record,
+      sortScore: getConnectionSuggestionScore(query, record.nameLower),
+      isConnectedToYoungestSelection: directConnectionKeys.has(record.key),
+    }))
+    .filter((item) => item.sortScore >= 0)
+    .sort(compareRankedSearchableConnectionEntityRecords)
+    .slice(0, 24);
+
+  return Array.from(
+    new Map(
+      (await Promise.all(
+        candidateRecords.map(async ({ record, sortScore, isConnectedToYoungestSelection }) => {
+          const entity = await hydrateConnectionEntityFromSearchRecord(record);
+          if (entity.kind === "cinenerdle" || entity.connectionCount <= 0) {
+            return null;
+          }
+          const suggestionEntity = entity as SelectableConnectionEntity;
+
+          return [
+            suggestionEntity.key,
+            {
+              ...suggestionEntity,
+              popularity: record.popularity ?? 0,
+              connectionOrderToYoungestSelection: getConnectionOrderToYoungestSelection(
+                youngestSelectedConnectionOrders,
+                record.key,
+              ),
+              isConnectedToYoungestSelection,
+              sortScore: Math.max(sortScore, getConnectionSuggestionScore(query, suggestionEntity.label)),
+            } satisfies ConnectionSuggestion,
+          ] as const;
+        }),
+      )).filter((entity): entity is readonly [string, ConnectionSuggestion] => entity !== null),
+    ).values(),
+  )
+    .sort(compareRankedConnectionSuggestions)
+    .slice(0, 12);
+}
+
+function createInitialConnectionSession(params: {
+  entity: ConnectionEntity;
+  counterpart: ConnectionEntity;
+  rowId: string;
+  sessionId: string;
+}): ConnectionSession {
+  return {
+    id: params.sessionId,
+    left: params.entity,
+    right: params.counterpart,
+    rows: [createSearchingConnectionRow(params.rowId)],
+  };
+}
+
+function updateConnectionSessionRowResult(
+  currentSession: ConnectionSession | null,
+  params: ConnectionRowSearchParams,
+  resolvedEntities: {
+    left: ConnectionEntity;
+    right: ConnectionEntity;
+  },
+  rankedPath: ConnectionEntity[],
+  status: ConnectionSession["rows"][number]["status"],
+): ConnectionSession | null {
+  if (!currentSession || currentSession.id !== params.sessionId) {
+    return currentSession;
+  }
+
+  return {
+    ...currentSession,
+    left: resolvedEntities.left,
+    right: resolvedEntities.right,
+    rows: currentSession.rows.map((row) =>
+      row.id === params.rowId
+        ? {
+            ...row,
+            status,
+            path: rankedPath,
+          }
+        : row,
+    ),
+  };
+}
+
+function updateParentRowExclusions(
+  row: ConnectionSession["rows"][number],
+  exclusion: ConnectionExclusion,
+  mode: "add" | "remove",
+): ConnectionSession["rows"][number] {
+  if (exclusion.kind === "node") {
+    return {
+      ...row,
+      childDisallowedNodeKeys:
+        mode === "add"
+          ? [...row.childDisallowedNodeKeys, exclusion.nodeKey]
+          : row.childDisallowedNodeKeys.filter((nodeKey) => nodeKey !== exclusion.nodeKey),
+    };
+  }
+
+  return {
+    ...row,
+    childDisallowedEdgeKeys:
+      mode === "add"
+        ? [...row.childDisallowedEdgeKeys, exclusion.edgeKey]
+        : row.childDisallowedEdgeKeys.filter((edgeKey) => edgeKey !== exclusion.edgeKey),
+  };
+}
+
+function removeAlternativeConnectionRowFamily(
+  currentSession: ConnectionSession,
+  parentRowId: string,
+  exclusion: ConnectionExclusion,
+): ConnectionSession {
+  const toggledRow = currentSession.rows.find((row) =>
+    row.parentRowId === parentRowId &&
+    matchesConnectionExclusion(row.sourceExclusion, exclusion),
+  );
+  const rowsToRemove = toggledRow
+    ? collectConnectionRowFamilyIds(currentSession.rows, toggledRow.id)
+    : new Set<string>();
+
+  return {
+    ...currentSession,
+    rows: currentSession.rows
+      .filter((row) => !rowsToRemove.has(row.id))
+      .map((row) => row.id === parentRowId ? updateParentRowExclusions(row, exclusion, "remove") : row),
+  };
+}
+
+function buildAlternativeConnectionSearchPlan(params: {
+  currentSession: ConnectionSession;
+  exclusion: ConnectionExclusion;
+  parentRowId: string;
+  rowId: string;
+}): {
+  nextSearch: ConnectionRowSearchParams;
+  nextSession: ConnectionSession;
+} {
+  const { currentSession, exclusion, parentRowId, rowId } = params;
+  const parentRow = currentSession.rows.find((row) => row.id === parentRowId);
+
+  if (!parentRow) {
+    throw new Error(`Missing parent connection row: ${parentRowId}`);
+  }
+
+  const excludedNodeKeys = Array.from(new Set([
+    ...parentRow.excludedNodeKeys,
+    ...(exclusion.kind === "node" ? [exclusion.nodeKey] : []),
+  ]));
+  const excludedEdgeKeys = Array.from(new Set([
+    ...parentRow.excludedEdgeKeys,
+    ...(exclusion.kind === "edge" ? [exclusion.edgeKey] : []),
+  ]));
+
+  return {
+    nextSearch: {
+      excludedEdgeKeys,
+      excludedNodeKeys,
+      left: currentSession.left,
+      right: currentSession.right,
+      rowId,
+      sessionId: currentSession.id,
+    },
+    nextSession: {
+      ...currentSession,
+      rows: [
+        ...currentSession.rows.map((row) =>
+          row.id === parentRowId ? updateParentRowExclusions(row, exclusion, "add") : row,
+        ),
+        {
+          ...createSearchingConnectionRow(rowId, {
+            parentRowId,
+            sourceExclusion: exclusion,
+          }),
+          excludedNodeKeys,
+          excludedEdgeKeys,
+        },
+      ],
+    },
+  };
+}
+
 export function useConnectionSearchState({
   hashValue,
   isSearchablePersistencePending,
+  onSelectConnectionEntity,
   youngestSelectedCard,
 }: {
   hashValue: string;
   isSearchablePersistencePending: boolean;
+  onSelectConnectionEntity: (entity: ConnectionEntity) => void;
   youngestSelectedCard: YoungestSelectedCard | null;
 }) {
   const [connectionQuery, setConnectionQuery] = useState("");
@@ -235,65 +436,28 @@ export function useConnectionSearchState({
 
     const requestId = autocompleteRequestIdRef.current + 1;
     autocompleteRequestIdRef.current = requestId;
-    const directConnectionKeys = new Set(Object.keys(youngestSelectedConnectionOrders));
 
     void measureAsync(
       "app.connectionAutocomplete",
       async () => {
-        const searchRecords = await getAllSearchableConnectionEntities();
-        if (autocompleteRequestIdRef.current !== requestId) {
-          return [];
-        }
-
-        const candidateRecords = searchRecords
-          .map((record) => ({
-            record,
-            sortScore: getConnectionSuggestionScore(query, record.nameLower),
-            isConnectedToYoungestSelection: directConnectionKeys.has(record.key),
-          }))
-          .filter((item) => item.sortScore >= 0)
-          .sort(compareRankedSearchableConnectionEntityRecords)
-          .slice(0, 24);
-
-        const nextSuggestions = Array.from(new Map((await Promise.all(
-          candidateRecords.map(async ({ record, sortScore, isConnectedToYoungestSelection }) => {
-            const entity = await hydrateConnectionEntityFromSearchRecord(record);
-            if (entity.kind === "cinenerdle" || entity.connectionCount <= 0) {
-              return null;
-            }
-            return {
-              ...entity,
-              popularity: record.popularity ?? 0,
-              connectionOrderToYoungestSelection:
-                Object.hasOwn(youngestSelectedConnectionOrders, record.key)
-                  ? youngestSelectedConnectionOrders[record.key] ?? null
-                  : null,
-              isConnectedToYoungestSelection,
-              sortScore: Math.max(sortScore, getConnectionSuggestionScore(query, entity.label)),
-            };
-          }),
-        ))
-          .filter((entity): entity is ConnectionSuggestion => entity !== null)
-          .map((entity) => [entity.key, entity] as const))
-          .values())
-          .sort(compareRankedConnectionSuggestions)
-          .slice(0, 12);
-
-        if (autocompleteRequestIdRef.current !== requestId) {
-          return nextSuggestions;
-        }
-
-        startTransition(() => {
-          setConnectionSuggestions(nextSuggestions);
-          setSelectedSuggestionIndex(nextSuggestions.length > 0 ? 0 : -1);
+        const nextSuggestions = await buildConnectionSuggestions({
+          query,
+          isStale: () => autocompleteRequestIdRef.current !== requestId,
+          youngestSelectedConnectionOrders,
         });
+        if (autocompleteRequestIdRef.current === requestId) {
+          startTransition(() => {
+            setConnectionSuggestions(nextSuggestions);
+            setSelectedSuggestionIndex(nextSuggestions.length > 0 ? 0 : -1);
+          });
+        }
 
         return nextSuggestions;
       },
       {
         always: true,
         details: {
-          directConnectionKeyCount: directConnectionKeys.size,
+          directConnectionKeyCount: Object.keys(youngestSelectedConnectionOrders).length,
           query,
           requestId,
           youngestSelectedCardKey,
@@ -359,23 +523,10 @@ export function useConnectionSearchState({
     };
   }, [youngestSelectedCard]);
 
-  const runConnectionRowSearch = useCallback(async (params: {
-    excludedEdgeKeys: string[];
-    excludedNodeKeys: string[];
-    left: ConnectionEntity;
-    right: ConnectionEntity;
-    rowId: string;
-    sessionId: string;
-  }) => {
+  const runConnectionRowSearch = useCallback(async (params: ConnectionRowSearchParams) => {
     const [leftEntity, rightEntity] = await Promise.all([
-      hydrateConnectionEntityFromKey(params.left.key)
-        .then((entity) => mergeHydratedConnectionEntity(params.left, entity))
-        .then((entity) => hydrateConnectionEntityPresentation(entity))
-        .catch(() => createFallbackConnectionEntity(params.left)),
-      hydrateConnectionEntityFromKey(params.right.key)
-        .then((entity) => mergeHydratedConnectionEntity(params.right, entity))
-        .then((entity) => hydrateConnectionEntityPresentation(entity))
-        .catch(() => createFallbackConnectionEntity(params.right)),
+      hydrateConnectionEntityForRowSearch(params.left),
+      hydrateConnectionEntityForRowSearch(params.right),
     ]);
 
     const result = await measureAsync(
@@ -406,24 +557,16 @@ export function useConnectionSearchState({
     const rankedPath = await annotateConnectionPathRanks(result.path);
 
     setConnectionSession((currentSession) => {
-      if (!currentSession || currentSession.id !== params.sessionId) {
-        return currentSession;
-      }
-
-      return {
-        ...currentSession,
-        left: leftEntity,
-        right: rightEntity,
-        rows: currentSession.rows.map((row) =>
-          row.id === params.rowId
-            ? {
-                ...row,
-                status: result.status,
-                path: rankedPath,
-              }
-            : row,
-        ),
-      };
+      return updateConnectionSessionRowResult(
+        currentSession,
+        params,
+        {
+          left: leftEntity,
+          right: rightEntity,
+        },
+        rankedPath,
+        result.status,
+      );
     });
   }, []);
 
@@ -434,12 +577,12 @@ export function useConnectionSearchState({
     const rowId = `connection-row-${connectionRowIdRef.current + 1}`;
     connectionRowIdRef.current += 1;
 
-    setConnectionSession({
-      id: sessionId,
-      left: entity,
-      right: counterpart,
-      rows: [createSearchingConnectionRow(rowId)],
-    });
+    setConnectionSession(createInitialConnectionSession({
+      entity,
+      counterpart,
+      rowId,
+      sessionId,
+    }));
     clearConnectionInputState();
 
     await runConnectionRowSearch({
@@ -471,33 +614,11 @@ export function useConnectionSearchState({
       : parentRow.childDisallowedEdgeKeys.includes(exclusion.edgeKey);
 
     if (isAlreadyDisallowed) {
-      const toggledRow = currentSession.rows.find((row) =>
-        row.parentRowId === parentRowId &&
-        matchesConnectionExclusion(row.sourceExclusion, exclusion),
+      const nextSession = removeAlternativeConnectionRowFamily(
+        currentSession,
+        parentRowId,
+        exclusion,
       );
-      const rowsToRemove = toggledRow
-        ? collectConnectionRowFamilyIds(currentSession.rows, toggledRow.id)
-        : new Set<string>();
-      const nextSession: ConnectionSession = {
-        ...currentSession,
-        rows: currentSession.rows
-          .filter((row) => !rowsToRemove.has(row.id))
-          .map((row) =>
-            row.id === parentRowId
-              ? {
-                  ...row,
-                  childDisallowedNodeKeys:
-                    exclusion.kind === "node"
-                      ? row.childDisallowedNodeKeys.filter((nodeKey) => nodeKey !== exclusion.nodeKey)
-                      : row.childDisallowedNodeKeys,
-                  childDisallowedEdgeKeys:
-                    exclusion.kind === "edge"
-                      ? row.childDisallowedEdgeKeys.filter((edgeKey) => edgeKey !== exclusion.edgeKey)
-                      : row.childDisallowedEdgeKeys,
-                }
-              : row,
-          ),
-      };
 
       connectionSessionRef.current = nextSession;
       setConnectionSession(nextSession);
@@ -506,52 +627,12 @@ export function useConnectionSearchState({
 
     const rowId = `connection-row-${connectionRowIdRef.current + 1}`;
     connectionRowIdRef.current += 1;
-    const excludedNodeKeys = Array.from(new Set([
-      ...parentRow.excludedNodeKeys,
-      ...(exclusion.kind === "node" ? [exclusion.nodeKey] : []),
-    ]));
-    const excludedEdgeKeys = Array.from(new Set([
-      ...parentRow.excludedEdgeKeys,
-      ...(exclusion.kind === "edge" ? [exclusion.edgeKey] : []),
-    ]));
-
-    const nextSearch = {
-      excludedEdgeKeys,
-      excludedNodeKeys,
-      left: currentSession.left,
-      right: currentSession.right,
+    const { nextSearch, nextSession } = buildAlternativeConnectionSearchPlan({
+      currentSession,
+      exclusion,
+      parentRowId,
       rowId,
-      sessionId: currentSession.id,
-    };
-
-    const nextSession: ConnectionSession = {
-      ...currentSession,
-      rows: [
-        ...currentSession.rows.map((row) =>
-          row.id === parentRowId
-            ? {
-                ...row,
-                childDisallowedNodeKeys:
-                  exclusion.kind === "node"
-                    ? [...row.childDisallowedNodeKeys, exclusion.nodeKey]
-                    : row.childDisallowedNodeKeys,
-                childDisallowedEdgeKeys:
-                  exclusion.kind === "edge"
-                    ? [...row.childDisallowedEdgeKeys, exclusion.edgeKey]
-                    : row.childDisallowedEdgeKeys,
-              }
-            : row,
-        ),
-        {
-          ...createSearchingConnectionRow(rowId, {
-            parentRowId,
-            sourceExclusion: exclusion,
-          }),
-          excludedNodeKeys,
-          excludedEdgeKeys,
-        },
-      ],
-    };
+    });
 
     connectionSessionRef.current = nextSession;
     setConnectionSession(nextSession);
@@ -559,13 +640,14 @@ export function useConnectionSearchState({
   }, [runConnectionRowSearch]);
 
   const handleConnectionSuggestionSelection = useCallback(async (suggestion: ConnectionSuggestion) => {
-    if (shouldActivateConnectedDropdownSuggestion(suggestion)) {
+    if (shouldSelectConnectedDropdownSuggestionAsYoungest(suggestion)) {
       clearConnectionInputState();
+      onSelectConnectionEntity(suggestion);
       return;
     }
 
     await openConnectionRowsForEntity(suggestion);
-  }, [clearConnectionInputState, openConnectionRowsForEntity]);
+  }, [clearConnectionInputState, onSelectConnectionEntity, openConnectionRowsForEntity]);
 
   const handleConnectionSubmit = useCallback(async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -597,8 +679,8 @@ export function useConnectionSearchState({
 
       await openConnectionRowsForEntity(createFallbackConnectionEntity(target));
       setConnectionQuery("");
-    } catch (error) {
-      void error;
+    } catch {
+      // Ignore resolution failures and leave the current connection search state intact.
     } finally {
       setIsResolvingConnection(false);
     }
@@ -676,8 +758,6 @@ export function useConnectionSearchState({
     handleConnectionSuggestionClick,
     isConnectionInputDisabled: isResolvingConnection || isSearchablePersistencePending,
     selectedSuggestionIndex,
-    serializeConnectionEntityHash,
-    serializeConnectionPathHash,
     setConnectionQuery,
     setSelectedSuggestionIndex,
     spawnAlternativeConnectionRow,

@@ -27,6 +27,7 @@ import {
   createConnectionEntityFromMovieRecord,
   createConnectionEntityFromPersonRecord,
   findConnectionPathBidirectional,
+  hydrateConnectionEntityFromSearchRecord,
 } from "../connection_graph";
 
 describe("findConnectionPathBidirectional", () => {
@@ -266,5 +267,25 @@ describe("findConnectionPathBidirectional", () => {
 
     expect(result.status).toBe("not_found");
     expect(result.path).toEqual([]);
+  });
+
+  it("preserves the searchable record name for person ids instead of synthesizing a placeholder label", async () => {
+    indexedDbMock.getPersonRecordById.mockResolvedValue(null);
+    indexedDbMock.getFilmRecordsByPersonConnectionKey.mockResolvedValue([]);
+
+    const entity = await hydrateConnectionEntityFromSearchRecord({
+      key: "person:1229",
+      type: "person",
+      nameLower: "jeff bridges",
+      popularity: 15,
+    });
+
+    expect(entity).toEqual(expect.objectContaining({
+      key: "person:1229",
+      kind: "person",
+      tmdbId: 1229,
+      name: "Jeff Bridges",
+      label: "Jeff Bridges",
+    }));
   });
 });

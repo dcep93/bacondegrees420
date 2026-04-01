@@ -16,6 +16,14 @@ export type RankedConnectionSuggestion = {
   isConnectedToYoungestSelection: boolean;
 };
 
+type RankedConnectionLike = {
+  isConnectedToYoungestSelection: boolean;
+  popularity: number;
+  sortScore: number;
+  kind: "person" | "movie";
+  label: string;
+};
+
 function compareConnectionPriority(
   leftIsConnected: boolean,
   rightIsConnected: boolean,
@@ -43,42 +51,9 @@ function compareKind(leftKind: "person" | "movie", rightKind: "person" | "movie"
   return 0;
 }
 
-export function compareRankedSearchableConnectionEntityRecords(
-  left: RankedSearchableConnectionEntityRecord,
-  right: RankedSearchableConnectionEntityRecord,
-): number {
-  const connectionPriority = compareConnectionPriority(
-    left.isConnectedToYoungestSelection,
-    right.isConnectedToYoungestSelection,
-  );
-  if (connectionPriority !== 0) {
-    return connectionPriority;
-  }
-
-  const popularityDifference = comparePopularity(
-    left.record.popularity ?? 0,
-    right.record.popularity ?? 0,
-  );
-  if (popularityDifference !== 0) {
-    return popularityDifference;
-  }
-
-  const sortScoreDifference = compareSortScore(left.sortScore, right.sortScore);
-  if (sortScoreDifference !== 0) {
-    return sortScoreDifference;
-  }
-
-  const kindDifference = compareKind(left.record.type, right.record.type);
-  if (kindDifference !== 0) {
-    return kindDifference;
-  }
-
-  return left.record.nameLower.localeCompare(right.record.nameLower);
-}
-
-export function compareRankedConnectionSuggestions(
-  left: RankedConnectionSuggestion,
-  right: RankedConnectionSuggestion,
+function compareRankedConnectionLike(
+  left: RankedConnectionLike,
+  right: RankedConnectionLike,
 ): number {
   const connectionPriority = compareConnectionPriority(
     left.isConnectedToYoungestSelection,
@@ -104,6 +79,35 @@ export function compareRankedConnectionSuggestions(
   }
 
   return left.label.localeCompare(right.label);
+}
+
+export function compareRankedSearchableConnectionEntityRecords(
+  left: RankedSearchableConnectionEntityRecord,
+  right: RankedSearchableConnectionEntityRecord,
+): number {
+  return compareRankedConnectionLike(
+    {
+      isConnectedToYoungestSelection: left.isConnectedToYoungestSelection,
+      popularity: left.record.popularity ?? 0,
+      sortScore: left.sortScore,
+      kind: left.record.type,
+      label: left.record.nameLower,
+    },
+    {
+      isConnectedToYoungestSelection: right.isConnectedToYoungestSelection,
+      popularity: right.record.popularity ?? 0,
+      sortScore: right.sortScore,
+      kind: right.record.type,
+      label: right.record.nameLower,
+    },
+  );
+}
+
+export function compareRankedConnectionSuggestions(
+  left: RankedConnectionSuggestion,
+  right: RankedConnectionSuggestion,
+): number {
+  return compareRankedConnectionLike(left, right);
 }
 
 function stripSearchDiacritics(value: string): string {
