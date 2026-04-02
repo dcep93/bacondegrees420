@@ -222,7 +222,7 @@ describe("reduceCinenerdleLifecycleEvent", () => {
     expect(transition.effects).toEqual([
       expect.objectContaining({
         type: "load-selected-card",
-        removedDescendantRows: true,
+        removedDescendantRows: false,
         row: 0,
         col: 0,
       }),
