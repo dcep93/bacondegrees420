@@ -1963,8 +1963,21 @@ describe("tmdb forced refresh helpers", () => {
     );
   });
 
-  it("does not remote-resolve unmatched connection queries", async () => {
-    const fetchMock = vi.fn();
+  it("runs both tmdb searches and logs one combined payload even when no connection target is found", async () => {
+    const movieSearchResponse = { results: [] };
+    const personSearchResponse = { results: [] };
+    const fetchMock = vi.fn(async (input: string) => {
+      const url = String(input);
+      if (url.includes("/search/movie?")) {
+        return createJsonResponse(movieSearchResponse);
+      }
+
+      if (url.includes("/search/person?")) {
+        return createJsonResponse(personSearchResponse);
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
 
     indexedDbMock.getAllSearchableConnectionEntities.mockResolvedValue([]);
     indexedDbMock.getPersonRecordByName.mockResolvedValue(null);
@@ -1974,7 +1987,15 @@ describe("tmdb forced refresh helpers", () => {
     const target = await resolveConnectionQuery("La Snob (2024)");
 
     expect(target).toBeNull();
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      "tmdb.resolveConnectionQuery search responses",
+      {
+        movieSearchResponse,
+        personSearchResponse,
+        query: "La Snob (2024)",
+      },
+    );
   });
 
   it("resolves year-qualified movie queries as movies", async () => {
@@ -1996,6 +2017,27 @@ describe("tmdb forced refresh helpers", () => {
     ]);
     indexedDbMock.getPersonRecordByName.mockResolvedValue(null);
     indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(filmRecord);
+    vi.stubGlobal("fetch", vi.fn(async (input: string) => {
+      const url = String(input);
+      if (url.includes("/search/movie?")) {
+        return createJsonResponse({
+          results: [
+            makeTmdbMovieSearchResult({
+              id: 321,
+              popularity: 99,
+              release_date: "1995-12-15",
+              title: "Heat",
+            }),
+          ],
+        });
+      }
+
+      if (url.includes("/search/person?")) {
+        return createJsonResponse({ results: [] });
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    }));
 
     const target = await resolveConnectionQuery("Heat (1995)");
 
@@ -2007,7 +2049,31 @@ describe("tmdb forced refresh helpers", () => {
     expect(indexedDbMock.getFilmRecordByTitleAndYear).toHaveBeenCalledWith("Heat", "1995");
   });
 
-  it("does not resolve bare movie title submits as movies", async () => {
+  it("resolves bare movie title submits as movies from tmdb search", async () => {
+    const movieSearchResponse = {
+      results: [
+        makeTmdbMovieSearchResult({
+          id: 321,
+          popularity: 91,
+          release_date: "1995-12-15",
+          title: "Heat",
+        }),
+      ],
+    };
+    const personSearchResponse = { results: [] };
+    const fetchMock = vi.fn(async (input: string) => {
+      const url = String(input);
+      if (url.includes("/search/movie?")) {
+        return createJsonResponse(movieSearchResponse);
+      }
+
+      if (url.includes("/search/person?")) {
+        return createJsonResponse(personSearchResponse);
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
     indexedDbMock.getAllSearchableConnectionEntities.mockResolvedValue([
       {
         key: "movie:heat:1995",
@@ -2017,15 +2083,42 @@ describe("tmdb forced refresh helpers", () => {
       },
     ]);
     indexedDbMock.getPersonRecordByName.mockResolvedValue(null);
+    vi.stubGlobal("fetch", fetchMock);
 
     const target = await resolveConnectionQuery("Heat");
 
-    expect(target).toBeNull();
+    expect(target).toEqual({
+      kind: "movie",
+      name: "Heat",
+      year: "1995",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(indexedDbMock.getFilmRecordByTitleAndYear).not.toHaveBeenCalled();
     expect(connectionGraphMock.hydrateConnectionEntityFromSearchRecord).not.toHaveBeenCalled();
   });
 
-  it("still resolves exact person-name submits without a movie year", async () => {
+  it("resolves bare person-name submits as people from tmdb search", async () => {
+    const personSearchResponse = {
+      results: [
+        makeTmdbPersonSearchResult({
+          id: 60,
+          name: "Al Pacino",
+          popularity: 77,
+        }),
+      ],
+    };
+    const fetchMock = vi.fn(async (input: string) => {
+      const url = String(input);
+      if (url.includes("/search/movie?")) {
+        return createJsonResponse({ results: [] });
+      }
+
+      if (url.includes("/search/person?")) {
+        return createJsonResponse(personSearchResponse);
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
     const personRecord = makePersonRecord({
       id: 60,
       tmdbId: 60,
@@ -2040,6 +2133,7 @@ describe("tmdb forced refresh helpers", () => {
 
     indexedDbMock.getAllSearchableConnectionEntities.mockResolvedValue([]);
     indexedDbMock.getPersonRecordByName.mockResolvedValue(personRecord);
+    vi.stubGlobal("fetch", fetchMock);
 
     const target = await resolveConnectionQuery("Al Pacino");
 
@@ -2049,5 +2143,99 @@ describe("tmdb forced refresh helpers", () => {
       tmdbId: 60,
     });
     expect(indexedDbMock.getFilmRecordByTitleAndYear).not.toHaveBeenCalled();
+  });
+
+  it("breaks exact cross-kind ties by higher popularity", async () => {
+    const fetchMock = vi.fn(async (input: string) => {
+      const url = String(input);
+      if (url.includes("/search/movie?")) {
+        return createJsonResponse({
+          results: [
+            makeTmdbMovieSearchResult({
+              id: 321,
+              popularity: 40,
+              release_date: "1995-12-15",
+              title: "Heat",
+            }),
+          ],
+        });
+      }
+
+      if (url.includes("/search/person?")) {
+        return createJsonResponse({
+          results: [
+            makeTmdbPersonSearchResult({
+              id: 60,
+              name: "Heat",
+              popularity: 90,
+            }),
+          ],
+        });
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    indexedDbMock.getAllSearchableConnectionEntities.mockResolvedValue([]);
+    indexedDbMock.getPersonRecordByName.mockResolvedValue(null);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const target = await resolveConnectionQuery("Heat");
+
+    expect(target).toEqual({
+      kind: "person",
+      name: "Heat",
+      tmdbId: 60,
+    });
+  });
+
+  it("logs combined movie and person search responses once per free-text submit", async () => {
+    const movieSearchResponse = {
+      results: [
+        makeTmdbMovieSearchResult({
+          id: 321,
+          popularity: 99,
+          release_date: "1995-12-15",
+          title: "Heat",
+        }),
+      ],
+    };
+    const personSearchResponse = {
+      results: [
+        makeTmdbPersonSearchResult({
+          id: 60,
+          name: "Heat",
+          popularity: 30,
+        }),
+      ],
+    };
+    const fetchMock = vi.fn(async (input: string) => {
+      const url = String(input);
+      if (url.includes("/search/movie?")) {
+        return createJsonResponse(movieSearchResponse);
+      }
+
+      if (url.includes("/search/person?")) {
+        return createJsonResponse(personSearchResponse);
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    indexedDbMock.getAllSearchableConnectionEntities.mockResolvedValue([]);
+    indexedDbMock.getPersonRecordByName.mockResolvedValue(null);
+    vi.stubGlobal("fetch", fetchMock);
+
+    await resolveConnectionQuery("Heat");
+
+    expect(consoleLogSpy).toHaveBeenCalledTimes(1);
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      "tmdb.resolveConnectionQuery search responses",
+      {
+        movieSearchResponse,
+        personSearchResponse,
+        query: "Heat",
+      },
+    );
   });
 });

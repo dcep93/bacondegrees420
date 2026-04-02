@@ -223,6 +223,58 @@ async function buildConnectionSuggestions(params: {
     .slice(0, 12);
 }
 
+type ConnectionSuggestionSelectionHandler = (
+  suggestion: ConnectionSuggestion,
+) => Promise<void> | void;
+
+export async function selectConnectionSuggestion(params: {
+  clearConnectionInputState: () => void;
+  onSelectConnectedSuggestionAsYoungest: (suggestion: ConnectionSuggestion) => void;
+  openConnectionRowsForEntity: (entity: ConnectionEntity) => Promise<void>;
+  suggestion: ConnectionSuggestion;
+}): Promise<void> {
+  const {
+    clearConnectionInputState,
+    onSelectConnectedSuggestionAsYoungest,
+    openConnectionRowsForEntity,
+    suggestion,
+  } = params;
+
+  if (shouldSelectConnectedDropdownSuggestionAsYoungest(suggestion)) {
+    clearConnectionInputState();
+    onSelectConnectedSuggestionAsYoungest(suggestion);
+    return;
+  }
+
+  await openConnectionRowsForEntity(createFallbackConnectionEntity(suggestion));
+}
+
+export async function selectHighlightedConnectionSuggestion(params: {
+  connectionSuggestions: ConnectionSuggestion[];
+  onSelectSuggestion: ConnectionSuggestionSelectionHandler;
+  selectedSuggestionIndex: number;
+}): Promise<boolean> {
+  const selectedSuggestion = params.selectedSuggestionIndex >= 0
+    ? params.connectionSuggestions[params.selectedSuggestionIndex] ?? null
+    : null;
+
+  if (!selectedSuggestion) {
+    return false;
+  }
+
+  await params.onSelectSuggestion(selectedSuggestion);
+  return true;
+}
+
+export async function clickConnectionSuggestion(params: {
+  event: Pick<MouseEvent<HTMLButtonElement>, "preventDefault">;
+  onSelectSuggestion: ConnectionSuggestionSelectionHandler;
+  suggestion: ConnectionSuggestion;
+}): Promise<void> {
+  params.event.preventDefault();
+  await params.onSelectSuggestion(params.suggestion);
+}
+
 function createInitialConnectionSession(params: {
   entity: ConnectionEntity;
   counterpart: ConnectionEntity;
@@ -656,15 +708,18 @@ export function useConnectionSearchState({
     void runConnectionRowSearch(nextSearch);
   }, [runConnectionRowSearch]);
 
-  const handleConnectionSuggestionSelection = useCallback((suggestion: ConnectionSuggestion) => {
-    if (shouldSelectConnectedDropdownSuggestionAsYoungest(suggestion)) {
-      clearConnectionInputState();
-      onSelectConnectedSuggestionAsYoungest(suggestion);
-      return;
-    }
-
-    window.alert(suggestion.name);
-  }, [clearConnectionInputState, onSelectConnectedSuggestionAsYoungest]);
+  const handleConnectionSuggestionSelection = useCallback(async (suggestion: ConnectionSuggestion) => {
+    await selectConnectionSuggestion({
+      clearConnectionInputState,
+      onSelectConnectedSuggestionAsYoungest,
+      openConnectionRowsForEntity,
+      suggestion,
+    });
+  }, [
+    clearConnectionInputState,
+    onSelectConnectedSuggestionAsYoungest,
+    openConnectionRowsForEntity,
+  ]);
 
   const handleConnectionSubmit = useCallback(async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -674,11 +729,11 @@ export function useConnectionSearchState({
     }
 
     const query = connectionQuery.trim();
-    const selectedSuggestion =
-      selectedSuggestionIndex >= 0 ? connectionSuggestions[selectedSuggestionIndex] ?? null : null;
-
-    if (selectedSuggestion) {
-      handleConnectionSuggestionSelection(selectedSuggestion);
+    if (await selectHighlightedConnectionSuggestion({
+      connectionSuggestions,
+      onSelectSuggestion: handleConnectionSuggestionSelection,
+      selectedSuggestionIndex,
+    })) {
       return;
     }
 
@@ -744,10 +799,11 @@ export function useConnectionSearchState({
 
     if (event.key === "Enter" && selectedSuggestionIndex >= 0) {
       event.preventDefault();
-      const selectedSuggestion = connectionSuggestions[selectedSuggestionIndex] ?? null;
-      if (selectedSuggestion) {
-        handleConnectionSuggestionSelection(selectedSuggestion);
-      }
+      void selectHighlightedConnectionSuggestion({
+        connectionSuggestions,
+        onSelectSuggestion: handleConnectionSuggestionSelection,
+        selectedSuggestionIndex,
+      });
     }
   }, [
     connectionSuggestions,
@@ -758,8 +814,11 @@ export function useConnectionSearchState({
 
   const handleConnectionSuggestionClick = useCallback(
     (event: MouseEvent<HTMLButtonElement>, suggestion: ConnectionSuggestion) => {
-      event.preventDefault();
-      void handleConnectionSuggestionSelection(suggestion);
+      void clickConnectionSuggestion({
+        event,
+        onSelectSuggestion: handleConnectionSuggestionSelection,
+        suggestion,
+      });
     },
     [handleConnectionSuggestionSelection],
   );
