@@ -86,7 +86,8 @@ export function reduceGeneratorLifecycleEvent<T, TMeta = undefined>(
     };
   }
 
-  const removedDescendantRows = tree.length > event.row + 1;
+  const selectedNodeWasAlreadySelected = selectedNode.selected;
+  const removedDescendantRows = !selectedNodeWasAlreadySelected && tree.length > event.row + 1;
   const normalizedTree = tree.map((generation, generationIndex) =>
     generation.map((node, colIndex) => ({
       ...node,
