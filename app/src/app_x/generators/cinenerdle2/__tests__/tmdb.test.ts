@@ -54,6 +54,7 @@ import {
   hasPersonFullState,
   hydrateCinenerdleDailyStarterMovies,
   prefetchTopPopularUnhydratedConnections,
+  prepareConnectionEntityForPreview,
   prepareSelectedMovie,
   prepareSelectedPerson,
   resolveConnectionQuery,
@@ -173,6 +174,209 @@ describe("tmdb forced refresh helpers", () => {
     expect(hasMovieFullState(directMovieWithoutCredits)).toBe(false);
     expect(hasHydratedPersonRecord(directPersonWithoutCredits)).toBe(true);
     expect(hasPersonFullState(directPersonWithoutCredits)).toBe(false);
+  });
+
+  it("hydrates preview movies from existing partial cached records", async () => {
+    const partialMovieRecord = makeFilmRecord({
+      id: 321,
+      tmdbId: 321,
+      title: "Heat",
+      year: "1995",
+      rawTmdbMovie: undefined,
+      rawTmdbMovieCreditsResponse: undefined,
+    });
+    const fetchMock = vi.fn(async (input: string) => {
+      const url = String(input);
+      if (url.includes("/movie/321/credits")) {
+        return createJsonResponse({ cast: [], crew: [] });
+      }
+
+      if (url.includes("/movie/321?")) {
+        return createJsonResponse(
+          makeTmdbMovieSearchResult({
+            id: 321,
+            title: "Heat",
+            release_date: "1995-12-15",
+            popularity: 99,
+          }),
+        );
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    indexedDbMock.getFilmRecordById.mockResolvedValue(null);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(partialMovieRecord);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await prepareConnectionEntityForPreview({
+      key: "movie:heat:1995",
+      kind: "movie",
+      name: "Heat (1995)",
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        tmdbId: 321,
+        rawTmdbMovie: expect.objectContaining({
+          id: 321,
+          title: "Heat",
+        }),
+        rawTmdbMovieCreditsResponse: {
+          cast: [],
+          crew: [],
+        },
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0]?.[0]).toContain("/movie/321?");
+    expect(fetchMock.mock.calls[1]?.[0]).toContain("/movie/321/credits?");
+  });
+
+  it("hydrates preview people from existing partial cached records", async () => {
+    const partialPersonRecord = makePersonRecord({
+      id: 60,
+      tmdbId: 60,
+      name: "Al Pacino",
+      rawTmdbPerson: undefined,
+      rawTmdbMovieCreditsResponse: undefined,
+    });
+    const fetchMock = vi.fn(async (input: string) => {
+      const url = String(input);
+      if (url.includes("/person/60/movie_credits")) {
+        return createJsonResponse({ cast: [], crew: [] });
+      }
+
+      if (url.includes("/person/60?")) {
+        return createJsonResponse(
+          makeTmdbPersonSearchResult({
+            id: 60,
+            name: "Al Pacino",
+            popularity: 77,
+          }),
+        );
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    let storedPersonRecord = partialPersonRecord;
+
+    indexedDbMock.getPersonRecordById.mockImplementation(async () => storedPersonRecord);
+    indexedDbMock.getPersonRecordByName.mockImplementation(async () => storedPersonRecord);
+    indexedDbMock.savePersonRecord.mockImplementation(async (record) => {
+      storedPersonRecord = record;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await prepareConnectionEntityForPreview({
+      key: "person:60",
+      kind: "person",
+      name: "Al Pacino",
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        tmdbId: 60,
+        rawTmdbPerson: expect.objectContaining({
+          id: 60,
+          name: "Al Pacino",
+        }),
+        rawTmdbMovieCreditsResponse: {
+          cast: [],
+          crew: [],
+        },
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0]?.[0]).toContain("/person/60?");
+    expect(fetchMock.mock.calls[1]?.[0]).toContain("/person/60/movie_credits?");
+    expect(indexedDbMock.savePersonRecord).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to movie search when a preview movie has no cached record or tmdb id", async () => {
+    const fetchMock = vi.fn(async (input: string) => {
+      const url = String(input);
+      if (url.includes("/search/movie?")) {
+        return createJsonResponse({
+          results: [
+            makeTmdbMovieSearchResult({
+              id: 321,
+              title: "Heat",
+              release_date: "1995-12-15",
+              popularity: 99,
+            }),
+          ],
+        });
+      }
+
+      if (url.includes("/movie/321/credits")) {
+        return createJsonResponse({ cast: [], crew: [] });
+      }
+
+      if (url.includes("/movie/321?")) {
+        return createJsonResponse(
+          makeTmdbMovieSearchResult({
+            id: 321,
+            title: "Heat",
+            release_date: "1995-12-15",
+            popularity: 99,
+          }),
+        );
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    indexedDbMock.getFilmRecordById.mockResolvedValue(null);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(null);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await prepareConnectionEntityForPreview({
+      key: "movie:heat:1995",
+      kind: "movie",
+      name: "Heat (1995)",
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        tmdbId: 321,
+        rawTmdbMovie: expect.objectContaining({
+          id: 321,
+        }),
+      }),
+    );
+    expect(fetchMock.mock.calls[0]?.[0]).toContain("/search/movie?");
+  });
+
+  it("returns fully hydrated preview people without refetching", async () => {
+    const hydratedPersonRecord = makePersonRecord({
+      id: 60,
+      tmdbId: 60,
+      name: "Al Pacino",
+      rawTmdbPerson: makeTmdbPersonSearchResult({
+        id: 60,
+        name: "Al Pacino",
+        popularity: 77,
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+    });
+    const fetchMock = vi.fn();
+
+    indexedDbMock.getPersonRecordById.mockResolvedValue(hydratedPersonRecord);
+    indexedDbMock.getPersonRecordByName.mockResolvedValue(hydratedPersonRecord);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await prepareConnectionEntityForPreview({
+      key: "person:60",
+      kind: "person",
+      name: "Al Pacino",
+    });
+
+    expect(result).toBe(hydratedPersonRecord);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("returns hydrated cached movies without refetching unless forceRefresh is enabled", async () => {

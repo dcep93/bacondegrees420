@@ -388,7 +388,7 @@ describe("getCardTmdbRowTooltipText", () => {
           }),
         ],
       ),
-    ).toBe(`TMDb data fetched ${new Date(parentMovieFetchTimestamp).toLocaleString()}.\nClick to refetch.`);
+    ).toBe(`Data connected ${new Date(parentMovieFetchTimestamp).toLocaleString()}.\nClick to refetch.`);
   });
 });
 

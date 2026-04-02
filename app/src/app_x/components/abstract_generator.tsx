@@ -1,4 +1,4 @@
-import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import {
   applyGeneratorUpdate,
   getDataKey,
@@ -19,8 +19,21 @@ export type AbstractGeneratorTreeRefreshRequest<T> = {
   run: (tree: GeneratorTree<T>) => Promise<GeneratorTree<T> | null>;
 };
 
+export type AbstractGeneratorHandle = {
+  scrollToCard: (
+    generationIndex: number,
+    cardIndex: number,
+    options?: {
+      alignment?: "center" | "start";
+      behavior?: ScrollBehavior;
+    },
+  ) => void;
+  selectCard: (generationIndex: number, cardIndex: number) => void;
+};
+
 export type AbstractGeneratorProps<T, TMeta = undefined, TEffect = never> =
   GeneratorController<T, TMeta, TEffect> & {
+    generatorHandleRef?: MutableRefObject<AbstractGeneratorHandle | null>;
     getRowPresentation?: (
       row: GeneratorNode<T>[],
       generationIndex: number,
@@ -121,6 +134,7 @@ async function waitForGenerationToRender<T, TMeta>(
 
 export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
   createInitialState,
+  generatorHandleRef,
   getRowPresentation,
   onTreeChange,
   reduce,
@@ -441,6 +455,21 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       );
     });
   }, [reduce, runEffects]);
+
+  useLayoutEffect(() => {
+    if (!generatorHandleRef) {
+      return;
+    }
+
+    generatorHandleRef.current = {
+      scrollToCard: scrollToCardIndex,
+      selectCard: handleCardSelect,
+    };
+
+    return () => {
+      generatorHandleRef.current = null;
+    };
+  }, [generatorHandleRef, handleCardSelect, scrollToCardIndex]);
 
   return (
     <section

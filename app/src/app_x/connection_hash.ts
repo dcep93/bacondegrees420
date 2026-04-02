@@ -1,4 +1,9 @@
-import { createPathNode, serializePathNodes } from "./generators/cinenerdle2/hash";
+import {
+  buildPathNodesFromSegments,
+  createPathNode,
+  parseHashSegments,
+  serializePathNodes,
+} from "./generators/cinenerdle2/hash";
 import type { ConnectionEntity } from "./generators/cinenerdle2/connection_graph";
 
 export function createPathNodeFromConnectionEntity(entity: ConnectionEntity) {
@@ -19,4 +24,16 @@ export function serializeConnectionEntityHash(entity: ConnectionEntity): string 
 
 export function serializeConnectionPathHash(path: ConnectionEntity[]): string {
   return serializePathNodes(path.map(createPathNodeFromConnectionEntity));
+}
+
+export function appendConnectionEntityToHash(
+  hashValue: string,
+  entity: ConnectionEntity,
+): string {
+  const currentPathNodes = buildPathNodesFromSegments(parseHashSegments(hashValue));
+
+  return serializePathNodes([
+    ...currentPathNodes,
+    createPathNodeFromConnectionEntity(entity),
+  ]);
 }

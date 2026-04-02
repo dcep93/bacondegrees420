@@ -3,6 +3,16 @@ import {
   replacePersistedBookmarkHashes,
 } from "./generators/cinenerdle2/indexed_db";
 import { normalizeHashValue } from "./generators/cinenerdle2/hash";
+import {
+  decodeItemAttrToken,
+  encodeItemAttrToken,
+  getCinenerdleItemAttrTargetFromCard,
+  normalizeItemAttrChars,
+  readCinenerdleItemAttrs,
+  type CinenerdleItemAttrTarget,
+  type CinenerdleItemAttrs,
+} from "./generators/cinenerdle2/item_attrs";
+import type { BookmarkRowData } from "./bookmark_rows";
 
 export const BOOKMARKS_STORAGE_KEY = "bacondegrees420.bookmarks.v1";
 
@@ -10,6 +20,11 @@ export type AppViewMode = "generator" | "bookmarks";
 
 export type BookmarkEntry = {
   hash: string;
+};
+
+export type ParsedBookmarksJsonl = {
+  bookmarks: BookmarkEntry[];
+  itemAttrs: CinenerdleItemAttrs;
 };
 
 function normalizeBookmarkHash(hash: string): string {
@@ -104,13 +119,90 @@ export async function saveBookmarks(bookmarks: BookmarkEntry[]): Promise<Bookmar
   return persistedHashes.map((hash) => ({ hash }));
 }
 
-export function serializeBookmarksAsJsonl(bookmarks: BookmarkEntry[]): string {
+function createEmptyParsedItemAttrs(): CinenerdleItemAttrs {
+  return {
+    film: {},
+    person: {},
+  };
+}
+
+function mergeParsedItemAttr(
+  itemAttrs: CinenerdleItemAttrs,
+  target: Pick<CinenerdleItemAttrTarget, "bucket" | "id">,
+  candidateChars: string[],
+): void {
+  const currentChars = itemAttrs[target.bucket][target.id] ?? [];
+  itemAttrs[target.bucket][target.id] = normalizeItemAttrChars([
+    ...currentChars,
+    ...candidateChars,
+  ]);
+}
+
+export function getBookmarkRowItemAttrTargets(bookmarkRow: BookmarkRowData): CinenerdleItemAttrTarget[] {
+  const targets: CinenerdleItemAttrTarget[] = [];
+  const seenTargets = new Set<string>();
+
+  bookmarkRow.cards.forEach((rowCard) => {
+    if (rowCard.kind !== "card" || rowCard.card.kind === "cinenerdle") {
+      return;
+    }
+
+    const target = getCinenerdleItemAttrTargetFromCard({
+      key: rowCard.card.key,
+      kind: rowCard.card.kind,
+      name: rowCard.card.name,
+    });
+    if (!target) {
+      return;
+    }
+
+    const fingerprint = `${target.bucket}:${target.id}`;
+    if (seenTargets.has(fingerprint)) {
+      return;
+    }
+
+    seenTargets.add(fingerprint);
+    targets.push(target);
+  });
+
+  return targets;
+}
+
+function serializeBookmarkItemAttrTags(bookmarkRow: BookmarkRowData | undefined): string[] {
+  if (!bookmarkRow) {
+    return [];
+  }
+
+  const itemAttrs = readCinenerdleItemAttrs();
+  return getBookmarkRowItemAttrTargets(bookmarkRow)
+    .map((target) => {
+      const targetChars = itemAttrs[target.bucket][target.id] ?? [];
+      if (targetChars.length === 0) {
+        return "";
+      }
+
+      return `[${target.bucket}:${encodeItemAttrToken(target.id)}=${targetChars.join("")}]`;
+    })
+    .filter(Boolean);
+}
+
+export function serializeBookmarksAsJsonl(
+  bookmarks: BookmarkEntry[],
+  bookmarkRows: BookmarkRowData[] = [],
+): string {
+  const bookmarkRowsByHash = new Map(
+    bookmarkRows.map((bookmarkRow) => [normalizeBookmarkHash(bookmarkRow.hash), bookmarkRow]),
+  );
+
   return normalizeBookmarkEntries(bookmarks)
-    .map((bookmark) => bookmark.hash)
+    .map((bookmark) => {
+      const attrTags = serializeBookmarkItemAttrTags(bookmarkRowsByHash.get(bookmark.hash));
+      return attrTags.length > 0 ? `${bookmark.hash} ${attrTags.join(" ")}` : bookmark.hash;
+    })
     .join("\n");
 }
 
-export function parseBookmarksJsonl(jsonlText: string): BookmarkEntry[] {
+export function parseBookmarksJsonlWithItemAttrs(jsonlText: string): ParsedBookmarksJsonl {
   const parsedLines = jsonlText
     .split(/\r?\n/)
     .map((line, index) => ({
@@ -120,13 +212,21 @@ export function parseBookmarksJsonl(jsonlText: string): BookmarkEntry[] {
     .filter(({ line }) => Boolean(line));
 
   if (parsedLines.length === 0) {
-    return [];
+    return {
+      bookmarks: [],
+      itemAttrs: createEmptyParsedItemAttrs(),
+    };
   }
 
   const seenHashes = new Set<string>();
+  const parsedBookmarks: BookmarkEntry[] = [];
+  const parsedItemAttrs = createEmptyParsedItemAttrs();
 
-  return parsedLines.map(({ line, lineNumber }) => {
-    const normalizedHash = normalizeBookmarkHash(line);
+  parsedLines.forEach(({ line, lineNumber }) => {
+    const tagStartIndex = line.search(/\s+\[(film|person):/u);
+    const rawHash = tagStartIndex >= 0 ? line.slice(0, tagStartIndex).trimEnd() : line;
+    const rawTagText = tagStartIndex >= 0 ? line.slice(tagStartIndex) : "";
+    const normalizedHash = normalizeBookmarkHash(rawHash);
     if (!normalizedHash) {
       throw new Error(`Bookmark JSONL line ${lineNumber} is not a valid hash`);
     }
@@ -136,10 +236,46 @@ export function parseBookmarksJsonl(jsonlText: string): BookmarkEntry[] {
     }
 
     seenHashes.add(normalizedHash);
-    return {
+    parsedBookmarks.push({
       hash: normalizedHash,
-    };
+    });
+
+    let remainingTagText = rawTagText;
+    while (remainingTagText.trim().length > 0) {
+      const nextTagMatch = remainingTagText.match(
+        /^\s+\[(film|person):([^=\]]+)=([^\]\s]+)\]/u,
+      );
+      if (!nextTagMatch) {
+        throw new Error(`Bookmark JSONL line ${lineNumber} has an invalid attr tag`);
+      }
+
+      const [, bucket, encodedId, rawChars] = nextTagMatch;
+      const decodedId = decodeItemAttrToken(encodedId);
+      const normalizedChars = normalizeItemAttrChars(rawChars);
+      if (!decodedId || normalizedChars.length === 0) {
+        throw new Error(`Bookmark JSONL line ${lineNumber} has an invalid attr tag`);
+      }
+
+      mergeParsedItemAttr(
+        parsedItemAttrs,
+        {
+          bucket: bucket as CinenerdleItemAttrTarget["bucket"],
+          id: decodedId,
+        },
+        normalizedChars,
+      );
+      remainingTagText = remainingTagText.slice(nextTagMatch[0].length);
+    }
   });
+
+  return {
+    bookmarks: parsedBookmarks,
+    itemAttrs: parsedItemAttrs,
+  };
+}
+
+export function parseBookmarksJsonl(jsonlText: string): BookmarkEntry[] {
+  return parseBookmarksJsonlWithItemAttrs(jsonlText).bookmarks;
 }
 
 export async function replaceBookmarks(bookmarks: BookmarkEntry[]): Promise<BookmarkEntry[]> {

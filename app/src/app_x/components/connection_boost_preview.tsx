@@ -4,68 +4,25 @@ import type { ConnectionBoostPreview, ConnectionBoostPreviewEntity } from "../co
 import { getPreviewFallbackText } from "../selected_path";
 import { joinClassNames } from "./ui_utils";
 
-function getTooltipPopularity(entry: string): number | null {
-  const match = entry.match(/^Popularity:\s*(-?\d+(?:\.\d+)?)$/);
-  if (!match) {
-    return null;
-  }
-
-  const popularity = Number(match[1]);
-  return Number.isFinite(popularity) ? popularity : null;
-}
-
-function renderTooltipEntry(entry: string, key: string) {
-  const popularity = getTooltipPopularity(entry);
-
+function renderEntityLabelWithPopularity(
+  entity: ConnectionBoostPreviewEntity,
+  key: string,
+) {
   return (
     <span className="bacon-connection-pill-tooltip-entry" key={key}>
-      {typeof popularity === "number" ? (
-        <span
-          className="cinenerdle-card-chip"
-          style={createHeatChipStyle(popularity, 100)}
-        >
-          {`Popularity ${formatHeatMetricValue("Popularity", popularity)}`}
+      <span className="bacon-connection-pill-tooltip-entry-group">
+        <span>{entity.name}</span>
+        <span className="bacon-connection-pill-tooltip-entry-group-secondary">
+          <span
+            className="cinenerdle-card-chip"
+            style={createHeatChipStyle(entity.popularity, 100)}
+          >
+            {`Popularity ${formatHeatMetricValue("Popularity", entity.popularity)}`}
+          </span>
         </span>
-      ) : (
-        entry
-      )}
+      </span>
     </span>
   );
-}
-
-function renderTooltipEntries(tooltipEntries: string[], keyPrefix: string) {
-  const titleEntry = tooltipEntries[0] ?? "";
-  const inlinePopularity = tooltipEntries.length > 1
-    ? getTooltipPopularity(tooltipEntries[1] ?? "")
-    : null;
-  const remainingEntries = inlinePopularity === null
-    ? tooltipEntries.slice(1)
-    : tooltipEntries.slice(2);
-
-  if (!titleEntry) {
-    return remainingEntries.map((entry, index) =>
-      renderTooltipEntry(entry, `${keyPrefix}:${index}:${entry}`));
-  }
-
-  return [
-    <span className="bacon-connection-pill-tooltip-entry" key={`${keyPrefix}:title`}>
-      <span className="bacon-connection-pill-tooltip-entry-group">
-        <span>{titleEntry}</span>
-        {typeof inlinePopularity === "number" ? (
-          <span className="bacon-connection-pill-tooltip-entry-group-secondary">
-            <span
-              className="cinenerdle-card-chip"
-              style={createHeatChipStyle(inlinePopularity, 100)}
-            >
-              {`Popularity ${formatHeatMetricValue("Popularity", inlinePopularity)}`}
-            </span>
-          </span>
-        ) : null}
-      </span>
-    </span>,
-    ...remainingEntries.map((entry, index) =>
-      renderTooltipEntry(entry, `${keyPrefix}:${index}:${entry}`)),
-  ];
 }
 
 function renderBoostTile(entity: ConnectionBoostPreviewEntity) {
@@ -109,15 +66,6 @@ export default function ConnectionBoostPreview({
     return null;
   }
 
-  const distanceTwoTooltipEntries = preview.distanceTwo.tooltipText
-    .split("\n")
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-  const sharedConnectionTooltipEntries = preview.sharedConnection.tooltipText
-    .split("\n")
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-
   return (
     <div className="bacon-connection-matchup-shell">
       <Tooltip
@@ -127,21 +75,13 @@ export default function ConnectionBoostPreview({
           tabIndex: 0,
         }}
         content={[
-          <span className="bacon-connection-pill-tooltip-entry" key="label">
-            {`Boost: ${preview.distanceTwo.name} + ${preview.sharedConnection.name}`}
+          renderEntityLabelWithPopularity(preview.sharedConnection, "shared-connection"),
+          <span className="bacon-connection-pill-tooltip-entry" key="connection-label">
+            {"--> connects to"}
           </span>,
-          <span className="bacon-connection-pill-tooltip-entry" key="distance-two-label">
-            Most popular distance-2 item
-          </span>,
-          ...renderTooltipEntries(distanceTwoTooltipEntries, preview.distanceTwo.key),
-          <span className="bacon-connection-pill-tooltip-entry" key="shared-label">
-            Most popular shared connection
-          </span>,
-          ...renderTooltipEntries(
-            sharedConnectionTooltipEntries,
-            preview.sharedConnection.key,
-          ),
+          renderEntityLabelWithPopularity(preview.distanceTwo, "distance-two"),
         ]}
+        debugLogLabel="boost-preview"
         placement="bottom-center"
         tooltipClassName="bacon-connection-matchup-tooltip"
         wrapperTag="div"

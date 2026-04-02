@@ -153,9 +153,12 @@ export function getCardTmdbRowTooltipText(
   const formattedFetchedAt = formatPopularityFetchedAt(
     getCardPopularityTimestamp(card, ancestorCards),
   );
+  const fetchLabel = hasCachedTmdbSource(card)
+    ? "TMDb data fetched"
+    : "Data connected";
 
   return formattedFetchedAt
-    ? `TMDb data fetched ${formattedFetchedAt}.\nClick to refetch.`
+    ? `${fetchLabel} ${formattedFetchedAt}.\nClick to refetch.`
     : "Not fetched from TMDb yet.\nClick to fetch.";
 }
 

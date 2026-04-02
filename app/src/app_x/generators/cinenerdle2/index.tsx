@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   AbstractGenerator,
+  type AbstractGeneratorHandle,
   type AbstractGeneratorTreeRefreshRequest,
 } from "../../components/abstract_generator";
 import "../../styles/cinenerdle2.css";
@@ -34,7 +35,13 @@ export {
 } from "./entity_card";
 
 type Cinenerdle2Props = {
+  connectedSuggestionSelectionRequest?: {
+    nextHash: string;
+    requestKey: string;
+    suggestionKey: string;
+  } | null;
   hashValue: string;
+  highlightedConnectedSuggestionKey?: string | null;
   navigationVersion: number;
   onYoungestSelectedCardChange?: (
     card: Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }> | null,
@@ -44,7 +51,9 @@ type Cinenerdle2Props = {
 };
 
 const Cinenerdle2 = memo(function Cinenerdle2({
+  connectedSuggestionSelectionRequest = null,
   hashValue,
+  highlightedConnectedSuggestionKey = null,
   navigationVersion,
   onYoungestSelectedCardChange,
   onHashWrite,
@@ -55,6 +64,9 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   const lastYoungestSelectedCardRef = useRef<
     Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }> | null
   >(null);
+  const generatorHandleRef = useRef<AbstractGeneratorHandle | null>(null);
+  const lastHandledConnectedSuggestionSelectionRequestKeyRef = useRef<string | null>(null);
+  const treeRef = useRef<GeneratorNode<CinenerdleCard>[][]>([]);
   const [recordsRefreshVersion, setRecordsRefreshVersion] = useState(0);
   const [activeEntityRefreshRequest, setActiveEntityRefreshRequest] = useState<EntityRefreshRequest | null>(null);
   const pendingEntityRefreshRequestsRef = useRef<EntityRefreshRequest[]>([]);
@@ -206,12 +218,70 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   }, []);
   const generatorResetKey = `${resetVersion}:${navigationVersion}`;
 
+  useEffect(() => {
+    if (!highlightedConnectedSuggestionKey) {
+      return;
+    }
+
+    const latestGenerationIndex = treeRef.current.length - 1;
+    if (latestGenerationIndex < 0) {
+      return;
+    }
+
+    const latestGeneration = treeRef.current[latestGenerationIndex] ?? [];
+    const highlightedCardIndex = latestGeneration.findIndex(
+      (node) => node.data.key === highlightedConnectedSuggestionKey,
+    );
+
+    if (highlightedCardIndex < 0) {
+      return;
+    }
+
+    generatorHandleRef.current?.scrollToCard(latestGenerationIndex, highlightedCardIndex, {
+      behavior: "smooth",
+    });
+  }, [highlightedConnectedSuggestionKey]);
+
+  useEffect(() => {
+    if (
+      !connectedSuggestionSelectionRequest ||
+      connectedSuggestionSelectionRequest.requestKey ===
+      lastHandledConnectedSuggestionSelectionRequestKeyRef.current
+    ) {
+      return;
+    }
+
+    lastHandledConnectedSuggestionSelectionRequestKeyRef.current =
+      connectedSuggestionSelectionRequest.requestKey;
+
+    const latestGenerationIndex = treeRef.current.length - 1;
+    if (latestGenerationIndex < 0) {
+      writeHash(connectedSuggestionSelectionRequest.nextHash, "selection");
+      return;
+    }
+
+    const latestGeneration = treeRef.current[latestGenerationIndex] ?? [];
+    const selectedCardIndex = latestGeneration.findIndex(
+      (node) => node.data.key === connectedSuggestionSelectionRequest.suggestionKey,
+    );
+
+    const generatorHandle = generatorHandleRef.current;
+    if (selectedCardIndex >= 0 && generatorHandle) {
+      generatorHandle.selectCard(latestGenerationIndex, selectedCardIndex);
+      return;
+    }
+
+    writeHash(connectedSuggestionSelectionRequest.nextHash, "selection");
+  }, [connectedSuggestionSelectionRequest, writeHash]);
+
   return (
     <AbstractGenerator
       createInitialState={controller.createInitialState}
+      generatorHandleRef={generatorHandleRef}
       getRowPresentation={getRowPresentation}
       key={generatorResetKey}
       onTreeChange={(tree) => {
+        treeRef.current = tree;
         const youngestSelectedGenerationIndex = getYoungestSelectedGenerationIndex(tree);
         const nextYoungestSelectedCard = getYoungestSelectedCard(tree);
         setTmdbLogGeneration(youngestSelectedGenerationIndex);

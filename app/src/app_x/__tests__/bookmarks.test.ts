@@ -23,12 +23,15 @@ import {
   loadBookmarks,
   mergeMissingBookmarks,
   parseBookmarksJsonl,
+  parseBookmarksJsonlWithItemAttrs,
   replaceBookmarks,
   saveBookmarks,
   serializeBookmarksAsJsonl,
   type BookmarkEntry,
 } from "../bookmarks";
+import type { BookmarkRowData } from "../bookmark_rows";
 import { createPathNode, serializePathNodes } from "../generators/cinenerdle2/hash";
+import { CINENERDLE_ITEM_ATTRS_STORAGE_KEY } from "../generators/cinenerdle2/item_attrs";
 
 const MATRIX_HASH = serializePathNodes([
   createPathNode("movie", "The Matrix", "1999"),
@@ -39,6 +42,23 @@ const KEANU_HASH = serializePathNodes([
 
 function createBookmark(hash: string): BookmarkEntry {
   return { hash };
+}
+
+function createBookmarkRow(hash: string, cards: Array<{
+  key: string;
+  kind: "movie" | "person";
+  name: string;
+}>): BookmarkRowData {
+  return {
+    hash,
+    cards: cards.map((card) => ({
+      kind: "card" as const,
+      key: `${hash}:${card.key}`,
+      card: {
+        ...card,
+      },
+    })),
+  } as unknown as BookmarkRowData;
 }
 
 describe("bookmarks", () => {
@@ -129,7 +149,7 @@ describe("bookmarks", () => {
     ]);
   });
 
-  it("serializes bookmarks as one hash per line", () => {
+  it("serializes bookmarks as one hash per line when no attrs are present", () => {
     expect(serializeBookmarksAsJsonl([
       createBookmark("film|The Matrix (1999)"),
       createBookmark(KEANU_HASH),
@@ -139,6 +159,38 @@ describe("bookmarks", () => {
     ].join("\n"));
   });
 
+  it("serializes bookmark item attrs as same-line tags", () => {
+    localStorage.setItem(
+      CINENERDLE_ITEM_ATTRS_STORAGE_KEY,
+      JSON.stringify({
+        film: {
+          "603": ["🔥", "⭐"],
+        },
+        person: {
+          "1158": ["🎭"],
+        },
+      }),
+    );
+
+    expect(serializeBookmarksAsJsonl(
+      [createBookmark(MATRIX_HASH)],
+      [
+        createBookmarkRow(MATRIX_HASH, [
+          {
+            key: "movie:603",
+            kind: "movie",
+            name: "The Matrix",
+          },
+          {
+            key: "person:1158",
+            kind: "person",
+            name: "Keanu Reeves",
+          },
+        ]),
+      ],
+    )).toBe(`${MATRIX_HASH} [film:603=🔥⭐] [person:1158=🎭]`);
+  });
+
   it("parses valid jsonl bookmark hashes and ignores blank lines", () => {
     expect(parseBookmarksJsonl(`\n${MATRIX_HASH}\n\n${KEANU_HASH}\n`)).toEqual([
       createBookmark(MATRIX_HASH),
@@ -146,9 +198,33 @@ describe("bookmarks", () => {
     ]);
   });
 
+  it("parses bookmark hashes with inline attr tags", () => {
+    expect(parseBookmarksJsonlWithItemAttrs(
+      `${MATRIX_HASH} [film:603=🔥⭐] [person:1158=🎭]`,
+    )).toEqual({
+      bookmarks: [createBookmark(MATRIX_HASH)],
+      itemAttrs: {
+        film: {
+          "603": ["🔥", "⭐"],
+        },
+        person: {
+          "1158": ["🎭"],
+        },
+      },
+    });
+  });
+
   it("rejects invalid jsonl bookmark hashes", () => {
     expect(() => parseBookmarksJsonl("{")).toThrowError(
       "Bookmark JSONL line 1 is not a valid hash",
+    );
+  });
+
+  it("rejects invalid jsonl attr tags", () => {
+    expect(() => parseBookmarksJsonlWithItemAttrs(
+      `${MATRIX_HASH} [film:603]`,
+    )).toThrowError(
+      "Bookmark JSONL line 1 has an invalid attr tag",
     );
   });
 
@@ -159,6 +235,26 @@ describe("bookmarks", () => {
     ].join("\n"))).toThrowError(
       "Bookmark JSONL line 2 is a duplicate hash",
     );
+  });
+
+  it("merges repeated item tags in first-seen order", () => {
+    expect(parseBookmarksJsonlWithItemAttrs([
+      `${MATRIX_HASH} [film:603=🔥] [person:1158=🎭]`,
+      `${KEANU_HASH} [film:603=⭐] [person:1158=🎭🧠]`,
+    ].join("\n"))).toEqual({
+      bookmarks: [
+        createBookmark(MATRIX_HASH),
+        createBookmark(KEANU_HASH),
+      ],
+      itemAttrs: {
+        film: {
+          "603": ["🔥", "⭐"],
+        },
+        person: {
+          "1158": ["🎭", "🧠"],
+        },
+      },
+    });
   });
 
   it("replaces bookmarks with normalized persisted entries", async () => {

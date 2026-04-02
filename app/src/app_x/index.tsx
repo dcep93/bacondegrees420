@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
 import { formatClearDbBadgeText } from "./clear_db_badge";
 import {
-  resolveConnectionBoostPreview,
   type ConnectionBoostPreview as ConnectionBoostPreviewData,
 } from "./connection_boost_preview";
 import {
   shouldResolveConnectionMatchupPreview,
 } from "./connection_matchup_helpers";
 import {
-  resolveConnectionMatchupPreview,
+  resolveStableConnectionPreviews,
+} from "./connection_preview_resolution";
+import {
   type ConnectionMatchupPreview as ConnectionMatchupPreviewData,
   type YoungestSelectedCard,
 } from "./connection_matchup_preview";
@@ -17,10 +18,12 @@ import {
 } from "./app_location";
 import { useBookmarksState } from "./bookmarks_state";
 import {
+  appendConnectionEntityToHash,
   serializeConnectionEntityHash,
   serializeConnectionPathHash,
 } from "./connection_hash";
 import {
+  type ConnectionSuggestion,
   useConnectionSearchState,
 } from "./connection_search_state";
 import {
@@ -102,6 +105,11 @@ export default function AppX() {
   } = useAppLocationState();
   const [resetVersion, setResetVersion] = useState(0);
   const [youngestSelectedCard, setYoungestSelectedCard] = useState<YoungestSelectedCard | null>(null);
+  const [connectedSuggestionSelectionRequest, setConnectedSuggestionSelectionRequest] = useState<{
+    nextHash: string;
+    requestKey: string;
+    suggestionKey: string;
+  } | null>(null);
   const [connectionBoostPreview, setConnectionBoostPreview] =
     useState<ConnectionBoostPreviewData | null>(null);
   const [connectionMatchupPreview, setConnectionMatchupPreview] =
@@ -122,9 +130,11 @@ export default function AppX() {
   const [clearDbFetchCount, setClearDbFetchCount] = useState(() => getCinenerdleFetchDebugEntryCount());
   const [clearDbTotalFetchCount, setClearDbTotalFetchCount] =
     useState(() => getCinenerdleFetchDebugEntryCount());
+  const [highlightedConnectedSuggestionKey, setHighlightedConnectedSuggestionKey] = useState<string | null>(null);
   const titleRef = useRef<HTMLHeadingElement | null>(null);
   const clearDbButtonRef = useRef<HTMLButtonElement | null>(null);
   const toastStatusRef = useRef<HTMLSpanElement | null>(null);
+  const connectedSuggestionSelectionRequestIdRef = useRef(0);
   const indexedDbBootstrapLoadingShellDelayManagerRef =
     useRef<IndexedDbBootstrapLoadingShellDelayManager | null>(null);
   const isCinenerdleIndexedDbBootstrapLoading = !cinenerdleIndexedDbBootstrapStatus.isCoreReady;
@@ -178,6 +188,19 @@ export default function AppX() {
     [openHashInNewTab],
   );
 
+  const handleConnectedSuggestionHighlight = useCallback((suggestion: ConnectionSuggestion | null) => {
+    setHighlightedConnectedSuggestionKey(suggestion?.key ?? null);
+  }, []);
+
+  const handleSelectConnectedSuggestionAsYoungest = useCallback((suggestion: ConnectionSuggestion) => {
+    connectedSuggestionSelectionRequestIdRef.current += 1;
+    setConnectedSuggestionSelectionRequest({
+      nextHash: appendConnectionEntityToHash(hashValue, suggestion),
+      requestKey: `connected-suggestion-selection-${connectedSuggestionSelectionRequestIdRef.current}`,
+      suggestionKey: suggestion.key,
+    });
+  }, [hashValue]);
+
   const {
     connectionInputWrapRef,
     connectionQuery,
@@ -194,7 +217,8 @@ export default function AppX() {
   } = useConnectionSearchState({
     hashValue,
     isSearchablePersistencePending,
-    onSelectConnectionEntity: navigateToConnectionEntity,
+    onConnectedSuggestionHighlight: handleConnectedSuggestionHighlight,
+    onSelectConnectedSuggestionAsYoungest: handleSelectConnectedSuggestionAsYoungest,
     youngestSelectedCard,
   });
 
@@ -363,17 +387,20 @@ export default function AppX() {
     });
 
     void (shouldResolvePreview
-      ? Promise.all([
-        resolveConnectionBoostPreview(youngestSelectedCard),
-        resolveConnectionMatchupPreview(youngestSelectedCard),
-      ])
-      : Promise.resolve<
-        [ConnectionBoostPreviewData | null, ConnectionMatchupPreviewData | null]
-      >([null, null]))
-      .then(([nextBoostPreview, nextMatchupPreview]) => {
+      ? resolveStableConnectionPreviews(youngestSelectedCard, {
+        shouldCancel: () => cancelled,
+      })
+      : Promise.resolve<{
+        boostPreview: ConnectionBoostPreviewData | null;
+        matchupPreview: ConnectionMatchupPreviewData | null;
+      }>({
+        boostPreview: null,
+        matchupPreview: null,
+      }))
+      .then(({ boostPreview, matchupPreview }) => {
         if (!cancelled) {
-          setConnectionBoostPreview(nextBoostPreview);
-          setConnectionMatchupPreview(nextMatchupPreview);
+          setConnectionBoostPreview(boostPreview);
+          setConnectionMatchupPreview(matchupPreview);
         }
       })
       .catch(() => {
@@ -561,7 +588,9 @@ export default function AppX() {
             />
           ) : (
             <Cinenerdle2
+              connectedSuggestionSelectionRequest={connectedSuggestionSelectionRequest}
               hashValue={hashValue}
+              highlightedConnectedSuggestionKey={highlightedConnectedSuggestionKey}
               navigationVersion={navigationVersion}
               onYoungestSelectedCardChange={setYoungestSelectedCard}
               onHashWrite={handleHashWrite}

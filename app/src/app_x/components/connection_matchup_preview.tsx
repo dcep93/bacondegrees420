@@ -1,10 +1,10 @@
-import Tooltip from "./tooltip";
-import { createHeatChipStyle, formatHeatMetricValue } from "../generators/cinenerdle2/entity_card/helpers";
 import type { ConnectionMatchupPreview, ConnectionMatchupPreviewEntity } from "../connection_matchup_preview";
+import { createHeatChipStyle, formatHeatMetricValue } from "../generators/cinenerdle2/entity_card/helpers";
 import { getPreviewFallbackText } from "../selected_path";
+import Tooltip from "./tooltip";
 import { joinClassNames } from "./ui_utils";
 
-const CONNECTION_MATCHUP_SPOILER_EXPLANATION = "-/-> best-connected";
+const CONNECTION_MATCHUP_SPOILER_EXPLANATION = "-/-> oft-connected";
 
 function getTooltipPopularity(entry: string): number | null {
   const match = entry.match(/^Popularity:\s*(-?\d+(?:\.\d+)?)$/);
@@ -68,6 +68,27 @@ function renderTooltipEntries(tooltipEntries: string[], keyPrefix: string) {
     ...remainingEntries.map((entry, index) =>
       renderTooltipEntry(entry, `${keyPrefix}:${index}:${entry}`)),
   ];
+}
+
+function renderEntityLabelWithPopularity(
+  entity: ConnectionMatchupPreviewEntity,
+  key: string,
+) {
+  return (
+    <span className="bacon-connection-pill-tooltip-entry" key={key}>
+      <span className="bacon-connection-pill-tooltip-entry-group">
+        <span>{entity.name}</span>
+        <span className="bacon-connection-pill-tooltip-entry-group-secondary">
+          <span
+            className="cinenerdle-card-chip"
+            style={createHeatChipStyle(entity.popularity, 100)}
+          >
+            {`Popularity ${formatHeatMetricValue("Popularity", entity.popularity)}`}
+          </span>
+        </span>
+      </span>
+    </span>
+  );
 }
 
 function renderMatchupTile(entity: ConnectionMatchupPreviewEntity) {
@@ -144,14 +165,19 @@ export default function ConnectionMatchupPreview({
           tabIndex: 0,
         }}
         content={[
-          <span className="bacon-connection-pill-tooltip-entry" key="label">
-            {matchupRightLabel}
-          </span>,
+          preview.kind === "versus"
+            ? renderEntityLabelWithPopularity(preview.spoiler, "label")
+            : (
+              <span className="bacon-connection-pill-tooltip-entry" key="label">
+                {matchupRightLabel}
+              </span>
+            ),
           <span className="bacon-connection-pill-tooltip-entry" key="explanation">
             {matchupExplanation}
           </span>,
           ...renderTooltipEntries(counterpartTooltipEntries, preview.counterpart.key),
         ]}
+        debugLogLabel="matchup-preview"
         placement="bottom-center"
         tooltipClassName="bacon-connection-matchup-tooltip"
         wrapperTag="div"

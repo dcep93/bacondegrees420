@@ -3,37 +3,38 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import ConnectionEntityCard from "../components/connection_entity_card";
-import type { ConnectionEntity } from "../generators/cinenerdle2/connection_graph";
-import type { CinenerdleIndexedDbBootstrapStatus } from "../generators/cinenerdle2/bootstrap";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  makeFilmRecord,
-  makePersonRecord,
-} from "../generators/cinenerdle2/__tests__/factories";
-import {
-  shouldSelectConnectedDropdownSuggestionAsYoungest,
-  shouldResolveConnectionMatchupPreview,
-} from "../connection_matchup_helpers";
-import { annotateDirectionalConnectionPathRanks } from "../connection_path_ranks";
+  isBookmarksJsonlDraftChanged,
+  resetBookmarksJsonlDraft,
+} from "../bookmarks_state";
 import { formatClearDbBadgeText } from "../clear_db_badge";
-import { formatIndexedDbClearConfirmationMessage } from "../indexed_db_clear_confirmation";
-import {
-  createIndexedDbBootstrapLoadingShellDelayManager,
-  INDEXED_DB_BOOTSTRAP_LOADING_SHELL_DELAY_MS,
-  shouldShowIndexedDbBootstrapLoadingShell,
-} from "../indexed_db_bootstrap_loading_shell";
 import BaconTitleBar from "../components/bacon_title_bar";
 import BookmarksJsonlEditorModal, {
   BookmarksJsonlEditButton,
 } from "../components/bookmarks_jsonl_editor";
 import ConnectionBoostPreview from "../components/connection_boost_preview";
+import ConnectionEntityCard from "../components/connection_entity_card";
+import ConnectionMatchupPreview from "../components/connection_matchup_preview";
 import IndexedDbBootstrapLoadingIndicator from "../components/indexed_db_bootstrap_loading_indicator";
 import {
-  isBookmarksJsonlDraftChanged,
-  resetBookmarksJsonlDraft,
-} from "../bookmarks_state";
+  shouldResolveConnectionMatchupPreview,
+  shouldSelectConnectedDropdownSuggestionAsYoungest,
+} from "../connection_matchup_helpers";
+import { annotateDirectionalConnectionPathRanks } from "../connection_path_ranks";
+import {
+  makeFilmRecord,
+  makePersonRecord,
+} from "../generators/cinenerdle2/__tests__/factories";
+import type { CinenerdleIndexedDbBootstrapStatus } from "../generators/cinenerdle2/bootstrap";
+import type { ConnectionEntity } from "../generators/cinenerdle2/connection_graph";
+import {
+  createIndexedDbBootstrapLoadingShellDelayManager,
+  INDEXED_DB_BOOTSTRAP_LOADING_SHELL_DELAY_MS,
+  shouldShowIndexedDbBootstrapLoadingShell,
+} from "../indexed_db_bootstrap_loading_shell";
+import { formatIndexedDbClearConfirmationMessage } from "../indexed_db_clear_confirmation";
 import { getWindowKeyDownAction } from "../window_keydown";
 
 function makeKeyboardTarget(tagName: string): EventTarget {
@@ -569,9 +570,41 @@ describe("BaconTitleBar", () => {
     expect(html).toContain("bacon-connection-matchup");
     expect(html).toContain("bacon-connection-matchup-content");
     expect(html).toContain("Suggested boost: Heat (1995) + Al Pacino");
-    expect(html).toContain("Boost: Heat (1995) + Al Pacino");
-    expect(html).toContain("Most popular distance-2 item");
-    expect(html).toContain("Most popular shared connection");
+    expect(html).toContain(">Al Pacino<");
+    expect(html).toContain(">--&gt; connects to<");
+    expect(html).toContain(">Heat (1995)<");
+    expect(html).toContain("Popularity 90");
+    expect(html).toContain("Popularity 60");
+  });
+
+  it("renders a popularity badge for matchup y", () => {
+    const html = renderToStaticMarkup(
+      <ConnectionMatchupPreview
+        preview={{
+          kind: "versus",
+          counterpart: {
+            key: "movie:heat:1995",
+            kind: "movie",
+            name: "Heat (1995)",
+            imageUrl: null,
+            popularity: 60,
+            tooltipText: "Heat (1995)\nPopularity: 60",
+          },
+          spoiler: {
+            key: "person:1",
+            kind: "person",
+            name: "Al Pacino",
+            imageUrl: null,
+            popularity: 90,
+            tooltipText: "Al Pacino\nPopularity: 90",
+          },
+        }}
+      />,
+    );
+
+    expect(html).toContain(">Al Pacino<");
+    expect(html).toContain("Popularity 90");
+    expect(html).toContain(">-/-&gt; oft-connected<");
   });
 
   it("renders bookmark tooltip copy inside the clear-db overlay anchor", () => {

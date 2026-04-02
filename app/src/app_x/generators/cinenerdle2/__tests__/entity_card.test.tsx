@@ -1,7 +1,14 @@
-import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { beforeEach, describe, expect, it } from "vitest";
 import { CinenerdleEntityCard, type RenderableCinenerdleEntityCard } from "../entity_card";
-import { triggerTmdbRowClick } from "../entity_card_helpers";
+import {
+  formatRemovedItemAttrMessage,
+  getAcceptedItemAttrInput,
+  triggerTmdbRowClick,
+} from "../entity_card_helpers";
+import {
+  CINENERDLE_ITEM_ATTRS_STORAGE_KEY,
+} from "../item_attrs";
 
 function makeRenderableMovieCard(
   overrides: Partial<RenderableCinenerdleEntityCard> = {},
@@ -32,7 +39,50 @@ function makeRenderableMovieCard(
   };
 }
 
+function makeRenderableCinenerdleCard(): RenderableCinenerdleEntityCard {
+  return {
+    key: "cinenerdle",
+    kind: "cinenerdle",
+    name: "cinenerdle",
+    imageUrl: "https://img.test/cinenerdle.svg",
+    subtitle: "Daily starters",
+    subtitleDetail: "Open today's board",
+    popularity: 0,
+    popularitySource: "Cinenerdle root cards do not have a popularity score.",
+    connectionCount: 7,
+    connectionRank: null,
+    connectionOrder: null,
+    connectionParentLabel: null,
+    sources: [{ iconUrl: "https://img.test/cinenerdle.svg", label: "Cinenerdle" }],
+    status: null,
+    hasCachedTmdbSource: false,
+    isExcluded: false,
+    isSelected: false,
+    isLocked: false,
+    isAncestorSelected: false,
+  };
+}
+
 describe("CinenerdleEntityCard", () => {
+  beforeEach(() => {
+    const storage = new Map<string, string>();
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      value: {
+        clear: () => {
+          storage.clear();
+        },
+        getItem: (key: string) => storage.get(key) ?? null,
+        removeItem: (key: string) => {
+          storage.delete(key);
+        },
+        setItem: (key: string, value: string) => {
+          storage.set(key, value);
+        },
+      },
+    });
+  });
+
   it("does not render the TMDb footer icon strip outside the connection badge", () => {
     const html = renderToStaticMarkup(
       <CinenerdleEntityCard card={makeRenderableMovieCard()} />,
@@ -122,7 +172,7 @@ describe("CinenerdleEntityCard", () => {
     );
   });
 
-  it("renders fetched-at popularity tooltip copy when provided", () => {
+  it("renders a single refreshable footer tooltip with connection and tmdb lines", () => {
     const html = renderToStaticMarkup(
       <CinenerdleEntityCard
         card={makeRenderableMovieCard({
@@ -132,8 +182,11 @@ describe("CinenerdleEntityCard", () => {
       />,
     );
 
-    expect(html).toContain("TMDb data fetched 3/29/2026, 4:03:24 PM.\nClick to refetch.");
+    expect(html).toContain(
+      "Heat has 12 connections\nAl Pacino is the #3 connection\nTMDb data fetched 3/29/2026, 4:03:24 PM.\nClick to refetch.",
+    );
     expect(html).not.toContain("TMDb movie popularity from the cached movie record.");
+    expect(html.match(/role="tooltip"/g)).toHaveLength(1);
   });
 
   it("marks the footer top row as refreshable when a tmdb row click handler is present", () => {
@@ -171,6 +224,76 @@ describe("CinenerdleEntityCard", () => {
     );
 
     expect(html).toContain("Popularity 88.00");
+  });
+
+  it("renders popularity before the connection badge in the footer top row", () => {
+    const html = renderToStaticMarkup(
+      <CinenerdleEntityCard card={makeRenderableMovieCard()} />,
+    );
+
+    expect(html.indexOf("Popularity 88.00")).toBeLessThan(html.indexOf("#3 / 12"));
+  });
+
+  it("renders the extra row for non-cinenerdle cards only", () => {
+    const movieHtml = renderToStaticMarkup(
+      <CinenerdleEntityCard card={makeRenderableMovieCard()} />,
+    );
+    const cinenerdleHtml = renderToStaticMarkup(
+      <CinenerdleEntityCard card={makeRenderableCinenerdleCard()} />,
+    );
+
+    expect(movieHtml).toContain("cinenerdle-card-extra-row");
+    expect(movieHtml).toContain("Toggle attrs for Heat");
+    expect(cinenerdleHtml).not.toContain("cinenerdle-card-extra-row");
+    expect(cinenerdleHtml).not.toContain("Toggle attrs for");
+  });
+
+  it("renders attr buttons instead of placeholder copy when attrs are present", () => {
+    localStorage.setItem(
+      CINENERDLE_ITEM_ATTRS_STORAGE_KEY,
+      JSON.stringify({
+        film: {
+          "heat:1995": ["🔥", "⭐"],
+        },
+        person: {},
+      }),
+    );
+
+    const html = renderToStaticMarkup(
+      <CinenerdleEntityCard card={makeRenderableMovieCard()} />,
+    );
+
+    expect(html).toContain("Remove 🔥 from Heat");
+    expect(html).toContain("Remove ⭐ from Heat");
+    expect(html).not.toContain("hello world");
+  });
+
+  it("ignores whitespace-only attr input", () => {
+    expect(getAcceptedItemAttrInput(" ", [])).toBeNull();
+  });
+
+  it("ignores duplicate attr input for the same item", () => {
+    expect(getAcceptedItemAttrInput("🔥", ["🔥"])).toBeNull();
+  });
+
+  it("accepts emoji attrs as a single input char", () => {
+    expect(getAcceptedItemAttrInput("🔥", [])).toBe("🔥");
+  });
+
+  it("formats the attr removal alert copy", () => {
+    expect(formatRemovedItemAttrMessage("🔥", "Heat")).toBe("Removed 🔥 from Heat");
+  });
+
+  it("renders cinenerdle root cards as image-only shells", () => {
+    const html = renderToStaticMarkup(
+      <CinenerdleEntityCard card={makeRenderableCinenerdleCard()} />,
+    );
+
+    expect(html).toContain("cinenerdle-card-root");
+    expect(html).not.toContain("cinenerdle-card-copy");
+    expect(html).not.toContain("Daily starters");
+    expect(html).not.toContain("Open today&#x27;s board");
+    expect(html).toContain("src=\"https://img.test/cinenerdle.svg\"");
   });
 
   it("renders multiple credit lines when provided", () => {

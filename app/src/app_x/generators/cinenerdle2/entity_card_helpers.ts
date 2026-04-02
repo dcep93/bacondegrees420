@@ -1,4 +1,5 @@
 import type { MouseEvent } from "react";
+import { getFirstItemAttrChar } from "./item_attrs";
 
 export async function triggerTmdbRowClick(
   event: Pick<MouseEvent<HTMLElement>, "preventDefault" | "stopPropagation">,
@@ -27,4 +28,20 @@ export async function triggerTmdbRowClick(
   } finally {
     setIsRefreshing?.(false);
   }
+}
+
+export function getAcceptedItemAttrInput(
+  rawValue: string,
+  existingItemAttrs: string[],
+): string | null {
+  const nextChar = getFirstItemAttrChar(rawValue);
+  if (!nextChar || existingItemAttrs.includes(nextChar)) {
+    return null;
+  }
+
+  return nextChar;
+}
+
+export function formatRemovedItemAttrMessage(itemAttr: string, itemName: string): string {
+  return `Removed ${itemAttr} from ${itemName}`;
 }

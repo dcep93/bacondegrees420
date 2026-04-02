@@ -716,8 +716,15 @@
   overflow: visible;
 }
 
-.bacon-fancy-tooltip-anchor > * {
+.bacon-fancy-tooltip-anchor > :not(.bacon-fancy-tooltip) {
   height: 100%;
+}
+
+.bacon-fancy-tooltip-anchor > .bacon-fancy-tooltip {
+  height: auto;
+  min-height: 0;
+  max-height: min(420px, calc(100vh - 32px));
+  max-height: min(420px, calc(100dvh - 32px));
 }
 
 .bacon-fancy-tooltip-anchor:focus-within {

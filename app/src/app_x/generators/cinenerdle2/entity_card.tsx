@@ -1,7 +1,15 @@
-import type { MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { CardTitle } from "../../components/card_ui";
 import { handleIsolatedClick, joinClassNames } from "../../components/ui_utils";
 import { FooterChips } from "./entity_card/chips";
+import { formatRemovedItemAttrMessage, getAcceptedItemAttrInput } from "./entity_card_helpers";
+import {
+  CINENERDLE_ITEM_ATTRS_UPDATED_EVENT,
+  addItemAttrToTarget,
+  getCinenerdleItemAttrTargetFromCard,
+  getItemAttrsForTarget,
+  removeItemAttrFromTarget,
+} from "./item_attrs";
 import type { RenderableCinenerdleEntityCard } from "./entity_card/types";
 
 export type { RenderableCinenerdleEntityCard } from "./entity_card/types";
@@ -44,11 +52,72 @@ export function CinenerdleEntityCard({
     card.creditLines && card.creditLines.length > 0
       ? card.creditLines
       : [{ subtitle: card.subtitle, subtitleDetail: card.subtitleDetail }];
+  const isCinenerdleRootCard = card.kind === "cinenerdle";
+  const [isExtraInputVisible, setIsExtraInputVisible] = useState(false);
+  const [itemAttrsVersion, setItemAttrsVersion] = useState(0);
+  const extraRowRef = useRef<HTMLDivElement | null>(null);
+  const extraInputRef = useRef<HTMLInputElement | null>(null);
+  const itemAttrTarget = useMemo(
+    () => (card.kind === "cinenerdle"
+      ? null
+      : getCinenerdleItemAttrTargetFromCard({
+          key: card.key,
+          kind: card.kind,
+          name: card.name,
+        })),
+    [card.key, card.kind, card.name],
+  );
+  const itemAttrs = useMemo(
+    () => {
+      void itemAttrsVersion;
+      return itemAttrTarget ? getItemAttrsForTarget(itemAttrTarget) : [];
+    },
+    [itemAttrTarget, itemAttrsVersion],
+  );
+
+  useEffect(() => {
+    if (!isExtraInputVisible) {
+      return;
+    }
+
+    function handleDocumentClick(event: Event) {
+      if (extraRowRef.current?.contains(event.target as Node | null)) {
+        return;
+      }
+
+      setIsExtraInputVisible(false);
+    }
+
+    document.addEventListener("click", handleDocumentClick);
+    return () => {
+      document.removeEventListener("click", handleDocumentClick);
+    };
+  }, [isExtraInputVisible]);
+
+  useEffect(() => {
+    function handleItemAttrsUpdated() {
+      setItemAttrsVersion((version) => version + 1);
+    }
+
+    window.addEventListener(CINENERDLE_ITEM_ATTRS_UPDATED_EVENT, handleItemAttrsUpdated);
+    return () => {
+      window.removeEventListener(CINENERDLE_ITEM_ATTRS_UPDATED_EVENT, handleItemAttrsUpdated);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isExtraInputVisible) {
+      return;
+    }
+
+    extraInputRef.current?.focus();
+  }, [isExtraInputVisible]);
 
   return (
     <article
       className={joinClassNames(
         "cinenerdle-card",
+        isCinenerdleRootCard && "cinenerdle-card-root",
         card.isSelected && "cinenerdle-card-selected",
         card.isLocked && "cinenerdle-card-locked",
         card.isAncestorSelected && "cinenerdle-card-ancestor-selected",
@@ -71,34 +140,99 @@ export function CinenerdleEntityCard({
         )}
       </div>
 
-      <div className="cinenerdle-card-copy">
-        <CardTitle
-          as={onTitleClick && titleElement === "button" ? "button" : "p"}
-          className="cinenerdle-card-title"
-          onClick={onTitleClick
-            ? (event) => {
-                handleIsolatedClick(event, onTitleClick);
-              }
-            : undefined}
-        >
-          {card.name}
-        </CardTitle>
-        <div className="cinenerdle-card-copy-spacer" />
-        <div className="cinenerdle-card-secondary">
-          {creditLines.map((line, index) => (
-            <div
-              className="cinenerdle-card-credit-line"
-              key={`${line.subtitle}:${line.subtitleDetail}:${index}`}
-            >
-              <p className="cinenerdle-card-subtitle">{line.subtitle}</p>
-              {line.subtitleDetail ? (
-                <p className="cinenerdle-card-detail">{line.subtitleDetail}</p>
-              ) : null}
-            </div>
-          ))}
+      {isCinenerdleRootCard ? null : (
+        <div className="cinenerdle-card-copy">
+          <CardTitle
+            as={onTitleClick && titleElement === "button" ? "button" : "p"}
+            className="cinenerdle-card-title"
+            onClick={onTitleClick
+              ? (event) => {
+                  handleIsolatedClick(event, onTitleClick);
+                }
+              : undefined}
+          >
+            {card.name}
+          </CardTitle>
+          <div className="cinenerdle-card-copy-spacer" />
+          <div className="cinenerdle-card-secondary">
+            {creditLines.map((line, index) => (
+              <div
+                className="cinenerdle-card-credit-line"
+                key={`${line.subtitle}:${line.subtitleDetail}:${index}`}
+              >
+                <p className="cinenerdle-card-subtitle">{line.subtitle}</p>
+                {line.subtitleDetail ? (
+                  <p className="cinenerdle-card-detail">{line.subtitleDetail}</p>
+                ) : null}
+              </div>
+            ))}
+          </div>
+          <FooterChips card={card} />
         </div>
-        <FooterChips card={card} />
-      </div>
+      )}
+      {!isCinenerdleRootCard ? (
+        <div className="cinenerdle-card-extra-row" ref={extraRowRef}>
+          <button
+            aria-label={`Toggle attrs for ${card.name}`}
+            className="cinenerdle-card-extra-button"
+            onClick={(event) => {
+              handleIsolatedClick(event, () => {
+                setIsExtraInputVisible((currentValue) => !currentValue);
+              });
+            }}
+            type="button"
+          >
+            +
+          </button>
+          {isExtraInputVisible ? (
+            <input
+              aria-label={`Add attr for ${card.name}`}
+              className="cinenerdle-card-extra-input"
+              onChange={(event) => {
+                if (!itemAttrTarget) {
+                  return;
+                }
+
+                const nextChar = getAcceptedItemAttrInput(event.target.value, itemAttrs);
+                event.target.value = "";
+                if (!nextChar) {
+                  return;
+                }
+
+                addItemAttrToTarget(itemAttrTarget, nextChar);
+                setIsExtraInputVisible(false);
+              }}
+              ref={extraInputRef}
+              type="text"
+            />
+          ) : (
+            <div className="cinenerdle-card-extra-copy">
+              {itemAttrs.map((itemAttr) => (
+                <button
+                  aria-label={`Remove ${itemAttr} from ${card.name}`}
+                  className="cinenerdle-card-extra-chip"
+                  key={itemAttr}
+                  onClick={(event) => {
+                    handleIsolatedClick(event, () => {
+                      if (!itemAttrTarget) {
+                        return;
+                      }
+
+                      removeItemAttrFromTarget(itemAttrTarget, itemAttr);
+                      if (typeof window !== "undefined" && typeof window.alert === "function") {
+                        window.alert(formatRemovedItemAttrMessage(itemAttr, card.name));
+                      }
+                    });
+                  }}
+                  type="button"
+                >
+                  {itemAttr}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : null}
     </article>
   );
 }

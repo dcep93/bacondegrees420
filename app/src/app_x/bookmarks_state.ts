@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   loadBookmarks,
+  getBookmarkRowItemAttrTargets,
   moveBookmarkEntry,
-  parseBookmarksJsonl,
+  parseBookmarksJsonlWithItemAttrs,
   removeBookmarkEntry,
   saveBookmarks,
   serializeBookmarksAsJsonl,
@@ -14,6 +15,10 @@ import { normalizeHashValue } from "./generators/cinenerdle2/hash";
 import {
   CINENERDLE_RECORDS_UPDATED_EVENT,
 } from "./generators/cinenerdle2/indexed_db";
+import {
+  CINENERDLE_ITEM_ATTRS_UPDATED_EVENT,
+  replaceItemAttrsForReferencedTargets,
+} from "./generators/cinenerdle2/item_attrs";
 
 export function isBookmarksJsonlDraftChanged(
   serializedBookmarksJsonl: string,
@@ -38,11 +43,18 @@ export function useBookmarksState({
   const [isBookmarksJsonlEditorOpen, setIsBookmarksJsonlEditorOpen] = useState(false);
   const [bookmarksJsonlDraft, setBookmarksJsonlDraft] = useState("");
   const [isSavingBookmark, setIsSavingBookmark] = useState(false);
+  const [itemAttrsVersion, setItemAttrsVersion] = useState(0);
   const bookmarksRef = useRef<BookmarkEntry[]>([]);
   const bookmarksPersistenceRequestIdRef = useRef(0);
   const serializedBookmarksJsonlRef = useRef("");
   const bookmarksJsonlTextareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const serializedBookmarksJsonl = serializeBookmarksAsJsonl(bookmarks);
+  const serializedBookmarksJsonl = useMemo(
+    () => {
+      void itemAttrsVersion;
+      return serializeBookmarksAsJsonl(bookmarks, bookmarkRows);
+    },
+    [bookmarkRows, bookmarks, itemAttrsVersion],
+  );
 
   const isBookmarksJsonlDraftDirty = isBookmarksJsonlDraftChanged(
     serializedBookmarksJsonl,
@@ -120,6 +132,17 @@ export function useBookmarksState({
   }, [refreshBookmarkRows]);
 
   useEffect(() => {
+    function handleCinenerdleItemAttrsUpdated() {
+      setItemAttrsVersion((version) => version + 1);
+    }
+
+    window.addEventListener(CINENERDLE_ITEM_ATTRS_UPDATED_EVENT, handleCinenerdleItemAttrsUpdated);
+    return () => {
+      window.removeEventListener(CINENERDLE_ITEM_ATTRS_UPDATED_EVENT, handleCinenerdleItemAttrsUpdated);
+    };
+  }, []);
+
+  useEffect(() => {
     const previousSerializedBookmarksJsonl = serializedBookmarksJsonlRef.current;
     serializedBookmarksJsonlRef.current = serializedBookmarksJsonl;
     setBookmarksJsonlDraft((currentDraft) =>
@@ -164,12 +187,21 @@ export function useBookmarksState({
 
   const handleApplyBookmarksJsonl = useCallback(async () => {
     try {
-      const persistedBookmarks = await persistBookmarks(parseBookmarksJsonl(bookmarksJsonlDraft));
+      const parsedJsonl = parseBookmarksJsonlWithItemAttrs(bookmarksJsonlDraft);
+      const persistedBookmarks = await persistBookmarks(parsedJsonl.bookmarks);
       if (!persistedBookmarks) {
         return;
       }
 
-      setBookmarksJsonlDraft(serializeBookmarksAsJsonl(persistedBookmarks));
+      const nextBookmarkRows = await Promise.all(
+        persistedBookmarks.map((bookmark) => buildBookmarkRowData(bookmark.hash)),
+      );
+      replaceItemAttrsForReferencedTargets(
+        nextBookmarkRows.flatMap((bookmarkRow) => getBookmarkRowItemAttrTargets(bookmarkRow)),
+        parsedJsonl.itemAttrs,
+      );
+      setBookmarkRows(nextBookmarkRows);
+      setBookmarksJsonlDraft(serializeBookmarksAsJsonl(persistedBookmarks, nextBookmarkRows));
       setIsBookmarksJsonlEditorOpen(false);
       onToast("Bookmarks updated");
     } catch (error: unknown) {
@@ -217,7 +249,12 @@ export function useBookmarksState({
     handleApplyBookmarksJsonl,
     handleMoveBookmark: (bookmarkHash: string, direction: "up" | "down") =>
       void persistBookmarks(moveBookmarkEntry(bookmarksRef.current, bookmarkHash, direction)),
-    handleOpenBookmarksJsonlEditor: () => setIsBookmarksJsonlEditorOpen(true),
+    handleOpenBookmarksJsonlEditor: () => {
+      void refreshBookmarkRows(bookmarksRef.current)
+        .finally(() => {
+          setIsBookmarksJsonlEditorOpen(true);
+        });
+    },
     handleCloseBookmarksJsonlEditor: () => setIsBookmarksJsonlEditorOpen(false),
     handleRemoveBookmark: (bookmarkHash: string) =>
       void persistBookmarks(removeBookmarkEntry(bookmarksRef.current, bookmarkHash)),

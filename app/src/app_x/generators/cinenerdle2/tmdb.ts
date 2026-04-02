@@ -105,6 +105,21 @@ type FetchAndCacheOptions = {
   skipFollowOnPrefetch?: boolean;
 };
 
+export type PreviewConnectionEntityHydrationTarget =
+  | {
+      key: string;
+      kind: "movie";
+      name: string;
+      year?: string;
+      tmdbId?: number | string | null;
+    }
+  | {
+      key: string;
+      kind: "person";
+      name: string;
+      tmdbId?: number | string | null;
+    };
+
 function getPartialFilmCreditRoleLabel(credit: TmdbPersonCredit): string {
   return normalizeWhitespace(
     credit.creditType === "crew"
@@ -1434,6 +1449,33 @@ function getSelectedPersonCardTmdbId(
   return keyMatch ? getValidTmdbEntityId(keyMatch[1]) : null;
 }
 
+function getPreviewTargetPersonTmdbId(
+  target: Extract<PreviewConnectionEntityHydrationTarget, { kind: "person" }>,
+): number | null {
+  const explicitTmdbId = getValidTmdbEntityId(target.tmdbId);
+  if (explicitTmdbId !== null) {
+    return explicitTmdbId;
+  }
+
+  const keyMatch = target.key.match(/^person:(\d+)$/);
+  return keyMatch ? getValidTmdbEntityId(keyMatch[1]) : null;
+}
+
+function getPreviewTargetMovieParts(
+  target: Extract<PreviewConnectionEntityHydrationTarget, { kind: "movie" }>,
+): {
+  movieName: string;
+  movieYear: string;
+  movieId: number | null;
+} {
+  const parsedMovie = parseMoviePathLabel(target.name);
+  return {
+    movieName: parsedMovie.name || target.name,
+    movieYear: target.year ?? parsedMovie.year,
+    movieId: getValidTmdbEntityId(target.tmdbId),
+  };
+}
+
 function hasMovieCredits(
   movieRecord: FilmRecord | null,
 ): movieRecord is FilmRecord & {
@@ -1498,6 +1540,84 @@ export function hasPersonFullState(
     getResolvedPersonMovieConnectionKeys(resolvedPersonRecord).length === 0 ||
     getAllowedConnectedTmdbMovieCredits(resolvedPersonRecord).length > 0
   );
+}
+
+export async function prepareConnectionEntityForPreview(
+  target: PreviewConnectionEntityHydrationTarget,
+): Promise<FilmRecord | PersonRecord | null> {
+  if (target.kind === "movie") {
+    const {
+      movieId,
+      movieName,
+      movieYear,
+    } = getPreviewTargetMovieParts(target);
+    const localMovieRecord = await getLocalMovieRecordForCard(
+      movieName,
+      movieYear,
+      movieId,
+    );
+
+    if (hasMovieFullState(localMovieRecord)) {
+      return localMovieRecord;
+    }
+
+    const resolvedMovieTmdbId = getValidTmdbEntityId(
+      movieId ?? localMovieRecord?.tmdbId ?? localMovieRecord?.id,
+    );
+    if (localMovieRecord) {
+      if (!hasDirectTmdbMovieSource(localMovieRecord) && resolvedMovieTmdbId) {
+        return fetchAndCacheMovie(
+          localMovieRecord.title || movieName,
+          localMovieRecord.year || movieYear,
+          "prefetch",
+          resolvedMovieTmdbId,
+          {
+            skipFollowOnPrefetch: true,
+          },
+        );
+      }
+
+      return fetchAndCacheMovieCredits(localMovieRecord, "prefetch", {
+        skipFollowOnPrefetch: true,
+      });
+    }
+
+    if (resolvedMovieTmdbId) {
+      return fetchAndCacheMovie(
+        movieName,
+        movieYear,
+        "prefetch",
+        resolvedMovieTmdbId,
+        {
+          skipFollowOnPrefetch: true,
+        },
+      );
+    }
+
+    return fetchAndCacheMovieFromSearch(movieName, movieYear, "prefetch", {
+      skipFollowOnPrefetch: true,
+    });
+  }
+
+  const personTmdbId = getPreviewTargetPersonTmdbId(target);
+  const localPersonRecord = await getLocalPersonRecordForCard(target.name, personTmdbId);
+
+  if (hasPersonFullState(localPersonRecord)) {
+    return localPersonRecord;
+  }
+
+  const resolvedPersonTmdbId = getValidTmdbEntityId(
+    personTmdbId ?? localPersonRecord?.tmdbId ?? localPersonRecord?.id,
+  );
+  if (resolvedPersonTmdbId !== null) {
+    return fetchAndCachePerson(target.name, "prefetch", resolvedPersonTmdbId, {
+      skipFollowOnPrefetch: true,
+    });
+  }
+
+  return fetchAndCachePersonFromSearch(target.name, "prefetch", {
+    skipFollowOnPrefetch: true,
+  });
 }
 
 async function prefetchPopularMovieCandidate(

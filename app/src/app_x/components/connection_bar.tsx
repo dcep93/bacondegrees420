@@ -1,4 +1,4 @@
-import type { FormEvent, KeyboardEvent, MouseEvent, Ref } from "react";
+import { useEffect, useRef, type FormEvent, type KeyboardEvent, type MouseEvent, type Ref } from "react";
 import Tooltip from "./tooltip";
 import type { ConnectionSuggestion } from "../connection_search_state";
 import { joinClassNames } from "./ui_utils";
@@ -32,6 +32,25 @@ export default function ConnectionBar({
   selectedPathTooltipEntries: string[];
   selectedSuggestionIndex: number;
 }) {
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+  const optionRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+  useEffect(() => {
+    const selectedSuggestion =
+      selectedSuggestionIndex >= 0 ? connectionSuggestions[selectedSuggestionIndex] ?? null : null;
+    const selectedOption = selectedSuggestion
+      ? optionRefs.current[selectedSuggestion.key] ?? null
+      : null;
+
+    if (!dropdownRef.current || !selectedOption) {
+      return;
+    }
+
+    selectedOption.scrollIntoView({
+      block: "nearest",
+    });
+  }, [connectionSuggestions, selectedSuggestionIndex]);
+
   return (
     <form className="bacon-connection-form" onSubmit={onSubmit}>
       <div className="bacon-connection-input-wrap" ref={connectionInputWrapRef}>
@@ -49,7 +68,7 @@ export default function ConnectionBar({
           value={connectionQuery}
         />
         {connectionSuggestions.length > 0 ? (
-          <div className="bacon-connection-dropdown">
+          <div className="bacon-connection-dropdown" ref={dropdownRef}>
             {connectionSuggestions.map((suggestion, index) => (
               <button
                 className={joinClassNames(
@@ -61,6 +80,9 @@ export default function ConnectionBar({
                 onMouseDown={(event) => event.preventDefault()}
                 onMouseEnter={() => onSuggestionHover(index)}
                 onClick={(event) => onSuggestionClick(event, suggestion)}
+                ref={(element) => {
+                  optionRefs.current[suggestion.key] = element;
+                }}
                 type="button"
               >
                 <span className="bacon-connection-option-label">{suggestion.label}</span>

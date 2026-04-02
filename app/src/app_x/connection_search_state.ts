@@ -368,12 +368,14 @@ function buildAlternativeConnectionSearchPlan(params: {
 export function useConnectionSearchState({
   hashValue,
   isSearchablePersistencePending,
-  onSelectConnectionEntity,
+  onConnectedSuggestionHighlight,
+  onSelectConnectedSuggestionAsYoungest,
   youngestSelectedCard,
 }: {
   hashValue: string;
   isSearchablePersistencePending: boolean;
-  onSelectConnectionEntity: (entity: ConnectionEntity) => void;
+  onConnectedSuggestionHighlight?: (suggestion: ConnectionSuggestion | null) => void;
+  onSelectConnectedSuggestionAsYoungest: (suggestion: ConnectionSuggestion) => void;
   youngestSelectedCard: YoungestSelectedCard | null;
 }) {
   const [connectionQuery, setConnectionQuery] = useState("");
@@ -478,6 +480,21 @@ export function useConnectionSearchState({
   useEffect(() => {
     clearConnectionInputState();
   }, [clearConnectionInputState, youngestSelectedCardKey]);
+
+  useEffect(() => {
+    const selectedSuggestion =
+      selectedSuggestionIndex >= 0 ? connectionSuggestions[selectedSuggestionIndex] ?? null : null;
+
+    onConnectedSuggestionHighlight?.(
+      shouldSelectConnectedDropdownSuggestionAsYoungest(selectedSuggestion)
+        ? selectedSuggestion
+        : null,
+    );
+  }, [
+    connectionSuggestions,
+    onConnectedSuggestionHighlight,
+    selectedSuggestionIndex,
+  ]);
 
   useEffect(() => {
     if (isSearchablePersistencePending) {
@@ -639,15 +656,15 @@ export function useConnectionSearchState({
     void runConnectionRowSearch(nextSearch);
   }, [runConnectionRowSearch]);
 
-  const handleConnectionSuggestionSelection = useCallback(async (suggestion: ConnectionSuggestion) => {
+  const handleConnectionSuggestionSelection = useCallback((suggestion: ConnectionSuggestion) => {
     if (shouldSelectConnectedDropdownSuggestionAsYoungest(suggestion)) {
       clearConnectionInputState();
-      onSelectConnectionEntity(suggestion);
+      onSelectConnectedSuggestionAsYoungest(suggestion);
       return;
     }
 
-    await openConnectionRowsForEntity(suggestion);
-  }, [clearConnectionInputState, onSelectConnectionEntity, openConnectionRowsForEntity]);
+    window.alert(suggestion.name);
+  }, [clearConnectionInputState, onSelectConnectedSuggestionAsYoungest]);
 
   const handleConnectionSubmit = useCallback(async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -661,7 +678,7 @@ export function useConnectionSearchState({
       selectedSuggestionIndex >= 0 ? connectionSuggestions[selectedSuggestionIndex] ?? null : null;
 
     if (selectedSuggestion) {
-      await handleConnectionSuggestionSelection(selectedSuggestion);
+      handleConnectionSuggestionSelection(selectedSuggestion);
       return;
     }
 
@@ -729,7 +746,7 @@ export function useConnectionSearchState({
       event.preventDefault();
       const selectedSuggestion = connectionSuggestions[selectedSuggestionIndex] ?? null;
       if (selectedSuggestion) {
-        void handleConnectionSuggestionSelection(selectedSuggestion);
+        handleConnectionSuggestionSelection(selectedSuggestion);
       }
     }
   }, [
