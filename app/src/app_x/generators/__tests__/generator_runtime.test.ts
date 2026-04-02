@@ -92,6 +92,38 @@ describe("generator_runtime", () => {
     }]);
   });
 
+
+  it("does not mark descendants as removed when clicking an already selected ancestor", () => {
+    const state = createGeneratorState(
+      { name: "test" },
+      [
+        [createNode("root-a", true), createNode("root-b")],
+        [createNode("child-a", true), createNode("child-b")],
+      ],
+    );
+
+    const transition = reduceGeneratorLifecycleEvent(state, {
+      type: "select",
+      row: 0,
+      col: 0,
+    });
+
+    expect(transition.state.tree).toEqual([
+      [createNode("root-a", true), createNode("root-b")],
+      [createNode("child-a"), createNode("child-b")],
+    ]);
+    expect(transition.effects).toEqual([{
+      type: "load-selected-card",
+      row: 0,
+      col: 0,
+      removedDescendantRows: false,
+      tree: [
+        [createNode("root-a", true), createNode("root-b")],
+        [createNode("child-a"), createNode("child-b")],
+      ],
+    }]);
+  });
+
   it("resolves the rendered tree from state", () => {
     const state = {
       ...createGeneratorState<{ key: string }, undefined>(undefined),
