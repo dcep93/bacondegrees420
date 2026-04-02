@@ -3,6 +3,7 @@ import { BookmarksJsonlEditButton } from "./bookmarks_jsonl_editor";
 import Tooltip from "./tooltip";
 
 export default function BaconTitleBar({
+  boostPreview,
   clearDbBadgeText,
   copyStatus,
   copyStatusPlacement,
@@ -19,6 +20,7 @@ export default function BaconTitleBar({
   titleRef,
   toastStatusRef,
 }: {
+  boostPreview?: ReactNode;
   clearDbBadgeText: string;
   copyStatus: string;
   copyStatusPlacement: "toast" | "title";
@@ -65,6 +67,11 @@ export default function BaconTitleBar({
         </div>
       </div>
       <div className="bacon-title-actions">
+        {boostPreview ? (
+          <div className="bacon-title-action-slot bacon-title-action-slot-matchup">
+            {boostPreview}
+          </div>
+        ) : null}
         {matchupPreview ? (
           <div className="bacon-title-action-slot bacon-title-action-slot-matchup">
             {matchupPreview}
@@ -72,7 +79,7 @@ export default function BaconTitleBar({
         ) : null}
         {!isBookmarksView ? (
           <div className="bacon-title-action-slot bacon-title-action-slot-square">
-            <Tooltip content={isSavingBookmark ? "Saving bookmark..." : "Save bookmark"}>
+            <Tooltip content="Save bookmark">
               <button
                 aria-label="Save bookmark"
                 className="bacon-title-action-icon-button"

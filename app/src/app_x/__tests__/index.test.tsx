@@ -28,6 +28,7 @@ import BaconTitleBar from "../components/bacon_title_bar";
 import BookmarksJsonlEditorModal, {
   BookmarksJsonlEditButton,
 } from "../components/bookmarks_jsonl_editor";
+import ConnectionBoostPreview from "../components/connection_boost_preview";
 import IndexedDbBootstrapLoadingIndicator from "../components/indexed_db_bootstrap_loading_indicator";
 import {
   isBookmarksJsonlDraftChanged,
@@ -60,6 +61,10 @@ function makeConnectionEntity(
 
 function renderMatchupPreviewStub() {
   return <div className="matchup-preview-stub">matchup</div>;
+}
+
+function renderBoostPreviewStub() {
+  return <div className="boost-preview-stub">boost</div>;
 }
 
 function findElementByClassName(
@@ -486,6 +491,7 @@ describe("BaconTitleBar", () => {
   it("renders a left brand cluster and right action row in generator view", () => {
     const html = renderToStaticMarkup(
       <BaconTitleBar
+        boostPreview={renderBoostPreviewStub()}
         clearDbBadgeText="12 / 34"
         copyStatus=""
         copyStatusPlacement="toast"
@@ -504,13 +510,68 @@ describe("BaconTitleBar", () => {
     expect(html).toContain("aria-label=\"Reset generator\"");
     expect(html).toContain("BaconDegrees420");
     expect(html).toContain("bacon-title-actions");
+    expect(html).toContain("boost-preview-stub");
     expect(html).toContain("matchup-preview-stub");
     expect(html).toContain("aria-label=\"Save bookmark\"");
     expect(html).toContain("aria-label=\"Open bookmarks\"");
     expect(html).toContain("Clear DB (12 / 34)");
+    expect(html.indexOf("boost-preview-stub")).toBeLessThan(html.indexOf("matchup-preview-stub"));
     expect(html.indexOf("matchup-preview-stub")).toBeLessThan(html.indexOf("aria-label=\"Save bookmark\""));
     expect(html.indexOf("aria-label=\"Save bookmark\"")).toBeLessThan(html.indexOf("aria-label=\"Open bookmarks\""));
     expect(html.indexOf("aria-label=\"Open bookmarks\"")).toBeLessThan(html.indexOf("Clear DB (12 / 34)"));
+  });
+
+  it("skips the boost slot when no boost preview is provided", () => {
+    const html = renderToStaticMarkup(
+      <BaconTitleBar
+        clearDbBadgeText="12 / 34"
+        copyStatus=""
+        copyStatusPlacement="toast"
+        isBookmarksView={false}
+        isSavingBookmark={false}
+        onClearDatabase={() => { }}
+        onOpenBookmarksJsonlEditor={() => { }}
+        onReset={() => { }}
+        onSaveBookmark={() => { }}
+        onToggleBookmarks={() => { }}
+        matchupPreview={renderMatchupPreviewStub()}
+      />,
+    );
+
+    expect(html).not.toContain("boost-preview-stub");
+    expect(html).toContain("matchup-preview-stub");
+  });
+
+  it("renders boost tooltip copy as x plus y", () => {
+    const html = renderToStaticMarkup(
+      <ConnectionBoostPreview
+        preview={{
+          distanceTwo: {
+            key: "movie:heat:1995",
+            kind: "movie",
+            name: "Heat (1995)",
+            imageUrl: null,
+            popularity: 60,
+            tooltipText: "Heat (1995)\nPopularity: 60",
+          },
+          sharedConnection: {
+            key: "person:1",
+            kind: "person",
+            name: "Al Pacino",
+            imageUrl: null,
+            popularity: 90,
+            tooltipText: "Al Pacino\nPopularity: 90",
+          },
+        }}
+      />,
+    );
+
+    expect(html).toContain("bacon-connection-matchup");
+    expect(html).toContain("bacon-connection-matchup-content");
+    expect(html).toContain("Suggested boost: Heat (1995) + Al Pacino");
+    expect(html).toContain("Boost: Heat (1995) + Al Pacino");
+    expect(html).toContain("Most popular distance-2 item");
+    expect(html).toContain("Most popular shared connection");
   });
 
   it("renders bookmark tooltip copy inside the clear-db overlay anchor", () => {

@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
 import { formatClearDbBadgeText } from "./clear_db_badge";
 import {
+  resolveConnectionBoostPreview,
+  type ConnectionBoostPreview as ConnectionBoostPreviewData,
+} from "./connection_boost_preview";
+import {
   shouldResolveConnectionMatchupPreview,
 } from "./connection_matchup_helpers";
 import {
@@ -65,6 +69,7 @@ import BaconTitleBar from "./components/bacon_title_bar";
 import BookmarksJsonlEditorModal from "./components/bookmarks_jsonl_editor";
 import BookmarksPage from "./components/bookmarks_page";
 import ConnectionBar from "./components/connection_bar";
+import ConnectionBoostPreview from "./components/connection_boost_preview";
 import ConnectionMatchupPreview from "./components/connection_matchup_preview";
 import ConnectionResults from "./components/connection_results";
 import IndexedDbBootstrapLoadingIndicator from "./components/indexed_db_bootstrap_loading_indicator";
@@ -97,6 +102,8 @@ export default function AppX() {
   } = useAppLocationState();
   const [resetVersion, setResetVersion] = useState(0);
   const [youngestSelectedCard, setYoungestSelectedCard] = useState<YoungestSelectedCard | null>(null);
+  const [connectionBoostPreview, setConnectionBoostPreview] =
+    useState<ConnectionBoostPreviewData | null>(null);
   const [connectionMatchupPreview, setConnectionMatchupPreview] =
     useState<ConnectionMatchupPreviewData | null>(null);
   const [connectionMatchupPreviewRefreshVersion, setConnectionMatchupPreviewRefreshVersion] =
@@ -349,21 +356,29 @@ export default function AppX() {
 
   useEffect(() => {
     let cancelled = false;
-
-    void (shouldResolveConnectionMatchupPreview({
+    const shouldResolvePreview = shouldResolveConnectionMatchupPreview({
       isBookmarksView,
       isCinenerdleIndexedDbBootstrapLoading,
       youngestSelectedCard,
-    })
-      ? resolveConnectionMatchupPreview(youngestSelectedCard)
-      : Promise.resolve<ConnectionMatchupPreviewData | null>(null))
-      .then((nextPreview) => {
+    });
+
+    void (shouldResolvePreview
+      ? Promise.all([
+        resolveConnectionBoostPreview(youngestSelectedCard),
+        resolveConnectionMatchupPreview(youngestSelectedCard),
+      ])
+      : Promise.resolve<
+        [ConnectionBoostPreviewData | null, ConnectionMatchupPreviewData | null]
+      >([null, null]))
+      .then(([nextBoostPreview, nextMatchupPreview]) => {
         if (!cancelled) {
-          setConnectionMatchupPreview(nextPreview);
+          setConnectionBoostPreview(nextBoostPreview);
+          setConnectionMatchupPreview(nextMatchupPreview);
         }
       })
       .catch(() => {
         if (!cancelled) {
+          setConnectionBoostPreview(null);
           setConnectionMatchupPreview(null);
         }
       });
@@ -479,6 +494,7 @@ export default function AppX() {
       ) : null}
 
       <BaconTitleBar
+        boostPreview={<ConnectionBoostPreview preview={connectionBoostPreview} />}
         clearDbBadgeText={clearDbBadgeText}
         clearDbButtonRef={clearDbButtonRef}
         copyStatus={copyStatus}

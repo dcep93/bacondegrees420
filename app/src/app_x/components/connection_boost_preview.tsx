@@ -1,10 +1,8 @@
 import Tooltip from "./tooltip";
 import { createHeatChipStyle, formatHeatMetricValue } from "../generators/cinenerdle2/entity_card/helpers";
-import type { ConnectionMatchupPreview, ConnectionMatchupPreviewEntity } from "../connection_matchup_preview";
+import type { ConnectionBoostPreview, ConnectionBoostPreviewEntity } from "../connection_boost_preview";
 import { getPreviewFallbackText } from "../selected_path";
 import { joinClassNames } from "./ui_utils";
-
-const CONNECTION_MATCHUP_SPOILER_EXPLANATION = "-/-> best-connected";
 
 function getTooltipPopularity(entry: string): number | null {
   const match = entry.match(/^Popularity:\s*(-?\d+(?:\.\d+)?)$/);
@@ -70,7 +68,7 @@ function renderTooltipEntries(tooltipEntries: string[], keyPrefix: string) {
   ];
 }
 
-function renderMatchupTile(entity: ConnectionMatchupPreviewEntity) {
+function renderBoostTile(entity: ConnectionBoostPreviewEntity) {
   return (
     <span
       className={joinClassNames(
@@ -102,66 +100,56 @@ function renderMatchupTile(entity: ConnectionMatchupPreviewEntity) {
   );
 }
 
-function renderPlaceholderTile(label: string) {
-  return (
-    <span className="bacon-connection-matchup-tile-wrap bacon-connection-matchup-tile-wrap-placeholder">
-      <span
-        aria-label={label}
-        className="bacon-connection-matchup-tile bacon-connection-matchup-tile-placeholder"
-      >
-        <span className="bacon-connection-matchup-fallback">?</span>
-      </span>
-    </span>
-  );
-}
-
-export default function ConnectionMatchupPreview({
+export default function ConnectionBoostPreview({
   preview,
 }: {
-  preview: ConnectionMatchupPreview | null;
+  preview: ConnectionBoostPreview | null;
 }) {
   if (!preview) {
     return null;
   }
 
-  const counterpartTooltipEntries = preview.counterpart.tooltipText
+  const distanceTwoTooltipEntries = preview.distanceTwo.tooltipText
     .split("\n")
     .map((entry) => entry.trim())
     .filter(Boolean);
-  const matchupRightLabel = preview.kind === "versus"
-    ? preview.spoiler.name
-    : preview.placeholderLabel;
-  const matchupExplanation = preview.kind === "versus"
-    ? preview.spoilerExplanation ?? CONNECTION_MATCHUP_SPOILER_EXPLANATION
-    : preview.placeholderExplanation;
+  const sharedConnectionTooltipEntries = preview.sharedConnection.tooltipText
+    .split("\n")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
 
   return (
     <div className="bacon-connection-matchup-shell">
       <Tooltip
         anchorClassName="bacon-connection-matchup"
         anchorProps={{
-          "aria-label": `Suggested matchup: ${preview.counterpart.name} vs ${matchupRightLabel}`,
+          "aria-label": `Suggested boost: ${preview.distanceTwo.name} + ${preview.sharedConnection.name}`,
           tabIndex: 0,
         }}
         content={[
           <span className="bacon-connection-pill-tooltip-entry" key="label">
-            {matchupRightLabel}
+            {`Boost: ${preview.distanceTwo.name} + ${preview.sharedConnection.name}`}
           </span>,
-          <span className="bacon-connection-pill-tooltip-entry" key="explanation">
-            {matchupExplanation}
+          <span className="bacon-connection-pill-tooltip-entry" key="distance-two-label">
+            Most popular distance-2 item
           </span>,
-          ...renderTooltipEntries(counterpartTooltipEntries, preview.counterpart.key),
+          ...renderTooltipEntries(distanceTwoTooltipEntries, preview.distanceTwo.key),
+          <span className="bacon-connection-pill-tooltip-entry" key="shared-label">
+            Most popular shared connection
+          </span>,
+          ...renderTooltipEntries(
+            sharedConnectionTooltipEntries,
+            preview.sharedConnection.key,
+          ),
         ]}
         placement="bottom-center"
         tooltipClassName="bacon-connection-matchup-tooltip"
         wrapperTag="div"
       >
         <span className="bacon-connection-matchup-content">
-          {renderMatchupTile(preview.counterpart)}
-          <span aria-hidden="true" className="bacon-connection-matchup-vs">vs</span>
-          {preview.kind === "versus"
-            ? renderMatchupTile(preview.spoiler)
-            : renderPlaceholderTile(preview.placeholderLabel)}
+          {renderBoostTile(preview.distanceTwo)}
+          <span aria-hidden="true" className="bacon-connection-matchup-vs">+</span>
+          {renderBoostTile(preview.sharedConnection)}
         </span>
       </Tooltip>
     </div>
