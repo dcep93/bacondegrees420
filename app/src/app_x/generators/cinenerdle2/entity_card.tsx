@@ -160,9 +160,7 @@ export function CinenerdleEntityCard({
                 key={`${line.subtitle}:${line.subtitleDetail}:${index}`}
               >
                 <p className="cinenerdle-card-subtitle">{line.subtitle}</p>
-                {line.subtitleDetail ? (
-                  <p className="cinenerdle-card-detail">{line.subtitleDetail}</p>
-                ) : null}
+                <p className="cinenerdle-card-detail">{line.subtitleDetail ?? ""}</p>
               </div>
             ))}
           </div>

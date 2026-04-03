@@ -169,6 +169,10 @@
   color: #94a3b8;
 }
 
+.cinenerdle-card-detail {
+  min-height: 1.35em;
+}
+
 .cinenerdle-card-footer {
   display: flex;
   flex-direction: column;
