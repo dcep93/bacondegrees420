@@ -82,12 +82,6 @@ function createDeferred<T>() {
   };
 }
 
-function getNonPerfDebugLogCalls() {
-  return debugLogMock.addCinenerdleDebugLog.mock.calls.filter(
-    ([event]) => !String(event).startsWith("perf:"),
-  );
-}
-
 async function flushAsyncWork(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
@@ -888,7 +882,7 @@ describe("tmdb forced refresh helpers", () => {
     expect(result).toBe(unresolvedMovieRecord);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(consoleLogSpy).not.toHaveBeenCalled();
-    expect(getNonPerfDebugLogCalls()).toEqual([]);
+    expect(debugLogMock.addCinenerdleDebugLog).not.toHaveBeenCalled();
   });
 
   it("logs raw person responses with the requested format", async () => {
@@ -1611,7 +1605,7 @@ describe("tmdb forced refresh helpers", () => {
     expect(indexedDbMock.getAllSearchableConnectionEntities).not.toHaveBeenCalled();
     expect(connectionGraphMock.hydrateConnectionEntityFromSearchRecord).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(getNonPerfDebugLogCalls()).toEqual([]);
+    expect(debugLogMock.addCinenerdleDebugLog).not.toHaveBeenCalled();
   });
 
   it("records a debug entry when a selected-card prefetch is skipped under playwright", async () => {
