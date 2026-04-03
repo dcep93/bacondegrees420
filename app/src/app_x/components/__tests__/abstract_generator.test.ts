@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { getSortedGeneratorRowEntries } from "../abstract_generator_row_order";
+import {
+  getGeneratorRowScrollLeft,
+  getUnselectedRowScrollCardIndex,
+} from "../abstract_generator_row_scroll";
 import type { GeneratorCardRowOrderMetadata, GeneratorNode } from "../../types/generator";
 
 type TestCard = {
@@ -66,5 +70,59 @@ describe("getSortedGeneratorRowEntries", () => {
       "Gamma",
     ]);
     expect(sortedEntries.map((entry) => entry.originalCol)).toEqual([0, 1, 2]);
+  });
+});
+
+describe("getGeneratorRowScrollLeft", () => {
+  it("left-aligns the target card edge when start alignment is requested", () => {
+    expect(getGeneratorRowScrollLeft({
+      alignment: "start",
+      maxScrollLeft: 800,
+      targetLeft: 430,
+      targetWidth: 184,
+      trackPaddingLeft: 2,
+      visibleAnchorX: 0,
+    })).toBe(428);
+  });
+
+  it("aligns the target card center to the provided visible anchor", () => {
+    expect(getGeneratorRowScrollLeft({
+      alignment: "center",
+      maxScrollLeft: 1200,
+      targetLeft: 910,
+      targetWidth: 184,
+      trackPaddingLeft: 2,
+      visibleAnchorX: 276,
+    })).toBe(726);
+  });
+
+  it("clamps the computed scroll position into the scrollable range", () => {
+    expect(getGeneratorRowScrollLeft({
+      alignment: "start",
+      maxScrollLeft: 300,
+      targetLeft: 1,
+      targetWidth: 184,
+      trackPaddingLeft: 2,
+      visibleAnchorX: 0,
+    })).toBe(0);
+
+    expect(getGeneratorRowScrollLeft({
+      alignment: "center",
+      maxScrollLeft: 300,
+      targetLeft: 910,
+      targetWidth: 184,
+      trackPaddingLeft: 2,
+      visibleAnchorX: 100,
+    })).toBe(300);
+  });
+});
+
+describe("getUnselectedRowScrollCardIndex", () => {
+  it("uses the first rendered card when row order has been reprioritized", () => {
+    expect(getUnselectedRowScrollCardIndex([5, 0, 2], 0)).toBe(5);
+  });
+
+  it("falls back to original column zero when no rendered order snapshot exists", () => {
+    expect(getUnselectedRowScrollCardIndex([], 0)).toBe(0);
   });
 });

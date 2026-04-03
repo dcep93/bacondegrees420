@@ -81,7 +81,6 @@ export function CinenerdleEntityCard({
   card,
   className,
   connectedItemAttrSources = [],
-  loadChildConnectedItemAttrSources = null,
   onItemAttrCountsChange = null,
   onCardClick,
   onTitleClick,
@@ -94,11 +93,6 @@ export function CinenerdleEntityCard({
     kind: "movie" | "person";
     name: string;
   }>;
-  loadChildConnectedItemAttrSources?: (() => Promise<Array<{
-    key: string;
-    kind: "movie" | "person";
-    name: string;
-  }>>) | null;
   onItemAttrCountsChange?: ((counts: GeneratorCardRowOrderMetadata | null) => void) | null;
   onCardClick?: (event: MouseEvent<HTMLElement>) => void;
   onTitleClick?: (event: MouseEvent<HTMLElement>) => void;
@@ -125,22 +119,12 @@ export function CinenerdleEntityCard({
   const isCinenerdleRootCard = card.kind === "cinenerdle";
   const [isExtraInputVisible, setIsExtraInputVisible] = useState(false);
   const [itemAttrsVersion, setItemAttrsVersion] = useState(0);
-  const [childConnectedItemAttrSources, setChildConnectedItemAttrSources] = useState<
-    Array<{
-      key: string;
-      kind: "movie" | "person";
-      name: string;
-    }>
-  >([]);
   const extraRowRef = useRef<HTMLDivElement | null>(null);
   const extraInputRef = useRef<HTMLInputElement | null>(null);
   const resolvedConnectedItemAttrSources = useMemo(
-    () => [
-      ...connectedItemAttrSources,
-      ...(loadChildConnectedItemAttrSources ? childConnectedItemAttrSources : []),
-    ].filter((source, index, allSources) =>
+    () => connectedItemAttrSources.filter((source, index, allSources) =>
       allSources.findIndex((candidate) => candidate.key === source.key) === index),
-    [childConnectedItemAttrSources, connectedItemAttrSources, loadChildConnectedItemAttrSources],
+    [connectedItemAttrSources],
   );
   const itemAttrTarget = useMemo(
     () => (card.kind === "cinenerdle"
@@ -187,39 +171,6 @@ export function CinenerdleEntityCard({
     () => getCinenerdleItemAttrCounts(itemAttrs, inheritedItemAttrs),
     [inheritedItemAttrs, itemAttrs],
   );
-
-  useEffect(() => {
-    if (!loadChildConnectedItemAttrSources) {
-      return;
-    }
-
-    let didCancel = false;
-
-    void loadChildConnectedItemAttrSources()
-      .then((nextSources) => {
-        if (didCancel) {
-          return;
-        }
-
-        setChildConnectedItemAttrSources((currentSources) =>
-          currentSources.length === nextSources.length &&
-            currentSources.every((source, index) => source.key === nextSources[index]?.key)
-            ? currentSources
-            : nextSources,
-        );
-      })
-      .catch(() => {
-        if (didCancel) {
-          return;
-        }
-
-        setChildConnectedItemAttrSources([]);
-      });
-
-    return () => {
-      didCancel = true;
-    };
-  }, [card.key, loadChildConnectedItemAttrSources]);
 
   useEffect(() => {
     if (!isExtraInputVisible) {

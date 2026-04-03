@@ -39,7 +39,7 @@ import {
   getPersonRecordCountsByMovieKeys,
   getPersonPopularityByNames,
 } from "./indexed_db";
-import { getResolvedPersonMovieConnectionKeys, pickBestPersonRecord } from "./records";
+import { pickBestPersonRecord } from "./records";
 import { renderBreakCard, renderDbInfoCard, renderLoggedCinenerdleCard } from "./render_card";
 import { readCinenerdleDailyStarterTitles } from "./starter_storage";
 import {
@@ -87,6 +87,10 @@ const connectedItemAttrChildSourcesCache = new Map<
   string,
   Promise<ConnectedItemAttrSourceCard[]>
 >();
+const resolvedConnectedItemAttrChildSourcesCache = new Map<
+  string,
+  ConnectedItemAttrSourceCard[]
+>();
 
 function areCardsDirectlyConnected(
   card: ConnectedItemAttrSourceCard,
@@ -102,16 +106,34 @@ function areCardsDirectlyConnected(
     return false;
   }
 
-  const movieKey = getFilmKey(movieCard.name, movieCard.year);
-  const personKey = normalizeName(personCard.name);
-  const personMovieKeys = personCard.record
-    ? getResolvedPersonMovieConnectionKeys(personCard.record)
+  const movieTmdbId = getValidTmdbEntityId(
+    movieCard.record?.rawTmdbMovie?.id ??
+    movieCard.record?.tmdbId ??
+    movieCard.record?.id ??
+    movieCard.key.match(/^movie:(\d+)$/)?.[1],
+  );
+  const personTmdbId = getPersonTmdbIdFromCard(personCard);
+  if (movieTmdbId === null || personTmdbId === null) {
+    return false;
+  }
+
+  const personMovieTmdbIds = personCard.record
+    ? getAssociatedMovieCreditGroupsFromPersonCredits(personCard.record)
+      .flatMap((creditGroup) => creditGroup)
+      .map((credit) => getValidTmdbEntityId(credit.id))
+      .filter((tmdbId): tmdbId is number => tmdbId !== null)
     : [];
-  const moviePersonKeys = movieCard.record?.personConnectionKeys ?? [];
+  const movieCreditGroups = movieCard.record
+    ? getAssociatedPersonCreditGroupsFromMovieCredits(movieCard.record)
+    : [];
+  const moviePersonTmdbIds = movieCreditGroups
+    .flatMap((creditGroup) => creditGroup)
+    .map((credit) => getValidTmdbEntityId(credit.id))
+    .filter((tmdbId): tmdbId is number => tmdbId !== null);
 
   return (
-    personMovieKeys.includes(movieKey) ||
-    moviePersonKeys.map(normalizeName).includes(personKey)
+    personMovieTmdbIds.includes(movieTmdbId) ||
+    moviePersonTmdbIds.includes(personTmdbId)
   );
 }
 
@@ -120,6 +142,23 @@ function dedupeConnectedItemAttrSourceCards(
 ): ConnectedItemAttrSourceCard[] {
   return sources.filter((card, index) =>
     sources.findIndex((candidate) => candidate.key === card.key) === index,
+  );
+}
+
+async function preloadConnectedItemAttrChildSourcesForTree(
+  tree: GeneratorTree<CinenerdleCard>,
+): Promise<void> {
+  const entityCards = dedupeConnectedItemAttrSourceCards(
+    tree.flatMap((row) =>
+      row
+        .map((node) => node.data)
+        .filter((card): card is ConnectedItemAttrSourceCard =>
+          card.kind === "movie" || card.kind === "person"),
+    ),
+  );
+
+  await Promise.all(
+    entityCards.map((card) => getConnectedItemAttrChildSourceCards(card)),
   );
 }
 
@@ -1151,6 +1190,7 @@ export async function buildTreeFromHash(
         }
       }
 
+      await preloadConnectedItemAttrChildSourcesForTree(tree);
       return tree;
     },
     {
@@ -1213,10 +1253,10 @@ function renderCinenerdleCard(
         selectedParentCard,
       })
       : [];
-  const loadChildConnectedItemAttrSources =
-    !node.selected && (card.kind === "movie" || card.kind === "person")
-      ? () => getConnectedItemAttrChildSourceCards(card)
-      : null;
+  const childConnectedItemAttrSources =
+    card.kind === "movie" || card.kind === "person"
+      ? resolvedConnectedItemAttrChildSourcesCache.get(card.key) ?? []
+      : [];
 
   function handleCinenerdleCardClick(event: ReactMouseEvent<HTMLElement>) {
     if (!isCinenerdleLaunchCard) {
@@ -1252,8 +1292,10 @@ function renderCinenerdleCard(
   };
 
   return renderLoggedCinenerdleCard({
-    connectedItemAttrSources,
-    loadChildConnectedItemAttrSources,
+    connectedItemAttrSources: dedupeConnectedItemAttrSourceCards([
+      ...connectedItemAttrSources,
+      ...childConnectedItemAttrSources,
+    ]),
     onItemAttrCountsChange: reportRowOrderMetadata ?? null,
     onCardClick: handleCinenerdleCardClick,
     onTitleClick: (event) => {
@@ -1304,6 +1346,7 @@ export function getConnectedItemAttrSourceCards({
 
 export function resetConnectedItemAttrChildSourcesCache(): void {
   connectedItemAttrChildSourcesCache.clear();
+  resolvedConnectedItemAttrChildSourcesCache.clear();
 }
 
 export async function getConnectedItemAttrChildSourceCards(
@@ -1325,7 +1368,14 @@ export async function getConnectedItemAttrChildSourceCards(
           ),
       ),
     )
-    .catch(() => []);
+    .then((sources) => {
+      resolvedConnectedItemAttrChildSourcesCache.set(card.key, sources);
+      return sources;
+    })
+    .catch(() => {
+      resolvedConnectedItemAttrChildSourcesCache.set(card.key, []);
+      return [];
+    });
 
   connectedItemAttrChildSourcesCache.set(card.key, nextSourcesPromise);
   return nextSourcesPromise;
@@ -1387,6 +1437,7 @@ export function useCinenerdleController({
                 }
               } catch {
                 const fallbackTree = await createCinenerdleRootTree();
+                await preloadConnectedItemAttrChildSourcesForTree(fallbackTree);
                 applyUpdate({
                   tree: fallbackTree,
                 });
@@ -1466,6 +1517,7 @@ export function useCinenerdleController({
                 personRecord: initialPersonRecord,
               });
               const initialSelectedTree = appendChildRow(initialSelectedTreeBase, initialChildRow);
+              await preloadConnectedItemAttrChildSourcesForTree(initialSelectedTree);
               applyUpdate({
                 tree: initialSelectedTree,
               });
@@ -1500,6 +1552,7 @@ export function useCinenerdleController({
               );
               const refreshedChildRow = await buildChildRowForCard(refreshResult.refreshedCard);
               const refreshedTree = appendChildRow(refreshedSelectedTree, refreshedChildRow);
+              await preloadConnectedItemAttrChildSourcesForTree(refreshedTree);
               applyUpdate({
                 tree: refreshedTree,
               });

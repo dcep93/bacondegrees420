@@ -417,17 +417,46 @@ describe("getConnectedItemAttrSourceCards", () => {
         id: 17605,
         name: "Idris Elba",
         movieConnectionKeys: ["zootopia (2016)", "zootopia 2 (2025)"],
+        rawTmdbMovieCreditsResponse: {
+          cast: [
+            makeMovieCredit({ id: 269149, title: "Zootopia", release_date: "2016-03-04" }),
+            makeMovieCredit({ id: 1084242, title: "Zootopia 2", release_date: "2025-11-26" }),
+          ],
+          crew: [],
+        },
       }),
     });
     const previousMovie = makeMovieCard({
       key: "movie:zootopia:2016",
       name: "Zootopia",
       year: "2016",
+      record: makeFilmRecord({
+        id: 269149,
+        tmdbId: 269149,
+        title: "Zootopia",
+        year: "2016",
+        rawTmdbMovie: makeTmdbMovieSearchResult({
+          id: 269149,
+          title: "Zootopia",
+          release_date: "2016-03-04",
+        }),
+      }),
     });
     const nextMovie = makeMovieCard({
       key: "movie:zootopia-2:2025",
       name: "Zootopia 2",
       year: "2025",
+      record: makeFilmRecord({
+        id: 1084242,
+        tmdbId: 1084242,
+        title: "Zootopia 2",
+        year: "2025",
+        rawTmdbMovie: makeTmdbMovieSearchResult({
+          id: 1084242,
+          title: "Zootopia 2",
+          release_date: "2025-11-26",
+        }),
+      }),
     });
 
     expect(getConnectedItemAttrSourceCards({
@@ -448,17 +477,46 @@ describe("getConnectedItemAttrSourceCards", () => {
         id: 17605,
         name: "Idris Elba",
         movieConnectionKeys: ["zootopia (2016)", "zootopia 2 (2025)"],
+        rawTmdbMovieCreditsResponse: {
+          cast: [
+            makeMovieCredit({ id: 269149, title: "Zootopia", release_date: "2016-03-04" }),
+            makeMovieCredit({ id: 1084242, title: "Zootopia 2", release_date: "2025-11-26" }),
+          ],
+          crew: [],
+        },
       }),
     });
     const previousMovie = makeMovieCard({
       key: "movie:zootopia:2016",
       name: "Zootopia",
       year: "2016",
+      record: makeFilmRecord({
+        id: 269149,
+        tmdbId: 269149,
+        title: "Zootopia",
+        year: "2016",
+        rawTmdbMovie: makeTmdbMovieSearchResult({
+          id: 269149,
+          title: "Zootopia",
+          release_date: "2016-03-04",
+        }),
+      }),
     });
     const nextMovie = makeMovieCard({
       key: "movie:zootopia-2:2025",
       name: "Zootopia 2",
       year: "2025",
+      record: makeFilmRecord({
+        id: 1084242,
+        tmdbId: 1084242,
+        title: "Zootopia 2",
+        year: "2025",
+        rawTmdbMovie: makeTmdbMovieSearchResult({
+          id: 1084242,
+          title: "Zootopia 2",
+          release_date: "2025-11-26",
+        }),
+      }),
     });
 
     expect(getConnectedItemAttrSourceCards({
@@ -479,17 +537,46 @@ describe("getConnectedItemAttrSourceCards", () => {
         id: 17605,
         name: "Idris Elba",
         movieConnectionKeys: ["zootopia (2016)", "zootopia 2 (2025)"],
+        rawTmdbMovieCreditsResponse: {
+          cast: [
+            makeMovieCredit({ id: 269149, title: "Zootopia", release_date: "2016-03-04" }),
+            makeMovieCredit({ id: 1084242, title: "Zootopia 2", release_date: "2025-11-26" }),
+          ],
+          crew: [],
+        },
       }),
     });
     const previousMovie = makeMovieCard({
       key: "movie:zootopia:2016",
       name: "Zootopia",
       year: "2016",
+      record: makeFilmRecord({
+        id: 269149,
+        tmdbId: 269149,
+        title: "Zootopia",
+        year: "2016",
+        rawTmdbMovie: makeTmdbMovieSearchResult({
+          id: 269149,
+          title: "Zootopia",
+          release_date: "2016-03-04",
+        }),
+      }),
     });
     const descendantMovie = makeMovieCard({
       key: "movie:zootopia-2:2025",
       name: "Zootopia 2",
       year: "2025",
+      record: makeFilmRecord({
+        id: 1084242,
+        tmdbId: 1084242,
+        title: "Zootopia 2",
+        year: "2025",
+        rawTmdbMovie: makeTmdbMovieSearchResult({
+          id: 1084242,
+          title: "Zootopia 2",
+          release_date: "2025-11-26",
+        }),
+      }),
     });
 
     expect(getConnectedItemAttrSourceCards({
@@ -510,17 +597,46 @@ describe("getConnectedItemAttrSourceCards", () => {
         id: 17605,
         name: "Idris Elba",
         movieConnectionKeys: ["zootopia (2016)", "zootopia 2 (2025)"],
+        rawTmdbMovieCreditsResponse: {
+          cast: [
+            makeMovieCredit({ id: 269149, title: "Zootopia", release_date: "2016-03-04" }),
+            makeMovieCredit({ id: 1084242, title: "Zootopia 2", release_date: "2025-11-26" }),
+          ],
+          crew: [],
+        },
       }),
     });
     const olderMovie = makeMovieCard({
       key: "movie:zootopia:2016",
       name: "Zootopia",
       year: "2016",
+      record: makeFilmRecord({
+        id: 269149,
+        tmdbId: 269149,
+        title: "Zootopia",
+        year: "2016",
+        rawTmdbMovie: makeTmdbMovieSearchResult({
+          id: 269149,
+          title: "Zootopia",
+          release_date: "2016-03-04",
+        }),
+      }),
     });
     const nearestMovie = makeMovieCard({
       key: "movie:zootopia-2:2025",
       name: "Zootopia 2",
       year: "2025",
+      record: makeFilmRecord({
+        id: 1084242,
+        tmdbId: 1084242,
+        title: "Zootopia 2",
+        year: "2025",
+        rawTmdbMovie: makeTmdbMovieSearchResult({
+          id: 1084242,
+          title: "Zootopia 2",
+          release_date: "2025-11-26",
+        }),
+      }),
     });
 
     expect(getConnectedItemAttrSourceCards({
@@ -536,6 +652,42 @@ describe("getConnectedItemAttrSourceCards", () => {
       selectedDescendantCards: [],
       selectedParentCard: nearestMovie,
     })).toEqual([olderMovie, nearestMovie]);
+  });
+
+  it("matches movie connections by tmdb credit id when the person card name differs from the movie alias", () => {
+    const currentPerson = makePersonCard({
+      key: "person:1234",
+      name: "Ginnifer Goodwin",
+      record: null,
+    });
+    const previousMovie = makeMovieCard({
+      key: "movie:zootopia:2016",
+      name: "Zootopia",
+      year: "2016",
+      record: makeFilmRecord({
+        title: "Zootopia",
+        year: "2016",
+        personConnectionKeys: ["jennifer goodwin"],
+        rawTmdbMovieCreditsResponse: {
+          cast: [
+            makePersonCredit({
+              id: 1234,
+              name: "Jennifer Goodwin",
+            }),
+          ],
+          crew: [],
+        },
+      }),
+    });
+
+    expect(getConnectedItemAttrSourceCards({
+      card: currentPerson,
+      isSelected: false,
+      selectedAncestorCards: [makeCinenerdleRootCard(), previousMovie],
+      selectedChildCard: null,
+      selectedDescendantCards: [],
+      selectedParentCard: previousMovie,
+    })).toEqual([previousMovie]);
   });
 });
 
@@ -562,6 +714,13 @@ describe("getConnectedItemAttrChildSourceCards", () => {
       tmdbId: 17605,
       name: "Idris Elba",
       movieConnectionKeys: ["zootopia (2016)", "zootopia 2 (2025)"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({ id: 269149, title: "Zootopia", release_date: "2016-03-04" }),
+          makeMovieCredit({ id: 1084242, title: "Zootopia 2", release_date: "2025-11-26" }),
+        ],
+        crew: [],
+      },
     });
     const idrisCard = makePersonCard({
       key: "person:17605",
@@ -591,12 +750,12 @@ describe("getConnectedItemAttrChildSourceCards", () => {
     const childSources = await getConnectedItemAttrChildSourceCards(idrisCard);
 
     expect(childSources.map((card) => card.key)).toEqual([
-      "movie:1084242",
       "movie:269149",
+      "movie:1084242",
     ]);
     expect(childSources.map((card) => card.name)).toEqual([
-      "Zootopia 2",
       "Zootopia",
+      "Zootopia 2",
     ]);
   });
 });

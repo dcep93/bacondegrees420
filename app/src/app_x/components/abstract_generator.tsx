@@ -18,6 +18,10 @@ import {
   resolveGeneratorTree,
 } from "../generators/generator_runtime";
 import "../styles/abstract_generator.css";
+import {
+  getGeneratorRowScrollLeft,
+  getUnselectedRowScrollCardIndex,
+} from "./abstract_generator_row_scroll";
 import { getFullyVisibleViewportScrollTop } from "./abstract_generator_scroll";
 import {
   areGeneratorCardRowOrderMetadataEqual,
@@ -51,6 +55,7 @@ export type AbstractGeneratorHandle = {
 
 export type AbstractGeneratorProps<T, TMeta = undefined, TEffect = never> =
   GeneratorController<T, TMeta, TEffect> & {
+    debugLog?: ((event: string, details?: unknown) => void) | null;
     generatorHandleRef?: MutableRefObject<AbstractGeneratorHandle | null>;
     getRowPresentation?: (
       row: GeneratorNode<T>[],
@@ -92,6 +97,14 @@ type GeneratorRowViewProps<T> = {
   hideBubble: boolean;
   onRowRendered: (sample: GeneratorRowRenderSample) => void;
   renderCard: GeneratorController<T>["renderCard"];
+  reportRenderedRowOrder: (
+    generationIndex: number,
+    entries: Array<{
+      dataKey: string;
+      originalCol: number;
+      selected: boolean;
+    }>,
+  ) => void;
   row: GeneratorNode<T>[];
   rowClassName: string;
   selectedAncestorData: T[];
@@ -139,6 +152,7 @@ function GeneratorRowViewInner<T>({
   hideBubble,
   onRowRendered,
   renderCard,
+  reportRenderedRowOrder,
   row,
   rowClassName,
   selectedAncestorData,
@@ -252,6 +266,17 @@ function GeneratorRowViewInner<T>({
   const renderElapsedMs = roundGeneratorPerfElapsedMs(getGeneratorPerfNow() - renderStartedAt);
 
   useLayoutEffect(() => {
+    reportRenderedRowOrder(
+      generationIndex,
+      sortedRowEntries.map(({ dataKey, node, originalCol }) => ({
+        dataKey,
+        originalCol,
+        selected: node.selected,
+      })),
+    );
+  }, [generationIndex, reportRenderedRowOrder, sortedRowEntries]);
+
+  useLayoutEffect(() => {
     onRowRendered({
       cardCount: row.length,
       elapsedMs: renderElapsedMs,
@@ -296,6 +321,7 @@ const MemoizedGeneratorRowView = memo(
     prevProps.hideBubble === nextProps.hideBubble &&
     prevProps.onRowRendered === nextProps.onRowRendered &&
     prevProps.renderCard === nextProps.renderCard &&
+    prevProps.reportRenderedRowOrder === nextProps.reportRenderedRowOrder &&
     prevProps.row === nextProps.row &&
     prevProps.rowClassName === nextProps.rowClassName &&
     prevProps.setCardRef === nextProps.setCardRef &&
@@ -354,6 +380,26 @@ function scrollElementToLeft(
     behavior: "auto",
   });
   element.style.scrollBehavior = previousInlineScrollBehavior;
+}
+
+function getElementLeftWithinTrack(
+  track: HTMLDivElement,
+  element: HTMLDivElement,
+): number {
+  const trackRect = track.getBoundingClientRect();
+  const elementRect = element.getBoundingClientRect();
+
+  return elementRect.left - trackRect.left + track.scrollLeft;
+}
+
+function getElementVisibleCenterWithinTrack(
+  track: HTMLDivElement,
+  element: HTMLDivElement,
+): number {
+  const trackRect = track.getBoundingClientRect();
+  const elementRect = element.getBoundingClientRect();
+
+  return elementRect.left - trackRect.left + (elementRect.width / 2);
 }
 
 function scrollElementIntoVerticalView(
@@ -419,6 +465,7 @@ async function waitForGenerationToRender<T, TMeta>(
 
 export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
   createInitialState,
+  debugLog = null,
   generatorHandleRef,
   getRowPresentation,
   onTreeChange,
@@ -438,6 +485,11 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
   );
   const rowRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const renderedRowOrderRef = useRef<Record<number, Array<{
+    dataKey: string;
+    originalCol: number;
+    selected: boolean;
+  }>>>({});
   const mountedRef = useRef(true);
   const activeLifecycleRef = useRef(0);
   const activeSelectionRef = useRef(0);
@@ -634,19 +686,31 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     ];
 
     if (targetCard && rowTrack) {
-      const startAlignedScrollLeft = targetCard.offsetLeft - (targetCard.clientWidth / 2)
+      const rowTrackStyles = window.getComputedStyle(rowTrack);
+      const trackPaddingLeft = Number.parseFloat(rowTrackStyles.paddingLeft) || 0;
+      const maxScrollLeft = rowTrack.scrollWidth - rowTrack.clientWidth;
+      const targetLeft = getElementLeftWithinTrack(rowTrack, targetCard);
+      const targetWidth = targetCard.getBoundingClientRect().width;
       const referenceIndex = resolvedTree[0]?.findIndex((node) => node.selected) ?? -1;
+      const referenceTrack = rowRefs.current[0] ?? null;
       const referenceCard = referenceIndex >= 0
         ? cardRefs.current[
         `0:${getDataKey(resolvedTree[0][referenceIndex].data, referenceIndex)}`
         ]
         : null;
-      if (referenceCard) {
-        const centeredScrollLeft = startAlignedScrollLeft - referenceCard!.offsetLeft + referenceCard.clientWidth / 2
-        const targetScrollLeft = alignment === "start" ? startAlignedScrollLeft : centeredScrollLeft;
+      const visibleAnchorX = referenceTrack && referenceCard
+        ? getElementVisibleCenterWithinTrack(referenceTrack, referenceCard)
+        : rowTrack.clientWidth / 2;
+      const targetScrollLeft = getGeneratorRowScrollLeft({
+        alignment,
+        maxScrollLeft,
+        targetLeft,
+        targetWidth,
+        trackPaddingLeft,
+        visibleAnchorX,
+      });
 
-        scrollElementToLeft(rowTrack, targetScrollLeft, behavior);
-      }
+      scrollElementToLeft(rowTrack, targetScrollLeft, behavior);
       return;
     }
 
@@ -668,7 +732,27 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
         return;
       }
 
-      scrollToCardIndex(generationIndex, 0, {
+      const originalOrder = selectedRow.map((node, index) => ({
+        dataKey: getDataKey(node.data, index),
+        originalCol: index,
+        selected: node.selected,
+      }));
+      const renderedOrder = renderedRowOrderRef.current[generationIndex] ?? [];
+      const targetOriginalCol = getUnselectedRowScrollCardIndex(
+        renderedOrder.map((entry) => entry.originalCol),
+        0,
+      );
+      debugLog?.("generator:scroll-unselected-row", {
+        generationIndex,
+        requestedOriginalCol: targetOriginalCol,
+        requestedDataKey: originalOrder[targetOriginalCol]?.dataKey ?? null,
+        renderedFirstOriginalCol: renderedOrder[0]?.originalCol ?? null,
+        renderedFirstDataKey: renderedOrder[0]?.dataKey ?? null,
+        originalOrder,
+        renderedOrder,
+      });
+
+      scrollToCardIndex(generationIndex, targetOriginalCol, {
         alignment: "start",
         behavior: "smooth",
       });
@@ -678,7 +762,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     scrollToCardIndex(generationIndex, selectedIndex, {
       behavior: "smooth",
     });
-  }, [resolvedTree, scrollToCardIndex]);
+  }, [debugLog, resolvedTree, scrollToCardIndex]);
 
   const handleBubbleClick = useCallback((generationIndex: number) => {
     if (generationIndex === 0) {
@@ -801,6 +885,16 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
 
   const handleRowRendered = useCallback((sample: GeneratorRowRenderSample) => {
     rowRenderSamplesRef.current.push(sample);
+  }, []);
+  const reportRenderedRowOrder = useCallback((
+    generationIndex: number,
+    entries: Array<{
+      dataKey: string;
+      originalCol: number;
+      selected: boolean;
+    }>,
+  ) => {
+    renderedRowOrderRef.current[generationIndex] = entries;
   }, []);
   const setRowRef = useCallback((generationIndex: number, element: HTMLDivElement | null) => {
     rowRefs.current[generationIndex] = element;
@@ -990,6 +1084,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
             hideBubble={rowPresentation.hideBubble === true}
             onRowRendered={handleRowRendered}
             renderCard={renderCard}
+            reportRenderedRowOrder={reportRenderedRowOrder}
             row={row}
             rowClassName={rowClassName}
             selectedAncestorData={selectedAncestorData}
