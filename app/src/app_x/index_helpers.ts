@@ -14,40 +14,6 @@ export function didRequestNewTabNavigation(event: {
   return event.metaKey || event.ctrlKey;
 }
 
-export function getNextChromeStickyState({
-  currentScrollY,
-  previousScrollY,
-  wasSticky,
-}: {
-  currentScrollY: number;
-  previousScrollY: number;
-  wasSticky: boolean;
-}): boolean {
-  if (currentScrollY <= 0) {
-    return false;
-  }
-
-  if (currentScrollY > previousScrollY) {
-    return true;
-  }
-
-  if (currentScrollY < previousScrollY) {
-    return false;
-  }
-
-  return wasSticky;
-}
-
-export function didClickGeneratorCard(target: EventTarget | null): boolean {
-  const closestTarget = target as { closest?: (selector: string) => unknown } | null;
-
-  if (!closestTarget || typeof closestTarget.closest !== "function") {
-    return false;
-  }
-
-  return Boolean(closestTarget.closest(".generator-card-button"));
-}
-
 export function getBookmarkPreviewCardHash(bookmarkHash: string, previewCardIndex: number): string {
   const normalizedHash = normalizeHashValue(bookmarkHash);
   const pathNodes = buildPathNodesFromSegments(parseHashSegments(normalizedHash));

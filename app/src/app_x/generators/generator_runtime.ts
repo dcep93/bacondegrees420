@@ -87,17 +87,44 @@ export function reduceGeneratorLifecycleEvent<T, TMeta = undefined>(
   }
 
   const removedDescendantRows = tree.length > event.row + 1;
-  const normalizedTree = tree.map((generation, generationIndex) =>
-    generation.map((node, colIndex) => ({
-      ...node,
-      selected:
-        generationIndex < event.row
-          ? node.selected
-          : generationIndex === event.row
-            ? colIndex === event.col
-            : false,
-    })),
-  );
+  const normalizedTree = tree.map((generation, generationIndex) => {
+    if (generationIndex < event.row) {
+      return generation;
+    }
+
+    if (generationIndex === event.row) {
+      let didRowChange = false;
+      const nextGeneration = generation.map((node, colIndex) => {
+        const shouldBeSelected = colIndex === event.col;
+        if (node.selected === shouldBeSelected) {
+          return node;
+        }
+
+        didRowChange = true;
+        return {
+          ...node,
+          selected: shouldBeSelected,
+        };
+      });
+
+      return didRowChange ? nextGeneration : generation;
+    }
+
+    let didRowChange = false;
+    const nextGeneration = generation.map((node) => {
+      if (!node.selected) {
+        return node;
+      }
+
+      didRowChange = true;
+      return {
+        ...node,
+        selected: false,
+      };
+    });
+
+    return didRowChange ? nextGeneration : generation;
+  });
 
   return {
     state: {

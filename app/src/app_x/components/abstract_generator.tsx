@@ -10,7 +10,7 @@ import {
   type ReactElement,
   type MutableRefObject,
 } from "react";
-import { isPerfLoggingEnabled, logPerf } from "../perf";
+import { isPerfLoggingEnabled, logPerf, logPerfSinceMark, markPerf } from "../perf";
 import {
   applyGeneratorUpdate,
   getDataKey,
@@ -91,6 +91,7 @@ type GeneratorRowViewProps<T> = {
 };
 
 const SLOW_GENERATOR_COMMIT_THRESHOLD_MS = 24;
+const SLOW_GENERATOR_DERIVATION_THRESHOLD_MS = 8;
 const SLOW_GENERATOR_ROW_THRESHOLD_MS = 8;
 
 function getGeneratorPerfNow(): number {
@@ -358,6 +359,12 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
   const rowRenderSamplesRef = useRef<GeneratorRowRenderSample[]>([]);
   const stateRef = useRef(state);
   const handleBubbleClickRef = useRef<((generationIndex: number) => void) | null>(null);
+  const pendingSelectionPerfRef = useRef<null | {
+    col: number;
+    markName: string;
+    row: number;
+    selectionId: number;
+  }>(null);
   const runEffectsRef = useRef<null | ((
     effects: TEffect[],
     lifecycleId: number,
@@ -447,13 +454,20 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     [state],
   );
   const renderStartedAt = getGeneratorPerfNow();
-  const { renderedGenerations, totalCardCount } = useMemo(() => {
+  const {
+    derivationElapsedMs,
+    maxSelectedAncestorCount,
+    renderedGenerations,
+    totalCardCount,
+  } = useMemo(() => {
+    const derivationStartedAt = getGeneratorPerfNow();
     const nextRenderedGenerations: Array<{
       generationIndex: number;
       row: GeneratorNode<T>[];
       selectedAncestorData: T[];
     }> = [];
     const selectedAncestorData: T[] = [];
+    let nextMaxSelectedAncestorCount = 0;
     let nextTotalCardCount = 0;
 
     resolvedTree.forEach((row, generationIndex) => {
@@ -463,6 +477,10 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
         row,
         selectedAncestorData: [...selectedAncestorData],
       });
+      nextMaxSelectedAncestorCount = Math.max(
+        nextMaxSelectedAncestorCount,
+        selectedAncestorData.length,
+      );
 
       const selectedNode = row.find((node) => node.selected);
       if (selectedNode) {
@@ -471,6 +489,10 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     });
 
     return {
+      derivationElapsedMs: roundGeneratorPerfElapsedMs(
+        getGeneratorPerfNow() - derivationStartedAt,
+      ),
+      maxSelectedAncestorCount: nextMaxSelectedAncestorCount,
       renderedGenerations: [...nextRenderedGenerations].reverse(),
       totalCardCount: nextTotalCardCount,
     };
@@ -704,6 +726,18 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
         sample.elapsedMs >= SLOW_GENERATOR_ROW_THRESHOLD_MS);
 
       if (
+        derivationElapsedMs >= SLOW_GENERATOR_DERIVATION_THRESHOLD_MS ||
+        resolvedTree.length >= 20
+      ) {
+        logPerf("abstractGenerator.deriveRenderedGenerations", {
+          elapsedMs: derivationElapsedMs,
+          maxSelectedAncestorCount,
+          rowCount: resolvedTree.length,
+          totalCardCount,
+        });
+      }
+
+      if (
         appendedGenerationIndexes.length > 0 ||
         elapsedMs >= SLOW_GENERATOR_COMMIT_THRESHOLD_MS ||
         rerenderedUnchangedGenerationIndexes.length > 0
@@ -722,16 +756,35 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
         });
       }
 
+      if (pendingSelectionPerfRef.current && rowRenderSamples.length > 0) {
+        const selectionPerf = pendingSelectionPerfRef.current;
+        logPerfSinceMark(
+          "abstractGenerator.commitAfterSelection",
+          selectionPerf.markName,
+          {
+            changedGenerationCount: changedGenerationIndexes.length,
+            changedGenerationIndexes,
+            col: selectionPerf.col,
+            renderedGenerationCount: rowRenderSamples.length,
+            row: selectionPerf.row,
+            rowCount: resolvedTree.length,
+            selectionId: selectionPerf.selectionId,
+            totalCardCount,
+          },
+        );
+        pendingSelectionPerfRef.current = null;
+      }
+
       slowRowSamples.forEach((sample) => {
         logPerf("abstractGenerator.renderRow", sample);
       });
     }
 
     committedTreeRef.current = resolvedTree;
-  }, [renderStartedAt, resolvedTree, totalCardCount]);
+  }, [derivationElapsedMs, maxSelectedAncestorCount, renderStartedAt, resolvedTree, totalCardCount]);
 
   const handleCardSelect = useCallback((row: number, col: number) => {
-    const currentTree = stateRef.current.tree;
+    const currentTree = stateRef.current.tree ?? [];
     const selectedRow = currentTree?.[row];
     const selectedNode = selectedRow?.[col] ?? null;
 
@@ -741,6 +794,23 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
 
     const nextSelectionId = activeSelectionRef.current + 1;
     activeSelectionRef.current = nextSelectionId;
+    if (isPerfLoggingEnabled()) {
+      const markName = `abstractGenerator.selectCard.${nextSelectionId}`;
+      pendingSelectionPerfRef.current = {
+        col,
+        markName,
+        row,
+        selectionId: nextSelectionId,
+      };
+      markPerf(markName);
+      logPerf("abstractGenerator.selectCard", {
+        col,
+        row,
+        rowCount: currentTree.length,
+        selectionId: nextSelectionId,
+        totalCardCount: currentTree.reduce((count, generation) => count + generation.length, 0),
+      });
+    }
 
     const transition = reduce(stateRef.current, {
       type: "select",

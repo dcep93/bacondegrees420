@@ -36,10 +36,6 @@ import {
   shouldShowIndexedDbBootstrapLoadingShell,
 } from "../indexed_db_bootstrap_loading_shell";
 import { formatIndexedDbClearConfirmationMessage } from "../indexed_db_clear_confirmation";
-import {
-  didClickGeneratorCard,
-  getNextChromeStickyState,
-} from "../index_helpers";
 import { getWindowKeyDownAction } from "../window_keydown";
 
 function makeKeyboardTarget(tagName: string): EventTarget {
@@ -349,40 +345,6 @@ describe("Connection matchup loading state", () => {
       isConnectedToYoungestSelection: false,
     })).toBe(false);
     expect(shouldSelectConnectedDropdownSuggestionAsYoungest(null)).toBe(false);
-  });
-});
-
-describe("App chrome stickiness", () => {
-  it("becomes sticky while scrolling down and releases while scrolling up", () => {
-    expect(getNextChromeStickyState({
-      currentScrollY: 120,
-      previousScrollY: 48,
-      wasSticky: false,
-    })).toBe(true);
-
-    expect(getNextChromeStickyState({
-      currentScrollY: 48,
-      previousScrollY: 120,
-      wasSticky: true,
-    })).toBe(false);
-  });
-
-  it("stays unsticky at the top of the page", () => {
-    expect(getNextChromeStickyState({
-      currentScrollY: 0,
-      previousScrollY: 12,
-      wasSticky: true,
-    })).toBe(false);
-  });
-
-  it("only treats generator card clicks as card clicks", () => {
-    expect(didClickGeneratorCard({
-      closest: (selector: string) => (selector === ".generator-card-button" ? {} : null),
-    } as unknown as EventTarget)).toBe(true);
-
-    expect(didClickGeneratorCard({
-      closest: () => null,
-    } as unknown as EventTarget)).toBe(false);
   });
 });
 

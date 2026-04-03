@@ -202,14 +202,15 @@ beforeEach(() => {
 
 describe("reduceCinenerdleLifecycleEvent", () => {
   it("keeps previous descendants visible until the effect replaces them", () => {
-    const state = createGeneratorState<CinenerdleCard, undefined>(undefined, [
+    const tree = [
       [{ data: makeMovieCard(), selected: true }],
       [
         { data: makeMovieCard({ key: "movie:321" }), selected: true },
         { data: makeMovieCard({ key: "movie:322", name: "Scarface", year: "1983" }), selected: false },
       ],
       [{ data: makePersonCard(), selected: true }],
-    ]);
+    ];
+    const state = createGeneratorState<CinenerdleCard, undefined>(undefined, tree);
 
     const transition = reduceCinenerdleLifecycleEvent(state, {
       type: "select",
@@ -234,6 +235,9 @@ describe("reduceCinenerdleLifecycleEvent", () => {
         col: 1,
       }),
     ]);
+    expect(transition.state.tree?.[0]).toBe(tree[0]);
+    expect(transition.state.tree?.[1]).not.toBe(tree[1]);
+    expect(transition.state.tree?.[2]).not.toBe(tree[2]);
   });
 
   it("preserves the existing subtree when selecting an already selected card", () => {
@@ -603,6 +607,76 @@ describe("useCinenerdleController", () => {
         })],
       ],
     });
+  });
+
+  it("does not block selection updates on background prefetch work", async () => {
+    const heatRecord = makeFilmRecord({
+      id: 321,
+      tmdbId: 321,
+      title: "Heat",
+      year: "1995",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 321,
+        title: "Heat",
+        release_date: "1995-12-15",
+      }),
+      personConnectionKeys: ["al pacino"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({ id: 60, name: "Al Pacino", popularity: 88 }),
+        ],
+        crew: [],
+      },
+    });
+    const pacinoRecord = makePersonRecord({
+      id: 60,
+      tmdbId: 60,
+      name: "Al Pacino",
+      movieConnectionKeys: ["heat (1995)"],
+    });
+    const controller = renderController({ writeHash: vi.fn() });
+
+    indexedDbMock.getFilmRecordById.mockResolvedValue(heatRecord);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(heatRecord);
+    indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(
+      new Map([["Al Pacino", 8]]),
+    );
+    indexedDbMock.getPersonRecordById.mockResolvedValue(pacinoRecord);
+    indexedDbMock.getPersonRecordByName.mockImplementation(async (personName: string) =>
+      personName === "Al Pacino" ? pacinoRecord : null,
+    );
+    tmdbMock.prefetchTopPopularUnhydratedConnections.mockReturnValue(new Promise(() => { }));
+
+    const outcome = await Promise.race([
+      controller.runEffect(
+        {
+          type: "load-selected-card",
+          isReselection: false,
+          removedDescendantRows: false,
+          row: 1,
+          col: 0,
+          tree: [
+            [{ data: makeCinenerdleRootCard(), selected: true }],
+            [{ data: makeMovieCard({ key: "movie:321", record: heatRecord }), selected: true }],
+          ],
+        },
+        {
+          applyUpdate: vi.fn(),
+          getState: () => createGeneratorState<CinenerdleCard, undefined>(undefined),
+          lifecycleId: 1,
+          selectionId: 1,
+          scrollGenerationIntoVerticalView: vi.fn(),
+          scrollGenerationLikeBubble: vi.fn(),
+        },
+      ).then(() => "resolved"),
+      new Promise<string>((resolve) => {
+        setTimeout(() => resolve("timeout"), 25);
+      }),
+    ]);
+
+    expect(outcome).toBe("resolved");
+    await flushAsyncWork();
+    expect(tmdbMock.prefetchTopPopularUnhydratedConnections).toHaveBeenCalledTimes(1);
   });
 
   it("builds the next row and still prefetches for directly hydrated person cards", async () => {

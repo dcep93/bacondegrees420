@@ -418,6 +418,12 @@ function appendChildRow(
   return childRow && childRow.length > 0 ? [...tree, childRow] : tree;
 }
 
+function scheduleConnectionPrefetch(
+  card: Extract<CinenerdleCard, { kind: "movie" | "person" }>,
+): void {
+  void prefetchTopPopularUnhydratedConnections(card).catch(() => { });
+}
+
 async function refreshCardFromTmdb(
   card: Extract<CinenerdleCard, { kind: "movie" | "person" }>,
   options: {
@@ -430,7 +436,7 @@ async function refreshCardFromTmdb(
   if (card.kind === "movie") {
     const alreadyHydrated = hasDirectTmdbMovieSource(card.record);
     if (options.skipIfAlreadyHydrated && alreadyHydrated) {
-      await prefetchTopPopularUnhydratedConnections(card);
+      scheduleConnectionPrefetch(card);
       return {
         didRefresh: false,
         refreshedCard: card,
@@ -449,7 +455,7 @@ async function refreshCardFromTmdb(
       ? refreshSelectedMovieCard(card, refreshedMovieRecord)
       : card;
 
-    await prefetchTopPopularUnhydratedConnections(refreshedMovieCard);
+    scheduleConnectionPrefetch(refreshedMovieCard);
     return {
       didRefresh: true,
       refreshedCard: refreshedMovieCard,
@@ -458,7 +464,7 @@ async function refreshCardFromTmdb(
 
   const alreadyHydrated = hasDirectTmdbPersonSource(card.record);
   if (options.skipIfAlreadyHydrated && alreadyHydrated) {
-    await prefetchTopPopularUnhydratedConnections(card);
+    scheduleConnectionPrefetch(card);
     return {
       didRefresh: false,
       refreshedCard: card,
@@ -476,7 +482,7 @@ async function refreshCardFromTmdb(
     ? refreshSelectedPersonCard(card, refreshedPersonRecord)
     : card;
 
-  await prefetchTopPopularUnhydratedConnections(refreshedPersonCard);
+  scheduleConnectionPrefetch(refreshedPersonCard);
   return {
     didRefresh: true,
     refreshedCard: refreshedPersonCard,
