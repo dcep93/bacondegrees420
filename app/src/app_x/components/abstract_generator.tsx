@@ -257,6 +257,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     row,
     generationIndex,
   }));
+  const renderedGenerations = [...generations].reverse();
 
   const scrollToCardIndex = useCallback((
     generationIndex: number,
@@ -476,7 +477,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       aria-label="Generator"
       className="abstract-generator"
     >
-      {generations.map(({ row, generationIndex }) => {
+      {renderedGenerations.map(({ row, generationIndex }) => {
         const rowPresentation = getRowPresentation?.(row, generationIndex) ?? {};
 
         return (
