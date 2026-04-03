@@ -101,6 +101,7 @@ type GeneratorRowRenderSample = {
 
 type GeneratorRowOrderState = {
   metadataByDataKey: Map<string, GeneratorCardRowOrderMetadata>;
+  seededMetadataByDataKey: Map<string, GeneratorCardRowOrderMetadata>;
   rowDataKeysSignature: string;
 };
 
@@ -147,6 +148,27 @@ function getSeededRowOrderMetadataByDataKey<T>(
     metadataByDataKey.set(getDataKey(node.data, index), node.rowOrderMetadata);
     return metadataByDataKey;
   }, new Map<string, GeneratorCardRowOrderMetadata>());
+}
+
+function areGeneratorRowOrderMetadataMapsEqual(
+  left: Map<string, GeneratorCardRowOrderMetadata>,
+  right: Map<string, GeneratorCardRowOrderMetadata>,
+): boolean {
+  if (left === right) {
+    return true;
+  }
+
+  if (left.size !== right.size) {
+    return false;
+  }
+
+  for (const [dataKey, leftMetadata] of left.entries()) {
+    if (!areGeneratorCardRowOrderMetadataEqual(leftMetadata, right.get(dataKey))) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function getGeneratorDebugItemLabel(data: unknown): string | null {
@@ -228,6 +250,7 @@ type GeneratorRowViewProps<T> = {
   handleBubbleClickRef: MutableRefObject<((generationIndex: number) => void) | null>;
   handleCardSelect: (row: number, col: number) => void;
   hideBubble: boolean;
+  immediateSelectedOriginalCol: number | null;
   onRowRendered: (sample: GeneratorRowRenderSample) => void;
   renderCard: GeneratorController<T>["renderCard"];
   reportRenderedRowOrder: (
@@ -288,6 +311,7 @@ function GeneratorRowViewInner<T>({
   handleBubbleClickRef,
   handleCardSelect,
   hideBubble,
+  immediateSelectedOriginalCol,
   onRowRendered,
   renderCard,
   reportRenderedRowOrder,
@@ -317,27 +341,47 @@ function GeneratorRowViewInner<T>({
   );
   const [rowOrderState, setRowOrderState] = useState<GeneratorRowOrderState>(() => ({
     metadataByDataKey: seededRowOrderMetadataByDataKey,
+    seededMetadataByDataKey: seededRowOrderMetadataByDataKey,
     rowDataKeysSignature,
   }));
+  const hasSyncedSeededRowOrderState = useMemo(
+    () => (
+      rowOrderState.rowDataKeysSignature === rowDataKeysSignature &&
+      areGeneratorRowOrderMetadataMapsEqual(
+        rowOrderState.seededMetadataByDataKey,
+        seededRowOrderMetadataByDataKey,
+      )
+    ),
+    [rowDataKeysSignature, rowOrderState, seededRowOrderMetadataByDataKey],
+  );
 
   const handleRowOrderMetadataChange = useCallback(
     (dataKey: string, metadata: GeneratorCardRowOrderMetadata | null) => {
       const rowOrderTelemetry = getGeneratorRowOrderTelemetry(rowOrderTelemetryId);
       rowOrderTelemetry.callbackCount += 1;
       setRowOrderState((currentState) => {
-        const currentMetadataByDataKey =
-          currentState.rowDataKeysSignature === rowDataKeysSignature
-            ? currentState.metadataByDataKey
-            : seededRowOrderMetadataByDataKey;
+        const shouldUseCurrentState =
+          currentState.rowDataKeysSignature === rowDataKeysSignature &&
+          areGeneratorRowOrderMetadataMapsEqual(
+            currentState.seededMetadataByDataKey,
+            seededRowOrderMetadataByDataKey,
+          );
+        const currentMetadataByDataKey = shouldUseCurrentState
+          ? currentState.metadataByDataKey
+          : seededRowOrderMetadataByDataKey;
+        const currentSeededMetadataByDataKey = shouldUseCurrentState
+          ? currentState.seededMetadataByDataKey
+          : seededRowOrderMetadataByDataKey;
         const currentMetadata = currentMetadataByDataKey.get(dataKey);
 
         if (metadata === null) {
           if (!currentMetadata) {
             rowOrderTelemetry.noopCount += 1;
-            return currentState.rowDataKeysSignature === rowDataKeysSignature
+            return shouldUseCurrentState
               ? currentState
               : {
                 metadataByDataKey: currentMetadataByDataKey,
+                seededMetadataByDataKey: currentSeededMetadataByDataKey,
                 rowDataKeysSignature,
               };
           }
@@ -348,16 +392,18 @@ function GeneratorRowViewInner<T>({
           rowOrderTelemetry.deletedCount += 1;
           return {
             metadataByDataKey: nextMetadataByDataKey,
+            seededMetadataByDataKey: currentSeededMetadataByDataKey,
             rowDataKeysSignature,
           };
         }
 
         if (areGeneratorCardRowOrderMetadataEqual(currentMetadata, metadata)) {
           rowOrderTelemetry.noopCount += 1;
-          return currentState.rowDataKeysSignature === rowDataKeysSignature
+          return shouldUseCurrentState
             ? currentState
             : {
               metadataByDataKey: currentMetadataByDataKey,
+              seededMetadataByDataKey: currentSeededMetadataByDataKey,
               rowDataKeysSignature,
             };
         }
@@ -367,20 +413,41 @@ function GeneratorRowViewInner<T>({
         rowOrderTelemetry.changedCount += 1;
         return {
           metadataByDataKey: nextMetadataByDataKey,
+          seededMetadataByDataKey: currentSeededMetadataByDataKey,
           rowDataKeysSignature,
         };
       });
     },
     [rowDataKeysSignature, rowOrderTelemetryId, seededRowOrderMetadataByDataKey],
   );
+  useLayoutEffect(() => {
+    if (hasSyncedSeededRowOrderState) {
+      return;
+    }
+
+    setRowOrderState({
+      metadataByDataKey: seededRowOrderMetadataByDataKey,
+      seededMetadataByDataKey: seededRowOrderMetadataByDataKey,
+      rowDataKeysSignature,
+    });
+  }, [
+    hasSyncedSeededRowOrderState,
+    rowDataKeysSignature,
+    seededRowOrderMetadataByDataKey,
+  ]);
   const sortedRowEntries = useMemo(
     () => getSortedGeneratorRowEntries(
       row,
-      rowOrderState.rowDataKeysSignature === rowDataKeysSignature
+      hasSyncedSeededRowOrderState
         ? rowOrderState.metadataByDataKey
         : seededRowOrderMetadataByDataKey,
       ),
-    [row, rowDataKeysSignature, rowOrderState, seededRowOrderMetadataByDataKey],
+    [
+      hasSyncedSeededRowOrderState,
+      row,
+      rowOrderState.metadataByDataKey,
+      seededRowOrderMetadataByDataKey,
+    ],
   );
   const sortedOrderSignature = useMemo(
     () => sortedRowEntries.map(({ dataKey }) => dataKey).join("|"),
@@ -409,6 +476,17 @@ function GeneratorRowViewInner<T>({
 
   const renderedCards = sortedRowEntries.map(({ dataKey, node, originalCol }) => {
     const refKey = `${generationIndex}:${dataKey}`;
+    const isVisuallySelected =
+      immediateSelectedOriginalCol === null
+        ? node.selected
+        : originalCol === immediateSelectedOriginalCol;
+    const renderNode =
+      isVisuallySelected === node.selected
+        ? node
+        : {
+          ...node,
+          selected: isVisuallySelected,
+        };
 
     return (
       <div
@@ -428,7 +506,7 @@ function GeneratorRowViewInner<T>({
           row: generationIndex,
           col: originalCol,
           rowCount,
-          node,
+          node: renderNode,
           selectedAncestorData,
           selectedChildData,
           selectedDescendantData,
@@ -535,6 +613,7 @@ const MemoizedGeneratorRowView = memo(
     prevProps.handleBubbleClickRef === nextProps.handleBubbleClickRef &&
     prevProps.handleCardSelect === nextProps.handleCardSelect &&
     prevProps.hideBubble === nextProps.hideBubble &&
+    prevProps.immediateSelectedOriginalCol === nextProps.immediateSelectedOriginalCol &&
     prevProps.onRowRendered === nextProps.onRowRendered &&
     prevProps.renderCard === nextProps.renderCard &&
     prevProps.reportRenderedRowOrder === nextProps.reportRenderedRowOrder &&
@@ -765,6 +844,11 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
   shouldAutoScrollMountedGeneration,
   treeRefreshRequest = null,
 }: AbstractGeneratorProps<T, TMeta, TEffect>) {
+  const [immediateSelection, setImmediateSelection] = useState<null | {
+    col: number;
+    row: number;
+    selectionId: number;
+  }>(null);
   const [initialTransition] = useState<{
     effects: TEffect[];
     state: GeneratorState<T, TMeta>;
@@ -1093,6 +1177,59 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
         inline: alignment,
       });
     }
+  }, []);
+
+  const scrollCardElementIntoViewInTree = useCallback((
+    tree: GeneratorTree<T>,
+    generationIndex: number,
+    targetCard: HTMLDivElement,
+    options?: {
+      alignment?: "center" | "start";
+      behavior?: ScrollBehavior;
+      includeVerticalScroll?: boolean;
+    },
+  ) => {
+    const alignment = options?.alignment ?? "center";
+    const behavior = options?.behavior ?? "smooth";
+    const rowTrack = rowRefs.current[generationIndex];
+
+    if (targetCard && rowTrack) {
+      const rowTrackStyles = window.getComputedStyle(rowTrack);
+      const trackPaddingLeft = Number.parseFloat(rowTrackStyles.paddingLeft) || 0;
+      const maxScrollLeft = rowTrack.scrollWidth - rowTrack.clientWidth;
+      const targetLeft = getElementLeftWithinTrack(rowTrack, targetCard);
+      const targetWidth = targetCard.getBoundingClientRect().width;
+      const referenceIndex = tree[0]?.findIndex((node) => node.selected) ?? -1;
+      const referenceTrack = rowRefs.current[0] ?? null;
+      const referenceCard = referenceIndex >= 0
+        ? cardRefs.current[
+          `0:${getDataKey(tree[0][referenceIndex].data, referenceIndex)}`
+        ]
+        : null;
+      const visibleAnchorX = referenceTrack && referenceCard
+        ? getElementVisibleCenterWithinTrack(referenceTrack, referenceCard)
+        : rowTrack.clientWidth / 2;
+      const targetScrollLeft = getGeneratorRowScrollLeft({
+        alignment,
+        maxScrollLeft,
+        targetLeft,
+        targetWidth,
+        trackPaddingLeft,
+        visibleAnchorX,
+      });
+
+      scrollElementToLeft(rowTrack, targetScrollLeft, behavior);
+      if (options?.includeVerticalScroll) {
+        scrollElementIntoVerticalView(rowTrack, behavior);
+      }
+      return;
+    }
+
+    targetCard.scrollIntoView({
+      behavior,
+      block: "nearest",
+      inline: alignment,
+    });
   }, []);
 
   const scrollToCardIndex = useCallback((
@@ -1449,7 +1586,11 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
         });
       }
 
-      if (pendingSelectionPerfRef.current && rowRenderSamples.length > 0) {
+      if (
+        pendingSelectionPerfRef.current &&
+        rowRenderSamples.length > 0 &&
+        changedGenerationIndexes.length > 0
+      ) {
         const selectionPerf = pendingSelectionPerfRef.current;
         logPerfSinceMark(
           "abstractGenerator.commitAfterSelection",
@@ -1589,20 +1730,51 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       });
     }
 
-    const transition = reduce(stateRef.current, {
-      type: "select",
-      row,
-      col,
+    flushSync(() => {
+      setImmediateSelection({
+        col,
+        row,
+        selectionId: nextSelectionId,
+      });
     });
-
-    stateRef.current = transition.state;
-    setState(transition.state);
     if (isPerfLoggingEnabled()) {
       logPerfSinceMark("abstractGenerator.selectCard.localStateApplied", selectionMarkName, {
         col,
-        effectCount: transition.effects.length,
+        effectCount: 0,
         row,
-        rowCount: resolveGeneratorTree(transition.state).length,
+        rowCount: currentTree.length,
+        selectionId: nextSelectionId,
+      });
+    }
+
+    if (isPerfLoggingEnabled()) {
+      logPerfSinceMark("abstractGenerator.selectCard.scrollRequested", selectionMarkName, {
+        col,
+        row,
+        selectionId: nextSelectionId,
+      });
+    }
+    const currentCardElement = cardRefs.current[
+      `${row}:${getDataKey(selectedNode.data, col)}`
+    ];
+    if (currentCardElement) {
+      scrollCardElementIntoViewInTree(currentTree, row, currentCardElement, {
+        behavior: "smooth",
+        includeVerticalScroll: true,
+      });
+    } else {
+      scrollToCardIndexInTree(currentTree, row, col, {
+        behavior: "smooth",
+      });
+      const rowTrack = rowRefs.current[row];
+      if (rowTrack) {
+        scrollElementIntoVerticalView(rowTrack, "smooth");
+      }
+    }
+    if (isPerfLoggingEnabled()) {
+      logPerfSinceMark("abstractGenerator.selectCard.scrollIssued", selectionMarkName, {
+        col,
+        row,
         selectionId: nextSelectionId,
       });
     }
@@ -1612,83 +1784,54 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
         !mountedRef.current ||
         activeSelectionRef.current !== nextSelectionId
       ) {
-        if (isPerfLoggingEnabled()) {
-          logPerfSinceMark("abstractGenerator.selectCard.scrollAborted", selectionMarkName, {
-            col,
-            reason: !mountedRef.current ? "unmounted" : "superseded",
-            row,
-            selectionId: nextSelectionId,
-          });
-        }
         return;
       }
 
-      const nextResolvedTree = resolveGeneratorTree(stateRef.current);
-      const nextSelectedNode = nextResolvedTree[row]?.[col] ?? null;
-      if (!nextSelectedNode?.selected) {
-        if (isPerfLoggingEnabled()) {
-          logPerfSinceMark("abstractGenerator.selectCard.scrollAborted", selectionMarkName, {
-            col,
-            reason: "not-selected-in-state",
-            row,
-            selectionId: nextSelectionId,
-          });
-        }
-        return;
-      }
-
-      if (isPerfLoggingEnabled()) {
-        logPerfSinceMark("abstractGenerator.selectCard.scrollRequested", selectionMarkName, {
-          col,
-          row,
-          selectionId: nextSelectionId,
-        });
-      }
-      scrollToCardIndexInTree(nextResolvedTree, row, col, {
-        behavior: "smooth",
+      const transition = reduce(stateRef.current, {
+        type: "select",
+        row,
+        col,
       });
-      if (isPerfLoggingEnabled()) {
-        logPerfSinceMark("abstractGenerator.selectCard.scrollIssued", selectionMarkName, {
-          col,
-          row,
-          selectionId: nextSelectionId,
-        });
-      }
-    });
 
-    void (async () => {
-      await waitForBrowserPaint();
+      stateRef.current = transition.state;
+      startTransition(() => {
+        setState(transition.state);
+      });
 
-      if (
-        !mountedRef.current ||
-        activeSelectionRef.current !== nextSelectionId
-      ) {
+      void (async () => {
+        await waitForBrowserPaint();
+
+        if (
+          !mountedRef.current ||
+          activeSelectionRef.current !== nextSelectionId
+        ) {
+          if (isPerfLoggingEnabled()) {
+            logPerfSinceMark("abstractGenerator.selectCard.effectsAborted", selectionMarkName, {
+              col,
+              reason: !mountedRef.current ? "unmounted" : "superseded",
+              row,
+              selectionId: nextSelectionId,
+            });
+          }
+          return;
+        }
+
         if (isPerfLoggingEnabled()) {
-          logPerfSinceMark("abstractGenerator.selectCard.effectsAborted", selectionMarkName, {
+          logPerfSinceMark("abstractGenerator.selectCard.effectsStarted", selectionMarkName, {
             col,
-            reason: !mountedRef.current ? "unmounted" : "superseded",
+            effectCount: transition.effects.length,
             row,
             selectionId: nextSelectionId,
           });
         }
-        return;
-      }
-
-      if (isPerfLoggingEnabled()) {
-        logPerfSinceMark("abstractGenerator.selectCard.effectsStarted", selectionMarkName, {
-          col,
-          effectCount: transition.effects.length,
-          row,
-          selectionId: nextSelectionId,
-        });
-      }
-      await runEffects(
-        transition.effects,
-        activeLifecycleRef.current,
-        nextSelectionId,
-      );
-    })();
-  }, [reduce, runEffects, scrollToCardIndexInTree]);
+        await runEffects(
+          transition.effects,
+          activeLifecycleRef.current,
+          nextSelectionId,
+        );
+      })();
+    });
+  }, [reduce, runEffects, scrollCardElementIntoViewInTree, scrollToCardIndexInTree]);
 
   useLayoutEffect(() => {
     if (!generatorHandleRef) {
@@ -1738,6 +1881,12 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
             handleBubbleClickRef={handleBubbleClickRef}
             handleCardSelect={handleCardSelect}
             hideBubble={rowPresentation.hideBubble === true}
+            immediateSelectedOriginalCol={
+              immediateSelection?.row === generationIndex &&
+              !resolvedTree[immediateSelection.row]?.[immediateSelection.col]?.selected
+                ? immediateSelection.col
+                : null
+            }
             onRowRendered={handleRowRendered}
             renderCard={renderCard}
             reportRenderedRowOrder={reportRenderedRowOrder}
