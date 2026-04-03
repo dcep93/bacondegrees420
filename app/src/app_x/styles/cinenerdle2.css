@@ -74,8 +74,7 @@
   flex: 1;
   min-height: 0;
   flex-direction: column;
-  gap: 4px;
-  padding: 10px;
+  padding: 4px 10px;
 }
 
 .cinenerdle-card-title,
@@ -139,7 +138,7 @@
 }
 
 .cinenerdle-card-secondary {
-  min-height: 2.7em;
+  padding: 4px 0;
   display: flex;
   flex-direction: row;
   align-items: flex-start;
@@ -173,7 +172,6 @@
 .cinenerdle-card-footer {
   display: flex;
   flex-direction: column;
-  gap: 1px;
   margin-top: auto;
 }
 
@@ -204,7 +202,6 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  min-height: 24px;
 }
 
 .cinenerdle-card-footer-top-refreshable {

@@ -53,6 +53,12 @@
   width: 100%;
 }
 
+.bacon-app-chrome-sticky {
+  position: sticky;
+  bottom: 0;
+  z-index: 40;
+}
+
 .bacon-title-bar {
   position: relative;
   z-index: 30;

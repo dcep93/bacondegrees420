@@ -55,7 +55,11 @@ import {
 } from "./generators/cinenerdle2/indexed_db";
 import type { ConnectionEntity } from "./generators/cinenerdle2/connection_graph";
 import Cinenerdle2 from "./generators/cinenerdle2";
-import { getSelectedPathTooltipEntries } from "./index_helpers";
+import {
+  didClickGeneratorCard,
+  getNextChromeStickyState,
+  getSelectedPathTooltipEntries,
+} from "./index_helpers";
 import {
   createIndexedDbBootstrapLoadingShellDelayManager,
   shouldShowIndexedDbBootstrapLoadingShell,
@@ -131,12 +135,14 @@ export default function AppX() {
   const [clearDbTotalFetchCount, setClearDbTotalFetchCount] =
     useState(() => getCinenerdleFetchDebugEntryCount());
   const [highlightedConnectedSuggestionKey, setHighlightedConnectedSuggestionKey] = useState<string | null>(null);
+  const [isAppChromeSticky, setIsAppChromeSticky] = useState(false);
   const titleRef = useRef<HTMLHeadingElement | null>(null);
   const clearDbButtonRef = useRef<HTMLButtonElement | null>(null);
   const toastStatusRef = useRef<HTMLSpanElement | null>(null);
   const connectedSuggestionSelectionRequestIdRef = useRef(0);
   const indexedDbBootstrapLoadingShellDelayManagerRef =
     useRef<IndexedDbBootstrapLoadingShellDelayManager | null>(null);
+  const lastScrollYRef = useRef(0);
   const isCinenerdleIndexedDbBootstrapLoading = !cinenerdleIndexedDbBootstrapStatus.isCoreReady;
   const isSearchablePersistencePending =
     cinenerdleIndexedDbBootstrapStatus.isSearchablePersistencePending;
@@ -500,6 +506,36 @@ export default function AppX() {
       });
   }
 
+  useEffect(() => {
+    function getScrollY(): number {
+      return (
+        window.scrollY ??
+        window.pageYOffset ??
+        document.documentElement?.scrollTop ??
+        document.body?.scrollTop ??
+        0
+      );
+    }
+
+    function handleScroll() {
+      const currentScrollY = getScrollY();
+
+      setIsAppChromeSticky((wasSticky) => getNextChromeStickyState({
+        currentScrollY,
+        previousScrollY: lastScrollYRef.current,
+        wasSticky,
+      }));
+      lastScrollYRef.current = currentScrollY;
+    }
+
+    lastScrollYRef.current = getScrollY();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+    };
+  }, []);
+
   return (
     <div className="bacon-app-shell">
       {isBookmarksJsonlEditorOpen ? (
@@ -520,7 +556,12 @@ export default function AppX() {
         </div>
       ) : null}
 
-      <div className="bacon-app-chrome">
+      <div
+        className={[
+          "bacon-app-chrome",
+          isAppChromeSticky ? "bacon-app-chrome-sticky" : "",
+        ].filter(Boolean).join(" ")}
+      >
         <BaconTitleBar
           boostPreview={<ConnectionBoostPreview preview={connectionBoostPreview} />}
           clearDbBadgeText={clearDbBadgeText}
@@ -577,7 +618,16 @@ export default function AppX() {
       </div>
 
       {!isCinenerdleIndexedDbBootstrapLoading ? (
-        <main className="bacon-app-content">
+        <main
+          className="bacon-app-content"
+          onClickCapture={(event) => {
+            if (!didClickGeneratorCard(event.target)) {
+              return;
+            }
+
+            setIsAppChromeSticky(false);
+          }}
+        >
           {isBookmarksView ? (
             <BookmarksPage
               bookmarkRows={displayedBookmarkRows}
