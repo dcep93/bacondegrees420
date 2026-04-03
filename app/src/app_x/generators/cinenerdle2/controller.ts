@@ -1,4 +1,4 @@
-import { useMemo, useRef, type MouseEvent as ReactMouseEvent } from "react";
+import { useLayoutEffect, useMemo, useRef, type MouseEvent as ReactMouseEvent } from "react";
 import { didRequestNewTabNavigation } from "../../index_helpers";
 import { measureAsync } from "../../perf";
 import { createGeneratorState, reduceGeneratorLifecycleEvent } from "../generator_runtime";
@@ -73,7 +73,6 @@ import {
   getParentPersonRankForMovie,
   getResolvedMovieConnectionCount,
   getResolvedPersonConnectionCount,
-  getSelectedAncestorCards,
   refreshSelectedMovieCard,
   refreshSelectedPersonCard,
 } from "./view_model";
@@ -1126,18 +1125,16 @@ export async function buildTreeFromHash(
 }
 
 function renderCinenerdleCard(
-  row: number,
-  col: number,
-  tree: GeneratorTree<CinenerdleCard>,
+  node: GeneratorNode<CinenerdleCard>,
+  selectedAncestorCards: CinenerdleCard[],
   writeHash: (nextHash: string, mode?: "selection" | "navigation") => void,
   onExplicitTmdbRowClick?: () => void,
 ) {
-  const card = tree[row][col].data;
-  const ancestorCards = getSelectedAncestorCards(tree, row);
+  const card = node.data;
   const viewModel = createCardViewModel(card, {
-    isSelected: tree[row][col].selected,
+    isSelected: node.selected,
     isLocked: false,
-    isAncestorSelected: ancestorCards.some((ancestorCard) =>
+    isAncestorSelected: selectedAncestorCards.some((ancestorCard) =>
       cardsMatch(card, ancestorCard),
     ),
   });
@@ -1183,7 +1180,7 @@ function renderCinenerdleCard(
     onTmdbRowClick: tmdbRowClickHandler,
     tmdbTooltipText:
       card.kind === "movie" || card.kind === "person"
-        ? getCardTmdbRowTooltipText(card, ancestorCards)
+        ? getCardTmdbRowTooltipText(card, selectedAncestorCards)
         : null,
   };
 
@@ -1216,7 +1213,12 @@ export function useCinenerdleController({
   undefined,
   GeneratorLifecycleEffect<CinenerdleCard>
 > {
+  const latestRecordsRefreshVersionRef = useRef(recordsRefreshVersion);
   const lastHandledRecordsRefreshVersionRef = useRef(recordsRefreshVersion);
+
+  useLayoutEffect(() => {
+    latestRecordsRefreshVersionRef.current = recordsRefreshVersion;
+  }, [recordsRefreshVersion]);
 
   return useMemo(
     () => ({
@@ -1231,8 +1233,8 @@ export function useCinenerdleController({
         if (effect.type === "load-initial-tree") {
           const initialHash = readHash();
           const shouldBypassInFlightCache =
-            recordsRefreshVersion !== lastHandledRecordsRefreshVersionRef.current;
-          lastHandledRecordsRefreshVersionRef.current = recordsRefreshVersion;
+            latestRecordsRefreshVersionRef.current !== lastHandledRecordsRefreshVersionRef.current;
+          lastHandledRecordsRefreshVersionRef.current = latestRecordsRefreshVersionRef.current;
 
           await measureAsync(
             "controller.initTree",
@@ -1404,16 +1406,15 @@ export function useCinenerdleController({
 
         writeHash(nextHash, "selection");
       },
-      renderCard({ row, col, tree }) {
+      renderCard({ node, selectedAncestorData }) {
         return renderCinenerdleCard(
-          row,
-          col,
-          tree,
+          node,
+          selectedAncestorData,
           writeHash,
           onExplicitTmdbRowClick,
         );
       },
     }),
-    [onExplicitTmdbRowClick, readHash, recordsRefreshVersion, writeHash],
+    [onExplicitTmdbRowClick, readHash, writeHash],
   );
 }

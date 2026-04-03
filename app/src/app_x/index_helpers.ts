@@ -39,13 +39,13 @@ export function getNextChromeStickyState({
 }
 
 export function didClickGeneratorCard(target: EventTarget | null): boolean {
-  if (!target || typeof (target as { closest?: unknown }).closest !== "function") {
+  const closestTarget = target as { closest?: (selector: string) => unknown } | null;
+
+  if (!closestTarget || typeof closestTarget.closest !== "function") {
     return false;
   }
 
-  return Boolean(
-    (target as { closest: (selector: string) => unknown }).closest(".generator-card-button"),
-  );
+  return Boolean(closestTarget.closest(".generator-card-button"));
 }
 
 export function getBookmarkPreviewCardHash(bookmarkHash: string, previewCardIndex: number): string {

@@ -7,7 +7,7 @@ describe("perf clipboard logging", () => {
     clearCinenerdleDebugLog();
   });
 
-  it("does not add measured async work to the cinenerdle debug log after a log reset", async () => {
+  it("adds measured async work to the cinenerdle debug log", async () => {
     const result = await measureAsync(
       "unit-test.async",
       async () => "done",
@@ -23,10 +23,20 @@ describe("perf clipboard logging", () => {
     );
 
     expect(result).toBe("done");
-    expect(getCinenerdleDebugEntries()).toEqual([]);
+    expect(getCinenerdleDebugEntries()).toEqual([
+      expect.objectContaining({
+        event: "perf:unit-test.async",
+        details: {
+          elapsedMs: expect.any(Number),
+          scope: "test",
+          status: "ok",
+          value: "done",
+        },
+      }),
+    ]);
   });
 
-  it("does not add measured sync failures to the cinenerdle debug log after a log reset", () => {
+  it("adds measured sync failures to the cinenerdle debug log", () => {
     expect(() =>
       measureSync(
         "unit-test.sync-error",
@@ -35,15 +45,33 @@ describe("perf clipboard logging", () => {
         },
       )).toThrow("boom");
 
-    expect(getCinenerdleDebugEntries()).toEqual([]);
+    expect(getCinenerdleDebugEntries()).toEqual([
+      expect.objectContaining({
+        event: "perf:unit-test.sync-error",
+        details: {
+          elapsedMs: expect.any(Number),
+          errorMessage: "boom",
+          status: "error",
+        },
+      }),
+    ]);
   });
 
-  it("does not add elapsed-time mark entries to the cinenerdle debug log after a log reset", () => {
+  it("adds elapsed-time mark entries to the cinenerdle debug log", () => {
     markPerf("unit-test-mark");
     logPerfSinceMark("unit-test.since-mark", "unit-test-mark", {
       scope: "mark",
     });
 
-    expect(getCinenerdleDebugEntries()).toEqual([]);
+    expect(getCinenerdleDebugEntries()).toEqual([
+      expect.objectContaining({
+        event: "perf:unit-test.since-mark",
+        details: {
+          elapsedMs: expect.any(Number),
+          markName: "unit-test-mark",
+          scope: "mark",
+        },
+      }),
+    ]);
   });
 });

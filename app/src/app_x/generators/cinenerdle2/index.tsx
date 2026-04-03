@@ -149,6 +149,11 @@ const Cinenerdle2 = memo(function Cinenerdle2({
         return;
       }
 
+      // Background prefetch should warm caches without forcing a full tree rebuild.
+      if (request.reason === "prefetch") {
+        return;
+      }
+
       pendingEntityRefreshRequestsRef.current = [
         ...pendingEntityRefreshRequestsRef.current.filter((pendingRequest) =>
           pendingRequest.requestKey !== request.requestKey,

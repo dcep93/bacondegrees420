@@ -61,12 +61,11 @@ export type GeneratorEffectContext<T, TMeta = undefined> = {
   scrollGenerationLikeBubble: (generationIndex: number) => Promise<void>;
 };
 
-export type GeneratorCardRenderContext<T, TMeta = undefined> = {
+export type GeneratorCardRenderContext<T> = {
   row: number;
   col: number;
   node: GeneratorNode<T>;
-  tree: GeneratorTree<T>;
-  state: GeneratorState<T, TMeta>;
+  selectedAncestorData: T[];
 };
 
 export type GeneratorController<T, TMeta = undefined, TEffect = never> = {
@@ -79,5 +78,5 @@ export type GeneratorController<T, TMeta = undefined, TEffect = never> = {
     effect: TEffect,
     context: GeneratorEffectContext<T, TMeta>,
   ) => Promise<void>;
-  renderCard: (context: GeneratorCardRenderContext<T, TMeta>) => ReactElement;
+  renderCard: (context: GeneratorCardRenderContext<T>) => ReactElement;
 };

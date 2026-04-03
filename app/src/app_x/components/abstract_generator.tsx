@@ -1,4 +1,16 @@
-import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
+import {
+  memo,
+  startTransition,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+  type MutableRefObject,
+} from "react";
+import { isPerfLoggingEnabled, logPerf } from "../perf";
 import {
   applyGeneratorUpdate,
   getDataKey,
@@ -53,6 +65,158 @@ export type AbstractGeneratorProps<T, TMeta = undefined, TEffect = never> =
     resetKey?: number | string;
     treeRefreshRequest?: AbstractGeneratorTreeRefreshRequest<T> | null;
   };
+
+type GeneratorRowRenderSample = {
+  cardCount: number;
+  elapsedMs: number;
+  generationIndex: number;
+  phase: "mount" | "update";
+  selectedAncestorCount: number;
+};
+
+type GeneratorRowViewProps<T> = {
+  cardButtonClassName: string;
+  generationIndex: number;
+  handleBubbleClickRef: MutableRefObject<((generationIndex: number) => void) | null>;
+  handleCardSelect: (row: number, col: number) => void;
+  hideBubble: boolean;
+  onRowRendered: (sample: GeneratorRowRenderSample) => void;
+  renderCard: GeneratorController<T>["renderCard"];
+  row: GeneratorNode<T>[];
+  rowClassName: string;
+  selectedAncestorData: T[];
+  setCardRef: (refKey: string, element: HTMLDivElement | null) => void;
+  setRowRef: (generationIndex: number, element: HTMLDivElement | null) => void;
+  trackClassName: string;
+};
+
+const SLOW_GENERATOR_COMMIT_THRESHOLD_MS = 24;
+const SLOW_GENERATOR_ROW_THRESHOLD_MS = 8;
+
+function getGeneratorPerfNow(): number {
+  if (typeof performance !== "undefined" && typeof performance.now === "function") {
+    return performance.now();
+  }
+
+  return Date.now();
+}
+
+function roundGeneratorPerfElapsedMs(value: number): number {
+  return Number(value.toFixed(2));
+}
+
+function shallowReferenceArrayEqual<T>(left: T[], right: T[]): boolean {
+  if (left === right) {
+    return true;
+  }
+
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((entry, index) => entry === right[index]);
+}
+
+function GeneratorRowViewInner<T>({
+  cardButtonClassName,
+  generationIndex,
+  handleBubbleClickRef,
+  handleCardSelect,
+  hideBubble,
+  onRowRendered,
+  renderCard,
+  row,
+  rowClassName,
+  selectedAncestorData,
+  setCardRef,
+  setRowRef,
+  trackClassName,
+}: GeneratorRowViewProps<T>) {
+  const didMountRef = useRef(false);
+  const renderStartedAt = getGeneratorPerfNow();
+
+  const renderedCards = row.map((node, col) => {
+    const dataKey = getDataKey(node.data, col);
+    const refKey = `${generationIndex}:${dataKey}`;
+
+    return (
+      <div
+        aria-disabled={isDisabledNode(node)}
+        className={[
+          "generator-card-button",
+          isDisabledNode(node) ? "generator-card-button-disabled" : "",
+          cardButtonClassName,
+        ].filter(Boolean).join(" ")}
+        key={refKey}
+        onClick={() => handleCardSelect(generationIndex, col)}
+        ref={(element) => {
+          setCardRef(refKey, element);
+        }}
+      >
+        {renderCard({
+          row: generationIndex,
+          col,
+          node,
+          selectedAncestorData,
+        })}
+      </div>
+    );
+  });
+
+  const renderElapsedMs = roundGeneratorPerfElapsedMs(getGeneratorPerfNow() - renderStartedAt);
+
+  useLayoutEffect(() => {
+    onRowRendered({
+      cardCount: row.length,
+      elapsedMs: renderElapsedMs,
+      generationIndex,
+      phase: didMountRef.current ? "update" : "mount",
+      selectedAncestorCount: selectedAncestorData.length,
+    });
+    didMountRef.current = true;
+  }, [generationIndex, onRowRendered, renderElapsedMs, row.length, selectedAncestorData.length]);
+
+  return (
+    <div className={rowClassName}>
+      {hideBubble ? null : (
+        <button
+          className="generator-row-bubble"
+          onClick={() => handleBubbleClickRef.current?.(generationIndex)}
+          type="button"
+        >
+          {`GEN ${generationIndex}`}
+        </button>
+      )}
+
+      <div
+        className={trackClassName}
+        ref={(element) => {
+          setRowRef(generationIndex, element);
+        }}
+      >
+        {renderedCards}
+      </div>
+    </div>
+  );
+}
+
+const MemoizedGeneratorRowView = memo(
+  GeneratorRowViewInner,
+  <T,>(prevProps: GeneratorRowViewProps<T>, nextProps: GeneratorRowViewProps<T>) =>
+    prevProps.cardButtonClassName === nextProps.cardButtonClassName &&
+    prevProps.generationIndex === nextProps.generationIndex &&
+    prevProps.handleBubbleClickRef === nextProps.handleBubbleClickRef &&
+    prevProps.handleCardSelect === nextProps.handleCardSelect &&
+    prevProps.hideBubble === nextProps.hideBubble &&
+    prevProps.onRowRendered === nextProps.onRowRendered &&
+    prevProps.renderCard === nextProps.renderCard &&
+    prevProps.row === nextProps.row &&
+    prevProps.rowClassName === nextProps.rowClassName &&
+    prevProps.setCardRef === nextProps.setCardRef &&
+    prevProps.setRowRef === nextProps.setRowRef &&
+    prevProps.trackClassName === nextProps.trackClassName &&
+    shallowReferenceArrayEqual(prevProps.selectedAncestorData, nextProps.selectedAncestorData),
+) as <T>(props: GeneratorRowViewProps<T>) => ReactElement;
 
 function schedulePostSelectionWork(work: () => void) {
   if (typeof window === "undefined") {
@@ -190,6 +354,8 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
   const activeSelectionRef = useRef(0);
   const lastHandledTreeRefreshRequestKeyRef = useRef<string | null>(null);
   const mountedGenerationIndexesRef = useRef<Set<number>>(new Set());
+  const committedTreeRef = useRef<GeneratorTree<T>>([]);
+  const rowRenderSamplesRef = useRef<GeneratorRowRenderSample[]>([]);
   const stateRef = useRef(state);
   const handleBubbleClickRef = useRef<((generationIndex: number) => void) | null>(null);
   const runEffectsRef = useRef<null | ((
@@ -280,16 +446,39 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     () => resolveGeneratorTree(state),
     [state],
   );
+  const renderStartedAt = getGeneratorPerfNow();
+  const { renderedGenerations, totalCardCount } = useMemo(() => {
+    const nextRenderedGenerations: Array<{
+      generationIndex: number;
+      row: GeneratorNode<T>[];
+      selectedAncestorData: T[];
+    }> = [];
+    const selectedAncestorData: T[] = [];
+    let nextTotalCardCount = 0;
+
+    resolvedTree.forEach((row, generationIndex) => {
+      nextTotalCardCount += row.length;
+      nextRenderedGenerations.push({
+        generationIndex,
+        row,
+        selectedAncestorData: [...selectedAncestorData],
+      });
+
+      const selectedNode = row.find((node) => node.selected);
+      if (selectedNode) {
+        selectedAncestorData.push(selectedNode.data);
+      }
+    });
+
+    return {
+      renderedGenerations: [...nextRenderedGenerations].reverse(),
+      totalCardCount: nextTotalCardCount,
+    };
+  }, [resolvedTree]);
 
   useEffect(() => {
     onTreeChange?.(resolvedTree);
   }, [onTreeChange, resolvedTree]);
-
-  const generations = resolvedTree.map((row, generationIndex) => ({
-    row,
-    generationIndex,
-  }));
-  const renderedGenerations = [...generations].reverse();
 
   const scrollToCardIndex = useCallback((
     generationIndex: number,
@@ -478,6 +667,69 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     mountedGenerationIndexesRef.current = nextMountedGenerationIndexes;
   }, [handleBubbleClick, resolvedTree, shouldAutoScrollMountedGeneration]);
 
+  const handleRowRendered = useCallback((sample: GeneratorRowRenderSample) => {
+    rowRenderSamplesRef.current.push(sample);
+  }, []);
+  const setRowRef = useCallback((generationIndex: number, element: HTMLDivElement | null) => {
+    rowRefs.current[generationIndex] = element;
+  }, []);
+  const setCardRef = useCallback((refKey: string, element: HTMLDivElement | null) => {
+    cardRefs.current[refKey] = element;
+  }, []);
+
+  useLayoutEffect(() => {
+    const previousCommittedTree = committedTreeRef.current;
+    const rowRenderSamples = rowRenderSamplesRef.current.splice(0);
+
+    if (isPerfLoggingEnabled()) {
+      const changedGenerationIndexes = resolvedTree.reduce<number[]>(
+        (indexes, row, generationIndex) => {
+          if (previousCommittedTree[generationIndex] !== row) {
+            indexes.push(generationIndex);
+          }
+
+          return indexes;
+        },
+        [],
+      );
+      const appendedGenerationIndexes = changedGenerationIndexes.filter((generationIndex) =>
+        generationIndex >= previousCommittedTree.length,
+      );
+      const elapsedMs = roundGeneratorPerfElapsedMs(getGeneratorPerfNow() - renderStartedAt);
+      const changedGenerationIndexSet = new Set(changedGenerationIndexes);
+      const rerenderedUnchangedGenerationIndexes = rowRenderSamples
+        .filter((sample) => !changedGenerationIndexSet.has(sample.generationIndex))
+        .map((sample) => sample.generationIndex);
+      const slowRowSamples = rowRenderSamples.filter((sample) =>
+        sample.elapsedMs >= SLOW_GENERATOR_ROW_THRESHOLD_MS);
+
+      if (
+        appendedGenerationIndexes.length > 0 ||
+        elapsedMs >= SLOW_GENERATOR_COMMIT_THRESHOLD_MS ||
+        rerenderedUnchangedGenerationIndexes.length > 0
+      ) {
+        logPerf("abstractGenerator.commitTree", {
+          appendedGenerationIndexes,
+          changedGenerationCount: changedGenerationIndexes.length,
+          changedGenerationIndexes,
+          elapsedMs,
+          renderedGenerationCount: rowRenderSamples.length,
+          renderedGenerationIndexes: rowRenderSamples.map((sample) => sample.generationIndex),
+          rerenderedUnchangedGenerationIndexes,
+          rowCount: resolvedTree.length,
+          slowGenerationIndexes: slowRowSamples.map((sample) => sample.generationIndex),
+          totalCardCount,
+        });
+      }
+
+      slowRowSamples.forEach((sample) => {
+        logPerf("abstractGenerator.renderRow", sample);
+      });
+    }
+
+    committedTreeRef.current = resolvedTree;
+  }, [renderStartedAt, resolvedTree, totalCardCount]);
+
   const handleCardSelect = useCallback((row: number, col: number) => {
     const currentTree = stateRef.current.tree;
     const selectedRow = currentTree?.[row];
@@ -529,67 +781,39 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       aria-label="Generator"
       className="abstract-generator"
     >
-      {renderedGenerations.map(({ row, generationIndex }) => {
+      {renderedGenerations.map(({
+        generationIndex,
+        row,
+        selectedAncestorData,
+      }) => {
         const rowPresentation = getRowPresentation?.(row, generationIndex) ?? {};
+        const rowClassName = [
+          "generator-row",
+          rowPresentation.className ?? "",
+        ].filter(Boolean).join(" ");
+        const trackClassName = [
+          "generator-row-track",
+          generationIndex === 0 ? "generator-row-track-root" : "",
+          rowPresentation.trackClassName ?? "",
+        ].filter(Boolean).join(" ");
 
         return (
-          <div
-            className={[
-              "generator-row",
-              rowPresentation.className ?? "",
-            ].filter(Boolean).join(" ")}
+          <MemoizedGeneratorRowView
+            cardButtonClassName={rowPresentation.cardButtonClassName ?? ""}
             key={generationIndex}
-          >
-            {rowPresentation.hideBubble ? null : (
-              <button
-                className="generator-row-bubble"
-                onClick={() => handleBubbleClick(generationIndex)}
-                type="button"
-              >
-                {`GEN ${generationIndex}`}
-              </button>
-            )}
-
-            <div
-              className={[
-                "generator-row-track",
-                generationIndex === 0 ? "generator-row-track-root" : "",
-                rowPresentation.trackClassName ?? "",
-              ].filter(Boolean).join(" ")}
-              ref={(element) => {
-                rowRefs.current[generationIndex] = element;
-              }}
-            >
-              {row.map((node, col) => {
-                const dataKey = getDataKey(node.data, col);
-                const refKey = `${generationIndex}:${dataKey}`;
-
-                return (
-                  <div
-                    aria-disabled={isDisabledNode(node)}
-                    className={[
-                      "generator-card-button",
-                      isDisabledNode(node) ? "generator-card-button-disabled" : "",
-                      rowPresentation.cardButtonClassName ?? "",
-                    ].filter(Boolean).join(" ")}
-                    key={refKey}
-                    onClick={() => handleCardSelect(generationIndex, col)}
-                    ref={(element) => {
-                      cardRefs.current[refKey] = element;
-                    }}
-                  >
-                    {renderCard({
-                      row: generationIndex,
-                      col,
-                      node,
-                      tree: resolvedTree,
-                      state,
-                    })}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+            generationIndex={generationIndex}
+            handleBubbleClickRef={handleBubbleClickRef}
+            handleCardSelect={handleCardSelect}
+            hideBubble={rowPresentation.hideBubble === true}
+            onRowRendered={handleRowRendered}
+            renderCard={renderCard}
+            row={row}
+            rowClassName={rowClassName}
+            selectedAncestorData={selectedAncestorData}
+            setCardRef={setCardRef}
+            setRowRef={setRowRef}
+            trackClassName={trackClassName}
+          />
         );
       })}
     </section>
