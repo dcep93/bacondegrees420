@@ -7,7 +7,9 @@ import {
   buildChildRowForCard,
   buildTreeFromHash,
   getCardTmdbRowTooltipText,
+  getConnectedItemAttrChildSourceCards,
   getConnectedItemAttrSourceCards,
+  resetConnectedItemAttrChildSourcesCache,
   reduceCinenerdleLifecycleEvent,
   useCinenerdleController,
 } from "../controller";
@@ -167,6 +169,7 @@ function createDeferred<T>() {
 }
 
 beforeEach(() => {
+  resetConnectedItemAttrChildSourcesCache();
   const storage = new Map<string, string>();
   reloadMock = vi.fn();
   vi.stubGlobal("window", {
@@ -533,6 +536,68 @@ describe("getConnectedItemAttrSourceCards", () => {
       selectedDescendantCards: [],
       selectedParentCard: nearestMovie,
     })).toEqual([olderMovie, nearestMovie]);
+  });
+});
+
+describe("getConnectedItemAttrChildSourceCards", () => {
+  it("loads direct child entity connections for non-selected cards", async () => {
+    const zootopiaRecord = makeFilmRecord({
+      id: 269149,
+      tmdbId: 269149,
+      title: "Zootopia",
+      year: "2016",
+      popularity: 88,
+      personConnectionKeys: ["idris elba"],
+    });
+    const zootopia2Record = makeFilmRecord({
+      id: 1084242,
+      tmdbId: 1084242,
+      title: "Zootopia 2",
+      year: "2025",
+      popularity: 99,
+      personConnectionKeys: ["idris elba"],
+    });
+    const idrisRecord = makePersonRecord({
+      id: 17605,
+      tmdbId: 17605,
+      name: "Idris Elba",
+      movieConnectionKeys: ["zootopia (2016)", "zootopia 2 (2025)"],
+    });
+    const idrisCard = makePersonCard({
+      key: "person:17605",
+      name: "Idris Elba",
+      record: idrisRecord,
+    });
+
+    indexedDbMock.getPersonRecordById.mockResolvedValue(idrisRecord);
+    indexedDbMock.getPersonRecordByName.mockImplementation(async (personName: string) =>
+      personName.toLowerCase() === "idris elba" ? idrisRecord : null,
+    );
+    indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(
+      async (movieName: string, movieYear: string) => {
+        const movieLabel = `${movieName} (${movieYear})`.toLowerCase();
+        if (movieLabel === "zootopia (2016)") {
+          return zootopiaRecord;
+        }
+
+        if (movieLabel === "zootopia 2 (2025)") {
+          return zootopia2Record;
+        }
+
+        return null;
+      },
+    );
+
+    const childSources = await getConnectedItemAttrChildSourceCards(idrisCard);
+
+    expect(childSources.map((card) => card.key)).toEqual([
+      "movie:1084242",
+      "movie:269149",
+    ]);
+    expect(childSources.map((card) => card.name)).toEqual([
+      "Zootopia 2",
+      "Zootopia",
+    ]);
   });
 });
 

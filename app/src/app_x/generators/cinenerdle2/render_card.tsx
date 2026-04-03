@@ -63,11 +63,13 @@ export function renderBreakCard(label: string) {
 
 export function renderLoggedCinenerdleCard({
   connectedItemAttrSources,
+  loadChildConnectedItemAttrSources,
   onCardClick,
   onTitleClick,
   viewModel,
 }: {
   connectedItemAttrSources?: Array<Extract<CinenerdleCard, { kind: "movie" | "person" }>>;
+  loadChildConnectedItemAttrSources?: (() => Promise<Array<Extract<CinenerdleCard, { kind: "movie" | "person" }>>>) | null;
   onCardClick?: (event: MouseEvent<HTMLElement>) => void;
   onTitleClick: (event: MouseEvent<HTMLElement>) => void;
   viewModel: Extract<CinenerdleCardViewModel, { kind: "cinenerdle" | "movie" | "person" }>;
@@ -76,6 +78,7 @@ export function renderLoggedCinenerdleCard({
     <CinenerdleEntityCard
       card={viewModel}
       connectedItemAttrSources={connectedItemAttrSources}
+      loadChildConnectedItemAttrSources={loadChildConnectedItemAttrSources}
       onCardClick={onCardClick}
       onTitleClick={onTitleClick}
     />

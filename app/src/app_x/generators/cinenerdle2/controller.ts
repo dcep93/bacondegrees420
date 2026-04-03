@@ -81,9 +81,16 @@ import type { CinenerdleCard, CinenerdlePathNode } from "./view_types";
 
 export { getCardTmdbRowTooltipText } from "./view_model";
 
+type ConnectedItemAttrSourceCard = Extract<CinenerdleCard, { kind: "movie" | "person" }>;
+
+const connectedItemAttrChildSourcesCache = new Map<
+  string,
+  Promise<ConnectedItemAttrSourceCard[]>
+>();
+
 function areCardsDirectlyConnected(
-  card: Extract<CinenerdleCard, { kind: "movie" | "person" }>,
-  candidate: Extract<CinenerdleCard, { kind: "movie" | "person" }>,
+  card: ConnectedItemAttrSourceCard,
+  candidate: ConnectedItemAttrSourceCard,
 ): boolean {
   if (card.kind === candidate.kind) {
     return false;
@@ -105,6 +112,14 @@ function areCardsDirectlyConnected(
   return (
     personMovieKeys.includes(movieKey) ||
     moviePersonKeys.map(normalizeName).includes(personKey)
+  );
+}
+
+function dedupeConnectedItemAttrSourceCards(
+  sources: ConnectedItemAttrSourceCard[],
+): ConnectedItemAttrSourceCard[] {
+  return sources.filter((card, index) =>
+    sources.findIndex((candidate) => candidate.key === card.key) === index,
   );
 }
 
@@ -1197,6 +1212,10 @@ function renderCinenerdleCard(
         selectedParentCard,
       })
       : [];
+  const loadChildConnectedItemAttrSources =
+    !node.selected && (card.kind === "movie" || card.kind === "person")
+      ? () => getConnectedItemAttrChildSourceCards(card)
+      : null;
 
   function handleCinenerdleCardClick(event: ReactMouseEvent<HTMLElement>) {
     if (!isCinenerdleLaunchCard) {
@@ -1233,6 +1252,7 @@ function renderCinenerdleCard(
 
   return renderLoggedCinenerdleCard({
     connectedItemAttrSources,
+    loadChildConnectedItemAttrSources,
     onCardClick: handleCinenerdleCardClick,
     onTitleClick: (event) => {
       if (isCinenerdleLaunchCard) {
@@ -1277,9 +1297,36 @@ export function getConnectedItemAttrSourceCards({
     areCardsDirectlyConnected(card, candidate),
   );
 
-  return sources.filter((card, index) =>
-    sources.findIndex((candidate) => candidate.key === card.key) === index,
-  );
+  return dedupeConnectedItemAttrSourceCards(sources);
+}
+
+export function resetConnectedItemAttrChildSourcesCache(): void {
+  connectedItemAttrChildSourcesCache.clear();
+}
+
+export async function getConnectedItemAttrChildSourceCards(
+  card: ConnectedItemAttrSourceCard,
+): Promise<ConnectedItemAttrSourceCard[]> {
+  const cachedSources = connectedItemAttrChildSourcesCache.get(card.key);
+  if (cachedSources) {
+    return cachedSources;
+  }
+
+  const nextSourcesPromise = buildChildRowForCard(card)
+    .then((childRow) =>
+      dedupeConnectedItemAttrSourceCards(
+        (childRow ?? [])
+          .map((node) => node.data)
+          .filter((candidate): candidate is ConnectedItemAttrSourceCard =>
+            (candidate.kind === "movie" || candidate.kind === "person") &&
+            areCardsDirectlyConnected(card, candidate),
+          ),
+      ),
+    )
+    .catch(() => []);
+
+  connectedItemAttrChildSourcesCache.set(card.key, nextSourcesPromise);
+  return nextSourcesPromise;
 }
 
 export function useCinenerdleController({
@@ -1294,6 +1341,10 @@ export function useCinenerdleController({
 > {
   const latestRecordsRefreshVersionRef = useRef(recordsRefreshVersion);
   const lastHandledRecordsRefreshVersionRef = useRef(recordsRefreshVersion);
+
+  useLayoutEffect(() => {
+    resetConnectedItemAttrChildSourcesCache();
+  }, [recordsRefreshVersion]);
 
   useLayoutEffect(() => {
     latestRecordsRefreshVersionRef.current = recordsRefreshVersion;

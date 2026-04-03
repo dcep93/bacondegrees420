@@ -79,6 +79,7 @@ export function CinenerdleEntityCard({
   card,
   className,
   connectedItemAttrSources = [],
+  loadChildConnectedItemAttrSources = null,
   onCardClick,
   onTitleClick,
   titleElement = "p",
@@ -90,6 +91,11 @@ export function CinenerdleEntityCard({
     kind: "movie" | "person";
     name: string;
   }>;
+  loadChildConnectedItemAttrSources?: (() => Promise<Array<{
+    key: string;
+    kind: "movie" | "person";
+    name: string;
+  }>>) | null;
   onCardClick?: (event: MouseEvent<HTMLElement>) => void;
   onTitleClick?: (event: MouseEvent<HTMLElement>) => void;
   titleElement?: "button" | "p";
@@ -115,8 +121,23 @@ export function CinenerdleEntityCard({
   const isCinenerdleRootCard = card.kind === "cinenerdle";
   const [isExtraInputVisible, setIsExtraInputVisible] = useState(false);
   const [itemAttrsVersion, setItemAttrsVersion] = useState(0);
+  const [childConnectedItemAttrSources, setChildConnectedItemAttrSources] = useState<
+    Array<{
+      key: string;
+      kind: "movie" | "person";
+      name: string;
+    }>
+  >([]);
   const extraRowRef = useRef<HTMLDivElement | null>(null);
   const extraInputRef = useRef<HTMLInputElement | null>(null);
+  const resolvedConnectedItemAttrSources = useMemo(
+    () => [
+      ...connectedItemAttrSources,
+      ...(loadChildConnectedItemAttrSources ? childConnectedItemAttrSources : []),
+    ].filter((source, index, allSources) =>
+      allSources.findIndex((candidate) => candidate.key === source.key) === index),
+    [childConnectedItemAttrSources, connectedItemAttrSources, loadChildConnectedItemAttrSources],
+  );
   const itemAttrTarget = useMemo(
     () => (card.kind === "cinenerdle"
       ? null
@@ -128,10 +149,10 @@ export function CinenerdleEntityCard({
     [card.key, card.kind, card.name],
   );
   const connectedItemAttrSourceTargets = useMemo(
-    () => connectedItemAttrSources
+    () => resolvedConnectedItemAttrSources
       .map((source) => getCinenerdleItemAttrTargetFromCard(source))
       .filter((target): target is NonNullable<typeof target> => target !== null),
-    [connectedItemAttrSources],
+    [resolvedConnectedItemAttrSources],
   );
   const itemAttrs = useMemo(
     () => {
@@ -158,6 +179,39 @@ export function CinenerdleEntityCard({
     () => connectedItemAttrs.filter((itemAttr) => !itemAttrs.includes(itemAttr)),
     [connectedItemAttrs, itemAttrs],
   );
+
+  useEffect(() => {
+    if (!loadChildConnectedItemAttrSources) {
+      return;
+    }
+
+    let didCancel = false;
+
+    void loadChildConnectedItemAttrSources()
+      .then((nextSources) => {
+        if (didCancel) {
+          return;
+        }
+
+        setChildConnectedItemAttrSources((currentSources) =>
+          currentSources.length === nextSources.length &&
+            currentSources.every((source, index) => source.key === nextSources[index]?.key)
+            ? currentSources
+            : nextSources,
+        );
+      })
+      .catch(() => {
+        if (didCancel) {
+          return;
+        }
+
+        setChildConnectedItemAttrSources([]);
+      });
+
+    return () => {
+      didCancel = true;
+    };
+  }, [card.key, loadChildConnectedItemAttrSources]);
 
   useEffect(() => {
     if (!isExtraInputVisible) {
