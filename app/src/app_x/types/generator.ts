@@ -6,6 +6,11 @@ export type GeneratorNode<T> = {
   data: T;
 };
 
+export type GeneratorCardRowOrderMetadata = {
+  activeCount: number;
+  passiveCount: number;
+};
+
 export type GeneratorTree<T> = GeneratorNode<T>[][];
 
 export type GeneratorTreeState<T> = GeneratorTree<T> | null;
@@ -69,6 +74,7 @@ export type GeneratorCardRenderContext<T> = {
   selectedChildData: T | null;
   selectedDescendantData: T[];
   selectedParentData: T | null;
+  reportRowOrderMetadata?: (metadata: GeneratorCardRowOrderMetadata | null) => void;
 };
 
 export type GeneratorController<T, TMeta = undefined, TEffect = never> = {

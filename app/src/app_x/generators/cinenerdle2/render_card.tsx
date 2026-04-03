@@ -2,6 +2,7 @@ import type { MouseEvent } from "react";
 import { copyCinenerdleTextToClipboard } from "./debug";
 import { CinenerdleBreakBar, CinenerdleEntityCard } from "./entity_card";
 import type { CinenerdleCard, CinenerdleCardViewModel } from "./view_types";
+import type { GeneratorCardRowOrderMetadata } from "../../types/generator";
 
 export function renderDbInfoCard(
   viewModel: Extract<CinenerdleCardViewModel, { kind: "dbinfo" }>,
@@ -64,12 +65,14 @@ export function renderBreakCard(label: string) {
 export function renderLoggedCinenerdleCard({
   connectedItemAttrSources,
   loadChildConnectedItemAttrSources,
+  onItemAttrCountsChange,
   onCardClick,
   onTitleClick,
   viewModel,
 }: {
   connectedItemAttrSources?: Array<Extract<CinenerdleCard, { kind: "movie" | "person" }>>;
   loadChildConnectedItemAttrSources?: (() => Promise<Array<Extract<CinenerdleCard, { kind: "movie" | "person" }>>>) | null;
+  onItemAttrCountsChange?: ((counts: GeneratorCardRowOrderMetadata | null) => void) | null;
   onCardClick?: (event: MouseEvent<HTMLElement>) => void;
   onTitleClick: (event: MouseEvent<HTMLElement>) => void;
   viewModel: Extract<CinenerdleCardViewModel, { kind: "cinenerdle" | "movie" | "person" }>;
@@ -79,6 +82,7 @@ export function renderLoggedCinenerdleCard({
       card={viewModel}
       connectedItemAttrSources={connectedItemAttrSources}
       loadChildConnectedItemAttrSources={loadChildConnectedItemAttrSources}
+      onItemAttrCountsChange={onItemAttrCountsChange}
       onCardClick={onCardClick}
       onTitleClick={onTitleClick}
     />

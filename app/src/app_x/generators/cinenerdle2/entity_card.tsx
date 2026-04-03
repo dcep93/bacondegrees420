@@ -11,6 +11,7 @@ import { handleIsolatedClick, joinClassNames } from "../../components/ui_utils";
 import { FooterChips } from "./entity_card/chips";
 import type { RenderableCinenerdleEntityCard } from "./entity_card/types";
 import { formatRemovedItemAttrMessage, getAcceptedItemAttrInput } from "./entity_card_helpers";
+import { getCinenerdleItemAttrCounts } from "./entity_card_ordering";
 import {
   CINENERDLE_ITEM_ATTRS_UPDATED_EVENT,
   addItemAttrToTarget,
@@ -18,6 +19,7 @@ import {
   getItemAttrsForTarget,
   removeItemAttrFromTarget,
 } from "./item_attrs";
+import type { GeneratorCardRowOrderMetadata } from "../../types/generator";
 
 export type { RenderableCinenerdleEntityCard } from "./entity_card/types";
 
@@ -80,6 +82,7 @@ export function CinenerdleEntityCard({
   className,
   connectedItemAttrSources = [],
   loadChildConnectedItemAttrSources = null,
+  onItemAttrCountsChange = null,
   onCardClick,
   onTitleClick,
   titleElement = "p",
@@ -96,6 +99,7 @@ export function CinenerdleEntityCard({
     kind: "movie" | "person";
     name: string;
   }>>) | null;
+  onItemAttrCountsChange?: ((counts: GeneratorCardRowOrderMetadata | null) => void) | null;
   onCardClick?: (event: MouseEvent<HTMLElement>) => void;
   onTitleClick?: (event: MouseEvent<HTMLElement>) => void;
   titleElement?: "button" | "p";
@@ -179,6 +183,10 @@ export function CinenerdleEntityCard({
     () => connectedItemAttrs.filter((itemAttr) => !itemAttrs.includes(itemAttr)),
     [connectedItemAttrs, itemAttrs],
   );
+  const itemAttrCounts = useMemo(
+    () => getCinenerdleItemAttrCounts(itemAttrs, inheritedItemAttrs),
+    [inheritedItemAttrs, itemAttrs],
+  );
 
   useEffect(() => {
     if (!loadChildConnectedItemAttrSources) {
@@ -250,6 +258,10 @@ export function CinenerdleEntityCard({
 
     extraInputRef.current?.focus();
   }, [isExtraInputVisible]);
+
+  useEffect(() => {
+    onItemAttrCountsChange?.(itemAttrCounts);
+  }, [itemAttrCounts, onItemAttrCountsChange]);
 
   return (
     <article

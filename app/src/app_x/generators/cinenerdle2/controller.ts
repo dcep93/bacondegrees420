@@ -1178,6 +1178,7 @@ function renderCinenerdleCard(
   selectedChildCard: CinenerdleCard | null,
   selectedDescendantCards: CinenerdleCard[],
   selectedParentCard: CinenerdleCard | null,
+  reportRowOrderMetadata: ((metadata: { activeCount: number; passiveCount: number; } | null) => void) | undefined,
   writeHash: (nextHash: string, mode?: "selection" | "navigation") => void,
   onExplicitTmdbRowClick?: () => void,
 ) {
@@ -1253,6 +1254,7 @@ function renderCinenerdleCard(
   return renderLoggedCinenerdleCard({
     connectedItemAttrSources,
     loadChildConnectedItemAttrSources,
+    onItemAttrCountsChange: reportRowOrderMetadata ?? null,
     onCardClick: handleCinenerdleCardClick,
     onTitleClick: (event) => {
       if (isCinenerdleLaunchCard) {
@@ -1537,6 +1539,7 @@ export function useCinenerdleController({
       },
       renderCard({
         node,
+        reportRowOrderMetadata,
         selectedAncestorData,
         selectedChildData,
         selectedDescendantData,
@@ -1548,6 +1551,7 @@ export function useCinenerdleController({
           selectedChildData,
           selectedDescendantData,
           selectedParentData,
+          reportRowOrderMetadata,
           writeHash,
           onExplicitTmdbRowClick,
         );

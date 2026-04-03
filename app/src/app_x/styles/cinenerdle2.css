@@ -429,9 +429,9 @@
   width: 100%;
   box-sizing: border-box;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 8px;
-  padding: 0 10px 10px;
+  padding: 0 4px 4px;
 }
 
 .cinenerdle-card-extra-button {
@@ -440,7 +440,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 4px;
+  min-height: 20px;
+  padding: 0 3px;
   border: 1px solid rgba(251, 191, 36, 0.75);
   border-radius: 4px;
   background: rgba(15, 23, 42, 0.6);
@@ -473,9 +474,9 @@
   display: flex;
   align-items: center;
   gap: 4px;
+  min-height: 20px;
   min-width: 0;
-  min-height: calc(1.3em + 6px);
-  padding: 2px 4px;
+  padding: 0 4px;
   border: 1px solid transparent;
   color: #e2e8f0;
   font-size: 11px;

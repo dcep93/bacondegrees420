@@ -1,6 +1,10 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vitest";
-import { CinenerdleEntityCard, type RenderableCinenerdleEntityCard } from "../entity_card";
+import {
+  CinenerdleEntityCard,
+  type RenderableCinenerdleEntityCard,
+} from "../entity_card";
+import { getCinenerdleItemAttrCounts } from "../entity_card_ordering";
 import {
   formatRemovedItemAttrMessage,
   getAcceptedItemAttrInput,
@@ -325,6 +329,13 @@ describe("CinenerdleEntityCard", () => {
 
   it("formats the attr removal alert copy", () => {
     expect(formatRemovedItemAttrMessage("🔥", "Heat")).toBe("Removed 🔥 from Heat");
+  });
+
+  it("computes active and passive attr counts for row sorting", () => {
+    expect(getCinenerdleItemAttrCounts(["🔥", "⭐"], ["🎬"])).toEqual({
+      activeCount: 2,
+      passiveCount: 1,
+    });
   });
 
   it("renders cinenerdle root cards as image-only shells", () => {

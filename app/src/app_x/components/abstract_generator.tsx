@@ -19,7 +19,12 @@ import {
 } from "../generators/generator_runtime";
 import "../styles/abstract_generator.css";
 import { getFullyVisibleViewportScrollTop } from "./abstract_generator_scroll";
+import {
+  areGeneratorCardRowOrderMetadataEqual,
+  getSortedGeneratorRowEntries,
+} from "./abstract_generator_row_order";
 import type {
+  GeneratorCardRowOrderMetadata,
   GeneratorController,
   GeneratorNode,
   GeneratorState,
@@ -72,6 +77,11 @@ type GeneratorRowRenderSample = {
   generationIndex: number;
   phase: "mount" | "update";
   selectedAncestorCount: number;
+};
+
+type GeneratorRowOrderState = {
+  metadataByDataKey: Map<string, GeneratorCardRowOrderMetadata>;
+  rowDataKeysSignature: string;
 };
 
 type GeneratorRowViewProps<T> = {
@@ -141,9 +151,72 @@ function GeneratorRowViewInner<T>({
 }: GeneratorRowViewProps<T>) {
   const didMountRef = useRef(false);
   const renderStartedAt = getGeneratorPerfNow();
+  const rowDataKeysSignature = useMemo(
+    () => row.map((node, index) => getDataKey(node.data, index)).join("|"),
+    [row],
+  );
+  const [rowOrderState, setRowOrderState] = useState<GeneratorRowOrderState>(() => ({
+    metadataByDataKey: new Map(),
+    rowDataKeysSignature,
+  }));
 
-  const renderedCards = row.map((node, col) => {
-    const dataKey = getDataKey(node.data, col);
+  const handleRowOrderMetadataChange = useCallback(
+    (dataKey: string, metadata: GeneratorCardRowOrderMetadata | null) => {
+      setRowOrderState((currentState) => {
+        const currentMetadataByDataKey =
+          currentState.rowDataKeysSignature === rowDataKeysSignature
+            ? currentState.metadataByDataKey
+            : new Map<string, GeneratorCardRowOrderMetadata>();
+        const currentMetadata = currentMetadataByDataKey.get(dataKey);
+
+        if (metadata === null) {
+          if (!currentMetadata) {
+            return currentState.rowDataKeysSignature === rowDataKeysSignature
+              ? currentState
+              : {
+                metadataByDataKey: currentMetadataByDataKey,
+                rowDataKeysSignature,
+              };
+          }
+
+          const nextMetadataByDataKey = new Map(currentMetadataByDataKey);
+          nextMetadataByDataKey.delete(dataKey);
+          return {
+            metadataByDataKey: nextMetadataByDataKey,
+            rowDataKeysSignature,
+          };
+        }
+
+        if (areGeneratorCardRowOrderMetadataEqual(currentMetadata, metadata)) {
+          return currentState.rowDataKeysSignature === rowDataKeysSignature
+            ? currentState
+            : {
+              metadataByDataKey: currentMetadataByDataKey,
+              rowDataKeysSignature,
+            };
+        }
+
+        const nextMetadataByDataKey = new Map(currentMetadataByDataKey);
+        nextMetadataByDataKey.set(dataKey, metadata);
+        return {
+          metadataByDataKey: nextMetadataByDataKey,
+          rowDataKeysSignature,
+        };
+      });
+    },
+    [rowDataKeysSignature],
+  );
+  const sortedRowEntries = useMemo(
+    () => getSortedGeneratorRowEntries(
+      row,
+      rowOrderState.rowDataKeysSignature === rowDataKeysSignature
+        ? rowOrderState.metadataByDataKey
+        : new Map<string, GeneratorCardRowOrderMetadata>(),
+    ),
+    [row, rowDataKeysSignature, rowOrderState],
+  );
+
+  const renderedCards = sortedRowEntries.map(({ dataKey, node, originalCol }) => {
     const refKey = `${generationIndex}:${dataKey}`;
 
     return (
@@ -155,19 +228,22 @@ function GeneratorRowViewInner<T>({
           cardButtonClassName,
         ].filter(Boolean).join(" ")}
         key={refKey}
-        onClick={() => handleCardSelect(generationIndex, col)}
+        onClick={() => handleCardSelect(generationIndex, originalCol)}
         ref={(element) => {
           setCardRef(refKey, element);
         }}
       >
         {renderCard({
           row: generationIndex,
-          col,
+          col: originalCol,
           node,
           selectedAncestorData,
           selectedChildData,
           selectedDescendantData,
           selectedParentData,
+          reportRowOrderMetadata: (metadata) => {
+            handleRowOrderMetadataChange(dataKey, metadata);
+          },
         })}
       </div>
     );
