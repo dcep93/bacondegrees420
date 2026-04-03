@@ -46,6 +46,13 @@
   text-align: left;
 }
 
+.bacon-app-chrome {
+  display: flex;
+  flex-direction: column-reverse;
+  flex: 0 0 auto;
+  width: 100%;
+}
+
 .bacon-title-bar {
   position: relative;
   z-index: 30;

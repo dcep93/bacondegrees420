@@ -520,59 +520,61 @@ export default function AppX() {
         </div>
       ) : null}
 
-      <BaconTitleBar
-        boostPreview={<ConnectionBoostPreview preview={connectionBoostPreview} />}
-        clearDbBadgeText={clearDbBadgeText}
-        clearDbButtonRef={clearDbButtonRef}
-        copyStatus={copyStatus}
-        copyStatusPlacement={copyStatusPlacement}
-        isBookmarksView={isBookmarksView}
-        isSavingBookmark={isSavingBookmark}
-        matchupPreview={<ConnectionMatchupPreview preview={connectionMatchupPreview} />}
-        onClearDatabase={handleClearDatabase}
-        onOpenBookmarksJsonlEditor={handleOpenBookmarksJsonlEditor}
-        onReset={handleReset}
-        onSaveBookmark={handleSaveBookmark}
-        onTitleDebugCopy={import.meta.env.DEV ? handleTitleDebugCopy : undefined}
-        onToggleBookmarks={toggleBookmarks}
-        titleRef={titleRef}
-        toastStatusRef={toastStatusRef}
-      />
-
-      {shouldShowIndexedDbBootstrapLoadingShellIndicator ? (
-        <IndexedDbBootstrapLoadingIndicator
-          phase={cinenerdleIndexedDbBootstrapStatus.phase}
-          resetRequiredMessage={cinenerdleIndexedDbBootstrapStatus.resetRequiredMessage}
+      <div className="bacon-app-chrome">
+        <BaconTitleBar
+          boostPreview={<ConnectionBoostPreview preview={connectionBoostPreview} />}
+          clearDbBadgeText={clearDbBadgeText}
+          clearDbButtonRef={clearDbButtonRef}
+          copyStatus={copyStatus}
+          copyStatusPlacement={copyStatusPlacement}
+          isBookmarksView={isBookmarksView}
+          isSavingBookmark={isSavingBookmark}
+          matchupPreview={<ConnectionMatchupPreview preview={connectionMatchupPreview} />}
+          onClearDatabase={handleClearDatabase}
+          onOpenBookmarksJsonlEditor={handleOpenBookmarksJsonlEditor}
+          onReset={handleReset}
+          onSaveBookmark={handleSaveBookmark}
+          onTitleDebugCopy={import.meta.env.DEV ? handleTitleDebugCopy : undefined}
+          onToggleBookmarks={toggleBookmarks}
+          titleRef={titleRef}
+          toastStatusRef={toastStatusRef}
         />
-      ) : null}
 
-      {!isBookmarksView && !isCinenerdleIndexedDbBootstrapLoading ? (
-        <section className="bacon-connection-bar">
-          <ConnectionBar
-            connectionInputWrapRef={connectionInputWrapRef}
-            connectionQuery={connectionQuery}
-            connectionSuggestions={connectionSuggestions}
-            highestGenerationSelectedLabel={highestGenerationSelectedLabel}
-            isConnectionInputDisabled={isConnectionInputDisabled}
-            isSearchablePersistencePending={isSearchablePersistencePending}
-            onConnectionQueryChange={setConnectionQuery}
-            onInputKeyDown={handleConnectionInputKeyDown}
-            onSubmit={handleConnectionSubmit}
-            onSuggestionClick={handleConnectionSuggestionClick}
-            onSuggestionHover={setSelectedSuggestionIndex}
-            selectedPathTooltipEntries={selectedPathTooltipEntries}
-            selectedSuggestionIndex={selectedSuggestionIndex}
+        {shouldShowIndexedDbBootstrapLoadingShellIndicator ? (
+          <IndexedDbBootstrapLoadingIndicator
+            phase={cinenerdleIndexedDbBootstrapStatus.phase}
+            resetRequiredMessage={cinenerdleIndexedDbBootstrapStatus.resetRequiredMessage}
           />
-          <ConnectionResults
-            connectionSession={connectionSession}
-            navigateToConnectionEntity={navigateToConnectionEntity}
-            navigateToConnectionPath={navigateToConnectionPath}
-            openConnectionEntityInNewTab={openConnectionEntityInNewTab}
-            openConnectionPathInNewTab={openConnectionPathInNewTab}
-            spawnAlternativeConnectionRow={spawnAlternativeConnectionRow}
-          />
-        </section>
-      ) : null}
+        ) : null}
+
+        {!isBookmarksView && !isCinenerdleIndexedDbBootstrapLoading ? (
+          <section className="bacon-connection-bar">
+            <ConnectionBar
+              connectionInputWrapRef={connectionInputWrapRef}
+              connectionQuery={connectionQuery}
+              connectionSuggestions={connectionSuggestions}
+              highestGenerationSelectedLabel={highestGenerationSelectedLabel}
+              isConnectionInputDisabled={isConnectionInputDisabled}
+              isSearchablePersistencePending={isSearchablePersistencePending}
+              onConnectionQueryChange={setConnectionQuery}
+              onInputKeyDown={handleConnectionInputKeyDown}
+              onSubmit={handleConnectionSubmit}
+              onSuggestionClick={handleConnectionSuggestionClick}
+              onSuggestionHover={setSelectedSuggestionIndex}
+              selectedPathTooltipEntries={selectedPathTooltipEntries}
+              selectedSuggestionIndex={selectedSuggestionIndex}
+            />
+            <ConnectionResults
+              connectionSession={connectionSession}
+              navigateToConnectionEntity={navigateToConnectionEntity}
+              navigateToConnectionPath={navigateToConnectionPath}
+              openConnectionEntityInNewTab={openConnectionEntityInNewTab}
+              openConnectionPathInNewTab={openConnectionPathInNewTab}
+              spawnAlternativeConnectionRow={spawnAlternativeConnectionRow}
+            />
+          </section>
+        ) : null}
+      </div>
 
       {!isCinenerdleIndexedDbBootstrapLoading ? (
         <main className="bacon-app-content">
