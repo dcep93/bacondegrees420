@@ -47,6 +47,7 @@ import {
   type CinenerdleItemAttrs,
   type CinenerdleItemAttrTarget,
 } from "./item_attrs";
+import { addCinenerdleDebugLog } from "./debug_log";
 import { pickBestPersonRecord } from "./records";
 import { renderBreakCard, renderDbInfoCard, renderLoggedCinenerdleCard } from "./render_card";
 import { readCinenerdleDailyStarterTitles } from "./starter_storage";
@@ -1640,8 +1641,7 @@ export async function buildTreeFromHash(
 
 function renderCinenerdleCard(
   node: GeneratorNode<CinenerdleCard>,
-  rowIndex: number,
-  rowCount: number,
+  isViewportPriorityRow: boolean,
   selectedAncestorCards: CinenerdleCard[],
   selectedChildCard: CinenerdleCard | null,
   selectedDescendantCards: CinenerdleCard[],
@@ -1681,13 +1681,12 @@ function renderCinenerdleCard(
         selectedParentCard,
       })
       : [];
-  const isInitialViewportPriorityRow = rowIndex >= Math.max(0, rowCount - 2);
   const imageLoading =
-    node.selected || isInitialViewportPriorityRow
+    node.selected || isViewportPriorityRow
       ? "eager"
       : "lazy";
   const imageFetchPriority =
-    node.selected || isInitialViewportPriorityRow
+    node.selected || isViewportPriorityRow
       ? "high"
       : "auto";
 
@@ -1847,6 +1846,7 @@ export function useCinenerdleController({
           applyUrgentUpdate,
           scrollGenerationIntoVerticalView,
           scrollGenerationLikeBubble,
+          selectionId,
         },
       ) {
         const commitSelectionUpdate = applyUrgentUpdate ?? applyUpdate;
@@ -2006,12 +2006,23 @@ export function useCinenerdleController({
             "controller.afterCardSelected",
             async () => {
               let didRevealChildGeneration = false;
+              const stageStartedAt = getCinenerdleDebugNow();
               function logAfterSelectionStage(
                 stage: string,
                 details?: Record<string, unknown>,
               ) {
-                void stage;
-                void details;
+                addCinenerdleDebugLog("perf:controller.afterCardSelected.stage", {
+                  childGenerationIndex,
+                  elapsedMs: roundCinenerdleDebugElapsedMs(
+                    getCinenerdleDebugNow() - stageStartedAt,
+                  ),
+                  row: selectedEffectRow,
+                  selectedCardKey: selectedCard.key,
+                  selectedCardKind: selectedCard.kind,
+                  selectionId,
+                  stage,
+                  ...details,
+                });
               }
 
               async function revealChildGenerationVertically(
@@ -2218,8 +2229,7 @@ export function useCinenerdleController({
       renderCard({
         node,
         reportRowOrderMetadata,
-        row,
-        rowCount,
+        isViewportPriorityRow,
         selectedAncestorData,
         selectedChildData,
         selectedDescendantData,
@@ -2227,8 +2237,7 @@ export function useCinenerdleController({
       }) {
         return renderCinenerdleCard(
           node,
-          row,
-          rowCount,
+          isViewportPriorityRow,
           selectedAncestorData,
           selectedChildData,
           selectedDescendantData,

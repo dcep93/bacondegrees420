@@ -82,7 +82,7 @@ export type GeneratorEffectContext<T, TMeta = undefined> = {
 export type GeneratorCardRenderContext<T> = {
   row: number;
   col: number;
-  rowCount: number;
+  isViewportPriorityRow: boolean;
   node: GeneratorNode<T>;
   selectedAncestorData: T[];
   selectedChildData: T | null;
