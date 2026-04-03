@@ -830,10 +830,33 @@ describe("useCinenerdleController", () => {
       },
     );
 
-    expect(applyUpdate).toHaveBeenCalledWith({
+    expect(applyUpdate).toHaveBeenNthCalledWith(1, {
       tree: [
-        [{ data: expect.objectContaining({ kind: "cinenerdle" }), selected: true, disabled: false }],
-        [{ data: expect.objectContaining({ kind: "movie", name: "Heat" }), selected: false, disabled: false }],
+        [expect.objectContaining({
+          data: expect.objectContaining({ kind: "cinenerdle" }),
+          selected: true,
+          disabled: false,
+        })],
+        [expect.objectContaining({
+          data: expect.objectContaining({ kind: "movie", name: "Heat" }),
+          selected: false,
+          disabled: false,
+        })],
+      ],
+    });
+
+    expect(applyUpdate).toHaveBeenNthCalledWith(2, {
+      tree: [
+        [expect.objectContaining({
+          data: expect.objectContaining({ kind: "cinenerdle" }),
+          selected: true,
+          disabled: false,
+        })],
+        [expect.objectContaining({
+          data: expect.objectContaining({ kind: "movie", name: "Heat" }),
+          selected: false,
+          disabled: false,
+        })],
       ],
     });
 

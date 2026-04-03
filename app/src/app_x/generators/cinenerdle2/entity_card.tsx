@@ -81,6 +81,8 @@ export function CinenerdleEntityCard({
   card,
   className,
   connectedItemAttrSources = [],
+  imageFetchPriority = "auto",
+  imageLoading = "lazy",
   onItemAttrCountsChange = null,
   onCardClick,
   onTitleClick,
@@ -93,6 +95,8 @@ export function CinenerdleEntityCard({
     kind: "movie" | "person";
     name: string;
   }>;
+  imageFetchPriority?: "auto" | "high";
+  imageLoading?: "eager" | "lazy";
   onItemAttrCountsChange?: ((counts: GeneratorCardRowOrderMetadata | null) => void) | null;
   onCardClick?: (event: MouseEvent<HTMLElement>) => void;
   onTitleClick?: (event: MouseEvent<HTMLElement>) => void;
@@ -231,7 +235,9 @@ export function CinenerdleEntityCard({
           <img
             alt={card.name}
             className="cinenerdle-card-image"
-            loading="lazy"
+            decoding="async"
+            fetchPriority={imageFetchPriority}
+            loading={imageLoading}
             src={card.imageUrl}
           />
         ) : (

@@ -8,6 +8,8 @@ import "../../styles/cinenerdle2.css";
 import type { GeneratorNode } from "../../types/generator";
 import {
   buildTreeFromHash,
+  markInitialViewportSettled,
+  resetInitialViewportSettled,
   useCinenerdleController,
 } from "./controller";
 import {
@@ -244,6 +246,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
 
   if (lastGeneratorResetKeyRef.current !== generatorResetKey) {
     lastGeneratorResetKeyRef.current = generatorResetKey;
+    resetInitialViewportSettled();
     pendingInitialTreeBottomSnapRef.current = true;
     initialTreeBottomSnapRequestIdRef.current += 1;
   }
@@ -310,23 +313,20 @@ const Cinenerdle2 = memo(function Cinenerdle2({
       generatorHandleRef={generatorHandleRef}
       getRowPresentation={getRowPresentation}
       key={generatorResetKey}
-      onTreeChange={(tree) => {
-        treeRef.current = tree;
-        if (pendingInitialTreeBottomSnapRef.current && tree.length > 0) {
-          pendingInitialTreeBottomSnapRef.current = false;
-          const requestId = initialTreeBottomSnapRequestIdRef.current;
-
-          window.requestAnimationFrame(() => {
-            window.requestAnimationFrame(() => {
-              if (initialTreeBottomSnapRequestIdRef.current !== requestId) {
-                return;
-              }
-
-              scrollPageToBottom();
-            });
-          });
+      onInitialTreePainted={(tree) => {
+        if (!pendingInitialTreeBottomSnapRef.current || tree.length === 0) {
+          return;
         }
 
+        pendingInitialTreeBottomSnapRef.current = false;
+        const requestId = initialTreeBottomSnapRequestIdRef.current;
+        markInitialViewportSettled();
+        if (initialTreeBottomSnapRequestIdRef.current === requestId) {
+          scrollPageToBottom();
+        }
+      }}
+      onTreeChange={(tree) => {
+        treeRef.current = tree;
         const youngestSelectedGenerationIndex = getYoungestSelectedGenerationIndex(tree);
         const nextYoungestSelectedCard = getYoungestSelectedCard(tree);
         setTmdbLogGeneration(youngestSelectedGenerationIndex);

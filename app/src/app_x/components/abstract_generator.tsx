@@ -72,6 +72,7 @@ export type AbstractGeneratorProps<T, TMeta = undefined, TEffect = never> =
       row: GeneratorNode<T>[];
       tree: GeneratorTree<T>;
     }) => boolean;
+    onInitialTreePainted?: (tree: GeneratorTree<T>) => void;
     onTreeChange?: (tree: GeneratorTree<T>) => void;
     resetKey?: number | string;
     treeRefreshRequest?: AbstractGeneratorTreeRefreshRequest<T> | null;
@@ -137,6 +138,7 @@ type GeneratorRowViewProps<T> = {
     }>,
   ) => void;
   row: GeneratorNode<T>[];
+  rowCount: number;
   rowClassName: string;
   selectedAncestorData: T[];
   selectedChildData: T | null;
@@ -175,6 +177,10 @@ function shallowReferenceArrayEqual<T>(left: T[], right: T[]): boolean {
   return left.every((entry, index) => entry === right[index]);
 }
 
+function getGeneratorTreeCardCount<T>(tree: GeneratorTree<T>): number {
+  return tree.reduce((count, row) => count + row.length, 0);
+}
+
 function GeneratorRowViewInner<T>({
   cardButtonClassName,
   generationIndex,
@@ -185,6 +191,7 @@ function GeneratorRowViewInner<T>({
   renderCard,
   reportRenderedRowOrder,
   row,
+  rowCount,
   rowClassName,
   selectedAncestorData,
   selectedChildData,
@@ -285,6 +292,7 @@ function GeneratorRowViewInner<T>({
         {renderCard({
           row: generationIndex,
           col: originalCol,
+          rowCount,
           node,
           selectedAncestorData,
           selectedChildData,
@@ -358,6 +366,7 @@ const MemoizedGeneratorRowView = memo(
     prevProps.renderCard === nextProps.renderCard &&
     prevProps.reportRenderedRowOrder === nextProps.reportRenderedRowOrder &&
     prevProps.row === nextProps.row &&
+    prevProps.rowCount === nextProps.rowCount &&
     prevProps.rowClassName === nextProps.rowClassName &&
     prevProps.setCardRef === nextProps.setCardRef &&
     prevProps.setRowRef === nextProps.setRowRef &&
@@ -555,6 +564,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
   debugLog = null,
   generatorHandleRef,
   getRowPresentation,
+  onInitialTreePainted,
   onTreeChange,
   reduce,
   renderCard,
@@ -596,6 +606,21 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     row: number;
     selectionId: number;
   }>(null);
+  const pendingInitialTreeRenderRef = useRef<null | {
+    acceptedAt: number;
+    lifecycleId: number;
+    requestedAt: number;
+    rowCount: number;
+    totalCardCount: number;
+  }>(null);
+  const committedInitialTreeRenderRef = useRef<null | {
+    acceptedAt: number;
+    committedAt: number;
+    lifecycleId: number;
+    requestedAt: number;
+    rowCount: number;
+    totalCardCount: number;
+  }>(null);
   const runEffectsRef = useRef<null | ((
     effects: TEffect[],
     lifecycleId: number,
@@ -630,6 +655,26 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
           return;
         }
 
+        const requestedTree =
+          selectionId === 0 &&
+          nextUpdate &&
+          typeof nextUpdate !== "function" &&
+          "tree" in nextUpdate
+            ? nextUpdate.tree ?? null
+            : null;
+        const requestedAt =
+          requestedTree && pendingInitialTreeRenderRef.current === null
+            ? getGeneratorPerfNow()
+            : null;
+        if (requestedTree && requestedAt !== null) {
+          debugLog?.("generator:init-tree-update-requested", {
+            lifecycleId,
+            rowCount: requestedTree.length,
+            selectionId,
+            totalCardCount: getGeneratorTreeCardCount(requestedTree),
+          });
+        }
+
         startTransition(() => {
           setState((prevState) => {
             if (
@@ -644,12 +689,37 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
               ? nextUpdate(prevState)
               : nextUpdate;
             const nextState = applyGeneratorUpdate(prevState, resolvedUpdate);
+            const previousTree = resolveGeneratorTree(prevState);
+            const nextTree = resolveGeneratorTree(nextState);
+            if (
+              selectionId === 0 &&
+              previousTree.length === 0 &&
+              nextTree.length > 0 &&
+              pendingInitialTreeRenderRef.current === null
+            ) {
+              const acceptedAt = getGeneratorPerfNow();
+              pendingInitialTreeRenderRef.current = {
+                acceptedAt,
+                lifecycleId,
+                requestedAt: requestedAt ?? acceptedAt,
+                rowCount: nextTree.length,
+                totalCardCount: getGeneratorTreeCardCount(nextTree),
+              };
+              debugLog?.("generator:init-tree-state-derived", {
+                acceptedElapsedMs: roundGeneratorPerfElapsedMs(
+                  acceptedAt - (requestedAt ?? acceptedAt),
+                ),
+                lifecycleId,
+                rowCount: nextTree.length,
+                totalCardCount: getGeneratorTreeCardCount(nextTree),
+              });
+            }
             stateRef.current = nextState;
             return nextState;
           });
         });
       },
-    [],
+    [debugLog],
   );
 
   useEffect(() => {
@@ -1097,18 +1167,18 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
   useLayoutEffect(() => {
     const previousCommittedTree = committedTreeRef.current;
     const rowRenderSamples = rowRenderSamplesRef.current.splice(0);
+    const changedGenerationIndexes = resolvedTree.reduce<number[]>(
+      (indexes, row, generationIndex) => {
+        if (previousCommittedTree[generationIndex] !== row) {
+          indexes.push(generationIndex);
+        }
+
+        return indexes;
+      },
+      [],
+    );
 
     if (isPerfLoggingEnabled()) {
-      const changedGenerationIndexes = resolvedTree.reduce<number[]>(
-        (indexes, row, generationIndex) => {
-          if (previousCommittedTree[generationIndex] !== row) {
-            indexes.push(generationIndex);
-          }
-
-          return indexes;
-        },
-        [],
-      );
       const appendedGenerationIndexes = changedGenerationIndexes.filter((generationIndex) =>
         generationIndex >= previousCommittedTree.length,
       );
@@ -1175,8 +1245,92 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       });
     }
 
+    if (
+      (debugLog || onInitialTreePainted) &&
+      previousCommittedTree.length === 0 &&
+      resolvedTree.length > 0 &&
+      pendingInitialTreeRenderRef.current !== null &&
+      committedInitialTreeRenderRef.current === null
+    ) {
+      const committedAt = getGeneratorPerfNow();
+      const pendingInitialTreeRender = pendingInitialTreeRenderRef.current;
+      const slowestRowSamples = [...rowRenderSamples]
+        .sort((left, right) => right.elapsedMs - left.elapsedMs)
+        .slice(0, 5)
+        .map((sample) => ({
+          cardCount: sample.cardCount,
+          elapsedMs: sample.elapsedMs,
+          generationIndex: sample.generationIndex,
+          phase: sample.phase,
+          selectedAncestorCount: sample.selectedAncestorCount,
+        }));
+      committedInitialTreeRenderRef.current = {
+        ...pendingInitialTreeRender,
+        committedAt,
+      };
+      debugLog?.("generator:init-tree-committed", {
+        changedGenerationCount: changedGenerationIndexes.length,
+        changedGenerationIndexes,
+        commitElapsedMs: roundGeneratorPerfElapsedMs(
+          committedAt - pendingInitialTreeRender.acceptedAt,
+        ),
+        derivationElapsedMs,
+        requestedElapsedMs: roundGeneratorPerfElapsedMs(
+          committedAt - pendingInitialTreeRender.requestedAt,
+        ),
+        renderedGenerationCount: rowRenderSamples.length,
+        renderedGenerationIndexes: rowRenderSamples.map((sample) => sample.generationIndex),
+        rowRenderElapsedMsTotal: roundGeneratorPerfElapsedMs(
+          rowRenderSamples.reduce((total, sample) => total + sample.elapsedMs, 0),
+        ),
+        rowCount: resolvedTree.length,
+        slowRowCount: rowRenderSamples.filter((sample) =>
+          sample.elapsedMs >= SLOW_GENERATOR_ROW_THRESHOLD_MS
+        ).length,
+        slowestRowSamples,
+        totalCardCount,
+      });
+    }
+
     committedTreeRef.current = resolvedTree;
-  }, [derivationElapsedMs, maxSelectedAncestorCount, renderStartedAt, resolvedTree, totalCardCount]);
+  }, [debugLog, derivationElapsedMs, maxSelectedAncestorCount, onInitialTreePainted, renderStartedAt, resolvedTree, totalCardCount]);
+
+  useEffect(() => {
+    if (
+      committedInitialTreeRenderRef.current === null ||
+      (!debugLog && !onInitialTreePainted)
+    ) {
+      return;
+    }
+
+    const committedInitialTreeRender = committedInitialTreeRenderRef.current;
+    const frameId = window.requestAnimationFrame(() => {
+      const paintedAt = getGeneratorPerfNow();
+      const mountedRowCount = resolvedTree.reduce((count, _, generationIndex) =>
+        count + (rowRefs.current[generationIndex] ? 1 : 0),
+      0);
+      debugLog?.("generator:init-tree-painted", {
+        committedElapsedMs: roundGeneratorPerfElapsedMs(
+          paintedAt - committedInitialTreeRender.committedAt,
+        ),
+        firstRowMounted: Boolean(rowRefs.current[0]),
+        lastRowMounted: Boolean(rowRefs.current[resolvedTree.length - 1]),
+        mountedRowCount,
+        requestedElapsedMs: roundGeneratorPerfElapsedMs(
+          paintedAt - committedInitialTreeRender.requestedAt,
+        ),
+        rowCount: committedInitialTreeRender.rowCount,
+        totalCardCount: committedInitialTreeRender.totalCardCount,
+      });
+      onInitialTreePainted?.(resolvedTree);
+      committedInitialTreeRenderRef.current = null;
+      pendingInitialTreeRenderRef.current = null;
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [debugLog, onInitialTreePainted, resolvedTree]);
 
   const handleCardSelect = useCallback((row: number, col: number) => {
     const currentTree = stateRef.current.tree ?? [];
@@ -1296,6 +1450,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
             renderCard={renderCard}
             reportRenderedRowOrder={reportRenderedRowOrder}
             row={row}
+            rowCount={resolvedTree.length}
             rowClassName={rowClassName}
             selectedAncestorData={selectedAncestorData}
             selectedChildData={selectedChildData}
