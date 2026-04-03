@@ -66,6 +66,7 @@ export type GeneratorCardRenderContext<T> = {
   col: number;
   node: GeneratorNode<T>;
   selectedAncestorData: T[];
+  selectedDescendantData: T[];
 };
 
 export type GeneratorController<T, TMeta = undefined, TEffect = never> = {

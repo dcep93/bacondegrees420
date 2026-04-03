@@ -1,7 +1,7 @@
 import type { MouseEvent } from "react";
 import { copyCinenerdleTextToClipboard } from "./debug";
 import { CinenerdleBreakBar, CinenerdleEntityCard } from "./entity_card";
-import type { CinenerdleCardViewModel } from "./view_types";
+import type { CinenerdleCard, CinenerdleCardViewModel } from "./view_types";
 
 export function renderDbInfoCard(
   viewModel: Extract<CinenerdleCardViewModel, { kind: "dbinfo" }>,
@@ -62,10 +62,12 @@ export function renderBreakCard(label: string) {
 }
 
 export function renderLoggedCinenerdleCard({
+  connectedItemAttrSources,
   onCardClick,
   onTitleClick,
   viewModel,
 }: {
+  connectedItemAttrSources?: Array<Extract<CinenerdleCard, { kind: "movie" | "person" }>>;
   onCardClick?: (event: MouseEvent<HTMLElement>) => void;
   onTitleClick: (event: MouseEvent<HTMLElement>) => void;
   viewModel: Extract<CinenerdleCardViewModel, { kind: "cinenerdle" | "movie" | "person" }>;
@@ -73,6 +75,7 @@ export function renderLoggedCinenerdleCard({
   return (
     <CinenerdleEntityCard
       card={viewModel}
+      connectedItemAttrSources={connectedItemAttrSources}
       onCardClick={onCardClick}
       onTitleClick={onTitleClick}
     />

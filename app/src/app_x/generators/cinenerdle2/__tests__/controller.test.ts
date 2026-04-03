@@ -7,6 +7,7 @@ import {
   buildChildRowForCard,
   buildTreeFromHash,
   getCardTmdbRowTooltipText,
+  getConnectedItemAttrSourceCards,
   reduceCinenerdleLifecycleEvent,
   useCinenerdleController,
 } from "../controller";
@@ -401,6 +402,46 @@ describe("buildTreeFromHash", () => {
         subtitle: "Crew",
       }),
     );
+  });
+});
+
+describe("getConnectedItemAttrSourceCards", () => {
+  it("includes the selected card's nearest ancestor and descendant entity connections", () => {
+    const previousMovie = makeMovieCard({
+      key: "movie:zootopia:2016",
+      name: "Zootopia",
+      year: "2016",
+    });
+    const nextMovie = makeMovieCard({
+      key: "movie:zootopia-2:2025",
+      name: "Zootopia 2",
+      year: "2025",
+    });
+
+    expect(getConnectedItemAttrSourceCards({
+      isSelected: true,
+      selectedAncestorCards: [makeCinenerdleRootCard(), previousMovie],
+      selectedDescendantCards: [nextMovie],
+    })).toEqual([previousMovie, nextMovie]);
+  });
+
+  it("does not include descendant connections for non-selected sibling cards", () => {
+    const previousMovie = makeMovieCard({
+      key: "movie:zootopia:2016",
+      name: "Zootopia",
+      year: "2016",
+    });
+    const nextMovie = makeMovieCard({
+      key: "movie:zootopia-2:2025",
+      name: "Zootopia 2",
+      year: "2025",
+    });
+
+    expect(getConnectedItemAttrSourceCards({
+      isSelected: false,
+      selectedAncestorCards: [makeCinenerdleRootCard(), previousMovie],
+      selectedDescendantCards: [nextMovie],
+    })).toEqual([previousMovie]);
   });
 });
 

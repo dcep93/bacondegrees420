@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+} from "react";
 import { CardTitle } from "../../components/card_ui";
 import { handleIsolatedClick, joinClassNames } from "../../components/ui_utils";
 import { FooterChips } from "./entity_card/chips";
@@ -35,19 +42,72 @@ export function CinenerdleBreakBar({
   );
 }
 
+function CinenerdleExtraChip({
+  itemAttr,
+  itemName,
+  onRemove,
+  passive = false,
+}: {
+  itemAttr: string;
+  itemName: string;
+  onRemove?: (() => void) | null;
+  passive?: boolean;
+}) {
+  return (
+    <button
+      aria-label={passive ? undefined : `Remove ${itemAttr} from ${itemName}`}
+      className={joinClassNames(
+        "cinenerdle-card-extra-chip",
+        passive && "cinenerdle-card-extra-chip-passive",
+      )}
+      disabled={passive}
+      onClick={onRemove
+        ? (event) => {
+          handleIsolatedClick(event, () => {
+            onRemove();
+          });
+        }
+        : undefined}
+      type="button"
+    >
+      {itemAttr}
+    </button>
+  );
+}
+
 export function CinenerdleEntityCard({
   card,
   className,
+  connectedItemAttrSources = [],
   onCardClick,
   onTitleClick,
   titleElement = "p",
 }: {
   card: RenderableCinenerdleEntityCard;
   className?: string;
+  connectedItemAttrSources?: Array<{
+    key: string;
+    kind: "movie" | "person";
+    name: string;
+  }>;
   onCardClick?: (event: MouseEvent<HTMLElement>) => void;
   onTitleClick?: (event: MouseEvent<HTMLElement>) => void;
   titleElement?: "button" | "p";
 }) {
+  function toggleExtraInputVisibility() {
+    setIsExtraInputVisible((currentValue) => !currentValue);
+  }
+
+  function handleExtraButtonKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    toggleExtraInputVisibility();
+  }
+
   const creditLines =
     card.creditLines && card.creditLines.length > 0
       ? card.creditLines
@@ -67,12 +127,36 @@ export function CinenerdleEntityCard({
       })),
     [card.key, card.kind, card.name],
   );
+  const connectedItemAttrSourceTargets = useMemo(
+    () => connectedItemAttrSources
+      .map((source) => getCinenerdleItemAttrTargetFromCard(source))
+      .filter((target): target is NonNullable<typeof target> => target !== null),
+    [connectedItemAttrSources],
+  );
   const itemAttrs = useMemo(
     () => {
       void itemAttrsVersion;
       return itemAttrTarget ? getItemAttrsForTarget(itemAttrTarget) : [];
     },
     [itemAttrTarget, itemAttrsVersion],
+  );
+  const connectedItemAttrs = useMemo(
+    () => {
+      void itemAttrsVersion;
+      return connectedItemAttrSourceTargets.reduce<string[]>((allItemAttrs, target) => {
+        getItemAttrsForTarget(target).forEach((itemAttr) => {
+          if (!allItemAttrs.includes(itemAttr)) {
+            allItemAttrs.push(itemAttr);
+          }
+        });
+        return allItemAttrs;
+      }, []);
+    },
+    [connectedItemAttrSourceTargets, itemAttrsVersion],
+  );
+  const inheritedItemAttrs = useMemo(
+    () => connectedItemAttrs.filter((itemAttr) => !itemAttrs.includes(itemAttr)),
+    [connectedItemAttrs, itemAttrs],
   );
 
   useEffect(() => {
@@ -169,18 +253,18 @@ export function CinenerdleEntityCard({
       )}
       {!isCinenerdleRootCard ? (
         <div className="cinenerdle-card-extra-row" ref={extraRowRef}>
-          <button
+          <div
             aria-label={`Toggle attrs for ${card.name}`}
             className="cinenerdle-card-extra-button"
+            onKeyDown={handleExtraButtonKeyDown}
             onClick={(event) => {
-              handleIsolatedClick(event, () => {
-                setIsExtraInputVisible((currentValue) => !currentValue);
-              });
+              handleIsolatedClick(event, toggleExtraInputVisibility);
             }}
-            type="button"
+            role="button"
+            tabIndex={0}
           >
             +
-          </button>
+          </div>
           {isExtraInputVisible ? (
             <input
               aria-label={`Add attr for ${card.name}`}
@@ -205,12 +289,11 @@ export function CinenerdleEntityCard({
           ) : (
             <div className="cinenerdle-card-extra-copy">
               {itemAttrs.map((itemAttr) => (
-                <button
-                  aria-label={`Remove ${itemAttr} from ${card.name}`}
-                  className="cinenerdle-card-extra-chip"
+                <CinenerdleExtraChip
                   key={itemAttr}
-                  onClick={(event) => {
-                    handleIsolatedClick(event, () => {
+                  itemAttr={itemAttr}
+                  itemName={card.name}
+                  onRemove={() => {
                       if (!itemAttrTarget) {
                         return;
                       }
@@ -219,12 +302,16 @@ export function CinenerdleEntityCard({
                       if (typeof window !== "undefined" && typeof window.alert === "function") {
                         window.alert(formatRemovedItemAttrMessage(itemAttr, card.name));
                       }
-                    });
                   }}
-                  type="button"
-                >
-                  {itemAttr}
-                </button>
+                />
+              ))}
+              {inheritedItemAttrs.map((itemAttr) => (
+                <CinenerdleExtraChip
+                  key={`inherited:${itemAttr}`}
+                  itemAttr={itemAttr}
+                  itemName={card.name}
+                  passive
+                />
               ))}
             </div>
           )}

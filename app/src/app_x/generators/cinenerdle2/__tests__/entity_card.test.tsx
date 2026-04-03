@@ -281,6 +281,36 @@ describe("CinenerdleEntityCard", () => {
     expect(html).not.toContain("hello world");
   });
 
+  it("renders inherited attrs from the connected source as non-interactive chips", () => {
+    localStorage.setItem(
+      CINENERDLE_ITEM_ATTRS_STORAGE_KEY,
+      JSON.stringify({
+        film: {
+          "heat:1995": ["⭐"],
+        },
+        person: {
+          "al-pacino": ["🔥", "⭐"],
+        },
+      }),
+    );
+
+    const html = renderToStaticMarkup(
+      <CinenerdleEntityCard
+        card={makeRenderableMovieCard()}
+        connectedItemAttrSources={[{
+          key: "person:al-pacino",
+          kind: "person",
+          name: "Al Pacino",
+        }]}
+      />,
+    );
+
+    expect(html).toContain("Remove ⭐ from Heat");
+    expect(html).toContain("cinenerdle-card-extra-chip cinenerdle-card-extra-chip-passive");
+    expect(html).toContain("disabled=\"\" type=\"button\">🔥</button>");
+    expect(html).not.toContain("Remove 🔥 from Heat");
+  });
+
   it("ignores whitespace-only attr input", () => {
     expect(getAcceptedItemAttrInput(" ", [])).toBeNull();
   });

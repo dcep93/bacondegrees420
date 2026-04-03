@@ -1133,6 +1133,7 @@ export async function buildTreeFromHash(
 function renderCinenerdleCard(
   node: GeneratorNode<CinenerdleCard>,
   selectedAncestorCards: CinenerdleCard[],
+  selectedDescendantCards: CinenerdleCard[],
   writeHash: (nextHash: string, mode?: "selection" | "navigation") => void,
   onExplicitTmdbRowClick?: () => void,
 ) {
@@ -1156,6 +1157,11 @@ function renderCinenerdleCard(
   const rootHash = serializePathNodes([getPathNodeFromCard(card)]);
   const isCinenerdleLaunchCard = card.kind === "cinenerdle";
   const rootHref = `${window.location.pathname}${window.location.search}${rootHash}`;
+  const connectedItemAttrSources = getConnectedItemAttrSourceCards({
+    isSelected: node.selected,
+    selectedAncestorCards,
+    selectedDescendantCards,
+  });
 
   function handleCinenerdleCardClick(event: ReactMouseEvent<HTMLElement>) {
     if (!isCinenerdleLaunchCard) {
@@ -1191,6 +1197,7 @@ function renderCinenerdleCard(
   };
 
   return renderLoggedCinenerdleCard({
+    connectedItemAttrSources,
     onCardClick: handleCinenerdleCardClick,
     onTitleClick: (event) => {
       if (isCinenerdleLaunchCard) {
@@ -1207,6 +1214,36 @@ function renderCinenerdleCard(
     },
     viewModel: renderableViewModel,
   });
+}
+
+export function getConnectedItemAttrSourceCards({
+  isSelected,
+  selectedAncestorCards,
+  selectedDescendantCards,
+}: {
+  isSelected: boolean;
+  selectedAncestorCards: CinenerdleCard[];
+  selectedDescendantCards: CinenerdleCard[];
+}): Array<Extract<CinenerdleCard, { kind: "movie" | "person" }>> {
+  const previousConnectedCard =
+    [...selectedAncestorCards]
+      .reverse()
+      .find((card): card is Extract<CinenerdleCard, { kind: "movie" | "person" }> =>
+        card.kind === "movie" || card.kind === "person",
+      ) ?? null;
+  const nextConnectedCard =
+    isSelected
+      ? selectedDescendantCards.find((card): card is Extract<CinenerdleCard, { kind: "movie" | "person" }> =>
+        card.kind === "movie" || card.kind === "person",
+      ) ?? null
+      : null;
+  const sources = [previousConnectedCard, nextConnectedCard].filter(
+    (card): card is Extract<CinenerdleCard, { kind: "movie" | "person" }> => card !== null,
+  );
+
+  return sources.filter((card, index) =>
+    sources.findIndex((candidate) => candidate.key === card.key) === index,
+  );
 }
 
 export function useCinenerdleController({
@@ -1379,14 +1416,11 @@ export function useCinenerdleController({
               });
 
               setTmdbLogGeneration(Math.max(0, refreshedTree.length - 1));
-              if (
-                refreshedChildRow &&
-                refreshedChildRow.length > 0 &&
-                !didScrollChildGeneration
-              ) {
+              if (!didScrollChildGeneration && refreshedChildRow && refreshedChildRow.length > 0) {
                 await scrollGenerationLikeBubble(effect.row + 1);
                 await scrollGenerationIntoVerticalView(effect.row + 1);
               }
+
               return refreshedChildRow;
             },
             {
@@ -1414,10 +1448,11 @@ export function useCinenerdleController({
 
         writeHash(nextHash, "selection");
       },
-      renderCard({ node, selectedAncestorData }) {
+      renderCard({ node, selectedAncestorData, selectedDescendantData }) {
         return renderCinenerdleCard(
           node,
           selectedAncestorData,
+          selectedDescendantData,
           writeHash,
           onExplicitTmdbRowClick,
         );
