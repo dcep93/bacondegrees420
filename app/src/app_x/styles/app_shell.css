@@ -37,6 +37,8 @@
   background:
     radial-gradient(circle at top left, rgba(213, 163, 108, 0.16), transparent 26%),
     radial-gradient(circle at top right, rgba(255, 179, 102, 0.1), transparent 28%),
+    radial-gradient(circle at bottom left, rgba(213, 163, 108, 0.16), transparent 26%),
+    radial-gradient(circle at bottom right, rgba(255, 179, 102, 0.1), transparent 28%),
     radial-gradient(circle at bottom center, rgba(99, 67, 38, 0.18), transparent 34%),
     linear-gradient(180deg, var(--bacon-bg-top) 0%, var(--bacon-bg-bottom) 100%);
   color: var(--bacon-text);
