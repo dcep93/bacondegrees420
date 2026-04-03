@@ -23,7 +23,7 @@ function renderTooltipEntry(entry: string, key: string) {
     <span className="bacon-connection-pill-tooltip-entry" key={key}>
       {typeof popularity === "number" ? (
         <span
-          className="cinenerdle-card-chip"
+          className="cinenerdle-card-chip cinenerdle-card-chip-heat"
           style={createHeatChipStyle(popularity, 100)}
         >
           {`Popularity ${formatHeatMetricValue("Popularity", popularity)}`}
@@ -56,7 +56,7 @@ function renderTooltipEntries(tooltipEntries: string[], keyPrefix: string) {
         {typeof inlinePopularity === "number" ? (
           <span className="bacon-connection-pill-tooltip-entry-group-secondary">
             <span
-              className="cinenerdle-card-chip"
+              className="cinenerdle-card-chip cinenerdle-card-chip-heat"
               style={createHeatChipStyle(inlinePopularity, 100)}
             >
               {`Popularity ${formatHeatMetricValue("Popularity", inlinePopularity)}`}
@@ -80,7 +80,7 @@ function renderEntityLabelWithPopularity(
         <span>{entity.name}</span>
         <span className="bacon-connection-pill-tooltip-entry-group-secondary">
           <span
-            className="cinenerdle-card-chip"
+            className="cinenerdle-card-chip cinenerdle-card-chip-heat"
             style={createHeatChipStyle(entity.popularity, 100)}
           >
             {`Popularity ${formatHeatMetricValue("Popularity", entity.popularity)}`}

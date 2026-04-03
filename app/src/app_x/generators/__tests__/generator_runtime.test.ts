@@ -53,6 +53,7 @@ describe("generator_runtime", () => {
     ]);
     expect(transition.effects).toEqual([{
       type: "load-selected-card",
+      isReselection: false,
       row: 1,
       col: 1,
       removedDescendantRows: true,
@@ -83,6 +84,7 @@ describe("generator_runtime", () => {
     ]);
     expect(transition.effects).toEqual([{
       type: "load-selected-card",
+      isReselection: false,
       row: 0,
       col: 1,
       removedDescendantRows: false,

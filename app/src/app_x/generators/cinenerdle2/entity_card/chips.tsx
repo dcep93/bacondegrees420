@@ -19,7 +19,7 @@ function renderHeatChip(
   label: "Popularity" | "Votes" | "Rating",
   value: number | null | undefined,
   maxValue: number,
-  className = "cinenerdle-card-chip",
+  className = "cinenerdle-card-chip cinenerdle-card-chip-heat",
   style?: CSSProperties,
 ) {
   if (typeof value !== "number" || !Number.isFinite(value)) {
@@ -260,7 +260,7 @@ export function FooterChips({
           "Rating",
           card.voteAverage,
           10,
-          "cinenerdle-card-chip",
+          "cinenerdle-card-chip cinenerdle-card-chip-heat",
           typeof card.voteCount === "number" && Number.isFinite(card.voteCount)
             ? { marginLeft: "auto" }
             : undefined,

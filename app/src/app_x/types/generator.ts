@@ -34,6 +34,7 @@ export type GeneratorLifecycleEffect<T> =
     }
   | {
       type: "load-selected-card";
+      isReselection: boolean;
       removedDescendantRows: boolean;
       row: number;
       col: number;

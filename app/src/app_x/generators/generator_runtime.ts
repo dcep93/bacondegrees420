@@ -106,6 +106,7 @@ export function reduceGeneratorLifecycleEvent<T, TMeta = undefined>(
     },
     effects: [{
       type: "load-selected-card",
+      isReselection: false,
       removedDescendantRows,
       row: event.row,
       col: event.col,

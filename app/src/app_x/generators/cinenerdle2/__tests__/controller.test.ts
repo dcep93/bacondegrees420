@@ -204,29 +204,62 @@ describe("reduceCinenerdleLifecycleEvent", () => {
   it("keeps previous descendants visible until the effect replaces them", () => {
     const state = createGeneratorState<CinenerdleCard, undefined>(undefined, [
       [{ data: makeMovieCard(), selected: true }],
-      [{ data: makeMovieCard(), selected: true }],
+      [
+        { data: makeMovieCard({ key: "movie:321" }), selected: true },
+        { data: makeMovieCard({ key: "movie:322", name: "Scarface", year: "1983" }), selected: false },
+      ],
       [{ data: makePersonCard(), selected: true }],
     ]);
 
     const transition = reduceCinenerdleLifecycleEvent(state, {
       type: "select",
-      row: 0,
-      col: 0,
+      row: 1,
+      col: 1,
     });
 
     expect(transition.state.tree).toEqual([
       [{ data: makeMovieCard(), selected: true }],
-      [{ data: makeMovieCard(), selected: false }],
+      [
+        { data: makeMovieCard({ key: "movie:321" }), selected: false },
+        { data: makeMovieCard({ key: "movie:322", name: "Scarface", year: "1983" }), selected: true },
+      ],
       [{ data: makePersonCard(), selected: false }],
     ]);
     expect(transition.effects).toEqual([
       expect.objectContaining({
         type: "load-selected-card",
+        isReselection: false,
         removedDescendantRows: true,
-        row: 0,
-        col: 0,
+        row: 1,
+        col: 1,
       }),
     ]);
+  });
+
+  it("preserves the existing subtree when selecting an already selected card", () => {
+    const tree: NonNullable<ReturnType<typeof createGeneratorState<CinenerdleCard, undefined>>["tree"]> = [
+      [{ data: makeCinenerdleRootCard(), selected: true }],
+      [{ data: makeMovieCard(), selected: true }],
+      [{ data: makePersonCard(), selected: true }],
+    ];
+    const state = createGeneratorState<CinenerdleCard, undefined>(undefined, tree);
+
+    const transition = reduceCinenerdleLifecycleEvent(state, {
+      type: "select",
+      row: 1,
+      col: 0,
+    });
+
+    expect(transition.state).toBe(state);
+    expect(transition.state.tree).toEqual(tree);
+    expect(transition.effects).toEqual([{
+      type: "load-selected-card",
+      isReselection: true,
+      removedDescendantRows: true,
+      row: 1,
+      col: 0,
+      tree,
+    }]);
   });
 });
 
@@ -523,6 +556,7 @@ describe("useCinenerdleController", () => {
     await controller.runEffect(
       {
         type: "load-selected-card",
+        isReselection: false,
         removedDescendantRows: false,
         row: 1,
         col: 0,
@@ -608,6 +642,7 @@ describe("useCinenerdleController", () => {
     await controller.runEffect(
       {
         type: "load-selected-card",
+        isReselection: false,
         removedDescendantRows: false,
         row: 1,
         col: 0,
@@ -729,6 +764,7 @@ describe("useCinenerdleController", () => {
     await controller.runEffect(
       {
         type: "load-selected-card",
+        isReselection: false,
         removedDescendantRows: true,
         row: 1,
         col: 0,
@@ -866,6 +902,7 @@ describe("useCinenerdleController", () => {
     await controller.runEffect(
       {
         type: "load-selected-card",
+        isReselection: false,
         removedDescendantRows: true,
         row: 1,
         col: 0,
@@ -919,5 +956,43 @@ describe("useCinenerdleController", () => {
       "Scarface",
       "Heat",
     ]);
+  });
+
+  it("scrolls the selected row and its existing child row on same-card reselect without rebuilding", async () => {
+    const writeHash = vi.fn();
+    const controller = renderController({ writeHash });
+    const applyUpdate = vi.fn();
+    const scrollGenerationLikeBubble = vi.fn();
+    const tree: NonNullable<ReturnType<typeof createGeneratorState<CinenerdleCard, undefined>>["tree"]> = [
+      [{ data: makeCinenerdleRootCard(), selected: true }],
+      [{ data: makeMovieCard(), selected: true }],
+      [{ data: makePersonCard(), selected: true }],
+    ];
+
+    await controller.runEffect(
+      {
+        type: "load-selected-card",
+        isReselection: true,
+        removedDescendantRows: true,
+        row: 1,
+        col: 0,
+        tree,
+      },
+      {
+        applyUpdate,
+        getState: () => createGeneratorState<CinenerdleCard, undefined>(undefined),
+        lifecycleId: 1,
+        selectionId: 1,
+        scrollGenerationLikeBubble,
+      },
+    );
+
+    expect(applyUpdate).not.toHaveBeenCalled();
+    expect(tmdbMock.prepareSelectedMovie).not.toHaveBeenCalled();
+    expect(tmdbMock.prepareSelectedPerson).not.toHaveBeenCalled();
+    expect(tmdbMock.prefetchTopPopularUnhydratedConnections).not.toHaveBeenCalled();
+    expect(writeHash).toHaveBeenCalledWith("#cinenerdle|Heat+(1995)|Al+Pacino", "selection");
+    expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(1, 1);
+    expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(2, 2);
   });
 });

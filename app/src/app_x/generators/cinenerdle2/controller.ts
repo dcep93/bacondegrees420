@@ -141,6 +141,26 @@ export function reduceCinenerdleLifecycleEvent(
   state: GeneratorState<CinenerdleCard, undefined>,
   event: GeneratorLifecycleEvent,
 ): GeneratorTransition<CinenerdleCard, undefined, GeneratorLifecycleEffect<CinenerdleCard>> {
+  if (event.type === "select") {
+    const tree = state.tree;
+    const selectedRow = tree?.[event.row];
+    const selectedNode = selectedRow?.[event.col];
+
+    if (tree && selectedRow && selectedNode?.selected) {
+      return {
+        state,
+        effects: [{
+          type: "load-selected-card",
+          isReselection: true,
+          removedDescendantRows: tree.length > event.row + 1,
+          row: event.row,
+          col: event.col,
+          tree,
+        }],
+      };
+    }
+  }
+
   return reduceGeneratorLifecycleEvent(state, event);
 }
 
@@ -1258,6 +1278,15 @@ export function useCinenerdleController({
         const nextHash = serializePathNodes(selectedPathNodes);
         const selectedCard = tree[effect.row]?.[effect.col]?.data ?? null;
         const selectedPathTree = getSelectedPathTree(tree, effect.row);
+
+        if (effect.isReselection) {
+          await scrollGenerationLikeBubble(effect.row);
+          if ((tree[effect.row + 1]?.length ?? 0) > 0) {
+            await scrollGenerationLikeBubble(effect.row + 1);
+          }
+          writeHash(nextHash, "selection");
+          return;
+        }
 
         if (
           selectedCard &&

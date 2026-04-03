@@ -14,7 +14,7 @@ function renderEntityLabelWithPopularity(
         <span>{entity.name}</span>
         <span className="bacon-connection-pill-tooltip-entry-group-secondary">
           <span
-            className="cinenerdle-card-chip"
+            className="cinenerdle-card-chip cinenerdle-card-chip-heat"
             style={createHeatChipStyle(entity.popularity, 100)}
           >
             {`Popularity ${formatHeatMetricValue("Popularity", entity.popularity)}`}
