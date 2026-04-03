@@ -39,9 +39,9 @@ import type {
   GeneratorUpdate,
 } from "../types/generator";
 
-export type AbstractGeneratorTreeRefreshRequest<T> = {
+export type AbstractGeneratorTreeRefreshRequest<T, TMeta = undefined> = {
   requestKey: string;
-  run: (tree: GeneratorTree<T>) => Promise<GeneratorTree<T> | null>;
+  run: (state: GeneratorState<T, TMeta>) => Promise<GeneratorUpdate<T, TMeta> | null>;
 };
 
 export type AbstractGeneratorHandle = {
@@ -77,7 +77,7 @@ export type AbstractGeneratorProps<T, TMeta = undefined, TEffect = never> =
     onInitialTreePainted?: (tree: GeneratorTree<T>) => void;
     onTreeChange?: (tree: GeneratorTree<T>) => void;
     resetKey?: number | string;
-    treeRefreshRequest?: AbstractGeneratorTreeRefreshRequest<T> | null;
+    treeRefreshRequest?: AbstractGeneratorTreeRefreshRequest<T, TMeta> | null;
   };
 
 type GeneratorRowRenderSample = {
@@ -1040,17 +1040,13 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     const lifecycleId = activeLifecycleRef.current;
     const selectionId = activeSelectionRef.current;
     const applyUpdate = createGuardedApplyUpdate(lifecycleId, selectionId);
-    const currentTree = resolveGeneratorTree(stateRef.current);
-
-    void treeRefreshRequest.run(currentTree)
-      .then((nextTree) => {
-        if (!nextTree) {
+    void treeRefreshRequest.run(stateRef.current)
+      .then((nextUpdate) => {
+        if (!nextUpdate) {
           return;
         }
 
-        applyUpdate({
-          tree: nextTree,
-        });
+        applyUpdate(nextUpdate);
       })
       .catch(() => { });
   }, [createGuardedApplyUpdate, treeRefreshRequest]);

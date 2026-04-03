@@ -10,9 +10,6 @@ import {
   triggerTmdbRowClick,
 } from "../entity_card_helpers";
 import { getCinenerdleItemAttrCounts } from "../entity_card_ordering";
-import {
-  CINENERDLE_ITEM_ATTRS_STORAGE_KEY,
-} from "../item_attrs";
 
 function makeRenderableMovieCard(
   overrides: Partial<RenderableCinenerdleEntityCard> = {},
@@ -37,6 +34,13 @@ function makeRenderableMovieCard(
     isSelected: false,
     isLocked: false,
     isAncestorSelected: false,
+    itemAttrs: [],
+    connectedItemAttrs: [],
+    inheritedItemAttrs: [],
+    itemAttrCounts: {
+      activeCount: 0,
+      passiveCount: 0,
+    },
     voteAverage: 8.2,
     voteCount: 9000,
     ...overrides,
@@ -264,18 +268,17 @@ describe("CinenerdleEntityCard", () => {
   });
 
   it("renders attr buttons instead of placeholder copy when attrs are present", () => {
-    localStorage.setItem(
-      CINENERDLE_ITEM_ATTRS_STORAGE_KEY,
-      JSON.stringify({
-        film: {
-          "heat:1995": ["🔥", "⭐"],
-        },
-        person: {},
-      }),
-    );
-
     const html = renderToStaticMarkup(
-      <CinenerdleEntityCard card={makeRenderableMovieCard()} />,
+      <CinenerdleEntityCard
+        card={makeRenderableMovieCard({
+          itemAttrs: ["🔥", "⭐"],
+          connectedItemAttrs: ["🔥", "⭐"],
+          itemAttrCounts: {
+            activeCount: 2,
+            passiveCount: 0,
+          },
+        })}
+      />,
     );
 
     expect(html).toContain("Remove 🔥 from Heat");
@@ -284,26 +287,17 @@ describe("CinenerdleEntityCard", () => {
   });
 
   it("renders inherited attrs from the connected source as non-interactive chips", () => {
-    localStorage.setItem(
-      CINENERDLE_ITEM_ATTRS_STORAGE_KEY,
-      JSON.stringify({
-        film: {
-          "heat:1995": ["⭐"],
-        },
-        person: {
-          "al-pacino": ["🔥", "⭐"],
-        },
-      }),
-    );
-
     const html = renderToStaticMarkup(
       <CinenerdleEntityCard
-        card={makeRenderableMovieCard()}
-        connectedItemAttrSources={[{
-          key: "person:al-pacino",
-          kind: "person",
-          name: "Al Pacino",
-        }]}
+        card={makeRenderableMovieCard({
+          itemAttrs: ["⭐"],
+          connectedItemAttrs: ["🔥", "⭐"],
+          inheritedItemAttrs: ["🔥"],
+          itemAttrCounts: {
+            activeCount: 1,
+            passiveCount: 1,
+          },
+        })}
       />,
     );
 

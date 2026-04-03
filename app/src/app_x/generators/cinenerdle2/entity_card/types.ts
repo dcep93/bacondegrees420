@@ -1,4 +1,5 @@
 import type { CardCreditLine, CardSource, CardStatus } from "../view_types";
+import type { GeneratorCardRowOrderMetadata } from "../../../types/generator";
 
 type BaseRenderableCinenerdleEntityCard = {
   key: string;
@@ -24,6 +25,10 @@ type BaseRenderableCinenerdleEntityCard = {
   isSelected: boolean;
   isLocked?: boolean;
   isAncestorSelected?: boolean;
+  itemAttrs?: string[];
+  connectedItemAttrs?: string[];
+  inheritedItemAttrs?: string[];
+  itemAttrCounts?: GeneratorCardRowOrderMetadata;
 };
 
 type RenderableMovieCard = BaseRenderableCinenerdleEntityCard & {

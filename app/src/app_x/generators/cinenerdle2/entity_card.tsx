@@ -1,6 +1,5 @@
 import {
   useEffect,
-  useMemo,
   useRef,
   useState,
   type KeyboardEvent,
@@ -11,15 +10,6 @@ import { handleIsolatedClick, joinClassNames } from "../../components/ui_utils";
 import { FooterChips } from "./entity_card/chips";
 import type { RenderableCinenerdleEntityCard } from "./entity_card/types";
 import { formatRemovedItemAttrMessage, getAcceptedItemAttrInput } from "./entity_card_helpers";
-import { getCinenerdleItemAttrCounts } from "./entity_card_ordering";
-import {
-  CINENERDLE_ITEM_ATTRS_UPDATED_EVENT,
-  addItemAttrToTarget,
-  getCinenerdleItemAttrTargetFromCard,
-  getItemAttrsForTarget,
-  removeItemAttrFromTarget,
-} from "./item_attrs";
-import type { GeneratorCardRowOrderMetadata } from "../../types/generator";
 
 export type { RenderableCinenerdleEntityCard } from "./entity_card/types";
 
@@ -80,25 +70,21 @@ function CinenerdleExtraChip({
 export function CinenerdleEntityCard({
   card,
   className,
-  connectedItemAttrSources = [],
   imageFetchPriority = "auto",
   imageLoading = "lazy",
-  onItemAttrCountsChange = null,
+  onAddItemAttr,
   onCardClick,
+  onRemoveItemAttr,
   onTitleClick,
   titleElement = "p",
 }: {
   card: RenderableCinenerdleEntityCard;
   className?: string;
-  connectedItemAttrSources?: Array<{
-    key: string;
-    kind: "movie" | "person";
-    name: string;
-  }>;
   imageFetchPriority?: "auto" | "high";
   imageLoading?: "eager" | "lazy";
-  onItemAttrCountsChange?: ((counts: GeneratorCardRowOrderMetadata | null) => void) | null;
+  onAddItemAttr?: ((nextChar: string) => void) | null;
   onCardClick?: (event: MouseEvent<HTMLElement>) => void;
+  onRemoveItemAttr?: ((itemAttr: string) => void) | null;
   onTitleClick?: (event: MouseEvent<HTMLElement>) => void;
   titleElement?: "button" | "p";
 }) {
@@ -122,59 +108,10 @@ export function CinenerdleEntityCard({
       : [{ subtitle: card.subtitle, subtitleDetail: card.subtitleDetail }];
   const isCinenerdleRootCard = card.kind === "cinenerdle";
   const [isExtraInputVisible, setIsExtraInputVisible] = useState(false);
-  const [itemAttrsVersion, setItemAttrsVersion] = useState(0);
   const extraRowRef = useRef<HTMLDivElement | null>(null);
   const extraInputRef = useRef<HTMLInputElement | null>(null);
-  const resolvedConnectedItemAttrSources = useMemo(
-    () => connectedItemAttrSources.filter((source, index, allSources) =>
-      allSources.findIndex((candidate) => candidate.key === source.key) === index),
-    [connectedItemAttrSources],
-  );
-  const itemAttrTarget = useMemo(
-    () => (card.kind === "cinenerdle"
-      ? null
-      : getCinenerdleItemAttrTargetFromCard({
-        key: card.key,
-        kind: card.kind,
-        name: card.name,
-      })),
-    [card.key, card.kind, card.name],
-  );
-  const connectedItemAttrSourceTargets = useMemo(
-    () => resolvedConnectedItemAttrSources
-      .map((source) => getCinenerdleItemAttrTargetFromCard(source))
-      .filter((target): target is NonNullable<typeof target> => target !== null),
-    [resolvedConnectedItemAttrSources],
-  );
-  const itemAttrs = useMemo(
-    () => {
-      void itemAttrsVersion;
-      return itemAttrTarget ? getItemAttrsForTarget(itemAttrTarget) : [];
-    },
-    [itemAttrTarget, itemAttrsVersion],
-  );
-  const connectedItemAttrs = useMemo(
-    () => {
-      void itemAttrsVersion;
-      return connectedItemAttrSourceTargets.reduce<string[]>((allItemAttrs, target) => {
-        getItemAttrsForTarget(target).forEach((itemAttr) => {
-          if (!allItemAttrs.includes(itemAttr)) {
-            allItemAttrs.push(itemAttr);
-          }
-        });
-        return allItemAttrs;
-      }, []);
-    },
-    [connectedItemAttrSourceTargets, itemAttrsVersion],
-  );
-  const inheritedItemAttrs = useMemo(
-    () => connectedItemAttrs.filter((itemAttr) => !itemAttrs.includes(itemAttr)),
-    [connectedItemAttrs, itemAttrs],
-  );
-  const itemAttrCounts = useMemo(
-    () => getCinenerdleItemAttrCounts(itemAttrs, inheritedItemAttrs),
-    [inheritedItemAttrs, itemAttrs],
-  );
+  const itemAttrs = card.itemAttrs ?? [];
+  const inheritedItemAttrs = card.inheritedItemAttrs ?? [];
 
   useEffect(() => {
     if (!isExtraInputVisible) {
@@ -196,27 +133,12 @@ export function CinenerdleEntityCard({
   }, [isExtraInputVisible]);
 
   useEffect(() => {
-    function handleItemAttrsUpdated() {
-      setItemAttrsVersion((version) => version + 1);
-    }
-
-    window.addEventListener(CINENERDLE_ITEM_ATTRS_UPDATED_EVENT, handleItemAttrsUpdated);
-    return () => {
-      window.removeEventListener(CINENERDLE_ITEM_ATTRS_UPDATED_EVENT, handleItemAttrsUpdated);
-    };
-  }, []);
-
-  useEffect(() => {
     if (!isExtraInputVisible) {
       return;
     }
 
     extraInputRef.current?.focus();
   }, [isExtraInputVisible]);
-
-  useEffect(() => {
-    onItemAttrCountsChange?.(itemAttrCounts);
-  }, [itemAttrCounts, onItemAttrCountsChange]);
 
   return (
     <article
@@ -293,17 +215,13 @@ export function CinenerdleEntityCard({
               aria-label={`Add attr for ${card.name}`}
               className="cinenerdle-card-extra-input"
               onChange={(event) => {
-                if (!itemAttrTarget) {
-                  return;
-                }
-
                 const nextChar = getAcceptedItemAttrInput(event.target.value, itemAttrs);
                 event.target.value = "";
                 if (!nextChar) {
                   return;
                 }
 
-                addItemAttrToTarget(itemAttrTarget, nextChar);
+                onAddItemAttr?.(nextChar);
                 setIsExtraInputVisible(false);
               }}
               ref={extraInputRef}
@@ -317,11 +235,7 @@ export function CinenerdleEntityCard({
                   itemAttr={itemAttr}
                   itemName={card.name}
                   onRemove={() => {
-                      if (!itemAttrTarget) {
-                        return;
-                      }
-
-                      removeItemAttrFromTarget(itemAttrTarget, itemAttr);
+                      onRemoveItemAttr?.(itemAttr);
                       if (typeof window !== "undefined" && typeof window.alert === "function") {
                         window.alert(formatRemovedItemAttrMessage(itemAttr, card.name));
                       }

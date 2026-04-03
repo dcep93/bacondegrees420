@@ -16,6 +16,11 @@ export type CinenerdleItemAttrTarget = {
   name: string;
 };
 
+export type CinenerdleItemAttrsMutationResult = {
+  changedTargets: CinenerdleItemAttrTarget[];
+  nextItemAttrsSnapshot: CinenerdleItemAttrs;
+};
+
 function canUseLocalStorage(): boolean {
   return getLocalStorage() !== null;
 }
@@ -43,7 +48,7 @@ function getLocalStorage(): Storage | null {
   return null;
 }
 
-function createEmptyItemAttrs(): CinenerdleItemAttrs {
+export function createEmptyItemAttrs(): CinenerdleItemAttrs {
   return {
     film: {},
     person: {},
@@ -105,12 +110,14 @@ function normalizeBucketEntries(value: unknown): Record<string, string[]> {
   }, {});
 }
 
-function dispatchItemAttrsUpdatedEvent() {
+function dispatchItemAttrsUpdatedEvent(detail: CinenerdleItemAttrsMutationResult) {
   if (typeof window === "undefined") {
     return;
   }
 
-  window.dispatchEvent(new CustomEvent(CINENERDLE_ITEM_ATTRS_UPDATED_EVENT));
+  window.dispatchEvent(new CustomEvent(CINENERDLE_ITEM_ATTRS_UPDATED_EVENT, {
+    detail,
+  }));
 }
 
 export function readCinenerdleItemAttrs(): CinenerdleItemAttrs {
@@ -143,11 +150,20 @@ export function readCinenerdleItemAttrs(): CinenerdleItemAttrs {
   }
 }
 
-export function writeCinenerdleItemAttrs(nextItemAttrs: CinenerdleItemAttrs): CinenerdleItemAttrs {
-  const normalizedItemAttrs: CinenerdleItemAttrs = {
+export function normalizeCinenerdleItemAttrs(
+  nextItemAttrs: CinenerdleItemAttrs,
+): CinenerdleItemAttrs {
+  return {
     film: normalizeBucketEntries(nextItemAttrs.film),
     person: normalizeBucketEntries(nextItemAttrs.person),
   };
+}
+
+export function writeCinenerdleItemAttrs(
+  nextItemAttrs: CinenerdleItemAttrs,
+  changedTargets: CinenerdleItemAttrTarget[] = [],
+): CinenerdleItemAttrs {
+  const normalizedItemAttrs = normalizeCinenerdleItemAttrs(nextItemAttrs);
 
   if (!canUseLocalStorage()) {
     return normalizedItemAttrs;
@@ -157,7 +173,10 @@ export function writeCinenerdleItemAttrs(nextItemAttrs: CinenerdleItemAttrs): Ci
     CINENERDLE_ITEM_ATTRS_STORAGE_KEY,
     JSON.stringify(normalizedItemAttrs),
   );
-  dispatchItemAttrsUpdatedEvent();
+  dispatchItemAttrsUpdatedEvent({
+    changedTargets,
+    nextItemAttrsSnapshot: normalizedItemAttrs,
+  });
   return normalizedItemAttrs;
 }
 
@@ -203,78 +222,116 @@ export function getCinenerdleItemAttrTargetFromCard(args: {
   return null;
 }
 
+export function getItemAttrsForTargetFromSnapshot(
+  itemAttrsSnapshot: CinenerdleItemAttrs,
+  target: CinenerdleItemAttrTarget,
+): string[] {
+  return itemAttrsSnapshot[target.bucket][target.id] ?? [];
+}
+
 export function getItemAttrsForTarget(target: CinenerdleItemAttrTarget): string[] {
-  return readCinenerdleItemAttrs()[target.bucket][target.id] ?? [];
+  return getItemAttrsForTargetFromSnapshot(readCinenerdleItemAttrs(), target);
 }
 
-export function addItemAttrToTarget(
+function getUniqueChangedTargets(
+  targets: CinenerdleItemAttrTarget[],
+): CinenerdleItemAttrTarget[] {
+  const seenTargets = new Set<string>();
+
+  return targets.filter((target) => {
+    const fingerprint = `${target.bucket}:${target.id}`;
+    if (seenTargets.has(fingerprint)) {
+      return false;
+    }
+
+    seenTargets.add(fingerprint);
+    return true;
+  });
+}
+
+export function addItemAttrToSnapshot(
+  itemAttrsSnapshot: CinenerdleItemAttrs,
   target: CinenerdleItemAttrTarget,
   candidateChar: string,
-): string[] {
+): CinenerdleItemAttrsMutationResult {
   const normalizedChar = getFirstItemAttrChar(candidateChar);
   if (!normalizedChar) {
-    return getItemAttrsForTarget(target);
+    return {
+      changedTargets: [],
+      nextItemAttrsSnapshot: itemAttrsSnapshot,
+    };
   }
 
-  const currentItemAttrs = readCinenerdleItemAttrs();
-  const currentChars = currentItemAttrs[target.bucket][target.id] ?? [];
+  const currentChars = getItemAttrsForTargetFromSnapshot(itemAttrsSnapshot, target);
   if (currentChars.includes(normalizedChar)) {
-    return currentChars;
+    return {
+      changedTargets: [],
+      nextItemAttrsSnapshot: itemAttrsSnapshot,
+    };
   }
 
-  return writeCinenerdleItemAttrs({
-    ...currentItemAttrs,
-    [target.bucket]: {
-      ...currentItemAttrs[target.bucket],
-      [target.id]: [...currentChars, normalizedChar],
-    },
-  })[target.bucket][target.id] ?? [];
+  return {
+    changedTargets: [target],
+    nextItemAttrsSnapshot: normalizeCinenerdleItemAttrs({
+      ...itemAttrsSnapshot,
+      [target.bucket]: {
+        ...itemAttrsSnapshot[target.bucket],
+        [target.id]: [...currentChars, normalizedChar],
+      },
+    }),
+  };
 }
 
-export function removeItemAttrFromTarget(
+export function removeItemAttrFromSnapshot(
+  itemAttrsSnapshot: CinenerdleItemAttrs,
   target: CinenerdleItemAttrTarget,
   candidateChar: string,
-): string[] {
+): CinenerdleItemAttrsMutationResult {
   const normalizedChar = getFirstItemAttrChar(candidateChar);
   if (!normalizedChar) {
-    return getItemAttrsForTarget(target);
+    return {
+      changedTargets: [],
+      nextItemAttrsSnapshot: itemAttrsSnapshot,
+    };
   }
 
-  const currentItemAttrs = readCinenerdleItemAttrs();
-  const currentChars = currentItemAttrs[target.bucket][target.id] ?? [];
+  const currentChars = getItemAttrsForTargetFromSnapshot(itemAttrsSnapshot, target);
   const nextChars = currentChars.filter((itemAttr) => itemAttr !== normalizedChar);
-  const nextBucketEntries = { ...currentItemAttrs[target.bucket] };
+  if (nextChars.length === currentChars.length) {
+    return {
+      changedTargets: [],
+      nextItemAttrsSnapshot: itemAttrsSnapshot,
+    };
+  }
 
+  const nextBucketEntries = { ...itemAttrsSnapshot[target.bucket] };
   if (nextChars.length > 0) {
     nextBucketEntries[target.id] = nextChars;
   } else {
     delete nextBucketEntries[target.id];
   }
 
-  return writeCinenerdleItemAttrs({
-    ...currentItemAttrs,
-    [target.bucket]: nextBucketEntries,
-  })[target.bucket][target.id] ?? [];
+  return {
+    changedTargets: [target],
+    nextItemAttrsSnapshot: normalizeCinenerdleItemAttrs({
+      ...itemAttrsSnapshot,
+      [target.bucket]: nextBucketEntries,
+    }),
+  };
 }
 
-export function replaceItemAttrsForReferencedTargets(
+export function replaceItemAttrsInSnapshotForReferencedTargets(
+  itemAttrsSnapshot: CinenerdleItemAttrs,
   referencedTargets: CinenerdleItemAttrTarget[],
   replacementItemAttrs: CinenerdleItemAttrs,
-): CinenerdleItemAttrs {
-  const currentItemAttrs = readCinenerdleItemAttrs();
+): CinenerdleItemAttrsMutationResult {
   const nextItemAttrs: CinenerdleItemAttrs = {
-    film: { ...currentItemAttrs.film },
-    person: { ...currentItemAttrs.person },
+    film: { ...itemAttrsSnapshot.film },
+    person: { ...itemAttrsSnapshot.person },
   };
-  const seenTargets = new Set<string>();
+  const changedTargets = getUniqueChangedTargets(referencedTargets);
 
-  referencedTargets.forEach((target) => {
-    const fingerprint = `${target.bucket}:${target.id}`;
-    if (seenTargets.has(fingerprint)) {
-      return;
-    }
-
-    seenTargets.add(fingerprint);
+  changedTargets.forEach((target) => {
     const nextChars = normalizeItemAttrChars(replacementItemAttrs[target.bucket][target.id] ?? []);
     if (nextChars.length > 0) {
       nextItemAttrs[target.bucket][target.id] = nextChars;
@@ -284,5 +341,47 @@ export function replaceItemAttrsForReferencedTargets(
     delete nextItemAttrs[target.bucket][target.id];
   });
 
-  return writeCinenerdleItemAttrs(nextItemAttrs);
+  return {
+    changedTargets,
+    nextItemAttrsSnapshot: normalizeCinenerdleItemAttrs(nextItemAttrs),
+  };
+}
+
+export function addItemAttrToTarget(
+  target: CinenerdleItemAttrTarget,
+  candidateChar: string,
+): string[] {
+  const currentItemAttrs = readCinenerdleItemAttrs();
+  const result = addItemAttrToSnapshot(currentItemAttrs, target, candidateChar);
+  if (result.nextItemAttrsSnapshot !== currentItemAttrs) {
+    writeCinenerdleItemAttrs(result.nextItemAttrsSnapshot, result.changedTargets);
+  }
+
+  return getItemAttrsForTargetFromSnapshot(result.nextItemAttrsSnapshot, target);
+}
+
+export function removeItemAttrFromTarget(
+  target: CinenerdleItemAttrTarget,
+  candidateChar: string,
+): string[] {
+  const currentItemAttrs = readCinenerdleItemAttrs();
+  const result = removeItemAttrFromSnapshot(currentItemAttrs, target, candidateChar);
+  if (result.nextItemAttrsSnapshot !== currentItemAttrs) {
+    writeCinenerdleItemAttrs(result.nextItemAttrsSnapshot, result.changedTargets);
+  }
+
+  return getItemAttrsForTargetFromSnapshot(result.nextItemAttrsSnapshot, target);
+}
+
+export function replaceItemAttrsForReferencedTargets(
+  referencedTargets: CinenerdleItemAttrTarget[],
+  replacementItemAttrs: CinenerdleItemAttrs,
+): CinenerdleItemAttrs {
+  const currentItemAttrs = readCinenerdleItemAttrs();
+  const result = replaceItemAttrsInSnapshotForReferencedTargets(
+    currentItemAttrs,
+    referencedTargets,
+    replacementItemAttrs,
+  );
+  return writeCinenerdleItemAttrs(result.nextItemAttrsSnapshot, result.changedTargets);
 }

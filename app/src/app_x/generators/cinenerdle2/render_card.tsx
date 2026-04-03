@@ -1,8 +1,7 @@
 import type { MouseEvent } from "react";
 import { copyCinenerdleTextToClipboard } from "./debug";
 import { CinenerdleBreakBar, CinenerdleEntityCard } from "./entity_card";
-import type { CinenerdleCard, CinenerdleCardViewModel } from "./view_types";
-import type { GeneratorCardRowOrderMetadata } from "../../types/generator";
+import type { CinenerdleCardViewModel } from "./view_types";
 
 export function renderDbInfoCard(
   viewModel: Extract<CinenerdleCardViewModel, { kind: "dbinfo" }>,
@@ -63,30 +62,30 @@ export function renderBreakCard(label: string) {
 }
 
 export function renderLoggedCinenerdleCard({
-  connectedItemAttrSources,
   imageFetchPriority,
   imageLoading,
-  onItemAttrCountsChange,
+  onAddItemAttr,
   onCardClick,
+  onRemoveItemAttr,
   onTitleClick,
   viewModel,
 }: {
-  connectedItemAttrSources?: Array<Extract<CinenerdleCard, { kind: "movie" | "person" }>>;
   imageFetchPriority?: "auto" | "high";
   imageLoading?: "eager" | "lazy";
-  onItemAttrCountsChange?: ((counts: GeneratorCardRowOrderMetadata | null) => void) | null;
+  onAddItemAttr?: ((nextChar: string) => void) | null;
   onCardClick?: (event: MouseEvent<HTMLElement>) => void;
+  onRemoveItemAttr?: ((itemAttr: string) => void) | null;
   onTitleClick: (event: MouseEvent<HTMLElement>) => void;
   viewModel: Extract<CinenerdleCardViewModel, { kind: "cinenerdle" | "movie" | "person" }>;
 }) {
   return (
     <CinenerdleEntityCard
       card={viewModel}
-      connectedItemAttrSources={connectedItemAttrSources}
       imageFetchPriority={imageFetchPriority}
       imageLoading={imageLoading}
-      onItemAttrCountsChange={onItemAttrCountsChange}
+      onAddItemAttr={onAddItemAttr}
       onCardClick={onCardClick}
+      onRemoveItemAttr={onRemoveItemAttr}
       onTitleClick={onTitleClick}
     />
   );

@@ -1,3 +1,4 @@
+import type { GeneratorCardRowOrderMetadata } from "../../types/generator";
 import type { FilmRecord, PersonRecord } from "./types";
 
 export type CardSource = {
@@ -60,6 +61,13 @@ type BaseCard = {
   status: CardStatus | null;
 };
 
+type EntityCardItemAttrs = {
+  itemAttrs?: string[];
+  connectedItemAttrs?: string[];
+  inheritedItemAttrs?: string[];
+  itemAttrCounts?: GeneratorCardRowOrderMetadata;
+};
+
 export type DbInfoCard = BaseCard & {
   kind: "dbinfo";
   body: string;
@@ -78,12 +86,12 @@ export type BreakCard = BaseCard & {
   record: null;
 };
 
-export type PersonCard = BaseCard & {
+export type PersonCard = BaseCard & EntityCardItemAttrs & {
   kind: "person";
   record: PersonRecord | null;
 };
 
-export type MovieCard = BaseCard & {
+export type MovieCard = BaseCard & EntityCardItemAttrs & {
   kind: "movie";
   year: string;
   voteAverage: number | null;
@@ -116,15 +124,22 @@ type BaseCardViewModel = {
   isExcluded: boolean;
 };
 
+type EntityCardViewModelAttrs = {
+  itemAttrs: string[];
+  connectedItemAttrs: string[];
+  inheritedItemAttrs: string[];
+  itemAttrCounts: GeneratorCardRowOrderMetadata;
+};
+
 export type CinenerdleCardViewModel =
   | (BaseCardViewModel & {
       kind: "cinenerdle" | "person";
-    })
+    } & Partial<EntityCardViewModelAttrs>)
   | (BaseCardViewModel & {
       kind: "movie";
       voteAverage: number | null;
       voteCount: number | null;
-    })
+    } & EntityCardViewModelAttrs)
   | (BaseCardViewModel & {
       kind: "break";
     })

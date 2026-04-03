@@ -8,10 +8,12 @@ import "../../styles/cinenerdle2.css";
 import type { GeneratorNode } from "../../types/generator";
 import {
   buildTreeFromHash,
+  type CinenerdleTreeMeta,
   markInitialViewportSettled,
   resetInitialViewportSettled,
   useCinenerdleController,
 } from "./controller";
+import { enrichCinenerdleTreeWithItemAttrs } from "./card_item_attrs";
 import {
   CINENERDLE_ENTITY_REFRESH_REQUESTED_EVENT,
   type EntityRefreshRequest,
@@ -28,6 +30,14 @@ import {
 import {
   CINENERDLE_RECORDS_UPDATED_EVENT,
 } from "./indexed_db";
+import {
+  addItemAttrToSnapshot,
+  createEmptyItemAttrs,
+  getCinenerdleItemAttrTargetFromCard,
+  removeItemAttrFromSnapshot,
+  type CinenerdleItemAttrs,
+  writeCinenerdleItemAttrs,
+} from "./item_attrs";
 import { primeTmdbApiKeyOnInit, setTmdbLogGeneration } from "./tmdb";
 import type { CinenerdleCard } from "./view_types";
 export {
@@ -51,6 +61,14 @@ type Cinenerdle2Props = {
   onHashWrite: (nextHash: string, mode: "selection" | "navigation") => void;
   resetVersion: number;
 };
+
+type ItemAttrTreeRefreshRequest = {
+  kind: "item-attrs";
+  nextItemAttrsSnapshot: CinenerdleItemAttrs;
+  requestKey: string;
+};
+
+type TreeRefreshRequestState = EntityRefreshRequest | ItemAttrTreeRefreshRequest;
 
 function scrollPageToBottom() {
   if (typeof window === "undefined" || typeof document === "undefined") {
@@ -87,23 +105,25 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   const lastGeneratorResetKeyRef = useRef<string | null>(null);
   const initialTreeShellRef = useRef<HTMLDivElement | null>(null);
   const treeRef = useRef<GeneratorNode<CinenerdleCard>[][]>([]);
+  const itemAttrsSnapshotRef = useRef<CinenerdleItemAttrs>(createEmptyItemAttrs());
   const pendingInitialTreeBottomSnapRef = useRef(true);
   const initialTreeBottomSnapRequestIdRef = useRef(0);
   const initialTreeVisibilityTimeoutRef = useRef<number | null>(null);
   const [isInitialTreeVisible, setIsInitialTreeVisible] = useState(false);
   const [recordsRefreshVersion, setRecordsRefreshVersion] = useState(0);
-  const [activeEntityRefreshRequest, setActiveEntityRefreshRequest] = useState<EntityRefreshRequest | null>(null);
-  const pendingEntityRefreshRequestsRef = useRef<EntityRefreshRequest[]>([]);
+  const [activeTreeRefreshRequest, setActiveTreeRefreshRequest] = useState<TreeRefreshRequestState | null>(null);
+  const pendingTreeRefreshRequestsRef = useRef<TreeRefreshRequestState[]>([]);
   const recordsRefreshScheduledRef = useRef(false);
-  const activeEntityRefreshRequestRef = useRef<EntityRefreshRequest | null>(null);
+  const activeTreeRefreshRequestRef = useRef<TreeRefreshRequestState | null>(null);
+  const itemAttrTreeRefreshRequestSequenceRef = useRef(0);
 
   useLayoutEffect(() => {
     hashRef.current = normalizedHash;
   }, [normalizedHash]);
 
   useLayoutEffect(() => {
-    activeEntityRefreshRequestRef.current = activeEntityRefreshRequest;
-  }, [activeEntityRefreshRequest]);
+    activeTreeRefreshRequestRef.current = activeTreeRefreshRequest;
+  }, [activeTreeRefreshRequest]);
 
   useEffect(() => {
     primeTmdbApiKeyOnInit();
@@ -129,8 +149,8 @@ const Cinenerdle2 = memo(function Cinenerdle2({
         recordsRefreshScheduledRef.current = false;
 
         if (
-          activeEntityRefreshRequestRef.current ||
-          pendingEntityRefreshRequestsRef.current.length > 0
+          activeTreeRefreshRequestRef.current ||
+          pendingTreeRefreshRequestsRef.current.length > 0
         ) {
           return;
         }
@@ -146,13 +166,13 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   }, []);
 
   useEffect(() => {
-    function advanceEntityRefreshQueue() {
-      setActiveEntityRefreshRequest((currentRequest) => {
+    function advanceTreeRefreshQueue() {
+      setActiveTreeRefreshRequest((currentRequest) => {
         if (currentRequest) {
           return currentRequest;
         }
 
-        return pendingEntityRefreshRequestsRef.current.shift() ?? null;
+        return pendingTreeRefreshRequestsRef.current.shift() ?? null;
       });
     }
 
@@ -168,13 +188,13 @@ const Cinenerdle2 = memo(function Cinenerdle2({
         return;
       }
 
-      pendingEntityRefreshRequestsRef.current = [
-        ...pendingEntityRefreshRequestsRef.current.filter((pendingRequest) =>
+      pendingTreeRefreshRequestsRef.current = [
+        ...pendingTreeRefreshRequestsRef.current.filter((pendingRequest) =>
           pendingRequest.requestKey !== request.requestKey,
         ),
         request,
       ];
-      advanceEntityRefreshQueue();
+      advanceTreeRefreshQueue();
     }
 
     window.addEventListener(
@@ -206,29 +226,94 @@ const Cinenerdle2 = memo(function Cinenerdle2({
     [onHashWrite],
   );
 
+  const requestItemAttrTreeRefresh = useCallback((nextItemAttrsSnapshot: CinenerdleItemAttrs) => {
+    itemAttrTreeRefreshRequestSequenceRef.current += 1;
+    pendingTreeRefreshRequestsRef.current = [
+      ...pendingTreeRefreshRequestsRef.current.filter((request) => request.kind !== "item-attrs"),
+      {
+        kind: "item-attrs",
+        nextItemAttrsSnapshot,
+        requestKey: `item-attrs:${itemAttrTreeRefreshRequestSequenceRef.current}`,
+      },
+    ];
+
+    setActiveTreeRefreshRequest((currentRequest) =>
+      currentRequest ?? pendingTreeRefreshRequestsRef.current.shift() ?? null);
+  }, []);
+
+  const handleItemAttrMutationRequested = useCallback((request: {
+    action: "add" | "remove";
+    card: Extract<CinenerdleCard, { kind: "movie" | "person" }>;
+    itemAttr: string;
+  }) => {
+    const itemAttrTarget = getCinenerdleItemAttrTargetFromCard(request.card);
+    if (!itemAttrTarget) {
+      return;
+    }
+
+    const mutationResult = request.action === "add"
+      ? addItemAttrToSnapshot(itemAttrsSnapshotRef.current, itemAttrTarget, request.itemAttr)
+      : removeItemAttrFromSnapshot(itemAttrsSnapshotRef.current, itemAttrTarget, request.itemAttr);
+
+    if (mutationResult.nextItemAttrsSnapshot === itemAttrsSnapshotRef.current) {
+      return;
+    }
+
+    itemAttrsSnapshotRef.current = writeCinenerdleItemAttrs(
+      mutationResult.nextItemAttrsSnapshot,
+      mutationResult.changedTargets,
+    );
+    requestItemAttrTreeRefresh(itemAttrsSnapshotRef.current);
+  }, [requestItemAttrTreeRefresh]);
+
   const controller = useCinenerdleController({
+    onItemAttrMutationRequested: handleItemAttrMutationRequested,
+    onItemAttrsSnapshotChange: (nextItemAttrsSnapshot) => {
+      itemAttrsSnapshotRef.current = nextItemAttrsSnapshot;
+    },
     recordsRefreshVersion,
     readHash,
     writeHash,
   });
-  const treeRefreshRequest = useMemo<AbstractGeneratorTreeRefreshRequest<CinenerdleCard> | null>(() => {
-    if (!activeEntityRefreshRequest) {
+  const treeRefreshRequest = useMemo<AbstractGeneratorTreeRefreshRequest<CinenerdleCard, CinenerdleTreeMeta> | null>(() => {
+    if (!activeTreeRefreshRequest) {
       return null;
     }
 
     return {
-      requestKey: activeEntityRefreshRequest.requestKey,
-      run: async () => {
+      requestKey: activeTreeRefreshRequest.requestKey,
+      run: async (state) => {
         try {
-          return await buildTreeFromHash(readHash(), {
-            bypassInFlightCache: true,
-          });
+          if (activeTreeRefreshRequest.kind === "item-attrs") {
+            itemAttrsSnapshotRef.current = activeTreeRefreshRequest.nextItemAttrsSnapshot;
+            return {
+              meta: {
+                itemAttrsSnapshot: activeTreeRefreshRequest.nextItemAttrsSnapshot,
+              },
+              tree: enrichCinenerdleTreeWithItemAttrs(
+                state.tree ?? [],
+                activeTreeRefreshRequest.nextItemAttrsSnapshot,
+              ),
+            };
+          }
+
+          const itemAttrsSnapshot = state.meta.itemAttrsSnapshot ?? itemAttrsSnapshotRef.current;
+          itemAttrsSnapshotRef.current = itemAttrsSnapshot;
+          return {
+            meta: {
+              itemAttrsSnapshot,
+            },
+            tree: await buildTreeFromHash(readHash(), {
+              bypassInFlightCache: true,
+              itemAttrsSnapshot,
+            }),
+          };
         } finally {
-          setActiveEntityRefreshRequest(pendingEntityRefreshRequestsRef.current.shift() ?? null);
+          setActiveTreeRefreshRequest(pendingTreeRefreshRequestsRef.current.shift() ?? null);
         }
       },
     };
-  }, [activeEntityRefreshRequest, readHash]);
+  }, [activeTreeRefreshRequest, readHash]);
   const getRowPresentation = useCallback((row: GeneratorNode<CinenerdleCard>[]) => {
     const isBreakRow = row.length === 1 && row[0]?.data.kind === "break";
 

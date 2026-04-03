@@ -386,6 +386,10 @@ export function createCardViewModel(
     return {
       ...sharedFields,
       kind: "movie",
+      itemAttrs: card.itemAttrs ?? [],
+      connectedItemAttrs: card.connectedItemAttrs ?? [],
+      inheritedItemAttrs: card.inheritedItemAttrs ?? [],
+      itemAttrCounts: card.itemAttrCounts ?? { activeCount: 0, passiveCount: 0 },
       voteAverage: card.voteAverage,
       voteCount: card.voteCount,
     };
@@ -401,5 +405,13 @@ export function createCardViewModel(
   return {
     ...sharedFields,
     kind: card.kind,
+    ...(card.kind === "person"
+      ? {
+          itemAttrs: card.itemAttrs ?? [],
+          connectedItemAttrs: card.connectedItemAttrs ?? [],
+          inheritedItemAttrs: card.inheritedItemAttrs ?? [],
+          itemAttrCounts: card.itemAttrCounts ?? { activeCount: 0, passiveCount: 0 },
+        }
+      : {}),
   };
 }

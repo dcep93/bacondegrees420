@@ -6,6 +6,7 @@ import { CINENERDLE_DAILY_STARTER_TITLES_STORAGE_KEY } from "../constants";
 import {
   buildChildRowForCard,
   buildTreeFromHash,
+  type CinenerdleTreeMeta,
   getCardTmdbRowTooltipText,
   getConnectedItemAttrChildSourceCards,
   getConnectedItemAttrSourceCards,
@@ -166,6 +167,20 @@ function createDeferred<T>() {
     resolve,
     reject,
   };
+}
+
+function createControllerState(
+  tree: NonNullable<ReturnType<typeof createGeneratorState<CinenerdleCard, CinenerdleTreeMeta>>["tree"]> | null = null,
+) {
+  return createGeneratorState<CinenerdleCard, CinenerdleTreeMeta>(
+    {
+      itemAttrsSnapshot: {
+        film: {},
+        person: {},
+      },
+    },
+    tree,
+  );
 }
 
 beforeEach(() => {
@@ -822,7 +837,7 @@ describe("useCinenerdleController", () => {
       { type: "load-initial-tree" },
       {
         applyUpdate,
-        getState: () => createGeneratorState<CinenerdleCard, undefined>(undefined),
+        getState: () => createControllerState(),
         lifecycleId: 1,
         selectionId: 0,
         scrollGenerationIntoVerticalView: vi.fn(),
@@ -830,7 +845,14 @@ describe("useCinenerdleController", () => {
       },
     );
 
-    expect(applyUpdate).toHaveBeenNthCalledWith(1, {
+    expect(applyUpdate).toHaveBeenCalledTimes(1);
+    expect(applyUpdate).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      meta: {
+        itemAttrsSnapshot: {
+          film: {},
+          person: {},
+        },
+      },
       tree: [
         [expect.objectContaining({
           data: expect.objectContaining({ kind: "cinenerdle" }),
@@ -843,22 +865,7 @@ describe("useCinenerdleController", () => {
           disabled: false,
         })],
       ],
-    });
-
-    expect(applyUpdate).toHaveBeenNthCalledWith(2, {
-      tree: [
-        [expect.objectContaining({
-          data: expect.objectContaining({ kind: "cinenerdle" }),
-          selected: true,
-          disabled: false,
-        })],
-        [expect.objectContaining({
-          data: expect.objectContaining({ kind: "movie", name: "Heat" }),
-          selected: false,
-          disabled: false,
-        })],
-      ],
-    });
+    }));
 
     await flushAsyncWork();
 
@@ -899,7 +906,7 @@ describe("useCinenerdleController", () => {
       { type: "load-initial-tree" },
       {
         applyUpdate: vi.fn(),
-        getState: () => createGeneratorState<CinenerdleCard, undefined>(undefined),
+        getState: () => createControllerState(),
         lifecycleId: 1,
         selectionId: 0,
         scrollGenerationIntoVerticalView: vi.fn(),
@@ -968,7 +975,7 @@ describe("useCinenerdleController", () => {
       },
       {
         applyUpdate,
-        getState: () => createGeneratorState<CinenerdleCard, undefined>(undefined),
+        getState: () => createControllerState(),
         lifecycleId: 1,
         selectionId: 1,
         scrollGenerationIntoVerticalView,
@@ -1058,7 +1065,7 @@ describe("useCinenerdleController", () => {
         },
         {
           applyUpdate: vi.fn(),
-          getState: () => createGeneratorState<CinenerdleCard, undefined>(undefined),
+          getState: () => createControllerState(),
           lifecycleId: 1,
           selectionId: 1,
           scrollGenerationIntoVerticalView: vi.fn(),
@@ -1129,7 +1136,7 @@ describe("useCinenerdleController", () => {
       },
       {
         applyUpdate,
-        getState: () => createGeneratorState<CinenerdleCard, undefined>(undefined),
+        getState: () => createControllerState(),
         lifecycleId: 1,
         selectionId: 1,
         scrollGenerationIntoVerticalView,
@@ -1257,7 +1264,7 @@ describe("useCinenerdleController", () => {
       },
       {
         applyUpdate,
-        getState: () => createGeneratorState<CinenerdleCard, undefined>(undefined),
+        getState: () => createControllerState(),
         lifecycleId: 1,
         selectionId: 1,
         scrollGenerationIntoVerticalView,
@@ -1381,7 +1388,7 @@ describe("useCinenerdleController", () => {
       },
       {
         applyUpdate,
-        getState: () => createGeneratorState<CinenerdleCard, undefined>(undefined),
+        getState: () => createControllerState(),
         lifecycleId: 1,
         selectionId: 1,
         scrollGenerationIntoVerticalView,
@@ -1499,7 +1506,7 @@ describe("useCinenerdleController", () => {
       },
       {
         applyUpdate,
-        getState: () => createGeneratorState<CinenerdleCard, undefined>(undefined),
+        getState: () => createControllerState(),
         lifecycleId: 1,
         selectionId: 1,
         scrollGenerationIntoVerticalView,
@@ -1586,7 +1593,7 @@ describe("useCinenerdleController", () => {
       },
       {
         applyUpdate,
-        getState: () => createGeneratorState<CinenerdleCard, undefined>(undefined),
+        getState: () => createControllerState(),
         lifecycleId: 1,
         selectionId: 1,
         scrollGenerationIntoVerticalView,
