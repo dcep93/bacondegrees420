@@ -57,6 +57,7 @@ export type GeneratorEffectContext<T, TMeta = undefined> = {
   getState: () => GeneratorState<T, TMeta>;
   lifecycleId: number;
   selectionId: number;
+  scrollGenerationIntoVerticalView: (generationIndex: number) => Promise<void>;
   scrollGenerationLikeBubble: (generationIndex: number) => Promise<void>;
 };
 

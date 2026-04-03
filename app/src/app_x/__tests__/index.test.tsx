@@ -15,6 +15,7 @@ import BookmarksJsonlEditorModal, {
   BookmarksJsonlEditButton,
 } from "../components/bookmarks_jsonl_editor";
 import ConnectionBoostPreview from "../components/connection_boost_preview";
+import { getFullyVisibleViewportScrollTop } from "../components/abstract_generator_scroll";
 import ConnectionEntityCard from "../components/connection_entity_card";
 import ConnectionMatchupPreview from "../components/connection_matchup_preview";
 import IndexedDbBootstrapLoadingIndicator from "../components/indexed_db_bootstrap_loading_indicator";
@@ -344,6 +345,32 @@ describe("Connection matchup loading state", () => {
       isConnectedToYoungestSelection: false,
     })).toBe(false);
     expect(shouldSelectConnectedDropdownSuggestionAsYoungest(null)).toBe(false);
+  });
+});
+
+describe("Generator vertical visibility scrolling", () => {
+  it("keeps the viewport still when the generation is already fully visible", () => {
+    expect(getFullyVisibleViewportScrollTop({
+      top: 40,
+      bottom: 140,
+      height: 100,
+    }, 320, 500)).toBeNull();
+  });
+
+  it("scrolls down enough to reveal the clipped bottom edge", () => {
+    expect(getFullyVisibleViewportScrollTop({
+      top: 180,
+      bottom: 320,
+      height: 140,
+    }, 260, 1000)).toBe(1072);
+  });
+
+  it("aligns the top edge when the generation is taller than the available viewport", () => {
+    expect(getFullyVisibleViewportScrollTop({
+      top: 24,
+      bottom: 304,
+      height: 280,
+    }, 240, 1000)).toBe(1012);
   });
 });
 

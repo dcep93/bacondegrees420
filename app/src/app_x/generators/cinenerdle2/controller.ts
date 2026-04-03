@@ -1224,7 +1224,10 @@ export function useCinenerdleController({
         return createGeneratorState<CinenerdleCard, undefined>(undefined);
       },
       reduce: reduceCinenerdleLifecycleEvent,
-      async runEffect(effect, { applyUpdate, scrollGenerationLikeBubble }) {
+      async runEffect(
+        effect,
+        { applyUpdate, scrollGenerationIntoVerticalView, scrollGenerationLikeBubble },
+      ) {
         if (effect.type === "load-initial-tree") {
           const initialHash = readHash();
           const shouldBypassInFlightCache =
@@ -1283,6 +1286,7 @@ export function useCinenerdleController({
           await scrollGenerationLikeBubble(effect.row);
           if ((tree[effect.row + 1]?.length ?? 0) > 0) {
             await scrollGenerationLikeBubble(effect.row + 1);
+            await scrollGenerationIntoVerticalView(effect.row + 1);
           }
           writeHash(nextHash, "selection");
           return;
@@ -1340,6 +1344,7 @@ export function useCinenerdleController({
               ) {
                 if (initialChildRow && initialChildRow.length > 0) {
                   await scrollGenerationLikeBubble(effect.row + 1);
+                  await scrollGenerationIntoVerticalView(effect.row + 1);
                 }
                 return initialChildRow;
               }
@@ -1350,6 +1355,7 @@ export function useCinenerdleController({
               if (!refreshResult.didRefresh) {
                 if (initialChildRow && initialChildRow.length > 0) {
                   await scrollGenerationLikeBubble(effect.row + 1);
+                  await scrollGenerationIntoVerticalView(effect.row + 1);
                 }
                 return initialChildRow;
               }
@@ -1369,6 +1375,7 @@ export function useCinenerdleController({
               setTmdbLogGeneration(Math.max(0, refreshedTree.length - 1));
               if (refreshedChildRow && refreshedChildRow.length > 0) {
                 await scrollGenerationLikeBubble(effect.row + 1);
+                await scrollGenerationIntoVerticalView(effect.row + 1);
               }
               return refreshedChildRow;
             },

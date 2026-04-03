@@ -6,6 +6,7 @@ import {
   resolveGeneratorTree,
 } from "../generators/generator_runtime";
 import "../styles/abstract_generator.css";
+import { getFullyVisibleViewportScrollTop } from "./abstract_generator_scroll";
 import type {
   GeneratorController,
   GeneratorNode,
@@ -100,6 +101,37 @@ function scrollElementToLeft(
     behavior: "auto",
   });
   element.style.scrollBehavior = previousInlineScrollBehavior;
+}
+
+function scrollElementIntoVerticalView(
+  element: HTMLDivElement,
+  behavior: ScrollBehavior,
+) {
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return;
+  }
+
+  const viewportHeight = window.innerHeight || document.documentElement?.clientHeight || 0;
+  const currentScrollTop =
+    window.scrollY ??
+    window.pageYOffset ??
+    document.documentElement?.scrollTop ??
+    document.body?.scrollTop ??
+    0;
+  const nextScrollTop = getFullyVisibleViewportScrollTop(
+    element.getBoundingClientRect(),
+    viewportHeight,
+    currentScrollTop,
+  );
+
+  if (nextScrollTop === null || Math.abs(nextScrollTop - currentScrollTop) < 1) {
+    return;
+  }
+
+  window.scrollTo({
+    top: nextScrollTop,
+    behavior,
+  });
 }
 
 function waitForNextFrame(): Promise<void> {
@@ -356,6 +388,25 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     handleBubbleClickRef.current?.(generationIndex);
   }, []);
 
+  const scrollGenerationIntoVerticalView = useCallback(async (generationIndex: number) => {
+    await waitForNextFrame();
+    await waitForGenerationToRender(generationIndex, {
+      getState: () => stateRef.current,
+      getRowElement: (index) => rowRefs.current[index],
+    });
+
+    if (!mountedRef.current) {
+      return;
+    }
+
+    const rowElement = rowRefs.current[generationIndex];
+    if (!rowElement) {
+      return;
+    }
+
+    scrollElementIntoVerticalView(rowElement, "smooth");
+  }, []);
+
   const runEffects = useCallback(async (
     effects: TEffect[],
     lifecycleId: number,
@@ -377,10 +428,11 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
         getState: () => stateRef.current,
         lifecycleId,
         selectionId,
+        scrollGenerationIntoVerticalView,
         scrollGenerationLikeBubble,
       });
     }
-  }, [createGuardedApplyUpdate, runEffect, scrollGenerationLikeBubble]);
+  }, [createGuardedApplyUpdate, runEffect, scrollGenerationIntoVerticalView, scrollGenerationLikeBubble]);
 
   useEffect(() => {
     runEffectsRef.current = runEffects;

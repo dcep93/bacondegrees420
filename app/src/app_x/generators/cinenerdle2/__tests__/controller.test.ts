@@ -450,6 +450,7 @@ describe("useCinenerdleController", () => {
         getState: () => createGeneratorState<CinenerdleCard, undefined>(undefined),
         lifecycleId: 1,
         selectionId: 0,
+        scrollGenerationIntoVerticalView: vi.fn(),
         scrollGenerationLikeBubble: vi.fn(),
       },
     );
@@ -503,6 +504,7 @@ describe("useCinenerdleController", () => {
         getState: () => createGeneratorState<CinenerdleCard, undefined>(undefined),
         lifecycleId: 1,
         selectionId: 0,
+        scrollGenerationIntoVerticalView: vi.fn(),
         scrollGenerationLikeBubble: vi.fn(),
       },
     );
@@ -541,6 +543,7 @@ describe("useCinenerdleController", () => {
     const writeHash = vi.fn();
     const controller = renderController({ writeHash });
     const applyUpdate = vi.fn();
+    const scrollGenerationIntoVerticalView = vi.fn();
     const scrollGenerationLikeBubble = vi.fn();
 
     indexedDbMock.getFilmRecordById.mockResolvedValue(heatRecord);
@@ -570,6 +573,7 @@ describe("useCinenerdleController", () => {
         getState: () => createGeneratorState<CinenerdleCard, undefined>(undefined),
         lifecycleId: 1,
         selectionId: 1,
+        scrollGenerationIntoVerticalView,
         scrollGenerationLikeBubble,
       },
     );
@@ -586,6 +590,7 @@ describe("useCinenerdleController", () => {
     expect(writeHash).toHaveBeenCalledWith("#cinenerdle|Heat+(1995)", "selection");
     expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(1, 1);
     expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(2, 2);
+    expect(scrollGenerationIntoVerticalView).toHaveBeenCalledWith(2);
     expect(applyUpdate).toHaveBeenCalledWith({
       tree: [
         [{ data: makeCinenerdleRootCard(), selected: true }],
@@ -633,6 +638,7 @@ describe("useCinenerdleController", () => {
     });
     const controller = renderController({ writeHash: vi.fn() });
     const applyUpdate = vi.fn();
+    const scrollGenerationIntoVerticalView = vi.fn();
     const scrollGenerationLikeBubble = vi.fn();
 
     indexedDbMock.getFilmRecordsByIds.mockResolvedValue(new Map([[321, heatRecord]]));
@@ -656,6 +662,7 @@ describe("useCinenerdleController", () => {
         getState: () => createGeneratorState<CinenerdleCard, undefined>(undefined),
         lifecycleId: 1,
         selectionId: 1,
+        scrollGenerationIntoVerticalView,
         scrollGenerationLikeBubble,
       },
     );
@@ -671,6 +678,7 @@ describe("useCinenerdleController", () => {
     expect(applyUpdate).toHaveBeenCalledTimes(1);
     expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(1, 1);
     expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(2, 2);
+    expect(scrollGenerationIntoVerticalView).toHaveBeenCalledWith(2);
     expect(applyUpdate).toHaveBeenCalledWith({
       tree: [
         [{ data: makeCinenerdleRootCard(), selected: true }],
@@ -739,6 +747,7 @@ describe("useCinenerdleController", () => {
     });
     const controller = renderController({ writeHash: vi.fn() });
     const applyUpdate = vi.fn();
+    const scrollGenerationIntoVerticalView = vi.fn();
     const scrollGenerationLikeBubble = vi.fn();
 
     indexedDbMock.getFilmRecordById.mockResolvedValue(locallyCachedHeatRecord);
@@ -779,6 +788,7 @@ describe("useCinenerdleController", () => {
         getState: () => createGeneratorState<CinenerdleCard, undefined>(undefined),
         lifecycleId: 1,
         selectionId: 1,
+        scrollGenerationIntoVerticalView,
         scrollGenerationLikeBubble,
       },
     );
@@ -791,6 +801,7 @@ describe("useCinenerdleController", () => {
     expect(applyUpdate).toHaveBeenCalledTimes(2);
     expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(1, 1);
     expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(2, 2);
+    expect(scrollGenerationIntoVerticalView).toHaveBeenCalledWith(2);
     const firstTree = applyUpdate.mock.calls[0]?.[0]?.tree;
     const secondTree = applyUpdate.mock.calls[1]?.[0]?.tree;
 
@@ -877,6 +888,7 @@ describe("useCinenerdleController", () => {
     });
     const controller = renderController({ writeHash: vi.fn() });
     const applyUpdate = vi.fn();
+    const scrollGenerationIntoVerticalView = vi.fn();
     const scrollGenerationLikeBubble = vi.fn();
 
     indexedDbMock.getPersonRecordById.mockResolvedValue(locallyCachedPacinoRecord);
@@ -917,6 +929,7 @@ describe("useCinenerdleController", () => {
         getState: () => createGeneratorState<CinenerdleCard, undefined>(undefined),
         lifecycleId: 1,
         selectionId: 1,
+        scrollGenerationIntoVerticalView,
         scrollGenerationLikeBubble,
       },
     );
@@ -929,6 +942,7 @@ describe("useCinenerdleController", () => {
     expect(applyUpdate).toHaveBeenCalledTimes(2);
     expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(1, 1);
     expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(2, 2);
+    expect(scrollGenerationIntoVerticalView).toHaveBeenCalledWith(2);
     const firstTree = applyUpdate.mock.calls[0]?.[0]?.tree;
     const secondTree = applyUpdate.mock.calls[1]?.[0]?.tree;
 
@@ -962,6 +976,7 @@ describe("useCinenerdleController", () => {
     const writeHash = vi.fn();
     const controller = renderController({ writeHash });
     const applyUpdate = vi.fn();
+    const scrollGenerationIntoVerticalView = vi.fn();
     const scrollGenerationLikeBubble = vi.fn();
     const tree: NonNullable<ReturnType<typeof createGeneratorState<CinenerdleCard, undefined>>["tree"]> = [
       [{ data: makeCinenerdleRootCard(), selected: true }],
@@ -983,6 +998,7 @@ describe("useCinenerdleController", () => {
         getState: () => createGeneratorState<CinenerdleCard, undefined>(undefined),
         lifecycleId: 1,
         selectionId: 1,
+        scrollGenerationIntoVerticalView,
         scrollGenerationLikeBubble,
       },
     );
@@ -994,5 +1010,6 @@ describe("useCinenerdleController", () => {
     expect(writeHash).toHaveBeenCalledWith("#cinenerdle|Heat+(1995)|Al+Pacino", "selection");
     expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(1, 1);
     expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(2, 2);
+    expect(scrollGenerationIntoVerticalView).toHaveBeenCalledWith(2);
   });
 });
