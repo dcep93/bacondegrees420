@@ -1868,6 +1868,20 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       });
     }
 
+    const currentCardElement = cardRefs.current[
+      `${row}:${getDataKey(selectedNode.data, col)}`
+    ];
+    if (typeof document !== "undefined") {
+      const activeElement = document.activeElement;
+      if (
+        activeElement instanceof HTMLElement &&
+        activeElement !== document.body &&
+        !(currentCardElement?.contains(activeElement) ?? false)
+      ) {
+        activeElement.blur();
+      }
+    }
+
     flushSync(() => {
       setImmediateSelection({
         col,
@@ -1904,9 +1918,6 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       selectionId: nextSelectionId,
       stage: "scroll-requested",
     });
-    const currentCardElement = cardRefs.current[
-      `${row}:${getDataKey(selectedNode.data, col)}`
-    ];
     if (currentCardElement) {
       scrollCardElementIntoViewInTree(currentTree, row, currentCardElement, {
         behavior: "smooth",
@@ -1936,38 +1947,31 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       usedCardElement: Boolean(currentCardElement),
     });
 
+    const transition = reduce(stateRef.current, {
+      type: "select",
+      row,
+      col,
+    });
+    addGeneratorStageDebugLog("perf:abstractGenerator.selectCard.stage", selectionStartedAt, {
+      col,
+      effectCount: transition.effects.length,
+      row,
+      selectionId: nextSelectionId,
+      stage: "selection-transition-derived",
+    });
+
+    stateRef.current = transition.state;
+    flushSync(() => {
+      setState(transition.state);
+    });
+    addGeneratorStageDebugLog("perf:abstractGenerator.selectCard.stage", selectionStartedAt, {
+      col,
+      row,
+      selectionId: nextSelectionId,
+      stage: "selection-state-enqueued",
+    });
+
     schedulePostSelectionWork(() => {
-      if (
-        !mountedRef.current ||
-        activeSelectionRef.current !== nextSelectionId
-      ) {
-        return;
-      }
-
-      const transition = reduce(stateRef.current, {
-        type: "select",
-        row,
-        col,
-      });
-      addGeneratorStageDebugLog("perf:abstractGenerator.selectCard.stage", selectionStartedAt, {
-        col,
-        effectCount: transition.effects.length,
-        row,
-        selectionId: nextSelectionId,
-        stage: "selection-transition-derived",
-      });
-
-      stateRef.current = transition.state;
-      startTransition(() => {
-        setState(transition.state);
-      });
-      addGeneratorStageDebugLog("perf:abstractGenerator.selectCard.stage", selectionStartedAt, {
-        col,
-        row,
-        selectionId: nextSelectionId,
-        stage: "selection-state-enqueued",
-      });
-
       void (async () => {
         await waitForBrowserPaint();
 
