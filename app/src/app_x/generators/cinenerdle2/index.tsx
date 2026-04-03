@@ -50,6 +50,22 @@ type Cinenerdle2Props = {
   resetVersion: number;
 };
 
+function scrollPageToBottom() {
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return;
+  }
+
+  const scrollTop = Math.max(
+    document.body?.scrollHeight ?? 0,
+    document.documentElement?.scrollHeight ?? 0,
+  );
+
+  window.scrollTo({
+    top: scrollTop,
+    behavior: "auto",
+  });
+}
+
 const Cinenerdle2 = memo(function Cinenerdle2({
   connectedSuggestionSelectionRequest = null,
   hashValue,
@@ -66,7 +82,10 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   >(null);
   const generatorHandleRef = useRef<AbstractGeneratorHandle | null>(null);
   const lastHandledConnectedSuggestionSelectionRequestKeyRef = useRef<string | null>(null);
+  const lastGeneratorResetKeyRef = useRef<string | null>(null);
   const treeRef = useRef<GeneratorNode<CinenerdleCard>[][]>([]);
+  const pendingInitialTreeBottomSnapRef = useRef(true);
+  const initialTreeBottomSnapRequestIdRef = useRef(0);
   const [recordsRefreshVersion, setRecordsRefreshVersion] = useState(0);
   const [activeEntityRefreshRequest, setActiveEntityRefreshRequest] = useState<EntityRefreshRequest | null>(null);
   const pendingEntityRefreshRequestsRef = useRef<EntityRefreshRequest[]>([]);
@@ -218,6 +237,12 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   }, []);
   const generatorResetKey = `${resetVersion}:${navigationVersion}`;
 
+  if (lastGeneratorResetKeyRef.current !== generatorResetKey) {
+    lastGeneratorResetKeyRef.current = generatorResetKey;
+    pendingInitialTreeBottomSnapRef.current = true;
+    initialTreeBottomSnapRequestIdRef.current += 1;
+  }
+
   useEffect(() => {
     if (!highlightedConnectedSuggestionKey) {
       return;
@@ -282,6 +307,21 @@ const Cinenerdle2 = memo(function Cinenerdle2({
       key={generatorResetKey}
       onTreeChange={(tree) => {
         treeRef.current = tree;
+        if (pendingInitialTreeBottomSnapRef.current && tree.length > 0) {
+          pendingInitialTreeBottomSnapRef.current = false;
+          const requestId = initialTreeBottomSnapRequestIdRef.current;
+
+          window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
+              if (initialTreeBottomSnapRequestIdRef.current !== requestId) {
+                return;
+              }
+
+              scrollPageToBottom();
+            });
+          });
+        }
+
         const youngestSelectedGenerationIndex = getYoungestSelectedGenerationIndex(tree);
         const nextYoungestSelectedCard = getYoungestSelectedCard(tree);
         setTmdbLogGeneration(youngestSelectedGenerationIndex);
