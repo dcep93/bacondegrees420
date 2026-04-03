@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getSortedGeneratorRowEntries } from "../abstract_generator_row_order";
 import {
+  getGeneratorRowScrollCardIndex,
   getGeneratorRowScrollLeft,
   getUnselectedRowScrollCardIndex,
 } from "../abstract_generator_row_scroll";
@@ -124,5 +125,31 @@ describe("getUnselectedRowScrollCardIndex", () => {
 
   it("falls back to original column zero when no rendered order snapshot exists", () => {
     expect(getUnselectedRowScrollCardIndex([], 0)).toBe(0);
+  });
+});
+
+describe("getGeneratorRowScrollCardIndex", () => {
+  it("prefers the selected card index when one exists", () => {
+    expect(getGeneratorRowScrollCardIndex({
+      renderedOriginalCols: [5, 0, 2],
+      rowLength: 6,
+      selectedIndex: 2,
+    })).toBe(2);
+  });
+
+  it("falls back to the first rendered card when the row has no selection", () => {
+    expect(getGeneratorRowScrollCardIndex({
+      renderedOriginalCols: [5, 0, 2],
+      rowLength: 6,
+      selectedIndex: -1,
+    })).toBe(5);
+  });
+
+  it("returns null when the row is empty", () => {
+    expect(getGeneratorRowScrollCardIndex({
+      renderedOriginalCols: [0],
+      rowLength: 0,
+      selectedIndex: -1,
+    })).toBeNull();
   });
 });

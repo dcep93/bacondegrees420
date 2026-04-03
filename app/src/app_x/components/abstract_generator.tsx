@@ -19,6 +19,7 @@ import {
 } from "../generators/generator_runtime";
 import "../styles/abstract_generator.css";
 import {
+  getGeneratorRowScrollCardIndex,
   getGeneratorRowScrollLeft,
   getUnselectedRowScrollCardIndex,
 } from "./abstract_generator_row_scroll";
@@ -88,6 +89,23 @@ type GeneratorRowOrderState = {
   metadataByDataKey: Map<string, GeneratorCardRowOrderMetadata>;
   rowDataKeysSignature: string;
 };
+
+type GenerationRenderWaitResult = {
+  framesWaited: number;
+  generationIndex: number;
+  hasGeneration: boolean;
+  hasRowElement: boolean;
+  hasTargetCard: boolean;
+  renderedOriginalCols: number[];
+  rowLength: number;
+  selectedIndex: number;
+  targetCardIndex: number | null;
+  targetDataKey: string | null;
+};
+
+function isGenerationRenderReady(result: GenerationRenderWaitResult): boolean {
+  return result.hasGeneration && result.hasRowElement && result.hasTargetCard;
+}
 
 type GeneratorRowViewProps<T> = {
   cardButtonClassName: string;
@@ -444,23 +462,75 @@ function waitForNextFrame(): Promise<void> {
 async function waitForGenerationToRender<T, TMeta>(
   generationIndex: number,
   options: {
+    getCardElement: (generationIndex: number, cardIndex: number, data: T) => HTMLDivElement | null | undefined;
+    getRenderedRowOrder: (generationIndex: number) => Array<{
+      dataKey: string;
+      originalCol: number;
+      selected: boolean;
+    }>;
     getState: () => GeneratorState<T, TMeta>;
     getRowElement: (index: number) => HTMLDivElement | null | undefined;
   },
-): Promise<void> {
-  const maxFrames = 5;
+): Promise<GenerationRenderWaitResult> {
+  const maxFrames = 8;
+  let lastResult: GenerationRenderWaitResult = {
+    framesWaited: 0,
+    generationIndex,
+    hasGeneration: false,
+    hasRowElement: false,
+    hasTargetCard: false,
+    renderedOriginalCols: [],
+    rowLength: 0,
+    selectedIndex: -1,
+    targetCardIndex: null,
+    targetDataKey: null,
+  };
 
   for (let frame = 0; frame < maxFrames; frame += 1) {
     const tree = resolveGeneratorTree(options.getState());
-    const hasGeneration = Boolean(tree[generationIndex]?.length);
+    const generation = tree[generationIndex] ?? [];
+    const renderedRowOrder = options.getRenderedRowOrder(generationIndex);
+    const selectedIndex = generation.findIndex((node) => node.selected);
+    const targetCardIndex = getGeneratorRowScrollCardIndex({
+      renderedOriginalCols: renderedRowOrder.map((entry) => entry.originalCol),
+      rowLength: generation.length,
+      selectedIndex,
+    });
+    const targetNode = targetCardIndex === null ? null : generation[targetCardIndex] ?? null;
+    const hasGeneration = generation.length > 0;
     const hasRowElement = Boolean(options.getRowElement(generationIndex));
+    const hasTargetCard = Boolean(
+      targetCardIndex !== null &&
+      targetNode &&
+      options.getCardElement(generationIndex, targetCardIndex, targetNode.data),
+    );
+    lastResult = {
+      framesWaited: frame,
+      generationIndex,
+      hasGeneration,
+      hasRowElement,
+      hasTargetCard,
+      renderedOriginalCols: renderedRowOrder.map((entry) => entry.originalCol),
+      rowLength: generation.length,
+      selectedIndex,
+      targetCardIndex,
+      targetDataKey:
+        targetCardIndex !== null && targetNode
+          ? getDataKey(targetNode.data, targetCardIndex)
+          : null,
+    };
 
-    if (hasGeneration && hasRowElement) {
-      return;
+    if (hasGeneration && hasRowElement && hasTargetCard) {
+      return lastResult;
     }
 
     await waitForNextFrame();
   }
+
+  return {
+    ...lastResult,
+    framesWaited: maxFrames,
+  };
 }
 
 export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
@@ -499,6 +569,10 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
   const rowRenderSamplesRef = useRef<GeneratorRowRenderSample[]>([]);
   const stateRef = useRef(state);
   const handleBubbleClickRef = useRef<((generationIndex: number) => void) | null>(null);
+  const lastHorizontalAlignmentRef = useRef<{
+    generationIndex: number;
+    targetDataKey: string | null;
+  } | null>(null);
   const pendingSelectionPerfRef = useRef<null | {
     col: number;
     markName: string;
@@ -664,7 +738,8 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     onTreeChange?.(resolvedTree);
   }, [onTreeChange, resolvedTree]);
 
-  const scrollToCardIndex = useCallback((
+  const scrollToCardIndexInTree = useCallback((
+    tree: GeneratorTree<T>,
     generationIndex: number,
     cardIndex: number,
     options?: {
@@ -674,7 +749,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
   ) => {
     const alignment = options?.alignment ?? "center";
     const behavior = options?.behavior ?? "smooth";
-    const targetNode = resolvedTree[generationIndex]?.[cardIndex];
+    const targetNode = tree[generationIndex]?.[cardIndex];
 
     if (!targetNode) {
       return;
@@ -691,11 +766,11 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       const maxScrollLeft = rowTrack.scrollWidth - rowTrack.clientWidth;
       const targetLeft = getElementLeftWithinTrack(rowTrack, targetCard);
       const targetWidth = targetCard.getBoundingClientRect().width;
-      const referenceIndex = resolvedTree[0]?.findIndex((node) => node.selected) ?? -1;
+      const referenceIndex = tree[0]?.findIndex((node) => node.selected) ?? -1;
       const referenceTrack = rowRefs.current[0] ?? null;
       const referenceCard = referenceIndex >= 0
         ? cardRefs.current[
-        `0:${getDataKey(resolvedTree[0][referenceIndex].data, referenceIndex)}`
+          `0:${getDataKey(tree[0][referenceIndex].data, referenceIndex)}`
         ]
         : null;
       const visibleAnchorX = referenceTrack && referenceCard
@@ -721,7 +796,18 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
         inline: alignment,
       });
     }
-  }, [resolvedTree]);
+  }, []);
+
+  const scrollToCardIndex = useCallback((
+    generationIndex: number,
+    cardIndex: number,
+    options?: {
+      alignment?: "center" | "start";
+      behavior?: ScrollBehavior;
+    },
+  ) => {
+    scrollToCardIndexInTree(resolvedTree, generationIndex, cardIndex, options);
+  }, [resolvedTree, scrollToCardIndexInTree]);
 
   const handleScrollToSelected = useCallback((generationIndex: number) => {
     const selectedRow = resolvedTree[generationIndex];
@@ -752,17 +838,17 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
         renderedOrder,
       });
 
-      scrollToCardIndex(generationIndex, targetOriginalCol, {
+      scrollToCardIndexInTree(resolvedTree, generationIndex, targetOriginalCol, {
         alignment: "start",
         behavior: "smooth",
       });
       return;
     }
 
-    scrollToCardIndex(generationIndex, selectedIndex, {
+    scrollToCardIndexInTree(resolvedTree, generationIndex, selectedIndex, {
       behavior: "smooth",
     });
-  }, [debugLog, resolvedTree, scrollToCardIndex]);
+  }, [debugLog, resolvedTree, scrollToCardIndexInTree]);
 
   const handleBubbleClick = useCallback((generationIndex: number) => {
     if (generationIndex === 0) {
@@ -780,37 +866,125 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
   }, [handleBubbleClick]);
 
   const scrollGenerationLikeBubble = useCallback(async (generationIndex: number) => {
-    await waitForNextFrame();
-    await waitForGenerationToRender(generationIndex, {
+    const getWaitResult = () => waitForGenerationToRender(generationIndex, {
+      getCardElement: (rowIndex, cardIndex, data) =>
+        cardRefs.current[`${rowIndex}:${getDataKey(data, cardIndex)}`],
+      getRenderedRowOrder: (index) => renderedRowOrderRef.current[index] ?? [],
       getState: () => stateRef.current,
       getRowElement: (index) => rowRefs.current[index],
     });
+    let waitResult = await getWaitResult();
+    debugLog?.(
+      isGenerationRenderReady(waitResult)
+        ? "generator:scroll-like-bubble-ready"
+        : "generator:scroll-like-bubble-timeout",
+      waitResult,
+    );
+
+    if (
+      mountedRef.current &&
+      !isGenerationRenderReady(waitResult) &&
+      waitResult.hasGeneration
+    ) {
+      waitResult = await getWaitResult();
+      debugLog?.(
+        isGenerationRenderReady(waitResult)
+          ? "generator:scroll-like-bubble-retry-ready"
+          : "generator:scroll-like-bubble-retry-timeout",
+        waitResult,
+      );
+    }
 
     if (!mountedRef.current) {
+      debugLog?.("generator:scroll-like-bubble-aborted", {
+        generationIndex,
+        reason: "unmounted",
+      });
       return;
     }
 
-    handleBubbleClickRef.current?.(generationIndex);
-  }, []);
+    if (!isGenerationRenderReady(waitResult)) {
+      debugLog?.("generator:scroll-like-bubble-aborted", {
+        generationIndex,
+        reason: "row-not-ready",
+        waitResult,
+      });
+      return;
+    }
 
-  const scrollGenerationIntoVerticalView = useCallback(async (generationIndex: number) => {
-    await waitForNextFrame();
-    await waitForGenerationToRender(generationIndex, {
+    debugLog?.("generator:scroll-like-bubble-execute", {
+      generationIndex,
+      targetRowExists: Boolean(rowRefs.current[generationIndex]),
+    });
+    lastHorizontalAlignmentRef.current = {
+      generationIndex,
+      targetDataKey: waitResult.targetDataKey,
+    };
+    handleBubbleClickRef.current?.(generationIndex);
+  }, [debugLog]);
+
+  const scrollGenerationIntoVerticalView = useCallback(async (
+    generationIndex: number,
+    options?: {
+      alignRowHorizontally?: boolean;
+    },
+  ) => {
+    const alignRowHorizontally = options?.alignRowHorizontally ?? true;
+    const waitResult = await waitForGenerationToRender(generationIndex, {
+      getCardElement: (rowIndex, cardIndex, data) =>
+        cardRefs.current[`${rowIndex}:${getDataKey(data, cardIndex)}`],
+      getRenderedRowOrder: (index) => renderedRowOrderRef.current[index] ?? [],
       getState: () => stateRef.current,
       getRowElement: (index) => rowRefs.current[index],
     });
+    debugLog?.(
+      waitResult.hasGeneration && waitResult.hasRowElement && waitResult.hasTargetCard
+        ? "generator:scroll-vertical-ready"
+        : "generator:scroll-vertical-timeout",
+      waitResult,
+    );
 
     if (!mountedRef.current) {
+      debugLog?.("generator:scroll-vertical-aborted", {
+        generationIndex,
+        reason: "unmounted",
+      });
       return;
     }
 
     const rowElement = rowRefs.current[generationIndex];
     if (!rowElement) {
+      debugLog?.("generator:scroll-vertical-aborted", {
+        generationIndex,
+        reason: "missing-row-element",
+      });
       return;
     }
 
+    if (
+      alignRowHorizontally &&
+      (
+        lastHorizontalAlignmentRef.current?.generationIndex !== generationIndex ||
+        lastHorizontalAlignmentRef.current?.targetDataKey !== waitResult.targetDataKey
+      )
+    ) {
+      debugLog?.("generator:scroll-vertical-align-row", {
+        generationIndex,
+        targetDataKey: waitResult.targetDataKey,
+      });
+      lastHorizontalAlignmentRef.current = {
+        generationIndex,
+        targetDataKey: waitResult.targetDataKey,
+      };
+      handleBubbleClickRef.current?.(generationIndex);
+    }
+
+    debugLog?.("generator:scroll-vertical-execute", {
+      alignRowHorizontally,
+      generationIndex,
+    });
     scrollElementIntoVerticalView(rowElement, "smooth");
-  }, []);
+  }, [debugLog]);
 
   const runEffects = useCallback(async (
     effects: TEffect[],
@@ -1026,13 +1200,32 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     setState(transition.state);
 
     schedulePostSelectionWork(() => {
+      if (
+        !mountedRef.current ||
+        activeSelectionRef.current !== nextSelectionId
+      ) {
+        return;
+      }
+
+      const nextResolvedTree = resolveGeneratorTree(stateRef.current);
+      const nextSelectedNode = nextResolvedTree[row]?.[col] ?? null;
+      if (!nextSelectedNode?.selected) {
+        return;
+      }
+
+      scrollToCardIndexInTree(nextResolvedTree, row, col, {
+        behavior: "smooth",
+      });
+    });
+
+    schedulePostSelectionWork(() => {
       void runEffects(
         transition.effects,
         activeLifecycleRef.current,
         nextSelectionId,
       );
     });
-  }, [reduce, runEffects]);
+  }, [reduce, runEffects, scrollToCardIndexInTree]);
 
   useLayoutEffect(() => {
     if (!generatorHandleRef) {

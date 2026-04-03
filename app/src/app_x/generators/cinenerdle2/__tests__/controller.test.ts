@@ -963,9 +963,11 @@ describe("useCinenerdleController", () => {
     );
     expect(applyUpdate).toHaveBeenCalledTimes(1);
     expect(writeHash).toHaveBeenCalledWith("#cinenerdle|Heat+(1995)", "selection");
-    expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(1, 1);
-    expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(2, 2);
-    expect(scrollGenerationIntoVerticalView).toHaveBeenCalledWith(2);
+    expect(scrollGenerationLikeBubble).toHaveBeenCalledTimes(1);
+    expect(scrollGenerationLikeBubble).toHaveBeenCalledWith(2);
+    expect(scrollGenerationIntoVerticalView).toHaveBeenCalledWith(2, {
+      alignRowHorizontally: false,
+    });
     expect(applyUpdate).toHaveBeenCalledWith({
       tree: [
         [{ data: makeCinenerdleRootCard(), selected: true }],
@@ -1121,9 +1123,11 @@ describe("useCinenerdleController", () => {
       makePersonCard({ key: "person:60", record: pacinoRecord }),
     );
     expect(applyUpdate).toHaveBeenCalledTimes(1);
-    expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(1, 1);
-    expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(2, 2);
-    expect(scrollGenerationIntoVerticalView).toHaveBeenCalledWith(2);
+    expect(scrollGenerationLikeBubble).toHaveBeenCalledTimes(1);
+    expect(scrollGenerationLikeBubble).toHaveBeenCalledWith(2);
+    expect(scrollGenerationIntoVerticalView).toHaveBeenCalledWith(2, {
+      alignRowHorizontally: false,
+    });
     expect(applyUpdate).toHaveBeenCalledWith({
       tree: [
         [{ data: makeCinenerdleRootCard(), selected: true }],
@@ -1244,9 +1248,11 @@ describe("useCinenerdleController", () => {
       forceRefresh: true,
     });
     expect(applyUpdate).toHaveBeenCalledTimes(2);
-    expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(1, 1);
-    expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(2, 2);
-    expect(scrollGenerationIntoVerticalView).toHaveBeenCalledWith(2);
+    expect(scrollGenerationLikeBubble).toHaveBeenCalledTimes(1);
+    expect(scrollGenerationLikeBubble).toHaveBeenCalledWith(2);
+    expect(scrollGenerationIntoVerticalView).toHaveBeenCalledWith(2, {
+      alignRowHorizontally: false,
+    });
     const firstTree = applyUpdate.mock.calls[0]?.[0]?.tree;
     const secondTree = applyUpdate.mock.calls[1]?.[0]?.tree;
 
@@ -1363,12 +1369,16 @@ describe("useCinenerdleController", () => {
     await flushAsyncWork();
 
     expect(applyUpdate).toHaveBeenCalledTimes(1);
-    expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(1, 1);
-    expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(2, 2);
-    expect(scrollGenerationIntoVerticalView).toHaveBeenCalledWith(2);
+    expect(scrollGenerationLikeBubble).not.toHaveBeenCalled();
+    expect(scrollGenerationIntoVerticalView).toHaveBeenCalledWith(2, {
+      alignRowHorizontally: false,
+    });
 
     hydrationDeferred.resolve(locallyCachedHeatRecord);
     await flushAsyncWork();
+
+    expect(scrollGenerationLikeBubble).toHaveBeenCalledTimes(1);
+    expect(scrollGenerationLikeBubble).toHaveBeenCalledWith(2);
   });
 
   it("renders a DB-backed person subtree before force hydrating a connection-derived selection", async () => {
@@ -1480,9 +1490,11 @@ describe("useCinenerdleController", () => {
       forceRefresh: true,
     });
     expect(applyUpdate).toHaveBeenCalledTimes(2);
-    expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(1, 1);
-    expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(2, 2);
-    expect(scrollGenerationIntoVerticalView).toHaveBeenCalledWith(2);
+    expect(scrollGenerationLikeBubble).toHaveBeenCalledTimes(1);
+    expect(scrollGenerationLikeBubble).toHaveBeenCalledWith(2);
+    expect(scrollGenerationIntoVerticalView).toHaveBeenCalledWith(2, {
+      alignRowHorizontally: false,
+    });
     const firstTree = applyUpdate.mock.calls[0]?.[0]?.tree;
     const secondTree = applyUpdate.mock.calls[1]?.[0]?.tree;
 
@@ -1512,15 +1524,31 @@ describe("useCinenerdleController", () => {
     ]);
   });
 
-  it("scrolls the selected row and its existing child row on same-card reselect without rebuilding", async () => {
+  it("scrolls the finalized existing child row on same-card reselect", async () => {
     const writeHash = vi.fn();
     const controller = renderController({ writeHash });
     const applyUpdate = vi.fn();
     const scrollGenerationIntoVerticalView = vi.fn();
     const scrollGenerationLikeBubble = vi.fn();
+    const hydratedHeatRecord = makeFilmRecord({
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 321,
+        title: "Heat",
+        release_date: "1995-12-15",
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({ id: 60, name: "Al Pacino", popularity: 88 }),
+        ],
+        crew: [],
+      },
+      personConnectionKeys: ["al pacino"],
+      tmdbId: 321,
+      id: 321,
+    });
     const tree: NonNullable<ReturnType<typeof createGeneratorState<CinenerdleCard, undefined>>["tree"]> = [
       [{ data: makeCinenerdleRootCard(), selected: true }],
-      [{ data: makeMovieCard(), selected: true }],
+      [{ data: makeMovieCard({ key: "movie:321", record: hydratedHeatRecord }), selected: true }],
       [{ data: makePersonCard(), selected: true }],
     ];
 
@@ -1543,13 +1571,20 @@ describe("useCinenerdleController", () => {
       },
     );
 
+    await flushAsyncWork();
+
     expect(applyUpdate).not.toHaveBeenCalled();
     expect(tmdbMock.prepareSelectedMovie).not.toHaveBeenCalled();
     expect(tmdbMock.prepareSelectedPerson).not.toHaveBeenCalled();
-    expect(tmdbMock.prefetchTopPopularUnhydratedConnections).not.toHaveBeenCalled();
+    expect(tmdbMock.prefetchTopPopularUnhydratedConnections).toHaveBeenCalledTimes(1);
+    expect(tmdbMock.prefetchTopPopularUnhydratedConnections).toHaveBeenCalledWith(
+      makeMovieCard({ key: "movie:321", record: hydratedHeatRecord }),
+    );
     expect(writeHash).toHaveBeenCalledWith("#cinenerdle|Heat+(1995)|Al+Pacino", "selection");
-    expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(1, 1);
-    expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(2, 2);
-    expect(scrollGenerationIntoVerticalView).toHaveBeenCalledWith(2);
+    expect(scrollGenerationLikeBubble).toHaveBeenCalledTimes(1);
+    expect(scrollGenerationLikeBubble).toHaveBeenCalledWith(2);
+    expect(scrollGenerationIntoVerticalView).toHaveBeenCalledWith(2, {
+      alignRowHorizontally: false,
+    });
   });
 });

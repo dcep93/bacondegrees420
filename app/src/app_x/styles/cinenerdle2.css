@@ -40,7 +40,7 @@
 
 .cinenerdle-card-image-shell {
   width: 100%;
-  aspect-ratio: 2 / 3;
+  aspect-ratio: 1.6;
   border-radius: 10px;
   overflow: hidden;
   background: linear-gradient(135deg, rgb(31, 41, 55), rgb(17, 24, 39));
@@ -341,45 +341,15 @@
   flex-direction: column;
 }
 
-.cinenerdle-card-footer-tooltip-header {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 11px 12px 10px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
-  background: linear-gradient(180deg, rgba(30, 41, 59, 0.34), rgba(15, 23, 42, 0));
-}
-
-.cinenerdle-card-footer-tooltip-title {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  color: #f8fafc;
-}
-
-.cinenerdle-card-footer-tooltip-subtitle {
-  font-size: 10px;
-  line-height: 1.45;
-  color: #94a3b8;
-}
-
 .cinenerdle-card-footer-tooltip-section {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 0;
   padding: 10px 12px;
 }
 
 .cinenerdle-card-footer-tooltip-section + .cinenerdle-card-footer-tooltip-section {
   border-top: 1px solid rgba(148, 163, 184, 0.12);
-}
-
-.cinenerdle-card-footer-tooltip-section-label {
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #94a3b8;
 }
 
 .cinenerdle-card-footer-tooltip-section-body {
@@ -393,16 +363,6 @@
   font-size: 10.5px;
   line-height: 1.45;
   color: #e2e8f0;
-}
-
-.cinenerdle-card-footer-tooltip-action {
-  display: block;
-  padding: 9px 12px 11px;
-  border-top: 1px solid rgba(148, 163, 184, 0.12);
-  font-size: 10px;
-  line-height: 1.4;
-  color: #cbd5e1;
-  background: rgba(15, 23, 42, 0.45);
 }
 
 .cinenerdle-card-chip-tooltip-anchor:hover .cinenerdle-card-inline-tooltip,

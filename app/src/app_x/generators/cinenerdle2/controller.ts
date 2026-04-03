@@ -499,6 +499,24 @@ function appendChildRow(
   return childRow && childRow.length > 0 ? [...tree, childRow] : tree;
 }
 
+function replaceOrAppendChildRow(
+  tree: GeneratorTree<CinenerdleCard>,
+  childRowIndex: number,
+  childRow: GeneratorNode<CinenerdleCard>[] | null,
+): GeneratorTree<CinenerdleCard> {
+  if (!childRow || childRow.length === 0) {
+    return tree;
+  }
+
+  if (!tree[childRowIndex]) {
+    return [...tree, childRow];
+  }
+
+  return tree.map((row, index) => (
+    index === childRowIndex ? childRow : row
+  ));
+}
+
 function scheduleConnectionPrefetch(
   card: Extract<CinenerdleCard, { kind: "movie" | "person" }>,
 ): void {
@@ -1466,12 +1484,84 @@ export function useCinenerdleController({
         const nextHash = serializePathNodes(selectedPathNodes);
         const selectedCard = tree[effect.row]?.[effect.col]?.data ?? null;
         const selectedPathTree = getSelectedPathTree(tree, effect.row);
+        const childGenerationIndex = effect.row + 1;
+        const existingChildRow = tree[childGenerationIndex] ?? null;
 
         if (effect.isReselection) {
-          await scrollGenerationLikeBubble(effect.row);
-          if ((tree[effect.row + 1]?.length ?? 0) > 0) {
-            await scrollGenerationLikeBubble(effect.row + 1);
-            await scrollGenerationIntoVerticalView(effect.row + 1);
+          if (
+            existingChildRow &&
+            existingChildRow.length > 0 &&
+            selectedCard &&
+            (selectedCard.kind === "cinenerdle" ||
+              selectedCard.kind === "movie" ||
+              selectedCard.kind === "person")
+          ) {
+            void measureAsync(
+              "controller.afterCardReselected",
+              async () => {
+                await scrollGenerationIntoVerticalView(childGenerationIndex, {
+                  alignRowHorizontally: false,
+                });
+
+                if (
+                  selectedCard.kind !== "movie" &&
+                  selectedCard.kind !== "person"
+                ) {
+                  await scrollGenerationLikeBubble(childGenerationIndex);
+                  return existingChildRow;
+                }
+
+                const refreshResult = await refreshCardFromTmdb(selectedCard, {
+                  skipIfAlreadyHydrated: true,
+                });
+                const refreshedChildRow = refreshResult.didRefresh
+                  ? await buildChildRowForCard(refreshResult.refreshedCard)
+                  : existingChildRow;
+                const finalizedChildRow =
+                  refreshedChildRow && refreshedChildRow.length > 0
+                    ? refreshedChildRow
+                    : existingChildRow;
+
+                if (
+                  refreshResult.refreshedCard !== selectedCard ||
+                  finalizedChildRow !== existingChildRow
+                ) {
+                  const refreshedTreeBase = replaceTreeNodeCard(
+                    tree,
+                    effect.row,
+                    effect.col,
+                    refreshResult.refreshedCard,
+                  );
+                  const refreshedTree =
+                    finalizedChildRow === existingChildRow
+                      ? refreshedTreeBase
+                      : replaceOrAppendChildRow(
+                        refreshedTreeBase,
+                        childGenerationIndex,
+                        finalizedChildRow,
+                      );
+                  await preloadConnectedItemAttrChildSourcesForTree(refreshedTree);
+                  applyUpdate({
+                    tree: refreshedTree,
+                  });
+                  setTmdbLogGeneration(Math.max(0, refreshedTree.length - 1));
+                }
+
+                await scrollGenerationLikeBubble(childGenerationIndex);
+                return finalizedChildRow;
+              },
+              {
+                always: true,
+                details: {
+                  hash: nextHash,
+                  selectedCardKey: selectedCard.key,
+                  selectedCardKind: selectedCard.kind,
+                },
+                summarizeResult: (resolvedChildRow) => ({
+                  childCount: resolvedChildRow?.length ?? 0,
+                }),
+              },
+            ).catch(() => { });
           }
           writeHash(nextHash, "selection");
           return;
@@ -1486,7 +1576,31 @@ export function useCinenerdleController({
           void measureAsync(
             "controller.afterCardSelected",
             async () => {
-              let didScrollChildGeneration = false;
+              let didRevealChildGeneration = false;
+              async function revealChildGenerationVertically(
+                childRow: GeneratorNode<CinenerdleCard>[] | null,
+              ) {
+                if (!childRow || childRow.length === 0 || didRevealChildGeneration) {
+                  return;
+                }
+
+                await scrollGenerationIntoVerticalView(childGenerationIndex, {
+                  alignRowHorizontally: false,
+                });
+                didRevealChildGeneration = true;
+              }
+
+              async function scrollFinalizedChildGenerationHorizontally(
+                childRow: GeneratorNode<CinenerdleCard>[] | null,
+              ) {
+                if (!childRow || childRow.length === 0) {
+                  return;
+                }
+
+                await revealChildGenerationVertically(childRow);
+                await scrollGenerationLikeBubble(childGenerationIndex);
+              }
+
               const initialSelection =
                 selectedCard.kind === "movie" || selectedCard.kind === "person"
                   ? await resolveInitialSelectedCard(selectedCard)
@@ -1523,17 +1637,13 @@ export function useCinenerdleController({
               });
 
               setTmdbLogGeneration(Math.max(0, initialSelectedTree.length - 1));
-              await scrollGenerationLikeBubble(effect.row);
-              if (initialChildRow && initialChildRow.length > 0) {
-                await scrollGenerationLikeBubble(effect.row + 1);
-                await scrollGenerationIntoVerticalView(effect.row + 1);
-                didScrollChildGeneration = true;
-              }
+              await revealChildGenerationVertically(initialChildRow);
 
               if (
                 initialSelection.selectedCard.kind !== "movie" &&
                 initialSelection.selectedCard.kind !== "person"
               ) {
+                await scrollFinalizedChildGenerationHorizontally(initialChildRow);
                 return initialChildRow;
               }
 
@@ -1541,6 +1651,7 @@ export function useCinenerdleController({
                 skipIfAlreadyHydrated: true,
               });
               if (!refreshResult.didRefresh) {
+                await scrollFinalizedChildGenerationHorizontally(initialChildRow);
                 return initialChildRow;
               }
 
@@ -1558,10 +1669,7 @@ export function useCinenerdleController({
               });
 
               setTmdbLogGeneration(Math.max(0, refreshedTree.length - 1));
-              if (!didScrollChildGeneration && refreshedChildRow && refreshedChildRow.length > 0) {
-                await scrollGenerationLikeBubble(effect.row + 1);
-                await scrollGenerationIntoVerticalView(effect.row + 1);
-              }
+              await scrollFinalizedChildGenerationHorizontally(refreshedChildRow);
 
               return refreshedChildRow;
             },

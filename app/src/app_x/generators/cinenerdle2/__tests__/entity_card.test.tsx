@@ -4,12 +4,12 @@ import {
   CinenerdleEntityCard,
   type RenderableCinenerdleEntityCard,
 } from "../entity_card";
-import { getCinenerdleItemAttrCounts } from "../entity_card_ordering";
 import {
   formatRemovedItemAttrMessage,
   getAcceptedItemAttrInput,
   triggerTmdbRowClick,
 } from "../entity_card_helpers";
+import { getCinenerdleItemAttrCounts } from "../entity_card_ordering";
 import {
   CINENERDLE_ITEM_ATTRS_STORAGE_KEY,
 } from "../item_attrs";
@@ -188,15 +188,13 @@ describe("CinenerdleEntityCard", () => {
 
     expect(html).toContain("cinenerdle-card-footer-tooltip-anchor");
     expect(html).toContain("cinenerdle-card-footer-tooltip-panel");
-    expect(html).toContain("TMDb footer details");
-    expect(html).toContain("Shared metadata and refresh controls for this card.");
-    expect(html).toContain("Connections");
+    expect(html).not.toContain("cinenerdle-card-footer-tooltip-header");
+    expect(html).not.toContain("cinenerdle-card-footer-tooltip-section-label");
+    expect(html).not.toContain("cinenerdle-card-footer-tooltip-action");
     expect(html).toContain("Heat has 12 connections");
     expect(html).toContain("Al Pacino is the #3 connection");
-    expect(html).toContain("TMDb");
     expect(html).toContain("TMDb data fetched 3/29/2026, 4:03:24 PM.");
-    expect(html).toContain("Click to refetch.");
-    expect(html).toContain("Click anywhere in the footer to refetch.");
+    expect(html).not.toContain("Click to refetch.");
     expect(html).not.toContain("TMDb movie popularity from the cached movie record.");
     expect(html.match(/role="tooltip"/g)).toHaveLength(1);
   });

@@ -9,6 +9,26 @@ export function getUnselectedRowScrollCardIndex(
   return renderedOriginalCols[0] ?? fallbackOriginalCol;
 }
 
+export function getGeneratorRowScrollCardIndex({
+  renderedOriginalCols,
+  rowLength,
+  selectedIndex,
+}: {
+  renderedOriginalCols: number[];
+  rowLength: number;
+  selectedIndex: number;
+}): number | null {
+  if (rowLength <= 0) {
+    return null;
+  }
+
+  if (selectedIndex >= 0 && selectedIndex < rowLength) {
+    return selectedIndex;
+  }
+
+  return getUnselectedRowScrollCardIndex(renderedOriginalCols, 0);
+}
+
 export function getGeneratorRowScrollLeft({
   alignment,
   maxScrollLeft,

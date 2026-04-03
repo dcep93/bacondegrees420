@@ -194,7 +194,6 @@ function renderFooterTooltipSection(
 
   return (
     <span className="cinenerdle-card-footer-tooltip-section" key={label}>
-      <span className="cinenerdle-card-footer-tooltip-section-label">{label}</span>
       <span className="cinenerdle-card-footer-tooltip-section-body">
         {lines.map((line, index) => (
           <span className="cinenerdle-card-footer-tooltip-line" key={`${label}:${index}:${line}`}>
@@ -228,13 +227,14 @@ function getFooterTooltipContent(
           ? "Refreshing..."
           : card.tmdbTooltipText ?? card.popularitySource,
       );
+  const visibleTmdbLines = tmdbLines.filter((line) => line !== "Click to refetch.");
   const actionHint = isRefreshing
     ? "Refreshing TMDb data..."
     : "Click anywhere in the footer to refetch.";
   const ariaLabel = [
     "TMDb footer details",
     ...connectionLines,
-    ...tmdbLines,
+    ...visibleTmdbLines,
     actionHint,
   ].join("\n");
 
@@ -242,17 +242,8 @@ function getFooterTooltipContent(
     ariaLabel,
     content: (
       <span className="cinenerdle-card-footer-tooltip-panel">
-        <span className="cinenerdle-card-footer-tooltip-header">
-          <span className="cinenerdle-card-footer-tooltip-title">TMDb footer details</span>
-          <span className="cinenerdle-card-footer-tooltip-subtitle">
-            Shared metadata and refresh controls for this card.
-          </span>
-        </span>
         {renderFooterTooltipSection("Connections", connectionLines)}
-        {renderFooterTooltipSection("TMDb", tmdbLines)}
-        <span className="cinenerdle-card-footer-tooltip-action">
-          {actionHint}
-        </span>
+        {renderFooterTooltipSection("TMDb", visibleTmdbLines)}
       </span>
     ),
   };
