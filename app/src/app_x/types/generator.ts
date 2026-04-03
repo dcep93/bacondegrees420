@@ -4,6 +4,7 @@ export type GeneratorNode<T> = {
   selected: boolean;
   disabled?: boolean;
   data: T;
+  rowOrderMetadata?: GeneratorCardRowOrderMetadata | null;
 };
 
 export type GeneratorCardRowOrderMetadata = {

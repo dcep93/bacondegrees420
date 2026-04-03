@@ -90,6 +90,19 @@ type GeneratorRowOrderState = {
   rowDataKeysSignature: string;
 };
 
+function getSeededRowOrderMetadataByDataKey<T>(
+  row: GeneratorNode<T>[],
+): Map<string, GeneratorCardRowOrderMetadata> {
+  return row.reduce<Map<string, GeneratorCardRowOrderMetadata>>((metadataByDataKey, node, index) => {
+    if (!node.rowOrderMetadata) {
+      return metadataByDataKey;
+    }
+
+    metadataByDataKey.set(getDataKey(node.data, index), node.rowOrderMetadata);
+    return metadataByDataKey;
+  }, new Map<string, GeneratorCardRowOrderMetadata>());
+}
+
 type GenerationRenderWaitResult = {
   framesWaited: number;
   generationIndex: number;
@@ -187,8 +200,12 @@ function GeneratorRowViewInner<T>({
     () => row.map((node, index) => getDataKey(node.data, index)).join("|"),
     [row],
   );
+  const seededRowOrderMetadataByDataKey = useMemo(
+    () => getSeededRowOrderMetadataByDataKey(row),
+    [row],
+  );
   const [rowOrderState, setRowOrderState] = useState<GeneratorRowOrderState>(() => ({
-    metadataByDataKey: new Map(),
+    metadataByDataKey: seededRowOrderMetadataByDataKey,
     rowDataKeysSignature,
   }));
 
@@ -198,7 +215,7 @@ function GeneratorRowViewInner<T>({
         const currentMetadataByDataKey =
           currentState.rowDataKeysSignature === rowDataKeysSignature
             ? currentState.metadataByDataKey
-            : new Map<string, GeneratorCardRowOrderMetadata>();
+            : seededRowOrderMetadataByDataKey;
         const currentMetadata = currentMetadataByDataKey.get(dataKey);
 
         if (metadata === null) {
@@ -236,16 +253,16 @@ function GeneratorRowViewInner<T>({
         };
       });
     },
-    [rowDataKeysSignature],
+    [rowDataKeysSignature, seededRowOrderMetadataByDataKey],
   );
   const sortedRowEntries = useMemo(
     () => getSortedGeneratorRowEntries(
       row,
       rowOrderState.rowDataKeysSignature === rowDataKeysSignature
         ? rowOrderState.metadataByDataKey
-        : new Map<string, GeneratorCardRowOrderMetadata>(),
+        : seededRowOrderMetadataByDataKey,
     ),
-    [row, rowDataKeysSignature, rowOrderState],
+    [row, rowDataKeysSignature, rowOrderState, seededRowOrderMetadataByDataKey],
   );
 
   const renderedCards = sortedRowEntries.map(({ dataKey, node, originalCol }) => {

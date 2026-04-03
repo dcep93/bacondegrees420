@@ -25,10 +25,12 @@ export function getSortedGeneratorRowEntries<T>(
       const dataKey = getDataKey(node.data, originalCol);
       return {
         dataKey,
-        metadata: metadataByDataKey.get(dataKey) ?? {
-          activeCount: 0,
-          passiveCount: 0,
-        },
+        metadata:
+          metadataByDataKey.get(dataKey) ??
+          node.rowOrderMetadata ?? {
+            activeCount: 0,
+            passiveCount: 0,
+          },
         node,
         originalCol,
       };

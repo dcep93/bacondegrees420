@@ -22,6 +22,16 @@ function createNode(label: string): GeneratorNode<TestCard> {
   };
 }
 
+function createNodeWithRowOrderMetadata(
+  label: string,
+  rowOrderMetadata: GeneratorCardRowOrderMetadata,
+): GeneratorNode<TestCard> {
+  return {
+    ...createNode(label),
+    rowOrderMetadata,
+  };
+}
+
 function createMetadataMap(
   entries: Array<[string, GeneratorCardRowOrderMetadata]>,
 ): Map<string, GeneratorCardRowOrderMetadata> {
@@ -71,6 +81,23 @@ describe("getSortedGeneratorRowEntries", () => {
       "Gamma",
     ]);
     expect(sortedEntries.map((entry) => entry.originalCol)).toEqual([0, 1, 2]);
+  });
+
+  it("uses seeded node row-order metadata before cards report counts", () => {
+    const row = [
+      createNodeWithRowOrderMetadata("Alpha", { activeCount: 0, passiveCount: 0 }),
+      createNodeWithRowOrderMetadata("Beta", { activeCount: 2, passiveCount: 0 }),
+      createNodeWithRowOrderMetadata("Gamma", { activeCount: 1, passiveCount: 1 }),
+    ];
+
+    const sortedEntries = getSortedGeneratorRowEntries(row);
+
+    expect(sortedEntries.map((entry) => entry.node.data.label)).toEqual([
+      "Beta",
+      "Gamma",
+      "Alpha",
+    ]);
+    expect(sortedEntries.map((entry) => entry.originalCol)).toEqual([1, 2, 0]);
   });
 });
 

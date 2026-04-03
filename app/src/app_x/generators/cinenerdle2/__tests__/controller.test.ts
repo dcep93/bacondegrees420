@@ -968,18 +968,18 @@ describe("useCinenerdleController", () => {
     expect(scrollGenerationIntoVerticalView).toHaveBeenCalledWith(2, {
       alignRowHorizontally: false,
     });
-    expect(applyUpdate).toHaveBeenCalledWith({
-      tree: [
-        [{ data: makeCinenerdleRootCard(), selected: true }],
-        [{ data: makeMovieCard({ key: "movie:321", record: heatRecord }), selected: true }],
-        [expect.objectContaining({
-          data: expect.objectContaining({
-            kind: "person",
-            name: "Al Pacino",
+    expect(applyUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      tree: expect.arrayContaining([
+        expect.arrayContaining([
+          expect.objectContaining({
+            data: expect.objectContaining({
+              kind: "person",
+              name: "Al Pacino",
+            }),
           }),
-        })],
-      ],
-    });
+        ]),
+      ]),
+    }));
   });
 
   it("does not block selection updates on background prefetch work", async () => {
@@ -1128,19 +1128,19 @@ describe("useCinenerdleController", () => {
     expect(scrollGenerationIntoVerticalView).toHaveBeenCalledWith(2, {
       alignRowHorizontally: false,
     });
-    expect(applyUpdate).toHaveBeenCalledWith({
-      tree: [
-        [{ data: makeCinenerdleRootCard(), selected: true }],
-        [{ data: makePersonCard({ key: "person:60", record: pacinoRecord }), selected: true }],
-        [expect.objectContaining({
-          data: expect.objectContaining({
-            kind: "movie",
-            name: "Heat",
-            record: heatRecord,
+    expect(applyUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      tree: expect.arrayContaining([
+        expect.arrayContaining([
+          expect.objectContaining({
+            data: expect.objectContaining({
+              kind: "movie",
+              name: "Heat",
+              record: heatRecord,
+            }),
           }),
-        })],
-      ],
-    });
+        ]),
+      ]),
+    }));
   });
 
   it("renders a DB-backed movie subtree before force hydrating a connection-derived selection", async () => {

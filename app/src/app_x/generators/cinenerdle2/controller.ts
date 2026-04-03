@@ -39,6 +39,8 @@ import {
   getPersonRecordCountsByMovieKeys,
   getPersonPopularityByNames,
 } from "./indexed_db";
+import { getCinenerdleItemAttrCounts } from "./entity_card_ordering";
+import { getCinenerdleItemAttrTargetFromCard, getItemAttrsForTarget } from "./item_attrs";
 import { pickBestPersonRecord } from "./records";
 import { renderBreakCard, renderDbInfoCard, renderLoggedCinenerdleCard } from "./render_card";
 import { readCinenerdleDailyStarterTitles } from "./starter_storage";
@@ -162,6 +164,137 @@ async function preloadConnectedItemAttrChildSourcesForTree(
   );
 }
 
+function getConnectedItemAttrSourcesForRenderContext({
+  card,
+  isSelected,
+  selectedAncestorCards,
+  selectedChildCard,
+  selectedDescendantCards,
+  selectedParentCard,
+}: {
+  card: Extract<CinenerdleCard, { kind: "movie" | "person" }>;
+  isSelected: boolean;
+  selectedAncestorCards: CinenerdleCard[];
+  selectedChildCard: CinenerdleCard | null;
+  selectedDescendantCards: CinenerdleCard[];
+  selectedParentCard: CinenerdleCard | null;
+}): ConnectedItemAttrSourceCard[] {
+  return dedupeConnectedItemAttrSourceCards([
+    ...getConnectedItemAttrSourceCards({
+      card,
+      isSelected,
+      selectedAncestorCards,
+      selectedChildCard,
+      selectedDescendantCards,
+      selectedParentCard,
+    }),
+    ...(resolvedConnectedItemAttrChildSourcesCache.get(card.key) ?? []),
+  ]);
+}
+
+function getCardRowOrderMetadata({
+  card,
+  isSelected,
+  selectedAncestorCards,
+  selectedChildCard,
+  selectedDescendantCards,
+  selectedParentCard,
+}: {
+  card: CinenerdleCard;
+  isSelected: boolean;
+  selectedAncestorCards: CinenerdleCard[];
+  selectedChildCard: CinenerdleCard | null;
+  selectedDescendantCards: CinenerdleCard[];
+  selectedParentCard: CinenerdleCard | null;
+}): GeneratorNode<CinenerdleCard>["rowOrderMetadata"] {
+  if (card.kind !== "movie" && card.kind !== "person") {
+    return null;
+  }
+
+  const itemAttrTarget = getCinenerdleItemAttrTargetFromCard(card);
+  if (!itemAttrTarget) {
+    return null;
+  }
+
+  const itemAttrs = getItemAttrsForTarget(itemAttrTarget);
+  const inheritedItemAttrs = getConnectedItemAttrSourcesForRenderContext({
+    card,
+    isSelected,
+    selectedAncestorCards,
+    selectedChildCard,
+    selectedDescendantCards,
+    selectedParentCard,
+  }).reduce<string[]>((allItemAttrs, source) => {
+    const sourceTarget = getCinenerdleItemAttrTargetFromCard(source);
+    if (!sourceTarget) {
+      return allItemAttrs;
+    }
+
+    getItemAttrsForTarget(sourceTarget).forEach((itemAttr) => {
+      if (!itemAttrs.includes(itemAttr) && !allItemAttrs.includes(itemAttr)) {
+        allItemAttrs.push(itemAttr);
+      }
+    });
+    return allItemAttrs;
+  }, []);
+
+  return getCinenerdleItemAttrCounts(itemAttrs, inheritedItemAttrs);
+}
+
+function seedTreeRowOrderMetadata(
+  tree: GeneratorTree<CinenerdleCard>,
+): GeneratorTree<CinenerdleCard> {
+  const selectedAncestorCards: CinenerdleCard[] = [];
+  const selectedDescendantCardsByGeneration: CinenerdleCard[][] = tree.map(() => []);
+  const selectedDescendantCards: CinenerdleCard[] = [];
+
+  for (let generationIndex = tree.length - 1; generationIndex >= 0; generationIndex -= 1) {
+    selectedDescendantCardsByGeneration[generationIndex] = [...selectedDescendantCards];
+    const selectedNode = tree[generationIndex]?.find((node) => node.selected);
+    if (selectedNode) {
+      selectedDescendantCards.unshift(selectedNode.data);
+    }
+  }
+
+  return tree.map((row, generationIndex) => {
+    const selectedParentCard =
+      generationIndex > 0
+        ? tree[generationIndex - 1]?.find((node) => node.selected)?.data ?? null
+        : null;
+    const selectedChildCard =
+      tree[generationIndex + 1]?.find((node) => node.selected)?.data ?? null;
+    const selectedDescendantCardsForGeneration =
+      selectedDescendantCardsByGeneration[generationIndex] ?? [];
+    const nextRow = row.map((node) => createNode(
+      node.data,
+      node.selected,
+      node.disabled ?? false,
+      getCardRowOrderMetadata({
+        card: node.data,
+        isSelected: node.selected,
+        selectedAncestorCards,
+        selectedChildCard,
+        selectedDescendantCards: selectedDescendantCardsForGeneration,
+        selectedParentCard,
+      }),
+    ));
+
+    const selectedNode = row.find((node) => node.selected);
+    if (selectedNode) {
+      selectedAncestorCards.push(selectedNode.data);
+    }
+
+    return nextRow;
+  });
+}
+
+async function prepareTreeForRender(
+  tree: GeneratorTree<CinenerdleCard>,
+): Promise<GeneratorTree<CinenerdleCard>> {
+  await preloadConnectedItemAttrChildSourcesForTree(tree);
+  return seedTreeRowOrderMetadata(tree);
+}
+
 function createUncachedMovieCard(name: string, year: string): Extract<CinenerdleCard, { kind: "movie" }> {
   return {
     key: `movie:${normalizeTitle(name)}:${year}`,
@@ -200,11 +333,13 @@ function createNode(
   data: CinenerdleCard,
   selected = false,
   disabled = false,
+  rowOrderMetadata?: GeneratorNode<CinenerdleCard>["rowOrderMetadata"],
 ): GeneratorNode<CinenerdleCard> {
   return {
     selected,
     disabled,
     data,
+    rowOrderMetadata,
   };
 }
 
@@ -1208,8 +1343,7 @@ export async function buildTreeFromHash(
         }
       }
 
-      await preloadConnectedItemAttrChildSourcesForTree(tree);
-      return tree;
+      return prepareTreeForRender(tree);
     },
     {
       always: true,
@@ -1262,7 +1396,7 @@ function renderCinenerdleCard(
   const rootHref = `${window.location.pathname}${window.location.search}${rootHash}`;
   const connectedItemAttrSources =
     card.kind === "movie" || card.kind === "person"
-      ? getConnectedItemAttrSourceCards({
+      ? getConnectedItemAttrSourcesForRenderContext({
         card,
         isSelected: node.selected,
         selectedAncestorCards,
@@ -1270,10 +1404,6 @@ function renderCinenerdleCard(
         selectedDescendantCards,
         selectedParentCard,
       })
-      : [];
-  const childConnectedItemAttrSources =
-    card.kind === "movie" || card.kind === "person"
-      ? resolvedConnectedItemAttrChildSourcesCache.get(card.key) ?? []
       : [];
 
   function handleCinenerdleCardClick(event: ReactMouseEvent<HTMLElement>) {
@@ -1310,10 +1440,7 @@ function renderCinenerdleCard(
   };
 
   return renderLoggedCinenerdleCard({
-    connectedItemAttrSources: dedupeConnectedItemAttrSourceCards([
-      ...connectedItemAttrSources,
-      ...childConnectedItemAttrSources,
-    ]),
+    connectedItemAttrSources,
     onItemAttrCountsChange: reportRowOrderMetadata ?? null,
     onCardClick: handleCinenerdleCardClick,
     onTitleClick: (event) => {
@@ -1454,8 +1581,7 @@ export function useCinenerdleController({
                   void syncDailyStartersWithCache().catch(() => { });
                 }
               } catch {
-                const fallbackTree = await createCinenerdleRootTree();
-                await preloadConnectedItemAttrChildSourcesForTree(fallbackTree);
+                const fallbackTree = await prepareTreeForRender(await createCinenerdleRootTree());
                 applyUpdate({
                   tree: fallbackTree,
                 });
@@ -1540,11 +1666,11 @@ export function useCinenerdleController({
                         childGenerationIndex,
                         finalizedChildRow,
                       );
-                  await preloadConnectedItemAttrChildSourcesForTree(refreshedTree);
+                  const preparedRefreshedTree = await prepareTreeForRender(refreshedTree);
                   applyUpdate({
-                    tree: refreshedTree,
+                    tree: preparedRefreshedTree,
                   });
-                  setTmdbLogGeneration(Math.max(0, refreshedTree.length - 1));
+                  setTmdbLogGeneration(Math.max(0, preparedRefreshedTree.length - 1));
                 }
 
                 await scrollGenerationLikeBubble(childGenerationIndex);
@@ -1630,8 +1756,9 @@ export function useCinenerdleController({
                 movieRecord: initialMovieRecord,
                 personRecord: initialPersonRecord,
               });
-              const initialSelectedTree = appendChildRow(initialSelectedTreeBase, initialChildRow);
-              await preloadConnectedItemAttrChildSourcesForTree(initialSelectedTree);
+              const initialSelectedTree = await prepareTreeForRender(
+                appendChildRow(initialSelectedTreeBase, initialChildRow),
+              );
               applyUpdate({
                 tree: initialSelectedTree,
               });
@@ -1662,8 +1789,9 @@ export function useCinenerdleController({
                 refreshResult.refreshedCard,
               );
               const refreshedChildRow = await buildChildRowForCard(refreshResult.refreshedCard);
-              const refreshedTree = appendChildRow(refreshedSelectedTree, refreshedChildRow);
-              await preloadConnectedItemAttrChildSourcesForTree(refreshedTree);
+              const refreshedTree = await prepareTreeForRender(
+                appendChildRow(refreshedSelectedTree, refreshedChildRow),
+              );
               applyUpdate({
                 tree: refreshedTree,
               });
