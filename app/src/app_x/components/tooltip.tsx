@@ -75,7 +75,7 @@ export default function Tooltip({
   children,
   content,
   debugLogLabel,
-  placement = "bottom-center",
+  placement = "top-center",
   tooltipClassName,
   variant = "bacon-panel",
   wrapperTag = "span",

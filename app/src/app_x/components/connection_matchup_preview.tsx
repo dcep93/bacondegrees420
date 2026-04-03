@@ -178,7 +178,7 @@ export default function ConnectionMatchupPreview({
           ...renderTooltipEntries(counterpartTooltipEntries, preview.counterpart.key),
         ]}
         debugLogLabel="matchup-preview"
-        placement="bottom-center"
+        placement="top-center"
         tooltipClassName="bacon-connection-matchup-tooltip"
         wrapperTag="div"
       >

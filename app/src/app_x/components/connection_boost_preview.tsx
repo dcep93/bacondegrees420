@@ -82,7 +82,7 @@ export default function ConnectionBoostPreview({
           renderEntityLabelWithPopularity(preview.distanceTwo, "distance-two"),
         ]}
         debugLogLabel="boost-preview"
-        placement="bottom-center"
+        placement="top-center"
         tooltipClassName="bacon-connection-matchup-tooltip"
         wrapperTag="div"
       >
