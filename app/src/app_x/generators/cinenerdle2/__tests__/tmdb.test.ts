@@ -882,18 +882,7 @@ describe("tmdb forced refresh helpers", () => {
     expect(result).toBe(unresolvedMovieRecord);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(consoleLogSpy).not.toHaveBeenCalled();
-    expect(debugLogMock.addCinenerdleDebugLog).toHaveBeenCalledWith(
-      "perf:tmdb.fetchAndCacheMovieCredits",
-      expect.objectContaining({
-        movieId: "gran-torino-2007",
-        movieTitle: "Gran Torino",
-        reason: "fetch",
-        status: "ok",
-      }),
-    );
-    expect(debugLogMock.addCinenerdleDebugLog).not.toHaveBeenCalledWith(
-      "gen 0 movie 1 / 1 fetch Gran Torino (2007)",
-    );
+    expect(debugLogMock.addCinenerdleDebugLog).not.toHaveBeenCalled();
   });
 
   it("logs raw person responses with the requested format", async () => {

@@ -1309,6 +1309,7 @@ export function useCinenerdleController({
           void measureAsync(
             "controller.afterCardSelected",
             async () => {
+              let didScrollChildGeneration = false;
               const initialSelection =
                 selectedCard.kind === "movie" || selectedCard.kind === "person"
                   ? await resolveInitialSelectedCard(selectedCard)
@@ -1345,15 +1346,16 @@ export function useCinenerdleController({
 
               setTmdbLogGeneration(Math.max(0, initialSelectedTree.length - 1));
               await scrollGenerationLikeBubble(effect.row);
+              if (initialChildRow && initialChildRow.length > 0) {
+                await scrollGenerationLikeBubble(effect.row + 1);
+                await scrollGenerationIntoVerticalView(effect.row + 1);
+                didScrollChildGeneration = true;
+              }
 
               if (
                 initialSelection.selectedCard.kind !== "movie" &&
                 initialSelection.selectedCard.kind !== "person"
               ) {
-                if (initialChildRow && initialChildRow.length > 0) {
-                  await scrollGenerationLikeBubble(effect.row + 1);
-                  await scrollGenerationIntoVerticalView(effect.row + 1);
-                }
                 return initialChildRow;
               }
 
@@ -1361,10 +1363,6 @@ export function useCinenerdleController({
                 skipIfAlreadyHydrated: true,
               });
               if (!refreshResult.didRefresh) {
-                if (initialChildRow && initialChildRow.length > 0) {
-                  await scrollGenerationLikeBubble(effect.row + 1);
-                  await scrollGenerationIntoVerticalView(effect.row + 1);
-                }
                 return initialChildRow;
               }
 
@@ -1381,7 +1379,11 @@ export function useCinenerdleController({
               });
 
               setTmdbLogGeneration(Math.max(0, refreshedTree.length - 1));
-              if (refreshedChildRow && refreshedChildRow.length > 0) {
+              if (
+                refreshedChildRow &&
+                refreshedChildRow.length > 0 &&
+                !didScrollChildGeneration
+              ) {
                 await scrollGenerationLikeBubble(effect.row + 1);
                 await scrollGenerationIntoVerticalView(effect.row + 1);
               }

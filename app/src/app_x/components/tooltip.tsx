@@ -1,5 +1,4 @@
 import { useRef, type FocusEvent, type HTMLAttributes, type MouseEvent, type ReactNode } from "react";
-import { addCinenerdleDebugLog } from "../generators/cinenerdle2/debug_log";
 import { joinClassNames } from "./ui_utils";
 
 type TooltipVariant = "bacon-inline" | "bacon-panel" | "cinenerdle-inline";
@@ -20,61 +19,11 @@ function isStringArray(content: ReactNode | string[]): content is string[] {
   return Array.isArray(content) && content.every((entry) => typeof entry === "string");
 }
 
-function formatDebugRect(rect: DOMRect | ClientRect) {
-  return {
-    top: Number(rect.top.toFixed(2)),
-    right: Number(rect.right.toFixed(2)),
-    bottom: Number(rect.bottom.toFixed(2)),
-    left: Number(rect.left.toFixed(2)),
-    width: Number(rect.width.toFixed(2)),
-    height: Number(rect.height.toFixed(2)),
-  };
-}
-
-function getClippingAncestors(element: HTMLElement | null) {
-  const clippingAncestors: Array<{
-    element: string;
-    overflowX: string;
-    overflowY: string;
-    maxHeight: string;
-    height: string;
-  }> = [];
-
-  let currentElement = element?.parentElement ?? null;
-  while (currentElement) {
-    const computedStyle = window.getComputedStyle(currentElement);
-    const overflowX = computedStyle.overflowX;
-    const overflowY = computedStyle.overflowY;
-    const canClip =
-      !["visible", "clip"].includes(overflowX) ||
-      !["visible", "clip"].includes(overflowY);
-
-    if (canClip) {
-      const className =
-        typeof currentElement.className === "string"
-          ? currentElement.className.trim().replace(/\s+/g, ".")
-          : "";
-      clippingAncestors.push({
-        element: `${currentElement.tagName.toLowerCase()}${className ? `.${className}` : ""}`,
-        overflowX,
-        overflowY,
-        maxHeight: computedStyle.maxHeight,
-        height: computedStyle.height,
-      });
-    }
-
-    currentElement = currentElement.parentElement;
-  }
-
-  return clippingAncestors;
-}
-
 export default function Tooltip({
   anchorClassName,
   anchorProps,
   children,
   content,
-  debugLogLabel,
   placement = "top-center",
   tooltipClassName,
   variant = "bacon-panel",
@@ -126,61 +75,13 @@ export default function Tooltip({
     ? "bacon-inline-tooltip-entry"
     : "bacon-connection-pill-tooltip-entry";
 
-  function scheduleTooltipDebugLog(trigger: "focus" | "hover") {
-    if (
-      !debugLogLabel ||
-      typeof window === "undefined" ||
-      typeof window.requestAnimationFrame !== "function"
-    ) {
-      return;
-    }
-
-    window.requestAnimationFrame(() => {
-      const wrapperElement = wrapperRef.current;
-      const tooltipElement = tooltipRef.current;
-      if (!wrapperElement || !tooltipElement) {
-        return;
-      }
-
-      const computedStyle = window.getComputedStyle(tooltipElement);
-      addCinenerdleDebugLog(`tooltip:${debugLogLabel}`, {
-        trigger,
-        placement,
-        wrapperRect: formatDebugRect(wrapperElement.getBoundingClientRect()),
-        tooltipRect: formatDebugRect(tooltipElement.getBoundingClientRect()),
-        tooltipMetrics: {
-          clientHeight: tooltipElement.clientHeight,
-          scrollHeight: tooltipElement.scrollHeight,
-          offsetHeight: tooltipElement.offsetHeight,
-          clientWidth: tooltipElement.clientWidth,
-          scrollWidth: tooltipElement.scrollWidth,
-          offsetWidth: tooltipElement.offsetWidth,
-        },
-        tooltipStyle: {
-          maxHeight: computedStyle.maxHeight,
-          height: computedStyle.height,
-          overflow: computedStyle.overflow,
-          overflowX: computedStyle.overflowX,
-          overflowY: computedStyle.overflowY,
-        },
-        viewport: {
-          width: window.innerWidth,
-          height: window.innerHeight,
-        },
-        clippingAncestors: getClippingAncestors(wrapperElement),
-      });
-    });
-  }
-
   const wrapperProps = {
     ...anchorProps,
     onFocus: (event: FocusEvent<HTMLDivElement | HTMLSpanElement>) => {
       anchorProps?.onFocus?.(event);
-      scheduleTooltipDebugLog("focus");
     },
     onMouseEnter: (event: MouseEvent<HTMLDivElement | HTMLSpanElement>) => {
       anchorProps?.onMouseEnter?.(event);
-      scheduleTooltipDebugLog("hover");
     },
   };
 

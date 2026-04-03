@@ -150,6 +150,21 @@ async function flushAsyncWork(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error?: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+
+  return {
+    promise,
+    resolve,
+    reject,
+  };
+}
+
 beforeEach(() => {
   const storage = new Map<string, string>();
   reloadMock = vi.fn();
@@ -903,6 +918,101 @@ describe("useCinenerdleController", () => {
       "Al Pacino",
       "Robert De Niro",
     ]);
+  });
+
+  it("scrolls the initial child row before a slow movie hydration finishes", async () => {
+    const connectionDerivedHeatRecord = makeFilmRecord({
+      id: 321,
+      tmdbId: 321,
+      title: "Heat",
+      year: "1995",
+      personConnectionKeys: ["al pacino"],
+    });
+    const locallyCachedHeatRecord = makeFilmRecord({
+      ...connectionDerivedHeatRecord,
+      popularity: 88,
+      personConnectionKeys: ["al pacino", "robert de niro"],
+    });
+    const pacinoRecord = makePersonRecord({
+      id: 60,
+      tmdbId: 60,
+      name: "Al Pacino",
+      movieConnectionKeys: ["heat (1995)"],
+      rawTmdbPerson: makeTmdbPersonSearchResult({
+        id: 60,
+        name: "Al Pacino",
+        popularity: 88,
+      }),
+    });
+    const deniroRecord = makePersonRecord({
+      id: 61,
+      tmdbId: 61,
+      name: "Robert De Niro",
+      movieConnectionKeys: ["heat (1995)"],
+      rawTmdbPerson: makeTmdbPersonSearchResult({
+        id: 61,
+        name: "Robert De Niro",
+        popularity: 87,
+      }),
+    });
+    const hydrationDeferred = createDeferred<ReturnType<typeof makeFilmRecord> | null>();
+    const controller = renderController({ writeHash: vi.fn() });
+    const applyUpdate = vi.fn();
+    const scrollGenerationIntoVerticalView = vi.fn();
+    const scrollGenerationLikeBubble = vi.fn();
+
+    indexedDbMock.getFilmRecordById.mockResolvedValue(locallyCachedHeatRecord);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(locallyCachedHeatRecord);
+    indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(
+      new Map([
+        ["al pacino", 8],
+        ["robert de niro", 7],
+      ]),
+    );
+    indexedDbMock.getPersonRecordById.mockImplementation(async (personId: number) =>
+      personId === 60 ? pacinoRecord : personId === 61 ? deniroRecord : null,
+    );
+    indexedDbMock.getPersonRecordByName.mockImplementation(async (personName: string) =>
+      personName === "Al Pacino"
+        ? pacinoRecord
+        : personName === "Robert De Niro"
+          ? deniroRecord
+          : null,
+    );
+    tmdbMock.prepareSelectedMovie.mockReturnValue(hydrationDeferred.promise);
+
+    await controller.runEffect(
+      {
+        type: "load-selected-card",
+        isReselection: false,
+        removedDescendantRows: true,
+        row: 1,
+        col: 0,
+        tree: [
+          [{ data: makeCinenerdleRootCard(), selected: true }],
+          [{ data: makeMovieCard({ key: "movie:321", record: connectionDerivedHeatRecord }), selected: true }],
+          [{ data: makePersonCard(), selected: false }],
+        ],
+      },
+      {
+        applyUpdate,
+        getState: () => createGeneratorState<CinenerdleCard, undefined>(undefined),
+        lifecycleId: 1,
+        selectionId: 1,
+        scrollGenerationIntoVerticalView,
+        scrollGenerationLikeBubble,
+      },
+    );
+
+    await flushAsyncWork();
+
+    expect(applyUpdate).toHaveBeenCalledTimes(1);
+    expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(1, 1);
+    expect(scrollGenerationLikeBubble).toHaveBeenNthCalledWith(2, 2);
+    expect(scrollGenerationIntoVerticalView).toHaveBeenCalledWith(2);
+
+    hydrationDeferred.resolve(locallyCachedHeatRecord);
+    await flushAsyncWork();
   });
 
   it("renders a DB-backed person subtree before force hydrating a connection-derived selection", async () => {
