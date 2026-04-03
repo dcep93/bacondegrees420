@@ -41,9 +41,6 @@ import {
 } from "./indexed_db";
 import { getCinenerdleItemAttrCounts } from "./entity_card_ordering";
 import {
-  addCinenerdleDebugLog,
-} from "./debug_log";
-import {
   getCinenerdleItemAttrTargetFromCard,
   getItemAttrsForTarget,
   readCinenerdleItemAttrs,
@@ -419,37 +416,8 @@ function seedTreeRowOrderMetadata(
       selectedAncestorCards.push(selectedNode.data);
     }
 
-    const elapsedMs = roundCinenerdleDebugElapsedMs(getCinenerdleDebugNow() - rowStartedAt);
-    if (elapsedMs >= 8) {
-      addCinenerdleDebugLog("perf:controller.seedTreeRowOrderMetadata.generation", {
-        connectedSourceCountTotal:
-          profile.connectedSourceCountTotal - profileSnapshot.connectedSourceCountTotal,
-        connectedSourceLookupElapsedMs: roundCinenerdleDebugElapsedMs(
-          profile.connectedSourceLookupElapsedMs - profileSnapshot.connectedSourceLookupElapsedMs,
-        ),
-        countBuildElapsedMs: roundCinenerdleDebugElapsedMs(
-          profile.countBuildElapsedMs - profileSnapshot.countBuildElapsedMs,
-        ),
-        elapsedMs,
-        entityCardCount: nextRow.filter((node) =>
-          node.data.kind === "movie" || node.data.kind === "person").length,
-        generationIndex,
-        inheritedItemAttrBuildElapsedMs: roundCinenerdleDebugElapsedMs(
-          profile.inheritedItemAttrBuildElapsedMs - profileSnapshot.inheritedItemAttrBuildElapsedMs,
-        ),
-        itemAttrLookupCallCount:
-          profile.itemAttrLookupCallCount - profileSnapshot.itemAttrLookupCallCount,
-        itemAttrLookupElapsedMs: roundCinenerdleDebugElapsedMs(
-          profile.itemAttrLookupElapsedMs - profileSnapshot.itemAttrLookupElapsedMs,
-        ),
-        metadataCallCount: profile.metadataCallCount - profileSnapshot.metadataCallCount,
-        rowLength: row.length,
-        selectedAncestorCount: selectedAncestorCards.length,
-        targetResolveElapsedMs: roundCinenerdleDebugElapsedMs(
-          profile.targetResolveElapsedMs - profileSnapshot.targetResolveElapsedMs,
-        ),
-      });
-    }
+    void profileSnapshot;
+    void rowStartedAt;
 
     return nextRow;
   });
@@ -489,21 +457,7 @@ async function prepareTreeForRenderWithTimings(
   const seedElapsedMs = roundCinenerdleDebugElapsedMs(
     getCinenerdleDebugNow() - seedStartedAt,
   );
-  const totalElapsedMs = roundCinenerdleDebugElapsedMs(
-    getCinenerdleDebugNow() - startedAt,
-  );
-
-  if (totalElapsedMs >= 15) {
-    addCinenerdleDebugLog("perf:controller.prepareTreeForRender", {
-      entityCardCount,
-      preloadBatchCount,
-      preloadElapsedMs,
-      rowCount: tree.length,
-      seedElapsedMs,
-      totalCardCount: tree.reduce((count, row) => count + row.length, 0),
-      totalElapsedMs,
-    });
-  }
+  void startedAt;
 
   return {
     entityCardCount,
@@ -1893,7 +1847,6 @@ export function useCinenerdleController({
           applyUrgentUpdate,
           scrollGenerationIntoVerticalView,
           scrollGenerationLikeBubble,
-          selectionId,
         },
       ) {
         const commitSelectionUpdate = applyUrgentUpdate ?? applyUpdate;
@@ -2053,46 +2006,25 @@ export function useCinenerdleController({
             "controller.afterCardSelected",
             async () => {
               let didRevealChildGeneration = false;
-              const stageStartedAt = getCinenerdleDebugNow();
               function logAfterSelectionStage(
                 stage: string,
                 details?: Record<string, unknown>,
               ) {
-                addCinenerdleDebugLog("perf:controller.afterCardSelected.stage", {
-                  childGenerationIndex,
-                  elapsedMs: roundCinenerdleDebugElapsedMs(
-                    getCinenerdleDebugNow() - stageStartedAt,
-                  ),
-                  row: selectedEffectRow,
-                  selectedCardKey: selectedCard.key,
-                  selectedCardKind: selectedCard.kind,
-                  selectionId,
-                  stage,
-                  ...details,
-                });
+                void stage;
+                void details;
               }
 
               async function revealChildGenerationVertically(
                 childRow: GeneratorNode<CinenerdleCard>[] | null,
               ) {
                 if (!childRow || childRow.length === 0 || didRevealChildGeneration) {
-                  logAfterSelectionStage("child-row-reveal-skipped", {
-                    childCount: childRow?.length ?? 0,
-                    didRevealChildGeneration,
-                  });
                   return;
                 }
 
-                logAfterSelectionStage("child-row-reveal-requested", {
-                  childCount: childRow.length,
-                });
                 await scrollGenerationIntoVerticalView(childGenerationIndex, {
                   alignRowHorizontally: false,
                 });
                 didRevealChildGeneration = true;
-                logAfterSelectionStage("child-row-reveal-completed", {
-                  childCount: childRow.length,
-                });
               }
 
               async function scrollFinalizedChildGenerationHorizontally(
