@@ -10,6 +10,7 @@ import {
   type ReactElement,
   type MutableRefObject,
 } from "react";
+import { flushSync } from "react-dom";
 import { isPerfLoggingEnabled, logPerf, logPerfSinceMark, markPerf } from "../perf";
 import {
   applyGeneratorUpdate,
@@ -82,6 +83,18 @@ type GeneratorRowRenderSample = {
   cardCount: number;
   elapsedMs: number;
   generationIndex: number;
+  metadataCallbackCount: number;
+  metadataChangedCount: number;
+  metadataDeletedCount: number;
+  metadataNoopCount: number;
+  reorderedItemCount: number;
+  reorderedItems: Array<{
+    dataKey: string;
+    itemLabel: string | null;
+    nextIndex: number;
+    previousIndex: number;
+  }>;
+  rowOrderChanged: boolean;
   phase: "mount" | "update";
   selectedAncestorCount: number;
 };
@@ -90,6 +103,38 @@ type GeneratorRowOrderState = {
   metadataByDataKey: Map<string, GeneratorCardRowOrderMetadata>;
   rowDataKeysSignature: string;
 };
+
+type GeneratorRowOrderTelemetry = {
+  callbackCount: number;
+  changedCount: number;
+  deletedCount: number;
+  noopCount: number;
+};
+
+type GeneratorRowOrderDebugEntry = {
+  dataKey: string;
+  itemLabel: string | null;
+};
+
+let nextGeneratorRowTelemetryId = 1;
+const generatorRowTelemetryById = new Map<number, GeneratorRowOrderTelemetry>();
+const MAX_REORDERED_ITEMS_TO_LOG = 32;
+
+function getGeneratorRowOrderTelemetry(telemetryId: number): GeneratorRowOrderTelemetry {
+  const existingTelemetry = generatorRowTelemetryById.get(telemetryId);
+  if (existingTelemetry) {
+    return existingTelemetry;
+  }
+
+  const nextTelemetry: GeneratorRowOrderTelemetry = {
+    callbackCount: 0,
+    changedCount: 0,
+    deletedCount: 0,
+    noopCount: 0,
+  };
+  generatorRowTelemetryById.set(telemetryId, nextTelemetry);
+  return nextTelemetry;
+}
 
 function getSeededRowOrderMetadataByDataKey<T>(
   row: GeneratorNode<T>[],
@@ -102,6 +147,62 @@ function getSeededRowOrderMetadataByDataKey<T>(
     metadataByDataKey.set(getDataKey(node.data, index), node.rowOrderMetadata);
     return metadataByDataKey;
   }, new Map<string, GeneratorCardRowOrderMetadata>());
+}
+
+function getGeneratorDebugItemLabel(data: unknown): string | null {
+  if (!data || typeof data !== "object") {
+    return null;
+  }
+
+  const record = data as Record<string, unknown>;
+  if (typeof record.name === "string" && typeof record.year === "string" && record.year) {
+    return `${record.name} (${record.year})`;
+  }
+
+  if (typeof record.name === "string" && record.name) {
+    return record.name;
+  }
+
+  if (typeof record.label === "string" && record.label) {
+    return record.label;
+  }
+
+  if (typeof record.key === "string" && record.key) {
+    return record.key;
+  }
+
+  return null;
+}
+
+function getReorderedItems({
+  nextEntries,
+  previousEntries,
+}: {
+  nextEntries: GeneratorRowOrderDebugEntry[];
+  previousEntries: GeneratorRowOrderDebugEntry[] | null;
+}): Array<{
+  dataKey: string;
+  itemLabel: string | null;
+  nextIndex: number;
+  previousIndex: number;
+}> {
+  if (!previousEntries || previousEntries.length === 0) {
+    return [];
+  }
+
+  const previousIndexByDataKey = new Map(
+    previousEntries.map((entry, index) => [entry.dataKey, index] as const),
+  );
+
+  return nextEntries
+    .map((entry, nextIndex) => ({
+      dataKey: entry.dataKey,
+      itemLabel: entry.itemLabel,
+      nextIndex,
+      previousIndex: previousIndexByDataKey.get(entry.dataKey) ?? -1,
+    }))
+    .filter((entry) => entry.previousIndex >= 0 && entry.previousIndex !== entry.nextIndex)
+    .slice(0, MAX_REORDERED_ITEMS_TO_LOG);
 }
 
 type GenerationRenderWaitResult = {
@@ -202,6 +303,9 @@ function GeneratorRowViewInner<T>({
   trackClassName,
 }: GeneratorRowViewProps<T>) {
   const didMountRef = useRef(false);
+  const previousSortedEntriesRef = useRef<GeneratorRowOrderDebugEntry[] | null>(null);
+  const previousSortedOrderSignatureRef = useRef<string | null>(null);
+  const rowOrderTelemetryId = useMemo(() => nextGeneratorRowTelemetryId++, []);
   const renderStartedAt = getGeneratorPerfNow();
   const rowDataKeysSignature = useMemo(
     () => row.map((node, index) => getDataKey(node.data, index)).join("|"),
@@ -218,6 +322,8 @@ function GeneratorRowViewInner<T>({
 
   const handleRowOrderMetadataChange = useCallback(
     (dataKey: string, metadata: GeneratorCardRowOrderMetadata | null) => {
+      const rowOrderTelemetry = getGeneratorRowOrderTelemetry(rowOrderTelemetryId);
+      rowOrderTelemetry.callbackCount += 1;
       setRowOrderState((currentState) => {
         const currentMetadataByDataKey =
           currentState.rowDataKeysSignature === rowDataKeysSignature
@@ -227,6 +333,7 @@ function GeneratorRowViewInner<T>({
 
         if (metadata === null) {
           if (!currentMetadata) {
+            rowOrderTelemetry.noopCount += 1;
             return currentState.rowDataKeysSignature === rowDataKeysSignature
               ? currentState
               : {
@@ -237,6 +344,8 @@ function GeneratorRowViewInner<T>({
 
           const nextMetadataByDataKey = new Map(currentMetadataByDataKey);
           nextMetadataByDataKey.delete(dataKey);
+          rowOrderTelemetry.changedCount += 1;
+          rowOrderTelemetry.deletedCount += 1;
           return {
             metadataByDataKey: nextMetadataByDataKey,
             rowDataKeysSignature,
@@ -244,6 +353,7 @@ function GeneratorRowViewInner<T>({
         }
 
         if (areGeneratorCardRowOrderMetadataEqual(currentMetadata, metadata)) {
+          rowOrderTelemetry.noopCount += 1;
           return currentState.rowDataKeysSignature === rowDataKeysSignature
             ? currentState
             : {
@@ -254,13 +364,14 @@ function GeneratorRowViewInner<T>({
 
         const nextMetadataByDataKey = new Map(currentMetadataByDataKey);
         nextMetadataByDataKey.set(dataKey, metadata);
+        rowOrderTelemetry.changedCount += 1;
         return {
           metadataByDataKey: nextMetadataByDataKey,
           rowDataKeysSignature,
         };
       });
     },
-    [rowDataKeysSignature, seededRowOrderMetadataByDataKey],
+    [rowDataKeysSignature, rowOrderTelemetryId, seededRowOrderMetadataByDataKey],
   );
   const sortedRowEntries = useMemo(
     () => getSortedGeneratorRowEntries(
@@ -268,8 +379,32 @@ function GeneratorRowViewInner<T>({
       rowOrderState.rowDataKeysSignature === rowDataKeysSignature
         ? rowOrderState.metadataByDataKey
         : seededRowOrderMetadataByDataKey,
-    ),
+      ),
     [row, rowDataKeysSignature, rowOrderState, seededRowOrderMetadataByDataKey],
+  );
+  const sortedOrderSignature = useMemo(
+    () => sortedRowEntries.map(({ dataKey }) => dataKey).join("|"),
+    [sortedRowEntries],
+  );
+  const sortedOrderDebugEntries = useMemo<GeneratorRowOrderDebugEntry[]>(
+    () => sortedRowEntries.map(({ dataKey, node }) => ({
+      dataKey,
+      itemLabel: getGeneratorDebugItemLabel(node.data),
+    })),
+    [sortedRowEntries],
+  );
+  const rowOrderMetadataReporters = useMemo(
+    () => row.reduce<Map<string, (metadata: GeneratorCardRowOrderMetadata | null) => void>>(
+      (reporters, node, index) => {
+        const dataKey = getDataKey(node.data, index);
+        reporters.set(dataKey, (metadata) => {
+          handleRowOrderMetadataChange(dataKey, metadata);
+        });
+        return reporters;
+      },
+      new Map<string, (metadata: GeneratorCardRowOrderMetadata | null) => void>(),
+    ),
+    [handleRowOrderMetadataChange, row],
   );
 
   const renderedCards = sortedRowEntries.map(({ dataKey, node, originalCol }) => {
@@ -298,9 +433,7 @@ function GeneratorRowViewInner<T>({
           selectedChildData,
           selectedDescendantData,
           selectedParentData,
-          reportRowOrderMetadata: (metadata) => {
-            handleRowOrderMetadataChange(dataKey, metadata);
-          },
+          reportRowOrderMetadata: rowOrderMetadataReporters.get(dataKey),
         })}
       </div>
     );
@@ -319,16 +452,54 @@ function GeneratorRowViewInner<T>({
     );
   }, [generationIndex, reportRenderedRowOrder, sortedRowEntries]);
 
+  useEffect(() => () => {
+    generatorRowTelemetryById.delete(rowOrderTelemetryId);
+  }, [rowOrderTelemetryId]);
+
   useLayoutEffect(() => {
+    const rowOrderTelemetry = getGeneratorRowOrderTelemetry(rowOrderTelemetryId);
+    const metadataCallbackCount = rowOrderTelemetry.callbackCount;
+    const metadataChangedCount = rowOrderTelemetry.changedCount;
+    const metadataDeletedCount = rowOrderTelemetry.deletedCount;
+    const metadataNoopCount = rowOrderTelemetry.noopCount;
+    const reorderedItems = getReorderedItems({
+      nextEntries: sortedOrderDebugEntries,
+      previousEntries: previousSortedEntriesRef.current,
+    });
+    const rowOrderChanged =
+      previousSortedOrderSignatureRef.current !== null &&
+      previousSortedOrderSignatureRef.current !== sortedOrderSignature;
     onRowRendered({
       cardCount: row.length,
       elapsedMs: renderElapsedMs,
       generationIndex,
+      metadataCallbackCount,
+      metadataChangedCount,
+      metadataDeletedCount,
+      metadataNoopCount,
+      reorderedItemCount: reorderedItems.length,
+      reorderedItems,
+      rowOrderChanged,
       phase: didMountRef.current ? "update" : "mount",
       selectedAncestorCount: selectedAncestorData.length,
     });
+    previousSortedEntriesRef.current = sortedOrderDebugEntries;
+    previousSortedOrderSignatureRef.current = sortedOrderSignature;
+    rowOrderTelemetry.callbackCount = 0;
+    rowOrderTelemetry.changedCount = 0;
+    rowOrderTelemetry.deletedCount = 0;
+    rowOrderTelemetry.noopCount = 0;
     didMountRef.current = true;
-  }, [generationIndex, onRowRendered, renderElapsedMs, row.length, selectedAncestorData.length]);
+  }, [
+    generationIndex,
+    onRowRendered,
+    renderElapsedMs,
+    rowOrderTelemetryId,
+    row.length,
+    selectedAncestorData.length,
+    sortedOrderDebugEntries,
+    sortedOrderSignature,
+  ]);
 
   return (
     <div className={rowClassName}>
@@ -356,6 +527,8 @@ function GeneratorRowViewInner<T>({
 
 const MemoizedGeneratorRowView = memo(
   GeneratorRowViewInner,
+  // Descendant-only selection changes are reconciled by later tree updates, so
+  // unchanged ancestor rows do not need to rerender before the first paint.
   <T,>(prevProps: GeneratorRowViewProps<T>, nextProps: GeneratorRowViewProps<T>) =>
     prevProps.cardButtonClassName === nextProps.cardButtonClassName &&
     prevProps.generationIndex === nextProps.generationIndex &&
@@ -373,8 +546,7 @@ const MemoizedGeneratorRowView = memo(
     prevProps.trackClassName === nextProps.trackClassName &&
     prevProps.selectedChildData === nextProps.selectedChildData &&
     prevProps.selectedParentData === nextProps.selectedParentData &&
-    shallowReferenceArrayEqual(prevProps.selectedAncestorData, nextProps.selectedAncestorData) &&
-    shallowReferenceArrayEqual(prevProps.selectedDescendantData, nextProps.selectedDescendantData),
+    shallowReferenceArrayEqual(prevProps.selectedAncestorData, nextProps.selectedAncestorData),
 ) as <T>(props: GeneratorRowViewProps<T>) => ReactElement;
 
 function schedulePostSelectionWork(work: () => void) {
@@ -481,6 +653,27 @@ function waitForNextFrame(): Promise<void> {
   return new Promise((resolve) => {
     schedulePostSelectionWork(() => {
       resolve();
+    });
+  });
+}
+
+async function waitForBrowserPaint(): Promise<void> {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  if (typeof window.requestAnimationFrame !== "function") {
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        resolve();
+      });
     });
   });
 }
@@ -639,7 +832,13 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
   }, [state]);
 
   const createGuardedApplyUpdate = useCallback(
-    (lifecycleId: number, selectionId: number) =>
+    (
+      lifecycleId: number,
+      selectionId: number,
+      options?: {
+        urgent?: boolean;
+      },
+    ) =>
       (
         nextUpdate:
           | GeneratorUpdate<T, TMeta>
@@ -675,7 +874,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
           });
         }
 
-        startTransition(() => {
+        const applyStateUpdate = () => {
           setState((prevState) => {
             if (
               !mountedRef.current ||
@@ -717,6 +916,17 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
             stateRef.current = nextState;
             return nextState;
           });
+        };
+
+        if (options?.urgent) {
+          flushSync(() => {
+            applyStateUpdate();
+          });
+          return;
+        }
+
+        startTransition(() => {
+          applyStateUpdate();
         });
       },
     [debugLog],
@@ -1079,6 +1289,9 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     selectionId: number,
   ) => {
     const applyUpdate = createGuardedApplyUpdate(lifecycleId, selectionId);
+    const applyUrgentUpdate = createGuardedApplyUpdate(lifecycleId, selectionId, {
+      urgent: true,
+    });
 
     for (const effect of effects) {
       if (
@@ -1091,6 +1304,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
 
       await runEffect(effect, {
         applyUpdate,
+        applyUrgentUpdate,
         getState: () => stateRef.current,
         lifecycleId,
         selectionId,
@@ -1187,6 +1401,19 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       const rerenderedUnchangedGenerationIndexes = rowRenderSamples
         .filter((sample) => !changedGenerationIndexSet.has(sample.generationIndex))
         .map((sample) => sample.generationIndex);
+      const rerenderedUnchangedGenerationSamples = rowRenderSamples
+        .filter((sample) => !changedGenerationIndexSet.has(sample.generationIndex))
+        .map((sample) => ({
+          elapsedMs: sample.elapsedMs,
+          generationIndex: sample.generationIndex,
+          metadataCallbackCount: sample.metadataCallbackCount,
+          metadataChangedCount: sample.metadataChangedCount,
+          metadataDeletedCount: sample.metadataDeletedCount,
+          metadataNoopCount: sample.metadataNoopCount,
+          reorderedItemCount: sample.reorderedItemCount,
+          reorderedItems: sample.reorderedItems,
+          rowOrderChanged: sample.rowOrderChanged,
+        }));
       const slowRowSamples = rowRenderSamples.filter((sample) =>
         sample.elapsedMs >= SLOW_GENERATOR_ROW_THRESHOLD_MS);
 
@@ -1212,6 +1439,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
           changedGenerationCount: changedGenerationIndexes.length,
           changedGenerationIndexes,
           elapsedMs,
+          rerenderedUnchangedGenerationDetails: rerenderedUnchangedGenerationSamples,
           renderedGenerationCount: rowRenderSamples.length,
           renderedGenerationIndexes: rowRenderSamples.map((sample) => sample.generationIndex),
           rerenderedUnchangedGenerationIndexes,
@@ -1343,15 +1571,15 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
 
     const nextSelectionId = activeSelectionRef.current + 1;
     activeSelectionRef.current = nextSelectionId;
+    const selectionMarkName = `abstractGenerator.selectCard.${nextSelectionId}`;
     if (isPerfLoggingEnabled()) {
-      const markName = `abstractGenerator.selectCard.${nextSelectionId}`;
       pendingSelectionPerfRef.current = {
         col,
-        markName,
+        markName: selectionMarkName,
         row,
         selectionId: nextSelectionId,
       };
-      markPerf(markName);
+      markPerf(selectionMarkName);
       logPerf("abstractGenerator.selectCard", {
         col,
         row,
@@ -1369,33 +1597,97 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
 
     stateRef.current = transition.state;
     setState(transition.state);
+    if (isPerfLoggingEnabled()) {
+      logPerfSinceMark("abstractGenerator.selectCard.localStateApplied", selectionMarkName, {
+        col,
+        effectCount: transition.effects.length,
+        row,
+        rowCount: resolveGeneratorTree(transition.state).length,
+        selectionId: nextSelectionId,
+      });
+    }
 
     schedulePostSelectionWork(() => {
       if (
         !mountedRef.current ||
         activeSelectionRef.current !== nextSelectionId
       ) {
+        if (isPerfLoggingEnabled()) {
+          logPerfSinceMark("abstractGenerator.selectCard.scrollAborted", selectionMarkName, {
+            col,
+            reason: !mountedRef.current ? "unmounted" : "superseded",
+            row,
+            selectionId: nextSelectionId,
+          });
+        }
         return;
       }
 
       const nextResolvedTree = resolveGeneratorTree(stateRef.current);
       const nextSelectedNode = nextResolvedTree[row]?.[col] ?? null;
       if (!nextSelectedNode?.selected) {
+        if (isPerfLoggingEnabled()) {
+          logPerfSinceMark("abstractGenerator.selectCard.scrollAborted", selectionMarkName, {
+            col,
+            reason: "not-selected-in-state",
+            row,
+            selectionId: nextSelectionId,
+          });
+        }
         return;
       }
 
+      if (isPerfLoggingEnabled()) {
+        logPerfSinceMark("abstractGenerator.selectCard.scrollRequested", selectionMarkName, {
+          col,
+          row,
+          selectionId: nextSelectionId,
+        });
+      }
       scrollToCardIndexInTree(nextResolvedTree, row, col, {
         behavior: "smooth",
       });
+      if (isPerfLoggingEnabled()) {
+        logPerfSinceMark("abstractGenerator.selectCard.scrollIssued", selectionMarkName, {
+          col,
+          row,
+          selectionId: nextSelectionId,
+        });
+      }
     });
 
-    schedulePostSelectionWork(() => {
-      void runEffects(
+    void (async () => {
+      await waitForBrowserPaint();
+
+      if (
+        !mountedRef.current ||
+        activeSelectionRef.current !== nextSelectionId
+      ) {
+        if (isPerfLoggingEnabled()) {
+          logPerfSinceMark("abstractGenerator.selectCard.effectsAborted", selectionMarkName, {
+            col,
+            reason: !mountedRef.current ? "unmounted" : "superseded",
+            row,
+            selectionId: nextSelectionId,
+          });
+        }
+        return;
+      }
+
+      if (isPerfLoggingEnabled()) {
+        logPerfSinceMark("abstractGenerator.selectCard.effectsStarted", selectionMarkName, {
+          col,
+          effectCount: transition.effects.length,
+          row,
+          selectionId: nextSelectionId,
+        });
+      }
+      await runEffects(
         transition.effects,
         activeLifecycleRef.current,
         nextSelectionId,
       );
-    });
+    })();
   }, [reduce, runEffects, scrollToCardIndexInTree]);
 
   useLayoutEffect(() => {

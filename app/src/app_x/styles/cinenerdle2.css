@@ -19,6 +19,17 @@
     border-color 120ms ease;
 }
 
+.cinenerdle-initial-tree-shell {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  opacity: 0;
+}
+
+.cinenerdle-initial-tree-shell-visible {
+  opacity: 1;
+}
+
 .cinenerdle-card-selected {
   border: 3px solid #fbbf24;
   box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.35);

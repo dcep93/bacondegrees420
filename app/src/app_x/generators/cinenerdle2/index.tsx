@@ -85,9 +85,12 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   const generatorHandleRef = useRef<AbstractGeneratorHandle | null>(null);
   const lastHandledConnectedSuggestionSelectionRequestKeyRef = useRef<string | null>(null);
   const lastGeneratorResetKeyRef = useRef<string | null>(null);
+  const initialTreeShellRef = useRef<HTMLDivElement | null>(null);
   const treeRef = useRef<GeneratorNode<CinenerdleCard>[][]>([]);
   const pendingInitialTreeBottomSnapRef = useRef(true);
   const initialTreeBottomSnapRequestIdRef = useRef(0);
+  const initialTreeVisibilityTimeoutRef = useRef<number | null>(null);
+  const [isInitialTreeVisible, setIsInitialTreeVisible] = useState(false);
   const [recordsRefreshVersion, setRecordsRefreshVersion] = useState(0);
   const [activeEntityRefreshRequest, setActiveEntityRefreshRequest] = useState<EntityRefreshRequest | null>(null);
   const pendingEntityRefreshRequestsRef = useRef<EntityRefreshRequest[]>([]);
@@ -104,6 +107,15 @@ const Cinenerdle2 = memo(function Cinenerdle2({
 
   useEffect(() => {
     primeTmdbApiKeyOnInit();
+  }, []);
+
+  const setInitialTreeShellVisibility = useCallback((visible: boolean) => {
+    const shellElement = initialTreeShellRef.current;
+    if (!shellElement) {
+      return;
+    }
+
+    shellElement.style.opacity = visible ? "1" : "0";
   }, []);
 
   useEffect(() => {
@@ -252,6 +264,37 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   }
 
   useEffect(() => {
+    setIsInitialTreeVisible(false);
+    setInitialTreeShellVisibility(false);
+    if (
+      typeof window !== "undefined" &&
+      typeof window.clearTimeout === "function" &&
+      initialTreeVisibilityTimeoutRef.current !== null
+    ) {
+      window.clearTimeout(initialTreeVisibilityTimeoutRef.current);
+    }
+
+    if (typeof window !== "undefined" && typeof window.setTimeout === "function") {
+      initialTreeVisibilityTimeoutRef.current = window.setTimeout(() => {
+        initialTreeVisibilityTimeoutRef.current = null;
+        setInitialTreeShellVisibility(true);
+        setIsInitialTreeVisible(true);
+      }, 2500);
+    }
+
+    return () => {
+      if (
+        typeof window !== "undefined" &&
+        typeof window.clearTimeout === "function" &&
+        initialTreeVisibilityTimeoutRef.current !== null
+      ) {
+        window.clearTimeout(initialTreeVisibilityTimeoutRef.current);
+        initialTreeVisibilityTimeoutRef.current = null;
+      }
+    };
+  }, [generatorResetKey, setInitialTreeShellVisibility]);
+
+  useEffect(() => {
     if (!highlightedConnectedSuggestionKey) {
       return;
     }
@@ -308,44 +351,67 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   }, [connectedSuggestionSelectionRequest, writeHash]);
 
   return (
-    <AbstractGenerator
-      createInitialState={controller.createInitialState}
-      generatorHandleRef={generatorHandleRef}
-      getRowPresentation={getRowPresentation}
-      key={generatorResetKey}
-      onInitialTreePainted={(tree) => {
-        if (!pendingInitialTreeBottomSnapRef.current || tree.length === 0) {
-          return;
-        }
+    <div
+      className={[
+        "cinenerdle-initial-tree-shell",
+        isInitialTreeVisible ? "cinenerdle-initial-tree-shell-visible" : "",
+      ].filter(Boolean).join(" ")}
+      ref={initialTreeShellRef}
+    >
+      <AbstractGenerator
+        createInitialState={controller.createInitialState}
+        generatorHandleRef={generatorHandleRef}
+        getRowPresentation={getRowPresentation}
+        key={generatorResetKey}
+        onInitialTreePainted={(tree) => {
+          if (!pendingInitialTreeBottomSnapRef.current || tree.length === 0) {
+            return;
+          }
 
-        pendingInitialTreeBottomSnapRef.current = false;
-        const requestId = initialTreeBottomSnapRequestIdRef.current;
-        markInitialViewportSettled();
-        if (initialTreeBottomSnapRequestIdRef.current === requestId) {
-          scrollPageToBottom();
-        }
-      }}
-      onTreeChange={(tree) => {
-        treeRef.current = tree;
-        const youngestSelectedGenerationIndex = getYoungestSelectedGenerationIndex(tree);
-        const nextYoungestSelectedCard = getYoungestSelectedCard(tree);
-        setTmdbLogGeneration(youngestSelectedGenerationIndex);
-        if (areYoungestSelectedCardsEqual(
-          lastYoungestSelectedCardRef.current,
-          nextYoungestSelectedCard,
-        )) {
-          return;
-        }
+          pendingInitialTreeBottomSnapRef.current = false;
+          const requestId = initialTreeBottomSnapRequestIdRef.current;
+          markInitialViewportSettled();
+          if (initialTreeBottomSnapRequestIdRef.current === requestId) {
+            scrollPageToBottom();
+          }
+          setInitialTreeShellVisibility(true);
+          if (
+            typeof window !== "undefined" &&
+            typeof window.requestAnimationFrame === "function"
+          ) {
+            window.requestAnimationFrame(() => {
+              setIsInitialTreeVisible(true);
+            });
+          } else {
+            setIsInitialTreeVisible(true);
+          }
+        }}
+        onTreeChange={(tree) => {
+          treeRef.current = tree;
+          if (!pendingInitialTreeBottomSnapRef.current && tree.length > 0 && !isInitialTreeVisible) {
+            setInitialTreeShellVisibility(true);
+            setIsInitialTreeVisible(true);
+          }
+          const youngestSelectedGenerationIndex = getYoungestSelectedGenerationIndex(tree);
+          const nextYoungestSelectedCard = getYoungestSelectedCard(tree);
+          setTmdbLogGeneration(youngestSelectedGenerationIndex);
+          if (areYoungestSelectedCardsEqual(
+            lastYoungestSelectedCardRef.current,
+            nextYoungestSelectedCard,
+          )) {
+            return;
+          }
 
-        lastYoungestSelectedCardRef.current = nextYoungestSelectedCard;
-        onYoungestSelectedCardChange?.(nextYoungestSelectedCard);
-      }}
-      reduce={controller.reduce}
-      renderCard={controller.renderCard}
-      runEffect={controller.runEffect}
-      shouldAutoScrollMountedGeneration={shouldAutoScrollMountedGeneration}
-      treeRefreshRequest={treeRefreshRequest}
-    />
+          lastYoungestSelectedCardRef.current = nextYoungestSelectedCard;
+          onYoungestSelectedCardChange?.(nextYoungestSelectedCard);
+        }}
+        reduce={controller.reduce}
+        renderCard={controller.renderCard}
+        runEffect={controller.runEffect}
+        shouldAutoScrollMountedGeneration={shouldAutoScrollMountedGeneration}
+        treeRefreshRequest={treeRefreshRequest}
+      />
+    </div>
   );
 });
 

@@ -1,3 +1,5 @@
+import { addCinenerdleDebugLog } from "./generators/cinenerdle2/debug_log";
+
 type PerfDetails = Record<string, unknown>;
 
 type PerfMeasureOptions<T> = {
@@ -63,8 +65,11 @@ export function isPerfLoggingEnabled(): boolean {
 }
 
 export function logPerf(label: string, details?: PerfDetails): void {
-  void label;
-  void details;
+  if (!isPerfLoggingEnabled()) {
+    return;
+  }
+
+  addCinenerdleDebugLog(`perf:${label}`, details);
 }
 
 export function logPerfOnce(onceKey: string, label: string, details?: PerfDetails): void {

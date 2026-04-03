@@ -60,6 +60,13 @@ export type GeneratorEffectContext<T, TMeta = undefined> = {
       | undefined
       | ((prevState: GeneratorState<T, TMeta>) => GeneratorUpdate<T, TMeta> | null | undefined),
   ) => void;
+  applyUrgentUpdate?: (
+    nextUpdate:
+      | GeneratorUpdate<T, TMeta>
+      | null
+      | undefined
+      | ((prevState: GeneratorState<T, TMeta>) => GeneratorUpdate<T, TMeta> | null | undefined),
+  ) => void;
   getState: () => GeneratorState<T, TMeta>;
   lifecycleId: number;
   selectionId: number;
