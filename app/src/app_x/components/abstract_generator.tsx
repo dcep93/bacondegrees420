@@ -85,7 +85,9 @@ type GeneratorRowViewProps<T> = {
   row: GeneratorNode<T>[];
   rowClassName: string;
   selectedAncestorData: T[];
+  selectedChildData: T | null;
   selectedDescendantData: T[];
+  selectedParentData: T | null;
   setCardRef: (refKey: string, element: HTMLDivElement | null) => void;
   setRowRef: (generationIndex: number, element: HTMLDivElement | null) => void;
   trackClassName: string;
@@ -130,7 +132,9 @@ function GeneratorRowViewInner<T>({
   row,
   rowClassName,
   selectedAncestorData,
+  selectedChildData,
   selectedDescendantData,
+  selectedParentData,
   setCardRef,
   setRowRef,
   trackClassName,
@@ -161,7 +165,9 @@ function GeneratorRowViewInner<T>({
           col,
           node,
           selectedAncestorData,
+          selectedChildData,
           selectedDescendantData,
+          selectedParentData,
         })}
       </div>
     );
@@ -219,6 +225,8 @@ const MemoizedGeneratorRowView = memo(
     prevProps.setCardRef === nextProps.setCardRef &&
     prevProps.setRowRef === nextProps.setRowRef &&
     prevProps.trackClassName === nextProps.trackClassName &&
+    prevProps.selectedChildData === nextProps.selectedChildData &&
+    prevProps.selectedParentData === nextProps.selectedParentData &&
     shallowReferenceArrayEqual(prevProps.selectedAncestorData, nextProps.selectedAncestorData) &&
     shallowReferenceArrayEqual(prevProps.selectedDescendantData, nextProps.selectedDescendantData),
 ) as <T>(props: GeneratorRowViewProps<T>) => ReactElement;
@@ -469,7 +477,9 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       generationIndex: number;
       row: GeneratorNode<T>[];
       selectedAncestorData: T[];
+      selectedChildData: T | null;
       selectedDescendantData: T[];
+      selectedParentData: T | null;
     }> = [];
     const selectedAncestorData: T[] = [];
     const selectedDescendantDataByGeneration: T[][] = resolvedTree.map(() => []);
@@ -487,11 +497,19 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
 
     resolvedTree.forEach((row, generationIndex) => {
       nextTotalCardCount += row.length;
+      const selectedParentData =
+        generationIndex > 0
+          ? resolvedTree[generationIndex - 1]?.find((node) => node.selected)?.data ?? null
+          : null;
+      const selectedChildData =
+        resolvedTree[generationIndex + 1]?.find((node) => node.selected)?.data ?? null;
       nextRenderedGenerations.push({
         generationIndex,
         row,
         selectedAncestorData: [...selectedAncestorData],
+        selectedChildData,
         selectedDescendantData: selectedDescendantDataByGeneration[generationIndex] ?? [],
+        selectedParentData,
       });
       nextMaxSelectedAncestorCount = Math.max(
         nextMaxSelectedAncestorCount,
@@ -871,7 +889,9 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
         generationIndex,
         row,
         selectedAncestorData,
+        selectedChildData,
         selectedDescendantData,
+        selectedParentData,
       }) => {
         const rowPresentation = getRowPresentation?.(row, generationIndex) ?? {};
         const rowClassName = [
@@ -897,7 +917,9 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
             row={row}
             rowClassName={rowClassName}
             selectedAncestorData={selectedAncestorData}
+            selectedChildData={selectedChildData}
             selectedDescendantData={selectedDescendantData}
+            selectedParentData={selectedParentData}
             setCardRef={setCardRef}
             setRowRef={setRowRef}
             trackClassName={trackClassName}

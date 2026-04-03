@@ -407,6 +407,15 @@ describe("buildTreeFromHash", () => {
 
 describe("getConnectedItemAttrSourceCards", () => {
   it("includes the selected card's nearest ancestor and descendant entity connections", () => {
+    const currentPerson = makePersonCard({
+      key: "person:17605",
+      name: "Idris Elba",
+      record: makePersonRecord({
+        id: 17605,
+        name: "Idris Elba",
+        movieConnectionKeys: ["zootopia (2016)", "zootopia 2 (2025)"],
+      }),
+    });
     const previousMovie = makeMovieCard({
       key: "movie:zootopia:2016",
       name: "Zootopia",
@@ -419,13 +428,25 @@ describe("getConnectedItemAttrSourceCards", () => {
     });
 
     expect(getConnectedItemAttrSourceCards({
+      card: currentPerson,
       isSelected: true,
       selectedAncestorCards: [makeCinenerdleRootCard(), previousMovie],
+      selectedChildCard: nextMovie,
       selectedDescendantCards: [nextMovie],
+      selectedParentCard: previousMovie,
     })).toEqual([previousMovie, nextMovie]);
   });
 
   it("does not include descendant connections for non-selected sibling cards", () => {
+    const currentPerson = makePersonCard({
+      key: "person:17605",
+      name: "Idris Elba",
+      record: makePersonRecord({
+        id: 17605,
+        name: "Idris Elba",
+        movieConnectionKeys: ["zootopia (2016)", "zootopia 2 (2025)"],
+      }),
+    });
     const previousMovie = makeMovieCard({
       key: "movie:zootopia:2016",
       name: "Zootopia",
@@ -438,10 +459,80 @@ describe("getConnectedItemAttrSourceCards", () => {
     });
 
     expect(getConnectedItemAttrSourceCards({
+      card: currentPerson,
       isSelected: false,
       selectedAncestorCards: [makeCinenerdleRootCard(), previousMovie],
+      selectedChildCard: nextMovie,
       selectedDescendantCards: [nextMovie],
+      selectedParentCard: previousMovie,
     })).toEqual([previousMovie]);
+  });
+
+  it("falls back to the nearest selected descendant entity when the immediate child row has no selection", () => {
+    const currentPerson = makePersonCard({
+      key: "person:17605",
+      name: "Idris Elba",
+      record: makePersonRecord({
+        id: 17605,
+        name: "Idris Elba",
+        movieConnectionKeys: ["zootopia (2016)", "zootopia 2 (2025)"],
+      }),
+    });
+    const previousMovie = makeMovieCard({
+      key: "movie:zootopia:2016",
+      name: "Zootopia",
+      year: "2016",
+    });
+    const descendantMovie = makeMovieCard({
+      key: "movie:zootopia-2:2025",
+      name: "Zootopia 2",
+      year: "2025",
+    });
+
+    expect(getConnectedItemAttrSourceCards({
+      card: currentPerson,
+      isSelected: true,
+      selectedAncestorCards: [makeCinenerdleRootCard(), previousMovie],
+      selectedChildCard: null,
+      selectedDescendantCards: [descendantMovie],
+      selectedParentCard: previousMovie,
+    })).toEqual([previousMovie, descendantMovie]);
+  });
+
+  it("includes older selected ancestor entities when they are still directly connected", () => {
+    const currentPerson = makePersonCard({
+      key: "person:17605",
+      name: "Idris Elba",
+      record: makePersonRecord({
+        id: 17605,
+        name: "Idris Elba",
+        movieConnectionKeys: ["zootopia (2016)", "zootopia 2 (2025)"],
+      }),
+    });
+    const olderMovie = makeMovieCard({
+      key: "movie:zootopia:2016",
+      name: "Zootopia",
+      year: "2016",
+    });
+    const nearestMovie = makeMovieCard({
+      key: "movie:zootopia-2:2025",
+      name: "Zootopia 2",
+      year: "2025",
+    });
+
+    expect(getConnectedItemAttrSourceCards({
+      card: currentPerson,
+      isSelected: true,
+      selectedAncestorCards: [
+        makeCinenerdleRootCard(),
+        olderMovie,
+        currentPerson,
+        nearestMovie,
+      ],
+      selectedChildCard: null,
+      selectedDescendantCards: [],
+      selectedParentCard: nearestMovie,
+    })).toEqual([olderMovie, nearestMovie]);
   });
 });
 

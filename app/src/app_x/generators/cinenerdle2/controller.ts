@@ -39,7 +39,7 @@ import {
   getPersonRecordCountsByMovieKeys,
   getPersonPopularityByNames,
 } from "./indexed_db";
-import { pickBestPersonRecord } from "./records";
+import { getResolvedPersonMovieConnectionKeys, pickBestPersonRecord } from "./records";
 import { renderBreakCard, renderDbInfoCard, renderLoggedCinenerdleCard } from "./render_card";
 import { readCinenerdleDailyStarterTitles } from "./starter_storage";
 import {
@@ -80,6 +80,33 @@ import { hasDirectTmdbMovieSource, hasDirectTmdbPersonSource } from "./tmdb_prov
 import type { CinenerdleCard, CinenerdlePathNode } from "./view_types";
 
 export { getCardTmdbRowTooltipText } from "./view_model";
+
+function areCardsDirectlyConnected(
+  card: Extract<CinenerdleCard, { kind: "movie" | "person" }>,
+  candidate: Extract<CinenerdleCard, { kind: "movie" | "person" }>,
+): boolean {
+  if (card.kind === candidate.kind) {
+    return false;
+  }
+
+  const movieCard = card.kind === "movie" ? card : candidate.kind === "movie" ? candidate : null;
+  const personCard = card.kind === "person" ? card : candidate.kind === "person" ? candidate : null;
+  if (!movieCard || !personCard) {
+    return false;
+  }
+
+  const movieKey = getFilmKey(movieCard.name, movieCard.year);
+  const personKey = normalizeName(personCard.name);
+  const personMovieKeys = personCard.record
+    ? getResolvedPersonMovieConnectionKeys(personCard.record)
+    : [];
+  const moviePersonKeys = movieCard.record?.personConnectionKeys ?? [];
+
+  return (
+    personMovieKeys.includes(movieKey) ||
+    moviePersonKeys.map(normalizeName).includes(personKey)
+  );
+}
 
 function createUncachedMovieCard(name: string, year: string): Extract<CinenerdleCard, { kind: "movie" }> {
   return {
@@ -1133,7 +1160,9 @@ export async function buildTreeFromHash(
 function renderCinenerdleCard(
   node: GeneratorNode<CinenerdleCard>,
   selectedAncestorCards: CinenerdleCard[],
+  selectedChildCard: CinenerdleCard | null,
   selectedDescendantCards: CinenerdleCard[],
+  selectedParentCard: CinenerdleCard | null,
   writeHash: (nextHash: string, mode?: "selection" | "navigation") => void,
   onExplicitTmdbRowClick?: () => void,
 ) {
@@ -1157,11 +1186,17 @@ function renderCinenerdleCard(
   const rootHash = serializePathNodes([getPathNodeFromCard(card)]);
   const isCinenerdleLaunchCard = card.kind === "cinenerdle";
   const rootHref = `${window.location.pathname}${window.location.search}${rootHash}`;
-  const connectedItemAttrSources = getConnectedItemAttrSourceCards({
-    isSelected: node.selected,
-    selectedAncestorCards,
-    selectedDescendantCards,
-  });
+  const connectedItemAttrSources =
+    card.kind === "movie" || card.kind === "person"
+      ? getConnectedItemAttrSourceCards({
+        card,
+        isSelected: node.selected,
+        selectedAncestorCards,
+        selectedChildCard,
+        selectedDescendantCards,
+        selectedParentCard,
+      })
+      : [];
 
   function handleCinenerdleCardClick(event: ReactMouseEvent<HTMLElement>) {
     if (!isCinenerdleLaunchCard) {
@@ -1217,28 +1252,29 @@ function renderCinenerdleCard(
 }
 
 export function getConnectedItemAttrSourceCards({
+  card,
   isSelected,
   selectedAncestorCards,
+  selectedChildCard,
   selectedDescendantCards,
+  selectedParentCard,
 }: {
+  card: Extract<CinenerdleCard, { kind: "movie" | "person" }>;
   isSelected: boolean;
   selectedAncestorCards: CinenerdleCard[];
+  selectedChildCard: CinenerdleCard | null;
   selectedDescendantCards: CinenerdleCard[];
+  selectedParentCard: CinenerdleCard | null;
 }): Array<Extract<CinenerdleCard, { kind: "movie" | "person" }>> {
-  const previousConnectedCard =
-    [...selectedAncestorCards]
-      .reverse()
-      .find((card): card is Extract<CinenerdleCard, { kind: "movie" | "person" }> =>
-        card.kind === "movie" || card.kind === "person",
-      ) ?? null;
-  const nextConnectedCard =
-    isSelected
-      ? selectedDescendantCards.find((card): card is Extract<CinenerdleCard, { kind: "movie" | "person" }> =>
-        card.kind === "movie" || card.kind === "person",
-      ) ?? null
-      : null;
-  const sources = [previousConnectedCard, nextConnectedCard].filter(
-    (card): card is Extract<CinenerdleCard, { kind: "movie" | "person" }> => card !== null,
+  const sources = [
+    ...selectedAncestorCards,
+    selectedParentCard,
+    isSelected ? selectedChildCard : null,
+    ...(isSelected ? selectedDescendantCards : []),
+  ].filter((candidate): candidate is Extract<CinenerdleCard, { kind: "movie" | "person" }> =>
+    candidate !== null &&
+    (candidate.kind === "movie" || candidate.kind === "person") &&
+    areCardsDirectlyConnected(card, candidate),
   );
 
   return sources.filter((card, index) =>
@@ -1448,11 +1484,19 @@ export function useCinenerdleController({
 
         writeHash(nextHash, "selection");
       },
-      renderCard({ node, selectedAncestorData, selectedDescendantData }) {
+      renderCard({
+        node,
+        selectedAncestorData,
+        selectedChildData,
+        selectedDescendantData,
+        selectedParentData,
+      }) {
         return renderCinenerdleCard(
           node,
           selectedAncestorData,
+          selectedChildData,
           selectedDescendantData,
+          selectedParentData,
           writeHash,
           onExplicitTmdbRowClick,
         );
