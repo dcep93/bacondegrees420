@@ -195,6 +195,37 @@ describe("bookmarks", () => {
     ].join("\n"));
   });
 
+  it("serializes attrs that are not in a bookmark using the id as the fallback name", () => {
+    localStorage.setItem(
+      CINENERDLE_ITEM_ATTRS_STORAGE_KEY,
+      JSON.stringify({
+        film: {
+          "603": ["🔥"],
+        },
+        person: {
+          orphan_person_id: ["🧠"],
+        },
+      }),
+    );
+
+    expect(serializeBookmarksAsJsonl(
+      [createBookmark(MATRIX_HASH)],
+      [
+        createBookmarkRow(MATRIX_HASH, [
+          {
+            key: "movie:603",
+            kind: "movie",
+            name: "The Matrix",
+          },
+        ]),
+      ],
+    )).toBe([
+      MATRIX_HASH,
+      "603:film:The Matrix 🔥",
+      "orphan_person_id:person:orphan_person_id 🧠",
+    ].join("\n"));
+  });
+
   it("serializes unique attr rows in first-seen order and keeps colons in ids, names, and chars", () => {
     localStorage.setItem(
       CINENERDLE_ITEM_ATTRS_STORAGE_KEY,
@@ -368,6 +399,30 @@ describe("bookmarks", () => {
     ].join("\n"))).toThrowError(
       "Bookmark text line 3 must appear before attr rows",
     );
+  });
+
+  it("parses attr rows that are not referenced by any bookmark", () => {
+    expect(parseBookmarksJsonlWithItemAttrs([
+      MATRIX_HASH,
+      "orphan_person_id:person:orphan_person_id 🧠",
+    ].join("\n"))).toEqual({
+      bookmarks: [createBookmark(MATRIX_HASH)],
+      itemAttrs: {
+        film: {},
+        person: {
+          orphan_person_id: ["🧠"],
+        },
+      },
+      itemAttrRows: [
+        {
+          bucket: "person",
+          chars: ["🧠"],
+          id: "orphan_person_id",
+          lineNumber: 2,
+          name: "orphan_person_id",
+        },
+      ],
+    });
   });
 
   it("replaces bookmarks with normalized persisted entries", async () => {

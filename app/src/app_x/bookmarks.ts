@@ -7,6 +7,7 @@ import {
   getCinenerdleItemAttrTargetFromCard,
   normalizeItemAttrChars,
   readCinenerdleItemAttrs,
+  type CinenerdleItemAttrBucket,
   type CinenerdleItemAttrTarget,
   type CinenerdleItemAttrs,
 } from "./generators/cinenerdle2/item_attrs";
@@ -180,6 +181,8 @@ function serializeBookmarkItemAttrRows(
   bookmarks: BookmarkEntry[],
 ): string[] {
   const itemAttrs = readCinenerdleItemAttrs();
+  const targetNamesByFingerprint = new Map<string, string>();
+  const prioritizedFingerprints: string[] = [];
   const seenTargets = new Set<string>();
   const serializedAttrRows: string[] = [];
 
@@ -191,17 +194,51 @@ function serializeBookmarkItemAttrRows(
 
     getBookmarkRowItemAttrTargets(bookmarkRow).forEach((target) => {
       const fingerprint = `${target.bucket}:${target.id}`;
+      if (!targetNamesByFingerprint.has(fingerprint)) {
+        targetNamesByFingerprint.set(fingerprint, target.name);
+      }
       if (seenTargets.has(fingerprint)) {
         return;
       }
 
       seenTargets.add(fingerprint);
-      const targetChars = itemAttrs[target.bucket][target.id] ?? [];
-      if (targetChars.length === 0) {
+      prioritizedFingerprints.push(fingerprint);
+    });
+  });
+
+  function pushSerializedAttrRow(
+    bucket: CinenerdleItemAttrBucket,
+    id: string,
+    chars: string[],
+  ) {
+    if (chars.length === 0) {
+      return;
+    }
+
+    const fingerprint = `${bucket}:${id}`;
+    const name = targetNamesByFingerprint.get(fingerprint) ?? id;
+    serializedAttrRows.push(`${id}:${bucket}:${name} ${chars.join("")}`);
+  }
+
+  prioritizedFingerprints.forEach((fingerprint) => {
+    const [bucket, ...idParts] = fingerprint.split(":");
+    const id = idParts.join(":");
+    pushSerializedAttrRow(
+      bucket as CinenerdleItemAttrBucket,
+      id,
+      itemAttrs[bucket as CinenerdleItemAttrBucket][id] ?? [],
+    );
+  });
+
+  (["film", "person"] as const).forEach((bucket) => {
+    Object.entries(itemAttrs[bucket]).forEach(([id, chars]) => {
+      const fingerprint = `${bucket}:${id}`;
+      if (seenTargets.has(fingerprint)) {
         return;
       }
 
-      serializedAttrRows.push(`${target.id}:${target.bucket}:${target.name} ${targetChars.join("")}`);
+      seenTargets.add(fingerprint);
+      pushSerializedAttrRow(bucket, id, chars);
     });
   });
 
