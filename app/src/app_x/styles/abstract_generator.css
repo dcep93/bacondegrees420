@@ -29,7 +29,7 @@
   background: var(--bacon-panel-strong);
   box-shadow: var(--bacon-shadow);
   color: var(--bacon-text);
-  font-size: 0.5rem;
+  font-size: 0.4rem;
   font-weight: 700;
   letter-spacing: 0.1em;
   cursor: pointer;
@@ -129,7 +129,7 @@
   .generator-row-bubble {
     min-width: 40px;
     padding: 5px 6px;
-    font-size: 0.46rem;
+    font-size: 0.37rem;
   }
 
   .generator-row-track {

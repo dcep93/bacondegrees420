@@ -3,6 +3,7 @@ import {
   type CSSProperties,
   type KeyboardEvent,
   type MouseEvent,
+  type ReactNode,
 } from "react";
 import Tooltip from "../../../components/tooltip";
 import { joinClassNames } from "../../../components/ui_utils";
@@ -183,29 +184,78 @@ function renderConnectionBadge(
   );
 }
 
-function getFooterTopTooltipText(
+function renderFooterTooltipSection(
+  label: string,
+  lines: string[],
+) {
+  if (lines.length === 0) {
+    return null;
+  }
+
+  return (
+    <span className="cinenerdle-card-footer-tooltip-section" key={label}>
+      <span className="cinenerdle-card-footer-tooltip-section-label">{label}</span>
+      <span className="cinenerdle-card-footer-tooltip-section-body">
+        {lines.map((line, index) => (
+          <span className="cinenerdle-card-footer-tooltip-line" key={`${label}:${index}:${line}`}>
+            {line}
+          </span>
+        ))}
+      </span>
+    </span>
+  );
+}
+
+function getFooterTooltipContent(
   card: RenderableCinenerdleEntityCard,
   isRefreshing: boolean,
-): string | null {
-  const lines = [
-    ...(card.hasCachedTmdbSource
-      ? getTooltipLines(formatConnectionBadgeTooltipText({
-          connectionCount: card.connectionCount,
-          connectionParentLabel: card.connectionParentLabel,
-          connectionRank: card.connectionRank,
-          name: card.name,
-        }))
-      : []),
-    ...(card.kind === "cinenerdle"
-      ? []
-      : getTooltipLines(
-          isRefreshing
-            ? "Refreshing..."
-            : card.tmdbTooltipText ?? card.popularitySource,
-        )),
-  ];
+): {
+  ariaLabel: string;
+  content: ReactNode;
+} {
+  const connectionLines = card.hasCachedTmdbSource
+    ? getTooltipLines(formatConnectionBadgeTooltipText({
+        connectionCount: card.connectionCount,
+        connectionParentLabel: card.connectionParentLabel,
+        connectionRank: card.connectionRank,
+        name: card.name,
+      }))
+    : [];
+  const tmdbLines = card.kind === "cinenerdle"
+    ? []
+    : getTooltipLines(
+        isRefreshing
+          ? "Refreshing..."
+          : card.tmdbTooltipText ?? card.popularitySource,
+      );
+  const actionHint = isRefreshing
+    ? "Refreshing TMDb data..."
+    : "Click anywhere in the footer to refetch.";
+  const ariaLabel = [
+    "TMDb footer details",
+    ...connectionLines,
+    ...tmdbLines,
+    actionHint,
+  ].join("\n");
 
-  return lines.length > 0 ? lines.join("\n") : null;
+  return {
+    ariaLabel,
+    content: (
+      <span className="cinenerdle-card-footer-tooltip-panel">
+        <span className="cinenerdle-card-footer-tooltip-header">
+          <span className="cinenerdle-card-footer-tooltip-title">TMDb footer details</span>
+          <span className="cinenerdle-card-footer-tooltip-subtitle">
+            Shared metadata and refresh controls for this card.
+          </span>
+        </span>
+        {renderFooterTooltipSection("Connections", connectionLines)}
+        {renderFooterTooltipSection("TMDb", tmdbLines)}
+        <span className="cinenerdle-card-footer-tooltip-action">
+          {actionHint}
+        </span>
+      </span>
+    ),
+  };
 }
 
 export function FooterChips({
@@ -288,34 +338,12 @@ export function FooterChips({
       )}
     </div>
   );
-  const footerTopTooltipText = isRefreshableRow
-    ? getFooterTopTooltipText(card, isRefreshing)
+  const footerTooltip = isRefreshableRow
+    ? getFooterTooltipContent(card, isRefreshing)
     : null;
-
-  return (
+  const footerContent = (
     <footer className="cinenerdle-card-footer">
-      {isRefreshableRow && footerTopTooltipText ? (
-        <Tooltip
-          anchorClassName="cinenerdle-card-footer-top-tooltip-anchor"
-          anchorProps={{
-            "aria-label": footerTopTooltipText,
-            onClick: (event) => {
-              handleRefresh(event as MouseEvent<HTMLElement>);
-            },
-            onKeyDown: (event) => {
-              if (isTmdbRowActivationKey(event as KeyboardEvent<HTMLElement>)) {
-                handleRefresh(event as KeyboardEvent<HTMLElement>);
-              }
-            },
-            tabIndex: 0,
-          }}
-          content={footerTopTooltipText}
-          placement="right"
-          variant="cinenerdle-inline"
-        >
-          {footerTop}
-        </Tooltip>
-      ) : footerTop}
+      {footerTop}
       {shouldRenderBottomRow ? (
         <div className="cinenerdle-card-footer-bottom">
           {voteCountChip}
@@ -324,5 +352,34 @@ export function FooterChips({
         </div>
       ) : null}
     </footer>
+  );
+
+  if (!isRefreshableRow || !footerTooltip) {
+    return footerContent;
+  }
+
+  return (
+    <Tooltip
+      anchorClassName="cinenerdle-card-footer-tooltip-anchor"
+      anchorProps={{
+        "aria-label": footerTooltip.ariaLabel,
+        onClick: (event) => {
+          handleRefresh(event as MouseEvent<HTMLElement>);
+        },
+        onKeyDown: (event) => {
+          if (isTmdbRowActivationKey(event as KeyboardEvent<HTMLElement>)) {
+            handleRefresh(event as KeyboardEvent<HTMLElement>);
+          }
+        },
+        tabIndex: 0,
+      }}
+      content={footerTooltip.content}
+      placement="right"
+      tooltipClassName="cinenerdle-card-footer-tooltip"
+      variant="cinenerdle-inline"
+      wrapperTag="div"
+    >
+      {footerContent}
+    </Tooltip>
   );
 }

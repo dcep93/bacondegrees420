@@ -182,14 +182,22 @@ describe("CinenerdleEntityCard", () => {
       />,
     );
 
-    expect(html).toContain(
-      "Heat has 12 connections\nAl Pacino is the #3 connection\nTMDb data fetched 3/29/2026, 4:03:24 PM.\nClick to refetch.",
-    );
+    expect(html).toContain("cinenerdle-card-footer-tooltip-anchor");
+    expect(html).toContain("cinenerdle-card-footer-tooltip-panel");
+    expect(html).toContain("TMDb footer details");
+    expect(html).toContain("Shared metadata and refresh controls for this card.");
+    expect(html).toContain("Connections");
+    expect(html).toContain("Heat has 12 connections");
+    expect(html).toContain("Al Pacino is the #3 connection");
+    expect(html).toContain("TMDb");
+    expect(html).toContain("TMDb data fetched 3/29/2026, 4:03:24 PM.");
+    expect(html).toContain("Click to refetch.");
+    expect(html).toContain("Click anywhere in the footer to refetch.");
     expect(html).not.toContain("TMDb movie popularity from the cached movie record.");
     expect(html.match(/role="tooltip"/g)).toHaveLength(1);
   });
 
-  it("marks the footer top row as refreshable when a tmdb row click handler is present", () => {
+  it("wraps the entire footer in the refreshable tooltip anchor when a tmdb row click handler is present", () => {
     const html = renderToStaticMarkup(
       <CinenerdleEntityCard
         card={makeRenderableMovieCard({
@@ -198,7 +206,12 @@ describe("CinenerdleEntityCard", () => {
       />,
     );
 
+    expect(html).toContain("cinenerdle-card-chip-tooltip-anchor cinenerdle-card-footer-tooltip-anchor");
+    expect(html).toContain("<footer class=\"cinenerdle-card-footer\">");
+    expect(html.indexOf("cinenerdle-card-footer-tooltip-anchor"))
+      .toBeLessThan(html.indexOf("<footer class=\"cinenerdle-card-footer\">"));
     expect(html).toContain("cinenerdle-card-footer-top cinenerdle-card-footer-top-refreshable");
+    expect(html).toContain("cinenerdle-card-footer-bottom");
   });
 
   it("leaves the footer top row non-refreshable when no tmdb row click handler is present", () => {

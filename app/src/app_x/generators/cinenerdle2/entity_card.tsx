@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { CardTitle } from "../../components/card_ui";
 import { handleIsolatedClick, joinClassNames } from "../../components/ui_utils";
 import { FooterChips } from "./entity_card/chips";
+import type { RenderableCinenerdleEntityCard } from "./entity_card/types";
 import { formatRemovedItemAttrMessage, getAcceptedItemAttrInput } from "./entity_card_helpers";
 import {
   CINENERDLE_ITEM_ATTRS_UPDATED_EVENT,
@@ -10,7 +11,6 @@ import {
   getItemAttrsForTarget,
   removeItemAttrFromTarget,
 } from "./item_attrs";
-import type { RenderableCinenerdleEntityCard } from "./entity_card/types";
 
 export type { RenderableCinenerdleEntityCard } from "./entity_card/types";
 
@@ -61,10 +61,10 @@ export function CinenerdleEntityCard({
     () => (card.kind === "cinenerdle"
       ? null
       : getCinenerdleItemAttrTargetFromCard({
-          key: card.key,
-          kind: card.kind,
-          name: card.name,
-        })),
+        key: card.key,
+        kind: card.kind,
+        name: card.name,
+      })),
     [card.key, card.kind, card.name],
   );
   const itemAttrs = useMemo(
@@ -147,13 +147,12 @@ export function CinenerdleEntityCard({
             className="cinenerdle-card-title"
             onClick={onTitleClick
               ? (event) => {
-                  handleIsolatedClick(event, onTitleClick);
-                }
+                handleIsolatedClick(event, onTitleClick);
+              }
               : undefined}
           >
             {card.name}
           </CardTitle>
-          <div className="cinenerdle-card-copy-spacer" />
           <div className="cinenerdle-card-secondary">
             {creditLines.map((line, index) => (
               <div
