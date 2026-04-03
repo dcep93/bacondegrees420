@@ -20,6 +20,30 @@ import {
   replaceItemAttrsForReferencedTargets,
 } from "./generators/cinenerdle2/item_attrs";
 
+export function validateParsedItemAttrRows(
+  itemAttrRows: Array<{
+    bucket: "film" | "person";
+    id: string;
+    lineNumber: number;
+  }>,
+  bookmarkRows: BookmarkRowData[],
+): void {
+  const referencedTargets = new Set(
+    bookmarkRows.flatMap((bookmarkRow) => getBookmarkRowItemAttrTargets(bookmarkRow)).map(
+      (target) => `${target.bucket}:${target.id}`,
+    ),
+  );
+
+  itemAttrRows.forEach((itemAttrRow) => {
+    const fingerprint = `${itemAttrRow.bucket}:${itemAttrRow.id}`;
+    if (!referencedTargets.has(fingerprint)) {
+      throw new Error(
+        `Bookmark text line ${itemAttrRow.lineNumber} references an item that is not in the bookmarked rows`,
+      );
+    }
+  });
+}
+
 export function isBookmarksJsonlDraftChanged(
   serializedBookmarksJsonl: string,
   bookmarksJsonlDraft: string,
@@ -196,6 +220,7 @@ export function useBookmarksState({
       const nextBookmarkRows = await Promise.all(
         persistedBookmarks.map((bookmark) => buildBookmarkRowData(bookmark.hash)),
       );
+      validateParsedItemAttrRows(parsedJsonl.itemAttrRows, nextBookmarkRows);
       replaceItemAttrsForReferencedTargets(
         nextBookmarkRows.flatMap((bookmarkRow) => getBookmarkRowItemAttrTargets(bookmarkRow)),
         parsedJsonl.itemAttrs,
@@ -208,7 +233,7 @@ export function useBookmarksState({
       onToast(
         error instanceof Error && error.message
           ? error.message
-          : "Bookmark JSONL failed",
+          : "Bookmark text failed",
       );
     }
   }, [bookmarksJsonlDraft, onToast, persistBookmarks]);

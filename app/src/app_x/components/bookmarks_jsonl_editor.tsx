@@ -43,7 +43,7 @@ export default function BookmarksJsonlEditorModal({
       role="dialog"
     >
       <button
-        aria-label="Close JSONL editor"
+        aria-label="Close text editor"
         className="bacon-title-action-icon-button bacon-bookmarks-jsonl-modal-close"
         onClick={onClose}
         type="button"

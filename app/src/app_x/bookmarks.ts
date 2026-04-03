@@ -4,8 +4,6 @@ import {
 } from "./generators/cinenerdle2/indexed_db";
 import { normalizeHashValue } from "./generators/cinenerdle2/hash";
 import {
-  decodeItemAttrToken,
-  encodeItemAttrToken,
   getCinenerdleItemAttrTargetFromCard,
   normalizeItemAttrChars,
   readCinenerdleItemAttrs,
@@ -25,6 +23,15 @@ export type BookmarkEntry = {
 export type ParsedBookmarksJsonl = {
   bookmarks: BookmarkEntry[];
   itemAttrs: CinenerdleItemAttrs;
+  itemAttrRows: ParsedBookmarkItemAttrRow[];
+};
+
+export type ParsedBookmarkItemAttrRow = {
+  bucket: CinenerdleItemAttrTarget["bucket"];
+  chars: string[];
+  id: string;
+  lineNumber: number;
+  name: string;
 };
 
 function normalizeBookmarkHash(hash: string): string {
@@ -168,22 +175,37 @@ export function getBookmarkRowItemAttrTargets(bookmarkRow: BookmarkRowData): Cin
   return targets;
 }
 
-function serializeBookmarkItemAttrTags(bookmarkRow: BookmarkRowData | undefined): string[] {
-  if (!bookmarkRow) {
-    return [];
-  }
-
+function serializeBookmarkItemAttrRows(
+  bookmarkRowsByHash: Map<string, BookmarkRowData>,
+  bookmarks: BookmarkEntry[],
+): string[] {
   const itemAttrs = readCinenerdleItemAttrs();
-  return getBookmarkRowItemAttrTargets(bookmarkRow)
-    .map((target) => {
-      const targetChars = itemAttrs[target.bucket][target.id] ?? [];
-      if (targetChars.length === 0) {
-        return "";
+  const seenTargets = new Set<string>();
+  const serializedAttrRows: string[] = [];
+
+  normalizeBookmarkEntries(bookmarks).forEach((bookmark) => {
+    const bookmarkRow = bookmarkRowsByHash.get(bookmark.hash);
+    if (!bookmarkRow) {
+      return;
+    }
+
+    getBookmarkRowItemAttrTargets(bookmarkRow).forEach((target) => {
+      const fingerprint = `${target.bucket}:${target.id}`;
+      if (seenTargets.has(fingerprint)) {
+        return;
       }
 
-      return `[${target.bucket}:${encodeItemAttrToken(target.id)}=${targetChars.join("")}]`;
-    })
-    .filter(Boolean);
+      seenTargets.add(fingerprint);
+      const targetChars = itemAttrs[target.bucket][target.id] ?? [];
+      if (targetChars.length === 0) {
+        return;
+      }
+
+      serializedAttrRows.push(`${target.id}:${target.bucket}:${target.name} ${targetChars.join("")}`);
+    });
+  });
+
+  return serializedAttrRows;
 }
 
 export function serializeBookmarksAsJsonl(
@@ -194,12 +216,54 @@ export function serializeBookmarksAsJsonl(
     bookmarkRows.map((bookmarkRow) => [normalizeBookmarkHash(bookmarkRow.hash), bookmarkRow]),
   );
 
-  return normalizeBookmarkEntries(bookmarks)
-    .map((bookmark) => {
-      const attrTags = serializeBookmarkItemAttrTags(bookmarkRowsByHash.get(bookmark.hash));
-      return attrTags.length > 0 ? `${bookmark.hash} ${attrTags.join(" ")}` : bookmark.hash;
-    })
-    .join("\n");
+  const normalizedBookmarks = normalizeBookmarkEntries(bookmarks);
+  const serializedBookmarkRows = normalizedBookmarks.map((bookmark) => bookmark.hash);
+  const serializedAttrRows = serializeBookmarkItemAttrRows(bookmarkRowsByHash, normalizedBookmarks);
+
+  return [...serializedBookmarkRows, ...serializedAttrRows].join("\n");
+}
+
+function createBookmarkTextError(lineNumber: number, message: string): Error {
+  return new Error(`Bookmark text line ${lineNumber} ${message}`);
+}
+
+function createUnsupportedInlineAttrError(lineNumber: number): Error {
+  return createBookmarkTextError(lineNumber, "uses unsupported inline attr syntax");
+}
+
+function parseBookmarkItemAttrRow(line: string, lineNumber: number): ParsedBookmarkItemAttrRow {
+  if (/\[(film|person):/u.test(line)) {
+    throw createUnsupportedInlineAttrError(lineNumber);
+  }
+
+  const bucketDelimiterMatch = line.match(/:(film|person):/u);
+  const lastSpaceIndex = line.lastIndexOf(" ");
+  if (!bucketDelimiterMatch || typeof bucketDelimiterMatch.index !== "number") {
+    throw createBookmarkTextError(lineNumber, "has an invalid attr row");
+  }
+
+  const bucketDelimiterIndex = bucketDelimiterMatch.index;
+  const bucket = bucketDelimiterMatch[1] as CinenerdleItemAttrTarget["bucket"];
+  const id = line.slice(0, bucketDelimiterIndex).trim();
+  const nameStartIndex = bucketDelimiterIndex + bucketDelimiterMatch[0].length;
+
+  if (!id || lastSpaceIndex < nameStartIndex || lastSpaceIndex >= line.length - 1) {
+    throw createBookmarkTextError(lineNumber, "has an invalid attr row");
+  }
+
+  const name = line.slice(nameStartIndex, lastSpaceIndex).trim();
+  const chars = normalizeItemAttrChars(line.slice(lastSpaceIndex + 1));
+  if (!name || chars.length === 0) {
+    throw createBookmarkTextError(lineNumber, "has an invalid attr row");
+  }
+
+  return {
+    bucket,
+    chars,
+    id,
+    lineNumber,
+    name,
+  };
 }
 
 export function parseBookmarksJsonlWithItemAttrs(jsonlText: string): ParsedBookmarksJsonl {
@@ -215,62 +279,66 @@ export function parseBookmarksJsonlWithItemAttrs(jsonlText: string): ParsedBookm
     return {
       bookmarks: [],
       itemAttrs: createEmptyParsedItemAttrs(),
+      itemAttrRows: [],
     };
   }
 
   const seenHashes = new Set<string>();
+  const seenItemAttrTargets = new Set<string>();
   const parsedBookmarks: BookmarkEntry[] = [];
   const parsedItemAttrs = createEmptyParsedItemAttrs();
+  const parsedItemAttrRows: ParsedBookmarkItemAttrRow[] = [];
+  let hasSeenAttrRows = false;
 
   parsedLines.forEach(({ line, lineNumber }) => {
-    const tagStartIndex = line.search(/\s+\[(film|person):/u);
-    const rawHash = tagStartIndex >= 0 ? line.slice(0, tagStartIndex).trimEnd() : line;
-    const rawTagText = tagStartIndex >= 0 ? line.slice(tagStartIndex) : "";
-    const normalizedHash = normalizeBookmarkHash(rawHash);
-    if (!normalizedHash) {
-      throw new Error(`Bookmark JSONL line ${lineNumber} is not a valid hash`);
+    if (/\[(film|person):/u.test(line)) {
+      throw createUnsupportedInlineAttrError(lineNumber);
     }
 
-    if (seenHashes.has(normalizedHash)) {
-      throw new Error(`Bookmark JSONL line ${lineNumber} is a duplicate hash`);
-    }
-
-    seenHashes.add(normalizedHash);
-    parsedBookmarks.push({
-      hash: normalizedHash,
-    });
-
-    let remainingTagText = rawTagText;
-    while (remainingTagText.trim().length > 0) {
-      const nextTagMatch = remainingTagText.match(
-        /^\s+\[(film|person):([^=\]]+)=([^\]\s]+)\]/u,
-      );
-      if (!nextTagMatch) {
-        throw new Error(`Bookmark JSONL line ${lineNumber} has an invalid attr tag`);
+    const normalizedHash = normalizeBookmarkHash(line);
+    if (normalizedHash) {
+      if (hasSeenAttrRows) {
+        throw createBookmarkTextError(lineNumber, "must appear before attr rows");
       }
 
-      const [, bucket, encodedId, rawChars] = nextTagMatch;
-      const decodedId = decodeItemAttrToken(encodedId);
-      const normalizedChars = normalizeItemAttrChars(rawChars);
-      if (!decodedId || normalizedChars.length === 0) {
-        throw new Error(`Bookmark JSONL line ${lineNumber} has an invalid attr tag`);
+      if (seenHashes.has(normalizedHash)) {
+        throw createBookmarkTextError(lineNumber, "is a duplicate hash");
       }
 
-      mergeParsedItemAttr(
-        parsedItemAttrs,
-        {
-          bucket: bucket as CinenerdleItemAttrTarget["bucket"],
-          id: decodedId,
-        },
-        normalizedChars,
-      );
-      remainingTagText = remainingTagText.slice(nextTagMatch[0].length);
+      seenHashes.add(normalizedHash);
+      parsedBookmarks.push({
+        hash: normalizedHash,
+      });
+      return;
     }
+
+    if (!hasSeenAttrRows && !/:(film|person):/u.test(line)) {
+      throw createBookmarkTextError(lineNumber, "is not a valid hash");
+    }
+
+    const parsedItemAttrRow = parseBookmarkItemAttrRow(line, lineNumber);
+    const fingerprint = `${parsedItemAttrRow.bucket}:${parsedItemAttrRow.id}`;
+    if (seenItemAttrTargets.has(fingerprint)) {
+      throw createBookmarkTextError(lineNumber, "is a duplicate attr row");
+    }
+
+    hasSeenAttrRows = true;
+    seenItemAttrTargets.add(fingerprint);
+    parsedItemAttrRows.push(parsedItemAttrRow);
+    mergeParsedItemAttr(
+      parsedItemAttrs,
+      {
+        bucket: parsedItemAttrRow.bucket,
+        id: parsedItemAttrRow.id,
+      },
+      parsedItemAttrRow.chars,
+    );
   });
 
   return {
     bookmarks: parsedBookmarks,
     itemAttrs: parsedItemAttrs,
+    itemAttrRows: parsedItemAttrRows,
   };
 }
 

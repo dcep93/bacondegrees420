@@ -159,7 +159,7 @@ describe("bookmarks", () => {
     ].join("\n"));
   });
 
-  it("serializes bookmark item attrs as same-line tags", () => {
+  it("serializes bookmark item attrs as standalone rows after bookmark rows", () => {
     localStorage.setItem(
       CINENERDLE_ITEM_ATTRS_STORAGE_KEY,
       JSON.stringify({
@@ -188,19 +188,72 @@ describe("bookmarks", () => {
           },
         ]),
       ],
-    )).toBe(`${MATRIX_HASH} [film:603=🔥⭐] [person:1158=🎭]`);
+    )).toBe([
+      MATRIX_HASH,
+      "603:film:The Matrix 🔥⭐",
+      "1158:person:Keanu Reeves 🎭",
+    ].join("\n"));
   });
 
-  it("parses valid jsonl bookmark hashes and ignores blank lines", () => {
+  it("serializes unique attr rows in first-seen order and keeps colons in ids, names, and chars", () => {
+    localStorage.setItem(
+      CINENERDLE_ITEM_ATTRS_STORAGE_KEY,
+      JSON.stringify({
+        film: {
+          "star wars: episode iv (1977)": ["🔥", ":", "⭐"],
+          "603": ["🎬"],
+        },
+      }),
+    );
+
+    expect(serializeBookmarksAsJsonl(
+      [
+        createBookmark(MATRIX_HASH),
+        createBookmark(KEANU_HASH),
+      ],
+      [
+        createBookmarkRow(MATRIX_HASH, [
+          {
+            key: "movie:star wars: episode iv (1977)",
+            kind: "movie",
+            name: "Star Wars: Episode IV",
+          },
+          {
+            key: "movie:603",
+            kind: "movie",
+            name: "The Matrix",
+          },
+        ]),
+        createBookmarkRow(KEANU_HASH, [
+          {
+            key: "movie:603",
+            kind: "movie",
+            name: "The Matrix",
+          },
+        ]),
+      ],
+    )).toBe([
+      MATRIX_HASH,
+      KEANU_HASH,
+      "star wars: episode iv (1977):film:Star Wars: Episode IV 🔥:⭐",
+      "603:film:The Matrix 🎬",
+    ].join("\n"));
+  });
+
+  it("parses valid bookmark hashes and ignores blank lines", () => {
     expect(parseBookmarksJsonl(`\n${MATRIX_HASH}\n\n${KEANU_HASH}\n`)).toEqual([
       createBookmark(MATRIX_HASH),
       createBookmark(KEANU_HASH),
     ]);
   });
 
-  it("parses bookmark hashes with inline attr tags", () => {
+  it("parses standalone attr rows after bookmark rows", () => {
     expect(parseBookmarksJsonlWithItemAttrs(
-      `${MATRIX_HASH} [film:603=🔥⭐] [person:1158=🎭]`,
+      [
+        MATRIX_HASH,
+        "603:film:The Matrix 🔥⭐",
+        "1158:person:Keanu Reeves 🎭",
+      ].join("\n"),
     )).toEqual({
       bookmarks: [createBookmark(MATRIX_HASH)],
       itemAttrs: {
@@ -211,50 +264,110 @@ describe("bookmarks", () => {
           "1158": ["🎭"],
         },
       },
+      itemAttrRows: [
+        {
+          bucket: "film",
+          chars: ["🔥", "⭐"],
+          id: "603",
+          lineNumber: 2,
+          name: "The Matrix",
+        },
+        {
+          bucket: "person",
+          chars: ["🎭"],
+          id: "1158",
+          lineNumber: 3,
+          name: "Keanu Reeves",
+        },
+      ],
     });
   });
 
-  it("rejects invalid jsonl bookmark hashes", () => {
+  it("parses attr rows whose names and chars include colons", () => {
+    expect(parseBookmarksJsonlWithItemAttrs(
+      [
+        MATRIX_HASH,
+        "star wars: episode iv (1977):film:Star Wars: Episode IV 🔥:⭐",
+      ].join("\n"),
+    )).toEqual({
+      bookmarks: [createBookmark(MATRIX_HASH)],
+      itemAttrs: {
+        film: {
+          "star wars: episode iv (1977)": ["🔥", ":", "⭐"],
+        },
+        person: {},
+      },
+      itemAttrRows: [
+        {
+          bucket: "film",
+          chars: ["🔥", ":", "⭐"],
+          id: "star wars: episode iv (1977)",
+          lineNumber: 2,
+          name: "Star Wars: Episode IV",
+        },
+      ],
+    });
+  });
+
+  it("rejects invalid bookmark hashes", () => {
     expect(() => parseBookmarksJsonl("{")).toThrowError(
-      "Bookmark JSONL line 1 is not a valid hash",
+      "Bookmark text line 1 is not a valid hash",
     );
   });
 
-  it("rejects invalid jsonl attr tags", () => {
+  it("rejects old inline attr syntax", () => {
     expect(() => parseBookmarksJsonlWithItemAttrs(
-      `${MATRIX_HASH} [film:603]`,
+      `${MATRIX_HASH} [film:603=🔥]`,
     )).toThrowError(
-      "Bookmark JSONL line 1 has an invalid attr tag",
+      "Bookmark text line 1 uses unsupported inline attr syntax",
     );
   });
 
-  it("rejects duplicate jsonl bookmark hashes after normalization", () => {
+  it("rejects malformed attr rows", () => {
+    expect(() => parseBookmarksJsonlWithItemAttrs([
+      MATRIX_HASH,
+      "603:film:TheMatrix",
+    ].join("\n"))).toThrowError(
+      "Bookmark text line 2 has an invalid attr row",
+    );
+  });
+
+  it("rejects attr rows with no name before the trailing chars", () => {
+    expect(() => parseBookmarksJsonlWithItemAttrs([
+      MATRIX_HASH,
+      "603:film: 🔥",
+    ].join("\n"))).toThrowError(
+      "Bookmark text line 2 has an invalid attr row",
+    );
+  });
+
+  it("rejects duplicate bookmark hashes after normalization", () => {
     expect(() => parseBookmarksJsonl([
       MATRIX_HASH,
       "film|The Matrix (1999)",
     ].join("\n"))).toThrowError(
-      "Bookmark JSONL line 2 is a duplicate hash",
+      "Bookmark text line 2 is a duplicate hash",
     );
   });
 
-  it("merges repeated item tags in first-seen order", () => {
-    expect(parseBookmarksJsonlWithItemAttrs([
-      `${MATRIX_HASH} [film:603=🔥] [person:1158=🎭]`,
-      `${KEANU_HASH} [film:603=⭐] [person:1158=🎭🧠]`,
-    ].join("\n"))).toEqual({
-      bookmarks: [
-        createBookmark(MATRIX_HASH),
-        createBookmark(KEANU_HASH),
-      ],
-      itemAttrs: {
-        film: {
-          "603": ["🔥", "⭐"],
-        },
-        person: {
-          "1158": ["🎭", "🧠"],
-        },
-      },
-    });
+  it("rejects duplicate attr rows for the same bucket and id", () => {
+    expect(() => parseBookmarksJsonlWithItemAttrs([
+      MATRIX_HASH,
+      "603:film:The Matrix 🔥",
+      "603:film:The Matrix ⭐",
+    ].join("\n"))).toThrowError(
+      "Bookmark text line 3 is a duplicate attr row",
+    );
+  });
+
+  it("rejects bookmark rows after attr rows begin", () => {
+    expect(() => parseBookmarksJsonlWithItemAttrs([
+      MATRIX_HASH,
+      "603:film:The Matrix 🔥",
+      KEANU_HASH,
+    ].join("\n"))).toThrowError(
+      "Bookmark text line 3 must appear before attr rows",
+    );
   });
 
   it("replaces bookmarks with normalized persisted entries", async () => {
