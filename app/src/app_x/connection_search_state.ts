@@ -40,6 +40,7 @@ import {
   getPersonRecordByName,
   getPersonRecordsByMovieKey,
 } from "./generators/cinenerdle2/indexed_db";
+import { isExcludedFilmRecord } from "./generators/cinenerdle2/exclusion";
 import {
   prepareSelectedMovie,
   prepareSelectedPerson,
@@ -47,6 +48,8 @@ import {
 } from "./generators/cinenerdle2/tmdb";
 import { hasDirectTmdbMovieSource, hasDirectTmdbPersonSource } from "./generators/cinenerdle2/tmdb_provenance";
 import type { FilmRecord, PersonRecord } from "./generators/cinenerdle2/types";
+import { addCinenerdleDebugLog } from "./generators/cinenerdle2/debug_log";
+import { isTracedSearchableConnectionEntity } from "./generators/cinenerdle2/trace_targets";
 import {
   getFilmKey,
   normalizeName,
@@ -192,13 +195,39 @@ async function buildConnectionSuggestions(params: {
     .sort(compareRankedSearchableConnectionEntityRecords)
     .slice(0, 24);
 
-  return Array.from(
+  const tracedCandidateRecords = candidateRecords
+    .filter(({ record }) => isTracedSearchableConnectionEntity(record));
+  if (tracedCandidateRecords.length > 0) {
+    addCinenerdleDebugLog("trace.overnight.connection-candidates", {
+      query,
+      tracedCandidates: tracedCandidateRecords.map((candidate) => ({
+        key: candidate.record.key,
+        type: candidate.record.type,
+        nameLower: candidate.record.nameLower,
+        popularity: candidate.record.popularity ?? 0,
+        sortScore: candidate.sortScore,
+        isConnectedToYoungestSelection: candidate.isConnectedToYoungestSelection,
+        connectionOrderToYoungestSelection: getConnectionOrderToYoungestSelection(
+          youngestSelectedConnectionOrders,
+          candidate.record.key,
+        ),
+      })),
+    });
+  }
+
+  const suggestions = Array.from(
     new Map(
       (await Promise.all(
         candidateRecords.map(async ({ record, sortScore, isConnectedToYoungestSelection }) => {
           const entity = await hydrateConnectionEntityFromSearchRecord(record);
           if (entity.kind === "cinenerdle" || entity.connectionCount <= 0) {
             return null;
+          }
+          if (entity.kind === "movie") {
+            const filmRecord = await getFilmRecordByTitleAndYear(entity.name, entity.year);
+            if (isExcludedFilmRecord(filmRecord)) {
+              return null;
+            }
           }
           const suggestionEntity = entity as SelectableConnectionEntity;
 
@@ -221,6 +250,31 @@ async function buildConnectionSuggestions(params: {
   )
     .sort(compareRankedConnectionSuggestions)
     .slice(0, 12);
+
+  const tracedSuggestions = suggestions.filter((suggestion) =>
+    isTracedSearchableConnectionEntity({
+      key: suggestion.key,
+      type: suggestion.kind,
+      nameLower: suggestion.label,
+      popularity: suggestion.popularity,
+    }),
+  );
+  if (tracedSuggestions.length > 0) {
+    addCinenerdleDebugLog("trace.overnight.connection-suggestions", {
+      query,
+      tracedSuggestions: tracedSuggestions.map((suggestion) => ({
+        key: suggestion.key,
+        kind: suggestion.kind,
+        label: suggestion.label,
+        popularity: suggestion.popularity,
+        sortScore: suggestion.sortScore,
+        isConnectedToYoungestSelection: suggestion.isConnectedToYoungestSelection,
+        connectionOrderToYoungestSelection: suggestion.connectionOrderToYoungestSelection,
+      })),
+    });
+  }
+
+  return suggestions;
 }
 
 type ConnectionSuggestionSelectionHandler = (

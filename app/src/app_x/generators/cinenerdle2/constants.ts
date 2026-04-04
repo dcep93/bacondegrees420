@@ -1,6 +1,6 @@
 export const TMDB_API_KEY_STORAGE_KEY = "cinenerdle2.tmdbApiKey";
 export const INDEXED_DB_NAME = "cinenerdle2";
-export const INDEXED_DB_VERSION = 15;
+export const INDEXED_DB_VERSION = 16;
 export const PEOPLE_STORE_NAME = "people";
 export const FILMS_STORE_NAME = "films";
 export const SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME =

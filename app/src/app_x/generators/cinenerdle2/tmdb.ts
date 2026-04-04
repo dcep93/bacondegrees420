@@ -45,6 +45,7 @@ import {
   chooseBestMovieSearchResult,
   getResolvedPersonMovieConnectionKeys,
   mergePersonRecords,
+  normalizeGenreIds,
   pickBestPersonRecord,
   withDerivedFilmFields,
 } from "./records";
@@ -225,6 +226,10 @@ function createConnectionDerivedFilmRecord(
     year: existingFilmRecord?.year ?? year,
     titleYear: existingFilmRecord?.titleYear ?? "",
     popularity: existingFilmRecord?.popularity ?? movieCredit.popularity ?? 0,
+    genreIds:
+      existingFilmRecord?.genreIds.length
+        ? existingFilmRecord.genreIds
+        : normalizeGenreIds(movieCredit.genre_ids),
     personConnectionKeys: [
       ...(existingFilmRecord?.personConnectionKeys ?? []),
       normalizeName(connectedPerson.name),
@@ -239,6 +244,7 @@ function createConnectionDerivedFilmRecord(
       popularity: movieCredit.popularity,
       vote_average: movieCredit.vote_average,
       vote_count: movieCredit.vote_count,
+      genres: existingFilmRecord?.rawTmdbMovie?.genres,
     },
     fetchTimestamp: existingIsDirect
       ? existingFilmRecord?.fetchTimestamp
@@ -1514,7 +1520,10 @@ export function hasMovieFullState(
   rawTmdbMovie: NonNullable<FilmRecord["rawTmdbMovie"]>;
   rawTmdbMovieCreditsResponse: NonNullable<FilmRecord["rawTmdbMovieCreditsResponse"]>;
 } {
-  if (!hasHydratedMovieRecord(movieRecord) || !hasMovieCredits(movieRecord ?? null)) {
+  if (
+    !hasHydratedMovieRecord(movieRecord) ||
+    !hasMovieCredits(movieRecord ?? null)
+  ) {
     return false;
   }
 
@@ -1618,6 +1627,17 @@ export async function prepareConnectionEntityForPreview(
   return fetchAndCachePersonFromSearch(target.name, "prefetch", {
     skipFollowOnPrefetch: true,
   });
+}
+
+export async function flushTmdbBackgroundWorkForTests(): Promise<void> {
+  await Promise.allSettled([
+    syncPopularConnectionPrefetchQueuesPromise,
+    prefetchTopPopularUnhydratedConnectionsPromise,
+    dailyStarterMoviesPromise,
+    dailyStarterHydrationPromise,
+    ...inFlightSelectedMoviePreparations.values(),
+    ...inFlightSelectedPersonPreparations.values(),
+  ]);
 }
 
 async function prefetchPopularMovieCandidate(
@@ -1936,7 +1956,10 @@ export async function prepareSelectedMovie(
         const localMovieTmdbId = getValidTmdbEntityId(
           localMovieRecord.tmdbId ?? localMovieRecord.id,
         );
-        if (!hasDirectTmdbMovieSource(localMovieRecord) && localMovieTmdbId) {
+        if (
+          localMovieTmdbId &&
+          !hasDirectTmdbMovieSource(localMovieRecord)
+        ) {
           const fetchedMovieRecord = await fetchAndCacheMovie(
             localMovieRecord.title,
             localMovieRecord.year,

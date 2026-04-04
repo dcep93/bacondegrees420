@@ -1,22 +1,38 @@
-import type { FilmRecord, PersonRecord, TmdbGenre } from "./types";
-import { normalizeName } from "./utils";
+import type { FilmRecord, PersonRecord } from "./types";
+import { addCinenerdleDebugLog } from "./debug_log";
+import { getFilmTmdbSource } from "./tmdb_provenance";
+import { isTracedMovieRecord } from "./trace_targets";
 
 const TMDB_DOCUMENTARY_GENRE_ID = 99;
-const DOCUMENTARY_GENRE_NAME = "documentary";
 
-function hasDocumentaryGenre(
-  genres: TmdbGenre[] | null | undefined,
+function hasDocumentaryGenreId(
+  genreIds: readonly number[] | null | undefined,
 ): boolean {
-  return (genres ?? []).some((genre) =>
-    genre.id === TMDB_DOCUMENTARY_GENRE_ID ||
-    normalizeName(genre.name ?? "") === DOCUMENTARY_GENRE_NAME,
-  );
+  return (genreIds ?? []).some((genreId) => genreId === TMDB_DOCUMENTARY_GENRE_ID);
 }
 
 export function isExcludedFilmRecord(
   filmRecord: FilmRecord | null | undefined,
 ): boolean {
-  return hasDocumentaryGenre(filmRecord?.rawTmdbMovie?.genres);
+  const excluded = hasDocumentaryGenreId(filmRecord?.genreIds);
+
+  if (isTracedMovieRecord(filmRecord)) {
+    addCinenerdleDebugLog("trace.overnight.exclusion-check", {
+      excluded,
+      reasons: excluded ? ["documentary-genre-id"] : [],
+      title: filmRecord?.title ?? filmRecord?.rawTmdbMovie?.title ?? "",
+      year: filmRecord?.year ?? "",
+      tmdbId: filmRecord?.tmdbId ?? filmRecord?.id ?? null,
+      genreIds: [...(filmRecord?.genreIds ?? [])],
+      genres: (filmRecord?.rawTmdbMovie?.genres ?? []).map((genre) => ({
+        id: genre.id,
+        name: genre.name,
+      })),
+      tmdbSource: getFilmTmdbSource(filmRecord),
+    });
+  }
+
+  return excluded;
 }
 
 export function isExcludedPersonRecord(

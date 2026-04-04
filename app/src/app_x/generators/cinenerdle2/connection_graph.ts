@@ -7,6 +7,7 @@ import {
   getPersonRecordsByMovieKey,
   getSearchableConnectionEntityByKey,
 } from "./indexed_db";
+import { isExcludedFilmRecord } from "./exclusion";
 import { isCinenerdleDailyStarterFilm } from "./starter_storage";
 import type {
   FilmRecord,
@@ -434,7 +435,8 @@ function sortEntityKeysByPopularity(
 
 async function getNeighborKeysForEntityKey(entityKey: string): Promise<string[]> {
   if (entityKey === getCinenerdleConnectionEntityKey()) {
-    const starterFilms = await getCinenerdleStarterFilmRecords();
+    const starterFilms = (await getCinenerdleStarterFilmRecords())
+      .filter((filmRecord) => !isExcludedFilmRecord(filmRecord));
     const popularityByKey = new Map<string, number>();
     const starterKeys = starterFilms.map((filmRecord) => {
       const movieKey = getMovieConnectionEntityKey(filmRecord.title, filmRecord.year);
@@ -458,9 +460,13 @@ async function getNeighborKeysForEntityKey(entityKey: string): Promise<string[]>
     const filmRecords = personNameLower
       ? await getFilmRecordsByPersonConnectionKey(personNameLower)
       : [];
+    const visibleFilmRecords = filmRecords.filter((filmRecord) => !isExcludedFilmRecord(filmRecord));
     const movieKeys = new Set<string>();
     const popularityByKey = new Map<string, number>();
     const moviePopularityByLookupKey = new Map<string, number>();
+    const filmRecordByLookupKey = new Map(
+      visibleFilmRecords.map((filmRecord) => [getFilmKey(filmRecord.title, filmRecord.year), filmRecord] as const),
+    );
 
     getAllowedConnectedTmdbMovieCredits(personRecord).forEach((credit) => {
       const title = getMovieTitleFromCredit(credit);
@@ -476,6 +482,11 @@ async function getNeighborKeysForEntityKey(entityKey: string): Promise<string[]>
     });
 
     getResolvedPersonMovieConnectionKeys(personRecord).forEach((movieKey) => {
+      const matchingFilmRecord = filmRecordByLookupKey.get(movieKey);
+      if (matchingFilmRecord && isExcludedFilmRecord(matchingFilmRecord)) {
+        return;
+      }
+
       const connectionMovieKey = getMovieConnectionEntityKeyFromLookupKey(movieKey);
       movieKeys.add(connectionMovieKey);
       setPopularityScore(
@@ -485,7 +496,7 @@ async function getNeighborKeysForEntityKey(entityKey: string): Promise<string[]>
       );
     });
 
-    filmRecords.forEach((filmRecord) => {
+    visibleFilmRecords.forEach((filmRecord) => {
       const connectionMovieKey = getMovieConnectionEntityKey(filmRecord.title, filmRecord.year);
       movieKeys.add(connectionMovieKey);
       setPopularityScore(popularityByKey, connectionMovieKey, filmRecord.popularity);
@@ -500,6 +511,9 @@ async function getNeighborKeysForEntityKey(entityKey: string): Promise<string[]>
     getFilmRecordByTitleAndYear(parsedMovie.name, parsedMovie.year),
     getPersonRecordsByMovieKey(movieLookupKey),
   ]);
+  if (isExcludedFilmRecord(filmRecord)) {
+    return [];
+  }
   const personKeys = new Set<string>();
   const popularityByKey = new Map<string, number>();
   const personPopularityByKey = new Map<string, number>();

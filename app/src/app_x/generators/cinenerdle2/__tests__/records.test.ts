@@ -5,6 +5,7 @@ import {
   buildPersonRecord,
   chooseBestFilmRecord,
   chooseBestMovieSearchResult,
+  mergeFetchedTmdbMovie,
   mergePersonRecords,
   pickBestPersonRecord,
   withDerivedFilmFields,
@@ -181,6 +182,27 @@ describe("withDerivedFilmFields", () => {
 });
 
 describe("buildFilmRecord", () => {
+  it("restores direct-film genres when an older cached movie payload had none", () => {
+    const mergedMovie = mergeFetchedTmdbMovie(
+      makeTmdbMovieSearchResult({
+        id: 27007,
+        title: "Overnight",
+        release_date: "2003-06-12",
+        genres: [],
+      }),
+      makeTmdbMovieSearchResult({
+        id: 27007,
+        title: "Overnight",
+        release_date: "2003-06-12",
+        genres: [{ id: 99, name: "Documentary" }],
+      }),
+      "2026-04-03T00:00:00.000Z",
+      "2026-04-04T00:00:00.000Z",
+    );
+
+    expect(mergedMovie.genres).toEqual([{ id: 99, name: "Documentary" }]);
+  });
+
   it("overlays TMDb data while preserving cached credits", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-28T12:34:56.000Z"));

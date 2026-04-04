@@ -57,6 +57,14 @@ import {
   prepareSelectedPerson,
   setTmdbLogGeneration,
 } from "./tmdb";
+import { addCinenerdleDebugLog } from "./debug_log";
+import { isExcludedFilmRecord } from "./exclusion";
+import {
+  isTracedMovieCredit,
+  isTracedMovieRecord,
+  isTracedPersonName,
+  isTracedPersonRecord,
+} from "./trace_targets";
 import type { FilmRecord, PersonRecord } from "./types";
 import {
   getAssociatedPeopleFromMovieCredits,
@@ -539,11 +547,31 @@ async function resolvePersonParentRecord(
 
 async function createDailyStarterRow() {
   const starterFilms = await getCinenerdleStarterFilmRecords();
-  if (starterFilms.length === 0) {
+  const visibleStarterFilms = starterFilms.filter((filmRecord) => !isExcludedFilmRecord(filmRecord));
+  if (visibleStarterFilms.length === 0) {
     return null;
   }
 
-  const cards = sortCardsByPopularity(starterFilms.map(createDailyStarterMovieCard));
+  const cards = sortCardsByPopularity(visibleStarterFilms.map(createDailyStarterMovieCard));
+  const tracedCards = cards
+    .filter((card): card is Extract<CinenerdleCard, { kind: "movie" }> =>
+      card.kind === "movie" && isTracedMovieRecord(card.record)
+    )
+    .map((card) => ({
+      key: card.key,
+      name: card.name,
+      year: card.year,
+      excluded: isExcludedFilmRecord(card.record),
+      popularity: card.popularity,
+      connectionCount: card.connectionCount,
+    }));
+  if (tracedCards.length > 0) {
+    addCinenerdleDebugLog("trace.overnight.daily-starter-row", {
+      tracedCards,
+      totalCardCount: cards.length,
+    });
+  }
+
   return createRow(cards);
 }
 
@@ -728,7 +756,16 @@ async function buildChildRowForPersonCard(
     "controller.buildChildRowForPersonCard",
     async () => {
       const personRecord = await resolvePersonParentRecord(card, personRecordOverride);
+      const shouldTracePersonBuild =
+        isTracedPersonName(card.name) || isTracedPersonRecord(personRecord);
       if (!personRecord) {
+        if (shouldTracePersonBuild) {
+          addCinenerdleDebugLog("trace.willem-dafoe.child-row", {
+            branch: "missing-person-record",
+            parentCardKey: card.key,
+            parentName: card.name,
+          });
+        }
         return null;
       }
       const movieCreditGroups = getAssociatedMovieCreditGroupsFromPersonCredits(personRecord)
@@ -738,6 +775,15 @@ async function buildChildRowForPersonCard(
           new Set(personRecord.movieConnectionKeys.map((movieKey) => normalizeTitle(movieKey)).filter(Boolean)),
         );
         if (movieKeys.length === 0) {
+          if (shouldTracePersonBuild) {
+            addCinenerdleDebugLog("trace.willem-dafoe.child-row", {
+              branch: "no-tmdb-credits-no-fallback-movie-keys",
+              parentCardKey: card.key,
+              parentName: card.name,
+              personTmdbId: personRecord.tmdbId ?? personRecord.id,
+            });
+          }
+
           return null;
         }
 
@@ -773,10 +819,50 @@ async function buildChildRowForPersonCard(
             ),
             connectionParentLabel,
           })),
-        ).map((childCard, index) => ({
-          ...childCard,
-          connectionOrder: index + 1,
-        }));
+        )
+          .filter((childCard) => childCard.kind !== "movie" || !isExcludedFilmRecord(childCard.record))
+          .map((childCard, index) => ({
+            ...childCard,
+            connectionOrder: index + 1,
+          }));
+
+        if (
+          shouldTracePersonBuild ||
+          fallbackFilms.some(({ movieRecord, parsedMovie }) =>
+            isTracedMovieRecord(movieRecord) || isTracedMovieCredit({ title: parsedMovie.name }),
+          )
+        ) {
+          addCinenerdleDebugLog("trace.willem-dafoe.child-row", {
+            branch: "fallback-movie-keys",
+            parentCardKey: card.key,
+            parentName: card.name,
+            personTmdbId: personRecord.tmdbId ?? personRecord.id,
+            movieKeys,
+            tracedFallbackFilms: fallbackFilms
+              .filter(({ movieRecord, parsedMovie }) =>
+                isTracedMovieRecord(movieRecord) || isTracedMovieCredit({ title: parsedMovie.name }),
+              )
+              .map(({ movieKey, parsedMovie, movieRecord }) => ({
+                movieKey,
+                title: parsedMovie.name,
+                year: parsedMovie.year,
+                excluded: isExcludedFilmRecord(movieRecord),
+                tmdbId: movieRecord?.tmdbId ?? movieRecord?.id ?? null,
+              })),
+            tracedChildCards: childCards
+              .flatMap((childCard) => (
+                childCard.kind !== "movie" || !isTracedMovieRecord(childCard.record)
+                  ? []
+                  : [{
+                      key: childCard.key,
+                      name: childCard.name,
+                      year: childCard.year,
+                      connectionOrder: childCard.connectionOrder ?? null,
+                      excluded: isExcludedFilmRecord(childCard.record),
+                    }]
+              )),
+          });
+        }
 
         return createRow(childCards);
       }
@@ -801,6 +887,9 @@ async function buildChildRowForPersonCard(
           return null;
         }
         const movieRecord = (credit.id ? filmRecordsById.get(credit.id) : null) ?? null;
+        if (isExcludedFilmRecord(movieRecord)) {
+          return null;
+        }
         const movieCard = createMovieAssociationCard(
           creditGroup,
           movieRecord,
@@ -819,6 +908,42 @@ async function buildChildRowForPersonCard(
         } as Extract<CinenerdleCard, { kind: "movie" }>;
         return cardWithOrdering;
       }).filter((child): child is NonNullable<typeof child> => child !== null);
+
+      if (
+        shouldTracePersonBuild ||
+        movieCreditGroups.some((creditGroup) => creditGroup.some(isTracedMovieCredit))
+      ) {
+        addCinenerdleDebugLog("trace.willem-dafoe.child-row", {
+          branch: "tmdb-credit-groups",
+          parentCardKey: card.key,
+          parentName: card.name,
+          personTmdbId: personRecord.tmdbId ?? personRecord.id,
+          tracedCreditGroups: movieCreditGroups
+            .filter((creditGroup) => creditGroup.some(isTracedMovieCredit))
+            .map((creditGroup) => creditGroup.map((credit) => ({
+              id: credit.id ?? null,
+              title: credit.title ?? credit.original_title ?? "",
+              releaseDate: credit.release_date ?? "",
+              popularity: credit.popularity ?? 0,
+              creditType: credit.creditType ?? null,
+              character: credit.character ?? null,
+              job: credit.job ?? null,
+            }))),
+          tracedChildCards: childCards
+            .flatMap((childCard) => (
+              childCard.kind !== "movie" || !isTracedMovieRecord(childCard.record)
+                ? []
+                : [{
+                    key: childCard.key,
+                    name: childCard.name,
+                    year: childCard.year,
+                    connectionOrder: childCard.connectionOrder ?? null,
+                    excluded: isExcludedFilmRecord(childCard.record),
+                    tmdbId: childCard.record?.tmdbId ?? childCard.record?.id ?? null,
+                  }]
+            )),
+        });
+      }
 
       return createRow(childCards);
     },

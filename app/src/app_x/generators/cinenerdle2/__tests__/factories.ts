@@ -81,6 +81,7 @@ export function makeMovieCredit(
     poster_path: pickOverride(overrides, "poster_path", "/insomnia.jpg"),
     release_date: pickOverride(overrides, "release_date", "2002-05-24"),
     popularity: pickOverride(overrides, "popularity", 55),
+    genre_ids: pickOverride(overrides, "genre_ids", undefined as number[] | undefined),
     order: pickOverride(overrides, "order", 0),
     vote_average: pickOverride(overrides, "vote_average", 7.1),
     vote_count: pickOverride(overrides, "vote_count", 1200),
@@ -115,6 +116,7 @@ export function makeFilmRecord(
 ): FilmRecord {
   const title = pickOverride(overrides, "title", "Heat");
   const year = pickOverride(overrides, "year", "1995");
+  const rawTmdbMovie = pickOverride(overrides, "rawTmdbMovie", undefined);
 
   return {
     id: pickOverride(overrides, "id", 50),
@@ -125,15 +127,20 @@ export function makeFilmRecord(
     year,
     titleYear: pickOverride(overrides, "titleYear", getFilmKey(title, year)),
     popularity: pickOverride(overrides, "popularity", 66),
+    genreIds: pickOverride(
+      overrides,
+      "genreIds",
+      rawTmdbMovie?.genres?.map((genre) => genre.id) ?? [],
+    ),
     personConnectionKeys: pickOverride(overrides, "personConnectionKeys", []),
     tmdbSource: pickOverride(
       overrides,
       "tmdbSource",
       getFilmTmdbSource({
-        rawTmdbMovie: pickOverride(overrides, "rawTmdbMovie", undefined),
+        rawTmdbMovie,
       } as FilmRecord),
     ),
-    rawTmdbMovie: pickOverride(overrides, "rawTmdbMovie", undefined),
+    rawTmdbMovie,
     rawTmdbMovieSearchResponse: pickOverride(overrides, "rawTmdbMovieSearchResponse", undefined),
     rawTmdbMovieCreditsResponse: pickOverride(overrides, "rawTmdbMovieCreditsResponse", undefined),
     fetchTimestamp: pickOverride(overrides, "fetchTimestamp", undefined),

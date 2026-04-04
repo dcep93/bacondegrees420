@@ -41,6 +41,7 @@ export type TmdbMovieCredit = {
   poster_path?: string | null;
   release_date?: string;
   popularity?: number;
+  genre_ids?: number[];
   order?: number;
   vote_average?: number;
   vote_count?: number;
@@ -105,6 +106,7 @@ export type FilmRecord = {
   year: string;
   titleYear: string;
   popularity: number;
+  genreIds: number[];
   personConnectionKeys: string[];
   tmdbSource?: import("./tmdb_provenance").FilmTmdbSource;
   rawTmdbMovie?: TmdbMovieSearchResult;

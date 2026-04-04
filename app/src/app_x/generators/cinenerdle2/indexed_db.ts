@@ -14,6 +14,7 @@ import {
   chooseBestFilmRecord,
   mergeFetchedFieldValue,
   mergePersonRecords,
+  normalizeGenreIds,
   pickBestPersonRecord,
   getResolvedPersonMovieConnectionKeys,
 } from "./records";
@@ -49,6 +50,13 @@ import {
   normalizeTitle,
 } from "./utils";
 import { measureAsync } from "../../perf";
+import { addCinenerdleDebugLog } from "./debug_log";
+import { isExcludedFilmRecord } from "./exclusion";
+import {
+  isTracedMovieRecord,
+  isTracedPersonName,
+  isTracedSearchableConnectionEntity,
+} from "./trace_targets";
 import { throwCinenerdleValidationError } from "./validation";
 
 const REQUIRED_OBJECT_STORE_NAMES = [
@@ -61,7 +69,7 @@ const REQUIRED_OBJECT_STORE_NAMES = [
 export const CINENERDLE_RECORDS_UPDATED_EVENT = "cinenerdle:records-updated";
 export const CINENERDLE_INDEXED_DB_FETCH_COUNT_UPDATED_EVENT =
   "cinenerdle:indexed-db-fetch-count-updated";
-const INDEXED_DB_SNAPSHOT_VERSION = 10 as const;
+const INDEXED_DB_SNAPSHOT_VERSION = 11 as const;
 const INDEXED_DB_FETCH_COUNT_KEY = "tmdbFetchCount";
 const INDEXED_DB_BOOKMARK_HASHES_KEY = "bookmarkHashes";
 
@@ -840,14 +848,17 @@ function collectSearchableConnectionEntitiesFromFilmRecord(
   filmRecord: FilmRecord,
 ): SearchableConnectionEntityRecord[] {
   const recordsByKey = new Map<string, SearchableConnectionEntityRecord>();
+  const isExcludedFilm = isExcludedFilmRecord(filmRecord);
 
-  const movieRecord = createMovieSearchRecord(
-    filmRecord.title,
-    filmRecord.year,
-    filmRecord.popularity ?? 0,
-  );
-  if (movieRecord) {
-    recordsByKey.set(movieRecord.key, movieRecord);
+  if (!isExcludedFilm) {
+    const movieRecord = createMovieSearchRecord(
+      filmRecord.title,
+      filmRecord.year,
+      filmRecord.popularity ?? 0,
+    );
+    if (movieRecord) {
+      recordsByKey.set(movieRecord.key, movieRecord);
+    }
   }
 
   const upsertPersonName = (
@@ -864,6 +875,25 @@ function collectSearchableConnectionEntitiesFromFilmRecord(
   getAssociatedPeopleFromMovieCredits(filmRecord).forEach((credit) => {
     upsertPersonName(credit.name ?? "", credit.id, credit.popularity ?? 0);
   });
+
+  if (
+    isTracedMovieRecord(filmRecord) ||
+    getAssociatedPeopleFromMovieCredits(filmRecord).some((credit) => isTracedPersonName(credit.name))
+  ) {
+    addCinenerdleDebugLog("trace.overnight.searchable-source-film", {
+      title: filmRecord.title,
+      year: filmRecord.year,
+      tmdbId: filmRecord.tmdbId ?? filmRecord.id,
+      excluded: isExcludedFilm,
+      personConnectionKeys: filmRecord.personConnectionKeys,
+      searchableKeys: Array.from(recordsByKey.keys()),
+      people: getAssociatedPeopleFromMovieCredits(filmRecord).map((credit) => ({
+        id: credit.id ?? null,
+        name: credit.name ?? "",
+        popularity: credit.popularity ?? 0,
+      })),
+    });
+  }
 
   return Array.from(recordsByKey.values());
 }
@@ -1775,7 +1805,25 @@ export async function getCinenerdleStarterFilmRecords(): Promise<FilmRecord[]> {
         }),
       );
 
-      return starterRecords.sort((left, right) => (right.popularity ?? 0) - (left.popularity ?? 0));
+      const sortedStarterRecords = starterRecords
+        .sort((left, right) => (right.popularity ?? 0) - (left.popularity ?? 0));
+
+      sortedStarterRecords
+        .filter(isTracedMovieRecord)
+        .forEach((starterRecord) => {
+          addCinenerdleDebugLog("trace.overnight.starter-record", {
+            title: starterRecord.title,
+            year: starterRecord.year,
+            tmdbId: starterRecord.tmdbId ?? starterRecord.id,
+            excluded: isExcludedFilmRecord(starterRecord),
+            popularity: starterRecord.popularity,
+            personConnectionKeyCount: starterRecord.personConnectionKeys.length,
+            hasRawTmdbMovie: Boolean(starterRecord.rawTmdbMovie),
+            hasMovieCredits: Boolean(starterRecord.rawTmdbMovieCreditsResponse),
+          });
+        });
+
+      return sortedStarterRecords;
     },
     {
       always: true,
@@ -1793,12 +1841,30 @@ export async function getAllSearchableConnectionEntities(): Promise<
     "idb.getAllSearchableConnectionEntities",
     async () => {
       if (allSearchableConnectionEntitiesCache) {
+        const tracedCachedRecords = allSearchableConnectionEntitiesCache
+          .filter(isTracedSearchableConnectionEntity);
+        if (tracedCachedRecords.length > 0) {
+          addCinenerdleDebugLog("trace.overnight.searchable-entities", {
+            source: "memory-cache",
+            matches: tracedCachedRecords,
+          });
+        }
+
         return allSearchableConnectionEntitiesCache;
       }
 
-      return replaceCachedSearchableConnectionEntities(
+      const nextRecords = replaceCachedSearchableConnectionEntities(
         await loadPersistedSearchableConnectionEntities(),
       );
+      const tracedRecords = nextRecords.filter(isTracedSearchableConnectionEntity);
+      if (tracedRecords.length > 0) {
+        addCinenerdleDebugLog("trace.overnight.searchable-entities", {
+          source: "persisted-store",
+          matches: tracedRecords,
+        });
+      }
+
+      return nextRecords;
     },
     {
       always: true,
@@ -1835,6 +1901,7 @@ export type IndexedDbSnapshotFilm = {
   year: string;
   posterPath: string | null;
   popularity: number;
+  genreIds: number[];
   voteAverage: number | null;
   voteCount: number | null;
   releaseDate: string;
@@ -1967,10 +2034,25 @@ function buildSnapshotSearchableConnectionEntities(
   people: PersonRecord[],
   films: FilmRecord[],
 ): SearchableConnectionEntityRecord[] {
+  const excludedMovieKeys = new Set(
+    films.flatMap((filmRecord) => {
+      if (!isExcludedFilmRecord(filmRecord)) {
+        return [];
+      }
+
+      const movieRecord = createMovieSearchRecord(
+        filmRecord.title,
+        filmRecord.year,
+        filmRecord.popularity ?? 0,
+      );
+      return movieRecord ? [movieRecord.key] : [];
+    }),
+  );
+
   return mergeSearchableConnectionEntityRecords([
     ...people.flatMap((personRecord) => collectSearchableConnectionEntitiesFromPersonRecord(personRecord)),
     ...films.flatMap((filmRecord) => collectSearchableConnectionEntitiesFromFilmRecord(filmRecord)),
-  ]);
+  ]).filter((record) => record.type !== "movie" || !excludedMovieKeys.has(record.key));
 }
 
 async function persistSearchableConnectionEntitiesInBackground(
@@ -2241,6 +2323,7 @@ function createSnapshotFilmRecord(
     year: filmRecord.year,
     posterPath: filmRecord.rawTmdbMovie?.poster_path ?? null,
     popularity: filmRecord.popularity ?? 0,
+    genreIds: normalizeGenreIds(filmRecord.genreIds),
     voteAverage: filmRecord.rawTmdbMovie?.vote_average ?? null,
     voteCount: filmRecord.rawTmdbMovie?.vote_count ?? null,
     releaseDate: filmRecord.rawTmdbMovie?.release_date ?? "",
@@ -2336,6 +2419,7 @@ function createTmdbMovieCreditFromSnapshotFilm(
     release_date: filmSnapshot.releaseDate,
     popularity: filmSnapshot.popularity,
     order: connection.order,
+    genre_ids: [...filmSnapshot.genreIds],
     fetchTimestamp: connection.fetchTimestamp,
     vote_average: filmSnapshot.voteAverage ?? undefined,
     vote_count: filmSnapshot.voteCount ?? undefined,
@@ -2524,6 +2608,7 @@ function inflateIndexedDbSnapshotCore(
       year: filmSnapshot.year,
       titleYear: getFilmKey(filmSnapshot.title, filmSnapshot.year),
       popularity: filmSnapshot.popularity,
+      genreIds: normalizeGenreIds(filmSnapshot.genreIds),
       personConnectionKeys: Array.from(
         new Set([
           ...filmSnapshot.personConnectionKeys.map((personName) => normalizeName(personName)),

@@ -375,7 +375,7 @@ test("bare movie-title submits stay unresolved after dismissing suggestions", as
   await page.route("**/dump.json", async (route) => {
     await route.fulfill(createJsonResponse({
       format: "cinenerdle-indexed-db-snapshot",
-      version: 10,
+      version: 11,
       people: [
         {
           tmdbId: 60,
@@ -439,7 +439,7 @@ test("bare movie-title suggestions still work with Enter and click selection", a
   await page.route("**/dump.json", async (route) => {
     await route.fulfill(createJsonResponse({
       format: "cinenerdle-indexed-db-snapshot",
-      version: 10,
+      version: 11,
       people: [
         {
           tmdbId: 60,
@@ -1088,7 +1088,7 @@ test("deep links render full hash paths, hydrate unique entities once, and revis
   await page.route("**/dump.json", async (route) => {
     await route.fulfill(createJsonResponse({
       format: "cinenerdle-indexed-db-snapshot",
-      version: 10,
+      version: 11,
       people: [],
       films: [],
     }));
@@ -1315,7 +1315,7 @@ test("deep links render full hash paths, hydrate unique entities once, and revis
   await page2.route("**/dump.json", async (route) => {
     await route.fulfill(createJsonResponse({
       format: "cinenerdle-indexed-db-snapshot",
-      version: 10,
+      version: 11,
       people: [
         {
           tmdbId: 10297,
@@ -1961,7 +1961,7 @@ test("gen 2 refresh redraws gen 3 for the newly selected person", async ({
   await page.route("**/dump.json", async (route) => {
     await route.fulfill(createJsonResponse({
       format: "cinenerdle-indexed-db-snapshot",
-      version: 10,
+      version: 11,
       people: [],
       films: [],
     }));
@@ -2149,7 +2149,7 @@ test("deep descendant selection renders cached DB children before the delayed TM
   await page.route("**/dump.json", async (route) => {
     await route.fulfill(createJsonResponse({
       format: "cinenerdle-indexed-db-snapshot",
-      version: 10,
+      version: 11,
       people: [
         {
           tmdbId: 1001,

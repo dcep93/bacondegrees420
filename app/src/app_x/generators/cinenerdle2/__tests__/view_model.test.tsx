@@ -73,7 +73,9 @@ function makeMovieCard(
     voteCount: null,
     record: makeFilmRecord({
       personConnectionKeys: ["al pacino", "robert de niro"],
-      rawTmdbMovie: makeTmdbMovieSearchResult(),
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        genres: [{ id: 28, name: "Action" }],
+      }),
       rawTmdbMovieCreditsResponse: {
         cast: [],
         crew: [],

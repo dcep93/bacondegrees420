@@ -28,6 +28,53 @@ function readExcludeFixture(): ExcludeFixtureEntry[] {
 }
 
 describe("film exclusion fixture", () => {
+  it("excludes connection-derived movie records when genreIds include documentary", () => {
+    const filmRecord = makeFilmRecord({
+      id: 27007,
+      tmdbId: 27007,
+      title: "Overnight",
+      year: "2003",
+      genreIds: [99],
+      tmdbSource: "connection-derived",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 27007,
+        title: "Overnight",
+        original_title: "Overnight",
+        release_date: "2003-06-12",
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+    });
+
+    expect(isExcludedFilmRecord(filmRecord)).toBe(true);
+  });
+
+  it("does not exclude movies with empty genreIds", () => {
+    const filmRecord = makeFilmRecord({
+      id: 27007,
+      tmdbId: 27007,
+      title: "Overnight",
+      year: "2003",
+      genreIds: [],
+      tmdbSource: "direct-film-fetch",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 27007,
+        title: "Overnight",
+        original_title: "Overnight",
+        release_date: "2003-06-12",
+        genres: [],
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+    });
+
+    expect(isExcludedFilmRecord(filmRecord)).toBe(false);
+  });
+
   it("marks every fixture movie as excluded", () => {
     const entries = readExcludeFixture();
 
@@ -40,6 +87,7 @@ describe("film exclusion fixture", () => {
         title: movie.title,
         year: movie.release_date.slice(0, 4),
         fetchTimestamp: "2026-04-01T16:00:00.000Z",
+        genreIds: movie.genres.map((genre) => genre.id),
         rawTmdbMovie: makeTmdbMovieSearchResult({
           id: movie.id,
           title: movie.title,

@@ -428,6 +428,76 @@ describe("buildChildRowForCard", () => {
     expect(indexedDbMock.getPersonRecordByName).not.toHaveBeenCalled();
   });
 
+  it("filters excluded documentary movies from person child rows", async () => {
+    const documentaryRecord = makeFilmRecord({
+      id: 27007,
+      tmdbId: 27007,
+      title: "Overnight",
+      year: "2003",
+      personConnectionKeys: ["willem dafoe"],
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 27007,
+        title: "Overnight",
+        original_title: "Overnight",
+        release_date: "2003-06-12",
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+      tmdbSource: "connection-derived",
+    });
+    const allowedRecord = makeFilmRecord({
+      id: 321,
+      tmdbId: 321,
+      title: "Spider-Man",
+      year: "2002",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 321,
+        title: "Spider-Man",
+        original_title: "Spider-Man",
+        release_date: "2002-05-01",
+        genres: [{ id: 28, name: "Action" }],
+      }),
+      tmdbSource: "direct-film-fetch",
+    });
+    const dafoeRecord = makePersonRecord({
+      id: 5293,
+      tmdbId: 5293,
+      name: "Willem Dafoe",
+      movieConnectionKeys: ["overnight (2003)", "spider-man (2002)"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({ id: 27007, title: "Overnight", release_date: "2003-06-12", order: 0 }),
+          makeMovieCredit({ id: 321, title: "Spider-Man", release_date: "2002-05-01", order: 1 }),
+        ],
+        crew: [],
+      },
+    });
+
+    indexedDbMock.getPersonRecordById.mockResolvedValue(dafoeRecord);
+    indexedDbMock.getPersonRecordByName.mockResolvedValue(dafoeRecord);
+    indexedDbMock.getFilmRecordsByIds.mockResolvedValue(new Map([
+      [27007, documentaryRecord],
+      [321, allowedRecord],
+    ]));
+    indexedDbMock.getPersonPopularityByNames.mockResolvedValue(new Map());
+    indexedDbMock.getPersonRecordCountsByMovieKeys.mockResolvedValue(
+      new Map([
+        ["overnight (2003)", 1],
+        ["spider-man (2002)", 1],
+      ]),
+    );
+
+    const childRow = await buildChildRowForCard(makePersonCard({
+      key: "person:5293",
+      name: "Willem Dafoe",
+      record: dafoeRecord,
+    }));
+
+    expect(childRow?.map((node) => node.data.name)).toEqual(["Spider-Man"]);
+  });
+
   it("reuses a primed movie parent record for later child-row builds", async () => {
     const heatRecord = makeFilmRecord({
       id: 321,
@@ -1045,6 +1115,46 @@ describe("useCinenerdleController", () => {
     expect(tmdbMock.hydrateCinenerdleDailyStarterMovies).not.toHaveBeenCalled();
   });
 
+  it("filters excluded documentary daily starters from the cinenerdle root row", async () => {
+    const documentaryStarter = makeFilmRecord({
+      id: 27007,
+      tmdbId: 27007,
+      title: "Overnight",
+      year: "2003",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 27007,
+        title: "Overnight",
+        original_title: "Overnight",
+        release_date: "2003-06-12",
+        genres: [{ id: 99, name: "Documentary" }],
+      }),
+      tmdbSource: "direct-film-fetch",
+    });
+    const allowedStarter = makeFilmRecord({
+      id: 12,
+      tmdbId: 12,
+      title: "Finding Nemo",
+      year: "2003",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 12,
+        title: "Finding Nemo",
+        original_title: "Finding Nemo",
+        release_date: "2003-05-30",
+        genres: [{ id: 16, name: "Animation" }],
+      }),
+      tmdbSource: "direct-film-fetch",
+    });
+
+    indexedDbMock.getCinenerdleStarterFilmRecords.mockResolvedValue([
+      documentaryStarter,
+      allowedStarter,
+    ]);
+
+    const childRow = await buildChildRowForCard(makeCinenerdleRootCard());
+
+    expect(childRow?.map((node) => node.data.name)).toEqual(["Finding Nemo"]);
+  });
+
   it("builds the next row and skips force hydration for directly hydrated cards", async () => {
     const heatRecord = makeFilmRecord({
       id: 321,
@@ -1222,6 +1332,7 @@ describe("useCinenerdleController", () => {
         id: 321,
         title: "Heat",
         release_date: "1995-12-15",
+        genres: [{ id: 28, name: "Action" }],
       }),
     });
     const pacinoRecord = makePersonRecord({

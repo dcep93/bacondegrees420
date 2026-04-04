@@ -94,6 +94,77 @@ function normalizeFetchTimestamp(fetchTimestamp: string | null | undefined): str
   return normalizedFetchTimestamp ? normalizedFetchTimestamp : undefined;
 }
 
+function normalizeFetchedTmdbGenres(
+  genres: TmdbMovieSearchResult["genres"] | null | undefined,
+): TmdbMovieSearchResult["genres"] | undefined {
+  if (!genres) {
+    return undefined;
+  }
+
+  const normalizedGenres = genres.flatMap((genre) => {
+    const normalizedName = genre.name?.trim();
+    if (!Number.isFinite(genre.id) || !normalizedName) {
+      return [];
+    }
+
+    return [{
+      id: genre.id,
+      name: normalizedName,
+    }];
+  });
+
+  return normalizedGenres.length > 0 ? normalizedGenres : [];
+}
+
+export function normalizeGenreIds(
+  genreIds: readonly number[] | null | undefined,
+): number[] {
+  if (!genreIds) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      genreIds.flatMap((genreId) =>
+        Number.isInteger(genreId) ? [genreId] : [],
+      ),
+    ),
+  );
+}
+
+function getGenreIdsFromTmdbMovie(
+  tmdbMovie: TmdbMovieSearchResult | undefined,
+): number[] {
+  return normalizeGenreIds(tmdbMovie?.genres?.map((genre) => genre.id));
+}
+
+function getPreferredGenreIds(
+  existingGenreIds: readonly number[] | null | undefined,
+  nextGenreIds: readonly number[] | null | undefined,
+  existingFetchTimestamp?: string | null,
+  nextFetchTimestamp?: string | null,
+): number[] {
+  const normalizedExistingGenreIds = normalizeGenreIds(existingGenreIds);
+  const normalizedNextGenreIds = normalizeGenreIds(nextGenreIds);
+
+  if (normalizedExistingGenreIds.length === 0) {
+    return normalizedNextGenreIds;
+  }
+
+  if (normalizedNextGenreIds.length === 0) {
+    return normalizedExistingGenreIds;
+  }
+
+  return shouldPreferNextFetchedField(
+    normalizedExistingGenreIds,
+    normalizedNextGenreIds,
+    existingFetchTimestamp,
+    nextFetchTimestamp,
+  )
+    ? normalizedNextGenreIds
+    : normalizedExistingGenreIds;
+}
+
 function isEmptyFetchedFieldValue(value: unknown): boolean {
   return value === undefined || value === null || value === "";
 }
@@ -230,6 +301,35 @@ export function mergeFetchedTmdbMovie(
       existingFetchTimestamp,
       nextFetchTimestamp,
     ) ?? undefined,
+    genres: (() => {
+      const existingGenres = normalizeFetchedTmdbGenres(existingTmdbMovie.genres);
+      const nextGenres = normalizeFetchedTmdbGenres(nextTmdbMovie.genres);
+
+      if (!existingGenres) {
+        return nextGenres;
+      }
+
+      if (!nextGenres) {
+        return existingGenres;
+      }
+
+      if (existingGenres.length === 0 && nextGenres.length > 0) {
+        return nextGenres;
+      }
+
+      if (nextGenres.length === 0 && existingGenres.length > 0) {
+        return existingGenres;
+      }
+
+      return shouldPreferNextFetchedField(
+        existingGenres,
+        nextGenres,
+        existingFetchTimestamp,
+        nextFetchTimestamp,
+      )
+        ? nextGenres
+        : existingGenres;
+    })(),
   };
 }
 
@@ -385,6 +485,12 @@ export function withDerivedFilmFields(filmRecord: FilmRecord): FilmRecord {
     lookupKey: getCinenerdleMovieId(filmRecord.title, filmRecord.year),
     titleLower: normalizeTitle(filmRecord.title),
     titleYear: getFilmKey(filmRecord.title, filmRecord.year),
+    genreIds: getPreferredGenreIds(
+      filmRecord.genreIds,
+      getGenreIdsFromTmdbMovie(filmRecord.rawTmdbMovie),
+      filmRecord.fetchTimestamp,
+      filmRecord.fetchTimestamp,
+    ),
     personConnectionKeys,
   };
 }
@@ -426,6 +532,12 @@ export function buildFilmRecord(
         fetchTimestamp,
       ) ??
       0,
+    genreIds: getPreferredGenreIds(
+      existingFilmRecord?.genreIds,
+      getGenreIdsFromTmdbMovie(mergedTmdbMovie),
+      existingFilmRecord?.fetchTimestamp,
+      fetchTimestamp,
+    ),
     personConnectionKeys: existingFilmRecord?.personConnectionKeys ?? [],
     tmdbSource: "direct-film-fetch",
     rawTmdbMovie: mergedTmdbMovie,

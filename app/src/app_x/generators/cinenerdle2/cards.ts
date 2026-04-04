@@ -177,6 +177,7 @@ export function createDailyStarterFilmRecord(
     year,
     titleYear: getCinenerdleMovieId(title, year),
     popularity: 0,
+    genreIds: [],
     personConnectionKeys: [],
   };
 }
@@ -290,6 +291,7 @@ export function createMovieAssociationCard(
           year,
           titleYear: getCinenerdleMovieId(title, year),
           popularity: credit.popularity ?? 0,
+          genreIds: credit.genre_ids ?? [],
           personConnectionKeys: [],
           rawTmdbMovie: credit.id
             ? {

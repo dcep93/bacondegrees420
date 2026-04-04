@@ -48,6 +48,7 @@ vi.mock("../debug_log", () => debugLogMock);
 import {
   fetchCinenerdleDailyStarterMovies,
   fetchAndCacheMovieCredits,
+  flushTmdbBackgroundWorkForTests,
   hasHydratedMovieRecord,
   hasHydratedPersonRecord,
   hasMovieFullState,
@@ -147,9 +148,11 @@ describe("tmdb forced refresh helpers", () => {
     });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await flushTmdbBackgroundWorkForTests();
     consoleLogSpy.mockClear();
     vi.unstubAllGlobals();
+    vi.stubGlobal("fetch", vi.fn(async () => createJsonResponse({})));
   });
 
   it("treats hydrated as direct tmdb source even before credits arrive", () => {
@@ -174,6 +177,27 @@ describe("tmdb forced refresh helpers", () => {
     expect(hasMovieFullState(directMovieWithoutCredits)).toBe(false);
     expect(hasHydratedPersonRecord(directPersonWithoutCredits)).toBe(true);
     expect(hasPersonFullState(directPersonWithoutCredits)).toBe(false);
+  });
+
+  it("treats direct movies with empty genres as full state once movie details and credits exist", () => {
+    const directMovieWithEmptyGenres = makeFilmRecord({
+      id: 321,
+      tmdbId: 321,
+      title: "Heat",
+      year: "1995",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 321,
+        title: "Heat",
+        release_date: "1995-12-15",
+        genres: [],
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+    });
+
+    expect(hasMovieFullState(directMovieWithEmptyGenres)).toBe(true);
   });
 
   it("hydrates preview movies from existing partial cached records", async () => {
@@ -390,6 +414,7 @@ describe("tmdb forced refresh helpers", () => {
         title: "Heat",
         release_date: "1995-12-15",
         popularity: 99,
+        genres: [{ id: 28, name: "Action" }],
       }),
       rawTmdbMovieCreditsResponse: {
         cast: [],
@@ -418,6 +443,7 @@ describe("tmdb forced refresh helpers", () => {
         title: "Heat",
         release_date: "1995-12-15",
         popularity: 99,
+        genres: [{ id: 28, name: "Action" }],
       }),
       rawTmdbMovieCreditsResponse: undefined,
     });
@@ -447,6 +473,58 @@ describe("tmdb forced refresh helpers", () => {
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0]?.[0]).toContain("/movie/321/credits?");
+  });
+
+  it("does not refetch direct movies solely because genreIds are empty", async () => {
+    const sparseMovieRecord = makeFilmRecord({
+      id: 321,
+      tmdbId: 321,
+      title: "Heat",
+      year: "1995",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 321,
+        title: "Heat",
+        release_date: "1995-12-15",
+        popularity: 99,
+        genres: [],
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+    });
+    const fetchMock = vi.fn(async (input: string) => {
+      const url = String(input);
+      if (url.includes("/movie/321/credits")) {
+        return createJsonResponse({ cast: [], crew: [] });
+      }
+
+      if (url.includes("/movie/321?")) {
+        return createJsonResponse(
+          makeTmdbMovieSearchResult({
+            id: 321,
+            title: "Heat",
+            release_date: "1995-12-15",
+            popularity: 99,
+            genres: [{ id: 28, name: "Action" }],
+          }),
+        );
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    indexedDbMock.getFilmRecordById.mockResolvedValue(sparseMovieRecord);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(sparseMovieRecord);
+    vi.stubGlobal("navigator", {
+      webdriver: true,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await prepareSelectedMovie("Heat", "1995", 321);
+
+    expect(result).toEqual(sparseMovieRecord);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("force refreshes cached movies through the exact TMDb id endpoint before refreshing credits", async () => {
@@ -941,6 +1019,7 @@ describe("tmdb forced refresh helpers", () => {
         title: "Heat",
         release_date: "1995-12-15",
         popularity: 99,
+        genres: [{ id: 28, name: "Action" }],
       }),
       rawTmdbMovieCreditsResponse: {
         cast: [],
@@ -1347,6 +1426,7 @@ describe("tmdb forced refresh helpers", () => {
         title: "Direct Queue Movie",
         release_date: "2026-05-01",
         popularity: 40,
+        genres: [{ id: 28, name: "Action" }],
       }),
       rawTmdbMovieCreditsResponse: {
         cast: [
@@ -1652,6 +1732,7 @@ describe("tmdb forced refresh helpers", () => {
         title: "First Selected Movie",
         release_date: "2026-05-01",
         popularity: 30,
+        genres: [{ id: 28, name: "Action" }],
       }),
       rawTmdbMovieCreditsResponse: {
         cast: [
@@ -1674,6 +1755,7 @@ describe("tmdb forced refresh helpers", () => {
         title: "Second Selected Movie",
         release_date: "2026-05-02",
         popularity: 31,
+        genres: [{ id: 28, name: "Action" }],
       }),
       rawTmdbMovieCreditsResponse: {
         cast: [
