@@ -3,13 +3,36 @@ const CINENERDLE_BATTLE_PATHNAME = "/battle";
 const BACONDEGREES_HOME_URL = "https://bacondegrees420.web.app";
 const CINENERDLE_GAME_OVER_DATASET_KEY = "bacondegreesCinenerdleGameOverLink";
 const CINENERDLE_FANCY_TOOLTIP_DATASET_KEY = "bacondegreesFancyTooltipAttached";
+const CINENERDLE_HIDE_STYLES_ID = "bacondegrees-cinenerdle-hide-styles";
 const CINENERDLE_BREAK_CONNECTOR_TYPES = new Set(["escape"]);
 const CINENERDLE_SKIP_CONNECTOR_TYPE = "skip";
 
 if (window.location.hostname === "www.cinenerdle2.app") {
+  injectCinenerdleHideStyles();
   window.setInterval(() => {
     attachCinenerdleGameOverLink();
   }, 1000);
+}
+
+function injectCinenerdleHideStyles() {
+  if (document.getElementById(CINENERDLE_HIDE_STYLES_ID)) {
+    return;
+  }
+
+  const styleElement = document.createElement("style");
+  styleElement.id = CINENERDLE_HIDE_STYLES_ID;
+  styleElement.textContent = `
+    #AdThrive_Footer_1_tablet {
+      display: none !important;
+    }
+  `;
+
+  const parentElement = document.head || document.documentElement;
+  if (!parentElement) {
+    return;
+  }
+
+  parentElement.appendChild(styleElement);
 }
 
 function normalizeText(value) {
