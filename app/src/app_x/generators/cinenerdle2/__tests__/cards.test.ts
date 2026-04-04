@@ -123,6 +123,7 @@ describe("daily starter records and cards", () => {
       year: "1995",
       titleYear: "heat (1995)",
       popularity: 0,
+      genreIds: [],
       personConnectionKeys: [],
     });
   });
@@ -250,6 +251,7 @@ describe("association cards", () => {
       imageUrl: `${TMDB_POSTER_BASE_URL}/w185/insomnia.jpg`,
       subtitle: "2002 • Cast as",
       subtitleDetail: "Will Dormer",
+      creditLines: undefined,
       connectionCount: 4,
       sources: [{ iconUrl: TMDB_ICON_URL, label: "TMDb" }],
       status: null,
@@ -264,6 +266,7 @@ describe("association cards", () => {
         year: "2002",
         titleYear: "insomnia (2002)",
         popularity: 52,
+        genreIds: [],
         personConnectionKeys: [],
         rawTmdbMovie: {
           id: 77,

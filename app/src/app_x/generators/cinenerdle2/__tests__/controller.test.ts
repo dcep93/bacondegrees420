@@ -434,6 +434,7 @@ describe("buildChildRowForCard", () => {
       tmdbId: 27007,
       title: "Overnight",
       year: "2003",
+      genreIds: [99],
       personConnectionKeys: ["willem dafoe"],
       rawTmdbMovie: makeTmdbMovieSearchResult({
         id: 27007,
