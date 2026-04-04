@@ -27,6 +27,7 @@ import {
   createConnectionEntityFromMovieRecord,
   createConnectionEntityFromPersonRecord,
   findConnectionPathBidirectional,
+  getConnectionNeighborKeysForEntityKey,
   hydrateConnectionEntityFromSearchRecord,
 } from "../connection_graph";
 
@@ -145,6 +146,181 @@ describe("findConnectionPathBidirectional", () => {
     const result = await findConnectionPathBidirectional(
       createConnectionEntityFromPersonRecord(producerOnlyPerson),
       createConnectionEntityFromMovieRecord(heat),
+    );
+
+    expect(result.status).toBe("not_found");
+    expect(result.path).toEqual([]);
+  });
+
+  it("excludes documentary movies from Willem Dafoe's graph neighbors", async () => {
+    const overnight = makeFilmRecord({
+      id: 27007,
+      tmdbId: 27007,
+      title: "Overnight",
+      year: "2003",
+      genreIds: [99],
+      personConnectionKeys: ["willem dafoe"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+    });
+    const spiderMan = makeFilmRecord({
+      id: 557,
+      tmdbId: 557,
+      title: "Spider-Man",
+      year: "2002",
+      personConnectionKeys: ["willem dafoe"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+    });
+    const dafoe = makePersonRecord({
+      id: 5293,
+      tmdbId: 5293,
+      name: "Willem Dafoe",
+      movieConnectionKeys: ["overnight (2003)", "spider-man (2002)"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({
+            id: 27007,
+            title: "Overnight",
+            release_date: "2003-06-12",
+            genre_ids: [99],
+          }),
+          makeMovieCredit({
+            id: 557,
+            title: "Spider-Man",
+            release_date: "2002-05-01",
+            genre_ids: [28],
+          }),
+        ],
+        crew: [],
+      },
+    });
+
+    indexedDbMock.getPersonRecordById.mockResolvedValue(dafoe);
+    indexedDbMock.getFilmRecordsByPersonConnectionKey.mockResolvedValue([overnight, spiderMan]);
+
+    const neighborKeys = await getConnectionNeighborKeysForEntityKey("person:5293");
+
+    expect(neighborKeys).toEqual(["movie:spider-man:2002"]);
+  });
+
+  it("does not traverse excluded documentary movies during BFS", async () => {
+    const overnight = makeFilmRecord({
+      id: 27007,
+      tmdbId: 27007,
+      title: "Overnight",
+      year: "2003",
+      genreIds: [99],
+      personConnectionKeys: ["willem dafoe", "troy duffy"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+    });
+    const spiderMan = makeFilmRecord({
+      id: 557,
+      tmdbId: 557,
+      title: "Spider-Man",
+      year: "2002",
+      personConnectionKeys: ["willem dafoe"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+    });
+    const dafoe = makePersonRecord({
+      id: 5293,
+      tmdbId: 5293,
+      name: "Willem Dafoe",
+      movieConnectionKeys: ["overnight (2003)", "spider-man (2002)"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({
+            id: 27007,
+            title: "Overnight",
+            release_date: "2003-06-12",
+            genre_ids: [99],
+          }),
+          makeMovieCredit({
+            id: 557,
+            title: "Spider-Man",
+            release_date: "2002-05-01",
+            genre_ids: [28],
+          }),
+        ],
+        crew: [],
+      },
+    });
+    const troyDuffy = makePersonRecord({
+      id: 7000,
+      tmdbId: 7000,
+      name: "Troy Duffy",
+      movieConnectionKeys: ["overnight (2003)"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({
+            id: 27007,
+            title: "Overnight",
+            release_date: "2003-06-12",
+            genre_ids: [99],
+          }),
+        ],
+        crew: [],
+      },
+    });
+
+    indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (title: string, year: string) => {
+      if (title === "overnight" && year === "2003") {
+        return overnight;
+      }
+
+      if (title === "spider-man" && year === "2002") {
+        return spiderMan;
+      }
+
+      return null;
+    });
+    indexedDbMock.getPersonRecordById.mockImplementation(async (personId: number) => {
+      if (personId === 5293) {
+        return dafoe;
+      }
+
+      if (personId === 7000) {
+        return troyDuffy;
+      }
+
+      return null;
+    });
+    indexedDbMock.getFilmRecordsByPersonConnectionKey.mockImplementation(async (personName: string) => {
+      if (personName === "willem dafoe") {
+        return [overnight, spiderMan];
+      }
+
+      if (personName === "troy duffy") {
+        return [overnight];
+      }
+
+      return [];
+    });
+    indexedDbMock.getPersonRecordsByMovieKey.mockImplementation(async (movieKey: string) => {
+      if (movieKey === "spider-man (2002)") {
+        return [dafoe];
+      }
+
+      if (movieKey === "overnight (2003)") {
+        return [dafoe, troyDuffy];
+      }
+
+      return [];
+    });
+
+    const result = await findConnectionPathBidirectional(
+      createConnectionEntityFromMovieRecord(spiderMan),
+      createConnectionEntityFromPersonRecord(troyDuffy),
     );
 
     expect(result.status).toBe("not_found");

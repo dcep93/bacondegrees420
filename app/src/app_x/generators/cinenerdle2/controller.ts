@@ -48,6 +48,7 @@ import { enrichCinenerdleTreeWithItemAttrs } from "./card_item_attrs";
 import { pickBestPersonRecord } from "./records";
 import { renderBreakCard, renderDbInfoCard, renderLoggedCinenerdleCard } from "./render_card";
 import { readCinenerdleDailyStarterTitles } from "./starter_storage";
+import { isFilmRecordAllowedInConnectionGraph } from "./connection_graph";
 import {
   fetchCinenerdleDailyStarterMovies,
   hydrateHashPath,
@@ -57,7 +58,6 @@ import {
   prepareSelectedPerson,
   setTmdbLogGeneration,
 } from "./tmdb";
-import { isExcludedFilmRecord } from "./exclusion";
 import type { FilmRecord, PersonRecord } from "./types";
 import {
   getAssociatedPeopleFromMovieCredits,
@@ -541,7 +541,7 @@ async function resolvePersonParentRecord(
 
 async function createDailyStarterRow() {
   const starterFilms = await getCinenerdleStarterFilmRecords();
-  const visibleStarterFilms = starterFilms.filter((filmRecord) => !isExcludedFilmRecord(filmRecord));
+  const visibleStarterFilms = starterFilms.filter(isFilmRecordAllowedInConnectionGraph);
   if (visibleStarterFilms.length === 0) {
     return null;
   }
@@ -777,7 +777,7 @@ async function buildChildRowForPersonCard(
             connectionParentLabel,
           })),
         )
-          .filter((childCard) => childCard.kind !== "movie" || !isExcludedFilmRecord(childCard.record))
+          .filter((childCard) => childCard.kind !== "movie" || isFilmRecordAllowedInConnectionGraph(childCard.record))
           .map((childCard, index) => ({
             ...childCard,
             connectionOrder: index + 1,
@@ -806,7 +806,7 @@ async function buildChildRowForPersonCard(
           return null;
         }
         const movieRecord = (credit.id ? filmRecordsById.get(credit.id) : null) ?? null;
-        if (isExcludedFilmRecord(movieRecord)) {
+        if (!isFilmRecordAllowedInConnectionGraph(movieRecord)) {
           return null;
         }
         const movieCard = createMovieAssociationCard(

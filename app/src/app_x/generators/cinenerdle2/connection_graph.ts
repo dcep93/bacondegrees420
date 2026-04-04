@@ -51,6 +51,12 @@ export type ConnectionSearchResult = {
   elapsedMs: number;
 };
 
+export function isFilmRecordAllowedInConnectionGraph(
+  filmRecord: FilmRecord | null | undefined,
+): boolean {
+  return !isExcludedFilmRecord(filmRecord);
+}
+
 export function getMovieConnectionEntityKey(title: string, year = ""): string {
   return `movie:${normalizeTitle(title)}:${year.trim()}`;
 }
@@ -175,6 +181,31 @@ export function createFallbackConnectionEntity(
     popularity: null,
     connectionRank: null,
   };
+}
+
+export async function isConnectionEntityKeyAllowedInGraph(entityKey: string): Promise<boolean> {
+  if (
+    entityKey === getCinenerdleConnectionEntityKey() ||
+    entityKey.startsWith("person:")
+  ) {
+    return true;
+  }
+
+  const parsedMovie = parseMovieConnectionEntityKey(entityKey);
+  const filmRecord = await getFilmRecordByTitleAndYear(parsedMovie.name, parsedMovie.year);
+  return isFilmRecordAllowedInConnectionGraph(filmRecord);
+}
+
+export async function isConnectionEntityAllowedInGraph(
+  entity: Pick<ConnectionEntity, "key" | "kind" | "name" | "year">,
+): Promise<boolean> {
+  if (entity.kind !== "movie") {
+    return true;
+  }
+
+  return isConnectionEntityKeyAllowedInGraph(
+    entity.key || getMovieConnectionEntityKey(entity.name, entity.year),
+  );
 }
 
 function parseMovieConnectionEntityKey(key: string): { name: string; year: string } {
@@ -433,10 +464,10 @@ function sortEntityKeysByPopularity(
   });
 }
 
-async function getNeighborKeysForEntityKey(entityKey: string): Promise<string[]> {
+export async function getConnectionNeighborKeysForEntityKey(entityKey: string): Promise<string[]> {
   if (entityKey === getCinenerdleConnectionEntityKey()) {
     const starterFilms = (await getCinenerdleStarterFilmRecords())
-      .filter((filmRecord) => !isExcludedFilmRecord(filmRecord));
+      .filter(isFilmRecordAllowedInConnectionGraph);
     const popularityByKey = new Map<string, number>();
     const starterKeys = starterFilms.map((filmRecord) => {
       const movieKey = getMovieConnectionEntityKey(filmRecord.title, filmRecord.year);
@@ -456,16 +487,16 @@ async function getNeighborKeysForEntityKey(entityKey: string): Promise<string[]>
     const personNameLower =
       searchablePersonRecord?.type === "person" && searchablePersonRecord.nameLower
         ? searchablePersonRecord.nameLower
-        : parsedPerson.nameLower;
+        : normalizeName(personRecord?.name ?? parsedPerson.nameLower);
     const filmRecords = personNameLower
       ? await getFilmRecordsByPersonConnectionKey(personNameLower)
       : [];
-    const visibleFilmRecords = filmRecords.filter((filmRecord) => !isExcludedFilmRecord(filmRecord));
+    const visibleFilmRecords = filmRecords.filter(isFilmRecordAllowedInConnectionGraph);
     const movieKeys = new Set<string>();
     const popularityByKey = new Map<string, number>();
     const moviePopularityByLookupKey = new Map<string, number>();
     const filmRecordByLookupKey = new Map(
-      visibleFilmRecords.map((filmRecord) => [getFilmKey(filmRecord.title, filmRecord.year), filmRecord] as const),
+      filmRecords.map((filmRecord) => [getFilmKey(filmRecord.title, filmRecord.year), filmRecord] as const),
     );
 
     getAllowedConnectedTmdbMovieCredits(personRecord).forEach((credit) => {
@@ -481,10 +512,16 @@ async function getNeighborKeysForEntityKey(entityKey: string): Promise<string[]>
       );
     });
 
-    getResolvedPersonMovieConnectionKeys(personRecord).forEach((movieKey) => {
+    for (const movieKey of getResolvedPersonMovieConnectionKeys(personRecord)) {
       const matchingFilmRecord = filmRecordByLookupKey.get(movieKey);
-      if (matchingFilmRecord && isExcludedFilmRecord(matchingFilmRecord)) {
-        return;
+      if (matchingFilmRecord) {
+        if (!isFilmRecordAllowedInConnectionGraph(matchingFilmRecord)) {
+          continue;
+        }
+      } else if (!await isConnectionEntityKeyAllowedInGraph(
+        getMovieConnectionEntityKeyFromLookupKey(movieKey),
+      )) {
+        continue;
       }
 
       const connectionMovieKey = getMovieConnectionEntityKeyFromLookupKey(movieKey);
@@ -494,7 +531,7 @@ async function getNeighborKeysForEntityKey(entityKey: string): Promise<string[]>
         connectionMovieKey,
         moviePopularityByLookupKey.get(movieKey) ?? 0,
       );
-    });
+    }
 
     visibleFilmRecords.forEach((filmRecord) => {
       const connectionMovieKey = getMovieConnectionEntityKey(filmRecord.title, filmRecord.year);
@@ -511,7 +548,7 @@ async function getNeighborKeysForEntityKey(entityKey: string): Promise<string[]>
     getFilmRecordByTitleAndYear(parsedMovie.name, parsedMovie.year),
     getPersonRecordsByMovieKey(movieLookupKey),
   ]);
-  if (isExcludedFilmRecord(filmRecord)) {
+  if (!isFilmRecordAllowedInConnectionGraph(filmRecord)) {
     return [];
   }
   const personKeys = new Set<string>();
@@ -620,7 +657,7 @@ export async function findConnectionPathBidirectional(
       return cachedNeighbors;
     }
 
-    const nextNeighborsPromise = getNeighborKeysForEntityKey(entityKey);
+    const nextNeighborsPromise = getConnectionNeighborKeysForEntityKey(entityKey);
     neighborCache.set(entityKey, nextNeighborsPromise);
     return nextNeighborsPromise;
   }
@@ -704,6 +741,10 @@ export async function findConnectionPathBidirectional(
         }
 
         if (excludedNodeKeys.has(neighborKey)) {
+          continue;
+        }
+
+        if (!(await isConnectionEntityKeyAllowedInGraph(neighborKey))) {
           continue;
         }
 

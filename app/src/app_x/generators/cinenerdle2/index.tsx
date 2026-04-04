@@ -23,6 +23,10 @@ import {
   type ConnectedSuggestionMatchTarget,
 } from "./connected_suggestion_match";
 import {
+  getConnectionPathAppendRevealGenerationIndex,
+  revealConnectionPathAppendTarget,
+} from "./connection_path_append_reveal";
+import {
   normalizeHashValue,
 } from "./hash";
 import {
@@ -552,20 +556,17 @@ const Cinenerdle2 = memo(function Cinenerdle2({
           }
           const pendingConnectionPathAppendReveal = pendingConnectionPathAppendRevealRef.current;
           if (pendingConnectionPathAppendReveal) {
-            const targetGenerationIndex = tree.findIndex((row) =>
-              row.some((node) =>
-                node.selected && node.data.key === pendingConnectionPathAppendReveal.targetEntityKey),
+            const revealGenerationIndex = getConnectionPathAppendRevealGenerationIndex(
+              tree,
+              pendingConnectionPathAppendReveal.targetEntityKey,
             );
 
-            if (targetGenerationIndex >= 0) {
+            if (revealGenerationIndex !== null) {
               pendingConnectionPathAppendRevealRef.current = null;
-              const revealGenerationIndex =
-                (tree[targetGenerationIndex + 1]?.length ?? 0) > 0
-                  ? targetGenerationIndex + 1
-                  : targetGenerationIndex;
-              generatorHandleRef.current?.revealGeneration(revealGenerationIndex, {
-                alignRowHorizontally: false,
-              });
+              void revealConnectionPathAppendTarget(
+                generatorHandleRef.current,
+                revealGenerationIndex,
+              ).catch(() => { });
             }
           }
           const youngestSelectedGenerationIndex = getYoungestSelectedGenerationIndex(tree);

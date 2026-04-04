@@ -30,6 +30,7 @@ import {
   findConnectionPathBidirectional,
   hydrateConnectionEntityFromKey,
   hydrateConnectionEntityFromSearchRecord,
+  isConnectionEntityAllowedInGraph,
   type ConnectionEntity,
 } from "./generators/cinenerdle2/connection_graph";
 import {
@@ -40,7 +41,6 @@ import {
   getPersonRecordByName,
   getPersonRecordsByMovieKey,
 } from "./generators/cinenerdle2/indexed_db";
-import { isExcludedFilmRecord } from "./generators/cinenerdle2/exclusion";
 import {
   prepareSelectedMovie,
   prepareSelectedPerson,
@@ -170,7 +170,7 @@ async function annotateConnectionPathRanks(path: ConnectionEntity[]): Promise<Co
   });
 }
 
-async function buildConnectionSuggestions(params: {
+export async function buildConnectionSuggestions(params: {
   query: string;
   isStale: () => boolean;
   youngestSelectedConnectionOrders: Record<string, number | null>;
@@ -201,11 +201,8 @@ async function buildConnectionSuggestions(params: {
           if (entity.kind === "cinenerdle" || entity.connectionCount <= 0) {
             return null;
           }
-          if (entity.kind === "movie") {
-            const filmRecord = await getFilmRecordByTitleAndYear(entity.name, entity.year);
-            if (isExcludedFilmRecord(filmRecord)) {
-              return null;
-            }
+          if (!await isConnectionEntityAllowedInGraph(entity)) {
+            return null;
           }
           const suggestionEntity = entity as SelectableConnectionEntity;
 
