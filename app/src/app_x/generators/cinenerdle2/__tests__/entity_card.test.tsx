@@ -245,6 +245,15 @@ describe("CinenerdleEntityCard", () => {
     expect(html).toContain("Popularity 88.00");
   });
 
+  it("renders the footer bottom row before the footer top row", () => {
+    const html = renderToStaticMarkup(
+      <CinenerdleEntityCard card={makeRenderableMovieCard()} />,
+    );
+
+    expect(html.indexOf("cinenerdle-card-footer-bottom"))
+      .toBeLessThan(html.indexOf("cinenerdle-card-footer-top"));
+  });
+
   it("renders popularity before the connection badge in the footer top row", () => {
     const html = renderToStaticMarkup(
       <CinenerdleEntityCard card={makeRenderableMovieCard()} />,

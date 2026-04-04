@@ -334,7 +334,6 @@ export function FooterChips({
     : null;
   const footerContent = (
     <footer className="cinenerdle-card-footer">
-      {footerTop}
       {shouldRenderBottomRow ? (
         <div className="cinenerdle-card-footer-bottom">
           {voteCountChip}
@@ -342,6 +341,7 @@ export function FooterChips({
           {statusChip}
         </div>
       ) : null}
+      {footerTop}
     </footer>
   );
 
