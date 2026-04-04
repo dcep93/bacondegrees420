@@ -44,6 +44,12 @@ export type AbstractGeneratorTreeRefreshRequest<T, TMeta = undefined> = {
 };
 
 export type AbstractGeneratorHandle = {
+  revealGeneration: (
+    generationIndex: number,
+    options?: {
+      alignRowHorizontally?: boolean;
+    },
+  ) => void;
   scrollToCard: (
     generationIndex: number,
     cardIndex: number,
@@ -1841,6 +1847,11 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     }
 
     generatorHandleRef.current = {
+      revealGeneration: (generationIndex, options) => {
+        void scrollGenerationIntoVerticalView(generationIndex, options)
+          .then(() => scrollGenerationLikeBubble(generationIndex))
+          .catch(() => { });
+      },
       scrollToCard: scrollToCardIndex,
       selectCard: handleCardSelect,
     };
@@ -1848,7 +1859,13 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     return () => {
       generatorHandleRef.current = null;
     };
-  }, [generatorHandleRef, handleCardSelect, scrollToCardIndex]);
+  }, [
+    generatorHandleRef,
+    handleCardSelect,
+    scrollGenerationIntoVerticalView,
+    scrollGenerationLikeBubble,
+    scrollToCardIndex,
+  ]);
 
   return (
     <section

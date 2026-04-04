@@ -47,6 +47,11 @@ export {
 } from "./entity_card";
 
 type Cinenerdle2Props = {
+  connectionPathAppendRequest?: {
+    nextHash: string;
+    requestKey: string;
+    targetEntityKey: string;
+  } | null;
   connectedSuggestionSelectionRequest?: {
     nextHash: string;
     requestKey: string;
@@ -68,7 +73,17 @@ type ItemAttrTreeRefreshRequest = {
   requestKey: string;
 };
 
-type TreeRefreshRequestState = EntityRefreshRequest | ItemAttrTreeRefreshRequest;
+type ConnectionPathAppendTreeRefreshRequest = {
+  kind: "connection-path-append";
+  nextHash: string;
+  requestKey: string;
+  targetEntityKey: string;
+};
+
+type TreeRefreshRequestState =
+  | EntityRefreshRequest
+  | ItemAttrTreeRefreshRequest
+  | ConnectionPathAppendTreeRefreshRequest;
 
 function scrollPageToBottom() {
   if (typeof window === "undefined" || typeof document === "undefined") {
@@ -87,6 +102,7 @@ function scrollPageToBottom() {
 }
 
 const Cinenerdle2 = memo(function Cinenerdle2({
+  connectionPathAppendRequest = null,
   connectedSuggestionSelectionRequest = null,
   hashValue,
   highlightedConnectedSuggestionKey = null,
@@ -101,6 +117,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
     Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }> | null
   >(null);
   const generatorHandleRef = useRef<AbstractGeneratorHandle | null>(null);
+  const lastHandledConnectionPathAppendRequestKeyRef = useRef<string | null>(null);
   const lastHandledConnectedSuggestionSelectionRequestKeyRef = useRef<string | null>(null);
   const lastGeneratorResetKeyRef = useRef<string | null>(null);
   const initialTreeShellRef = useRef<HTMLDivElement | null>(null);
@@ -116,6 +133,10 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   const recordsRefreshScheduledRef = useRef(false);
   const activeTreeRefreshRequestRef = useRef<TreeRefreshRequestState | null>(null);
   const itemAttrTreeRefreshRequestSequenceRef = useRef(0);
+  const pendingConnectionPathAppendRevealRef = useRef<{
+    requestKey: string;
+    targetEntityKey: string;
+  } | null>(null);
 
   useLayoutEffect(() => {
     hashRef.current = normalizedHash;
@@ -297,6 +318,27 @@ const Cinenerdle2 = memo(function Cinenerdle2({
             };
           }
 
+          if (activeTreeRefreshRequest.kind === "connection-path-append") {
+            const itemAttrsSnapshot = state.meta.itemAttrsSnapshot ?? itemAttrsSnapshotRef.current;
+            itemAttrsSnapshotRef.current = itemAttrsSnapshot;
+            const nextTree = await buildTreeFromHash(activeTreeRefreshRequest.nextHash, {
+              bypassInFlightCache: true,
+              hydrateYoungestSelection: true,
+              itemAttrsSnapshot,
+            });
+            pendingConnectionPathAppendRevealRef.current = {
+              requestKey: activeTreeRefreshRequest.requestKey,
+              targetEntityKey: activeTreeRefreshRequest.targetEntityKey,
+            };
+            writeHash(activeTreeRefreshRequest.nextHash, "selection");
+            return {
+              meta: {
+                itemAttrsSnapshot,
+              },
+              tree: nextTree,
+            };
+          }
+
           const itemAttrsSnapshot = state.meta.itemAttrsSnapshot ?? itemAttrsSnapshotRef.current;
           itemAttrsSnapshotRef.current = itemAttrsSnapshot;
           return {
@@ -313,7 +355,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
         }
       },
     };
-  }, [activeTreeRefreshRequest, readHash]);
+  }, [activeTreeRefreshRequest, readHash, writeHash]);
   const getRowPresentation = useCallback((row: GeneratorNode<CinenerdleCard>[]) => {
     const isBreakRow = row.length === 1 && row[0]?.data.kind === "break";
 
@@ -405,6 +447,31 @@ const Cinenerdle2 = memo(function Cinenerdle2({
 
   useEffect(() => {
     if (
+      !connectionPathAppendRequest ||
+      connectionPathAppendRequest.requestKey ===
+      lastHandledConnectionPathAppendRequestKeyRef.current
+    ) {
+      return;
+    }
+
+    lastHandledConnectionPathAppendRequestKeyRef.current =
+      connectionPathAppendRequest.requestKey;
+    pendingTreeRefreshRequestsRef.current = [
+      ...pendingTreeRefreshRequestsRef.current.filter((request) =>
+        request.requestKey !== connectionPathAppendRequest.requestKey),
+      {
+        kind: "connection-path-append",
+        nextHash: connectionPathAppendRequest.nextHash,
+        requestKey: connectionPathAppendRequest.requestKey,
+        targetEntityKey: connectionPathAppendRequest.targetEntityKey,
+      },
+    ];
+    setActiveTreeRefreshRequest((currentRequest) =>
+      currentRequest ?? pendingTreeRefreshRequestsRef.current.shift() ?? null);
+  }, [connectionPathAppendRequest]);
+
+  useEffect(() => {
+    if (
       !connectedSuggestionSelectionRequest ||
       connectedSuggestionSelectionRequest.requestKey ===
       lastHandledConnectedSuggestionSelectionRequestKeyRef.current
@@ -476,6 +543,24 @@ const Cinenerdle2 = memo(function Cinenerdle2({
           if (!pendingInitialTreeBottomSnapRef.current && tree.length > 0 && !isInitialTreeVisible) {
             setInitialTreeShellVisibility(true);
             setIsInitialTreeVisible(true);
+          }
+          const pendingConnectionPathAppendReveal = pendingConnectionPathAppendRevealRef.current;
+          if (pendingConnectionPathAppendReveal) {
+            const targetGenerationIndex = tree.findIndex((row) =>
+              row.some((node) =>
+                node.selected && node.data.key === pendingConnectionPathAppendReveal.targetEntityKey),
+            );
+
+            if (targetGenerationIndex >= 0) {
+              pendingConnectionPathAppendRevealRef.current = null;
+              const revealGenerationIndex =
+                (tree[targetGenerationIndex + 1]?.length ?? 0) > 0
+                  ? targetGenerationIndex + 1
+                  : targetGenerationIndex;
+              generatorHandleRef.current?.revealGeneration(revealGenerationIndex, {
+                alignRowHorizontally: false,
+              });
+            }
           }
           const youngestSelectedGenerationIndex = getYoungestSelectedGenerationIndex(tree);
           const nextYoungestSelectedCard = getYoungestSelectedCard(tree);

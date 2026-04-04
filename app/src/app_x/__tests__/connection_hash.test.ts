@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   appendConnectionEntityToHash,
+  appendConnectionPathToHash,
   serializeConnectionEntityHash,
   serializeConnectionPathHash,
 } from "../connection_hash";
@@ -56,5 +57,59 @@ describe("connection hash helpers", () => {
         label: "Al Pacino",
       }),
     )).toBe("#cinenerdle|Heat+(1995)|Al+Pacino");
+  });
+
+  it("appends a found bfs subpath onto the current tree hash", () => {
+    const robinWilliams = makeConnectionEntity({
+      key: "person:robin-williams",
+      kind: "person",
+      label: "Robin Williams",
+      name: "Robin Williams",
+      tmdbId: 53283,
+      year: "",
+    });
+    const insomnia = makeConnectionEntity({
+      key: "movie:insomnia:2002",
+      label: "Insomnia (2002)",
+      name: "Insomnia",
+      tmdbId: 320,
+      year: "2002",
+    });
+
+    expect(appendConnectionPathToHash(
+      "#cinenerdle|Heat+(1995)",
+      [insomnia, robinWilliams, makeConnectionEntity()],
+      insomnia.key,
+    )).toBe("#cinenerdle|Heat+(1995)|Robin+Williams|Insomnia+(2002)");
+
+    expect(appendConnectionPathToHash(
+      "#cinenerdle|Heat+(1995)",
+      [insomnia, robinWilliams, makeConnectionEntity()],
+      robinWilliams.key,
+    )).toBe("#cinenerdle|Heat+(1995)|Robin+Williams");
+  });
+
+  it("dedupes overlapping bfs path segments that are already on the current tree hash", () => {
+    const robinWilliams = makeConnectionEntity({
+      key: "person:robin-williams",
+      kind: "person",
+      label: "Robin Williams",
+      name: "Robin Williams",
+      tmdbId: 53283,
+      year: "",
+    });
+    const insomnia = makeConnectionEntity({
+      key: "movie:insomnia:2002",
+      label: "Insomnia (2002)",
+      name: "Insomnia",
+      tmdbId: 320,
+      year: "2002",
+    });
+
+    expect(appendConnectionPathToHash(
+      "#cinenerdle|Heat+(1995)|Robin+Williams",
+      [insomnia, robinWilliams, makeConnectionEntity()],
+      insomnia.key,
+    )).toBe("#cinenerdle|Heat+(1995)|Robin+Williams|Insomnia+(2002)");
   });
 });

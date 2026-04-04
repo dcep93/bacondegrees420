@@ -19,8 +19,8 @@ import {
 import { useBookmarksState } from "./bookmarks_state";
 import {
   appendConnectionEntityToHash,
+  appendConnectionPathToHash,
   serializeConnectionEntityHash,
-  serializeConnectionPathHash,
 } from "./connection_hash";
 import {
   type ConnectionSuggestion,
@@ -110,6 +110,11 @@ export default function AppX() {
     requestKey: string;
     suggestionKey: string;
   } | null>(null);
+  const [connectionPathAppendRequest, setConnectionPathAppendRequest] = useState<{
+    nextHash: string;
+    requestKey: string;
+    targetEntityKey: string;
+  } | null>(null);
   const [connectionBoostPreview, setConnectionBoostPreview] =
     useState<ConnectionBoostPreviewData | null>(null);
   const [connectionMatchupPreview, setConnectionMatchupPreview] =
@@ -135,6 +140,7 @@ export default function AppX() {
   const clearDbButtonRef = useRef<HTMLButtonElement | null>(null);
   const toastStatusRef = useRef<HTMLSpanElement | null>(null);
   const connectedSuggestionSelectionRequestIdRef = useRef(0);
+  const connectionPathAppendRequestIdRef = useRef(0);
   const indexedDbBootstrapLoadingShellDelayManagerRef =
     useRef<IndexedDbBootstrapLoadingShellDelayManager | null>(null);
   const isCinenerdleIndexedDbBootstrapLoading = !cinenerdleIndexedDbBootstrapStatus.isCoreReady;
@@ -222,18 +228,22 @@ export default function AppX() {
     youngestSelectedCard,
   });
 
-  const navigateToConnectionPath = useCallback(
-    (path: ConnectionEntity[]) => {
-      navigateToHash(serializeConnectionPathHash(path), "navigation");
-    },
-    [navigateToHash],
-  );
+  const appendConnectionPathToTree = useCallback(
+    (path: ConnectionEntity[], targetEntity: ConnectionEntity) => {
+      const nextHash = appendConnectionPathToHash(hashValue, path, targetEntity.key);
 
-  const openConnectionPathInNewTab = useCallback(
-    (path: ConnectionEntity[]) => {
-      openHashInNewTab(serializeConnectionPathHash(path));
+      if (nextHash === hashValue) {
+        return;
+      }
+
+      connectionPathAppendRequestIdRef.current += 1;
+      setConnectionPathAppendRequest({
+        nextHash,
+        requestKey: `connection-path-append-${connectionPathAppendRequestIdRef.current}`,
+        targetEntityKey: targetEntity.key,
+      });
     },
-    [openHashInNewTab],
+    [hashValue],
   );
 
   useEffect(() => {
@@ -583,14 +593,14 @@ export default function AppX() {
           ) : (
             <div className="bacon-app-main-stack">
               <ConnectionResults
+                appendConnectionPathToTree={appendConnectionPathToTree}
                 connectionSession={connectionSession}
                 navigateToConnectionEntity={navigateToConnectionEntity}
-                navigateToConnectionPath={navigateToConnectionPath}
                 openConnectionEntityInNewTab={openConnectionEntityInNewTab}
-                openConnectionPathInNewTab={openConnectionPathInNewTab}
                 spawnAlternativeConnectionRow={spawnAlternativeConnectionRow}
               />
               <Cinenerdle2
+                connectionPathAppendRequest={connectionPathAppendRequest}
                 connectedSuggestionSelectionRequest={connectedSuggestionSelectionRequest}
                 hashValue={hashValue}
                 highlightedConnectedSuggestionKey={highlightedConnectedSuggestionKey}

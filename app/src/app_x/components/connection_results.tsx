@@ -6,18 +6,16 @@ import type { ConnectionExclusion, ConnectionSession } from "../connection_rows"
 import { joinClassNames } from "./ui_utils";
 
 export default function ConnectionResults({
+  appendConnectionPathToTree,
   connectionSession,
   navigateToConnectionEntity,
-  navigateToConnectionPath,
   openConnectionEntityInNewTab,
-  openConnectionPathInNewTab,
   spawnAlternativeConnectionRow,
 }: {
+  appendConnectionPathToTree: (path: ConnectionEntity[], targetEntity: ConnectionEntity) => void;
   connectionSession: ConnectionSession | null;
   navigateToConnectionEntity: (entity: ConnectionEntity) => void;
-  navigateToConnectionPath: (path: ConnectionEntity[]) => void;
   openConnectionEntityInNewTab: (entity: ConnectionEntity) => void;
-  openConnectionPathInNewTab: (path: ConnectionEntity[]) => void;
   spawnAlternativeConnectionRow: (parentRowId: string, exclusion: ConnectionExclusion) => void;
 }) {
   const resultsRef = useRef<HTMLDivElement | null>(null);
@@ -139,11 +137,11 @@ export default function ConnectionResults({
                     onNameClick={isLeftmostNode
                       ? (event) => {
                           if (didRequestNewTabNavigation(event)) {
-                            openConnectionPathInNewTab([...row.path].reverse());
+                            openConnectionEntityInNewTab(entity);
                             return;
                           }
 
-                          navigateToConnectionPath([...row.path].reverse());
+                          appendConnectionPathToTree(row.path, entity);
                         }
                       : (event) => {
                           if (didRequestNewTabNavigation(event)) {
@@ -151,7 +149,7 @@ export default function ConnectionResults({
                             return;
                           }
 
-                          navigateToConnectionEntity(entity);
+                          appendConnectionPathToTree(row.path, entity);
                         }}
                   />
                   {nextEntity ? (

@@ -50,13 +50,7 @@ import {
   normalizeTitle,
 } from "./utils";
 import { measureAsync } from "../../perf";
-import { addCinenerdleDebugLog } from "./debug_log";
 import { isExcludedFilmRecord } from "./exclusion";
-import {
-  isTracedMovieRecord,
-  isTracedPersonName,
-  isTracedSearchableConnectionEntity,
-} from "./trace_targets";
 import { throwCinenerdleValidationError } from "./validation";
 
 const REQUIRED_OBJECT_STORE_NAMES = [
@@ -875,25 +869,6 @@ function collectSearchableConnectionEntitiesFromFilmRecord(
   getAssociatedPeopleFromMovieCredits(filmRecord).forEach((credit) => {
     upsertPersonName(credit.name ?? "", credit.id, credit.popularity ?? 0);
   });
-
-  if (
-    isTracedMovieRecord(filmRecord) ||
-    getAssociatedPeopleFromMovieCredits(filmRecord).some((credit) => isTracedPersonName(credit.name))
-  ) {
-    addCinenerdleDebugLog("trace.overnight.searchable-source-film", {
-      title: filmRecord.title,
-      year: filmRecord.year,
-      tmdbId: filmRecord.tmdbId ?? filmRecord.id,
-      excluded: isExcludedFilm,
-      personConnectionKeys: filmRecord.personConnectionKeys,
-      searchableKeys: Array.from(recordsByKey.keys()),
-      people: getAssociatedPeopleFromMovieCredits(filmRecord).map((credit) => ({
-        id: credit.id ?? null,
-        name: credit.name ?? "",
-        popularity: credit.popularity ?? 0,
-      })),
-    });
-  }
 
   return Array.from(recordsByKey.values());
 }
@@ -1808,21 +1783,6 @@ export async function getCinenerdleStarterFilmRecords(): Promise<FilmRecord[]> {
       const sortedStarterRecords = starterRecords
         .sort((left, right) => (right.popularity ?? 0) - (left.popularity ?? 0));
 
-      sortedStarterRecords
-        .filter(isTracedMovieRecord)
-        .forEach((starterRecord) => {
-          addCinenerdleDebugLog("trace.overnight.starter-record", {
-            title: starterRecord.title,
-            year: starterRecord.year,
-            tmdbId: starterRecord.tmdbId ?? starterRecord.id,
-            excluded: isExcludedFilmRecord(starterRecord),
-            popularity: starterRecord.popularity,
-            personConnectionKeyCount: starterRecord.personConnectionKeys.length,
-            hasRawTmdbMovie: Boolean(starterRecord.rawTmdbMovie),
-            hasMovieCredits: Boolean(starterRecord.rawTmdbMovieCreditsResponse),
-          });
-        });
-
       return sortedStarterRecords;
     },
     {
@@ -1841,29 +1801,12 @@ export async function getAllSearchableConnectionEntities(): Promise<
     "idb.getAllSearchableConnectionEntities",
     async () => {
       if (allSearchableConnectionEntitiesCache) {
-        const tracedCachedRecords = allSearchableConnectionEntitiesCache
-          .filter(isTracedSearchableConnectionEntity);
-        if (tracedCachedRecords.length > 0) {
-          addCinenerdleDebugLog("trace.overnight.searchable-entities", {
-            source: "memory-cache",
-            matches: tracedCachedRecords,
-          });
-        }
-
         return allSearchableConnectionEntitiesCache;
       }
 
       const nextRecords = replaceCachedSearchableConnectionEntities(
         await loadPersistedSearchableConnectionEntities(),
       );
-      const tracedRecords = nextRecords.filter(isTracedSearchableConnectionEntity);
-      if (tracedRecords.length > 0) {
-        addCinenerdleDebugLog("trace.overnight.searchable-entities", {
-          source: "persisted-store",
-          matches: tracedRecords,
-        });
-      }
-
       return nextRecords;
     },
     {
