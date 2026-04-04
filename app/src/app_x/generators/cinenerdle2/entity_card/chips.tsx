@@ -3,7 +3,6 @@ import {
   type CSSProperties,
   type KeyboardEvent,
   type MouseEvent,
-  type ReactNode,
 } from "react";
 import Tooltip from "../../../components/tooltip";
 import { joinClassNames } from "../../../components/ui_utils";
@@ -14,6 +13,8 @@ import {
   formatHeatMetricValue,
 } from "./helpers";
 import { ConnectionCountBadge } from "./connection_count_badge";
+import type { CinenerdleFooterTooltip } from "./footer_tooltip";
+import { getCinenerdleFooterTooltipContent } from "./footer_tooltip";
 import type { RenderableCinenerdleEntityCard } from "./types";
 
 function renderHeatChip(
@@ -52,13 +53,6 @@ function renderStatusChip(card: RenderableCinenerdleEntityCard) {
       {card.status.text}
     </span>
   );
-}
-
-function getTooltipLines(text: string | null | undefined): string[] {
-  return (text ?? "")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
 }
 
 function isTmdbSourceLabel(label: string) {
@@ -184,75 +178,12 @@ function renderConnectionBadge(
   );
 }
 
-function renderFooterTooltipSection(
-  label: string,
-  lines: string[],
-) {
-  if (lines.length === 0) {
-    return null;
-  }
-
-  return (
-    <span className="cinenerdle-card-footer-tooltip-section" key={label}>
-      <span className="cinenerdle-card-footer-tooltip-section-body">
-        {lines.map((line, index) => (
-          <span className="cinenerdle-card-footer-tooltip-line" key={`${label}:${index}:${line}`}>
-            {line}
-          </span>
-        ))}
-      </span>
-    </span>
-  );
-}
-
-function getFooterTooltipContent(
-  card: RenderableCinenerdleEntityCard,
-  isRefreshing: boolean,
-): {
-  ariaLabel: string;
-  content: ReactNode;
-} {
-  const connectionLines = card.hasCachedTmdbSource
-    ? getTooltipLines(formatConnectionBadgeTooltipText({
-        connectionCount: card.connectionCount,
-        connectionParentLabel: card.connectionParentLabel,
-        connectionRank: card.connectionRank,
-        name: card.name,
-      }))
-    : [];
-  const tmdbLines = card.kind === "cinenerdle"
-    ? []
-    : getTooltipLines(
-        isRefreshing
-          ? "Refreshing..."
-          : card.tmdbTooltipText ?? card.popularitySource,
-      );
-  const visibleTmdbLines = tmdbLines.filter((line) => line !== "Click to refetch.");
-  const actionHint = isRefreshing
-    ? "Refreshing TMDb data..."
-    : "Click anywhere in the footer to refetch.";
-  const ariaLabel = [
-    "TMDb footer details",
-    ...connectionLines,
-    ...visibleTmdbLines,
-    actionHint,
-  ].join("\n");
-
-  return {
-    ariaLabel,
-    content: (
-      <span className="cinenerdle-card-footer-tooltip-panel">
-        {renderFooterTooltipSection("Connections", connectionLines)}
-        {renderFooterTooltipSection("TMDb", visibleTmdbLines)}
-      </span>
-    ),
-  };
-}
-
 export function FooterChips({
   card,
+  footerTooltipOverride = null,
 }: {
   card: RenderableCinenerdleEntityCard;
+  footerTooltipOverride?: CinenerdleFooterTooltip | null;
 }) {
   const [refreshState, setRefreshState] = useState<{
     cardKey: string | null;
@@ -287,8 +218,9 @@ export function FooterChips({
     });
   };
   const isRefreshableRow = Boolean(card.onTmdbRowClick);
+  const shouldUseSharedFooterTooltip = isRefreshableRow || Boolean(footerTooltipOverride);
   const connectionBadge = card.hasCachedTmdbSource
-    ? renderConnectionBadge(card, !isRefreshableRow)
+    ? renderConnectionBadge(card, !shouldUseSharedFooterTooltip)
     : null;
   const statusChip = renderStatusChip(card);
   const voteCountChip =
@@ -321,7 +253,7 @@ export function FooterChips({
           card={card}
           isRefreshing={isRefreshing}
           onRefresh={handleRefresh}
-          showTooltip={!isRefreshableRow}
+          showTooltip={!shouldUseSharedFooterTooltip}
         />
       )}
       {connectionBadge ? connectionBadge : (
@@ -330,8 +262,8 @@ export function FooterChips({
     </div>
   );
   const footerTooltip = isRefreshableRow
-    ? getFooterTooltipContent(card, isRefreshing)
-    : null;
+    ? getCinenerdleFooterTooltipContent(card, { isRefreshing })
+    : footerTooltipOverride;
   const footerContent = (
     <footer className="cinenerdle-card-footer">
       {shouldRenderBottomRow ? (
@@ -346,7 +278,22 @@ export function FooterChips({
   );
 
   if (!isRefreshableRow || !footerTooltip) {
-    return footerContent;
+    if (!footerTooltip) {
+      return footerContent;
+    }
+
+    return (
+      <Tooltip
+        anchorClassName="cinenerdle-card-footer-tooltip-anchor"
+        content={footerTooltip.content}
+        placement="right"
+        tooltipClassName="cinenerdle-card-footer-tooltip"
+        variant="cinenerdle-inline"
+        wrapperTag="div"
+      >
+        {footerContent}
+      </Tooltip>
+    );
   }
 
   return (

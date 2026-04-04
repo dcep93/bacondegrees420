@@ -8,6 +8,7 @@ import {
 import { CardTitle } from "../../components/card_ui";
 import { handleIsolatedClick, joinClassNames } from "../../components/ui_utils";
 import { FooterChips } from "./entity_card/chips";
+import type { CinenerdleFooterTooltip } from "./entity_card/footer_tooltip";
 import type { RenderableCinenerdleEntityCard } from "./entity_card/types";
 import { formatRemovedItemAttrMessage, getAcceptedItemAttrInput } from "./entity_card_helpers";
 
@@ -74,6 +75,7 @@ export function CinenerdleEntityCard({
   imageLoading = "lazy",
   onAddItemAttr,
   onCardClick,
+  footerTooltip = null,
   onRemoveItemAttr,
   onTitleClick,
   titleElement = "p",
@@ -84,6 +86,7 @@ export function CinenerdleEntityCard({
   imageLoading?: "eager" | "lazy";
   onAddItemAttr?: ((nextChar: string) => void) | null;
   onCardClick?: (event: MouseEvent<HTMLElement>) => void;
+  footerTooltip?: CinenerdleFooterTooltip | null;
   onRemoveItemAttr?: ((itemAttr: string) => void) | null;
   onTitleClick?: (event: MouseEvent<HTMLElement>) => void;
   titleElement?: "button" | "p";
@@ -145,6 +148,7 @@ export function CinenerdleEntityCard({
       className={joinClassNames(
         "cinenerdle-card",
         isCinenerdleRootCard && "cinenerdle-card-root",
+        footerTooltip && "cinenerdle-card-has-footer-tooltip",
         card.onTmdbRowClick && "cinenerdle-card-has-refreshable-tmdb-tooltip",
         card.isSelected && "cinenerdle-card-selected",
         card.isLocked && "cinenerdle-card-locked",
@@ -194,7 +198,7 @@ export function CinenerdleEntityCard({
               </div>
             ))}
           </div>
-          <FooterChips card={card} />
+          <FooterChips card={card} footerTooltipOverride={footerTooltip} />
         </div>
       )}
       {!isCinenerdleRootCard ? (

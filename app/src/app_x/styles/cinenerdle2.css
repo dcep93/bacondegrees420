@@ -293,6 +293,7 @@
   width: 100%;
 }
 
+.cinenerdle-card-has-footer-tooltip .cinenerdle-card-chip-tooltip-anchor.cinenerdle-card-footer-tooltip-anchor,
 .cinenerdle-card-has-refreshable-tmdb-tooltip .cinenerdle-card-chip-tooltip-anchor.cinenerdle-card-footer-tooltip-anchor {
   position: static;
 }
@@ -353,7 +354,7 @@
     0 2px 10px rgba(15, 23, 42, 0.2);
   color: #e2e8f0;
   overflow: hidden;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 .cinenerdle-card-footer-tooltip-panel {

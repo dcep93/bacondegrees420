@@ -36,6 +36,7 @@ import {
 } from "./generators/cinenerdle2/utils";
 import {
   createCardViewModel,
+  getCardTmdbRowTooltipText,
   getParentMovieRankForPerson,
   getParentPersonRankForMovie,
 } from "./generators/cinenerdle2/view_model";
@@ -349,6 +350,7 @@ async function createAssociatedBookmarkCard(
 
 function createRenderableBookmarkCard(
   card: Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }>,
+  selectedAncestorCards: CinenerdleCard[],
 ): RenderableCinenerdleEntityCard {
   const viewModel = createCardViewModel(card, {
     isSelected: false,
@@ -362,7 +364,9 @@ function createRenderableBookmarkCard(
     ...viewModel,
     onExplicitTmdbRowClick: null,
     onTmdbRowClick: null,
-    tmdbTooltipText: null,
+    tmdbTooltipText: card.kind === "movie" || card.kind === "person"
+      ? getCardTmdbRowTooltipText(card, selectedAncestorCards)
+      : null,
   };
 }
 
@@ -380,6 +384,7 @@ export async function buildBookmarkRowData(hashValue: string): Promise<BookmarkR
 
   const cards: BookmarkRowCard[] = [];
   let previousEntity: ResolvedBookmarkEntity | null = null;
+  let selectedAncestorCards: CinenerdleCard[] = [];
 
   for (const [index, pathNode] of bookmarkPathNodes.entries()) {
     if (pathNode.kind === "break") {
@@ -389,6 +394,7 @@ export async function buildBookmarkRowData(hashValue: string): Promise<BookmarkR
         label: ESCAPE_LABEL,
       });
       previousEntity = null;
+      selectedAncestorCards = [];
       continue;
     }
 
@@ -397,8 +403,9 @@ export async function buildBookmarkRowData(hashValue: string): Promise<BookmarkR
     cards.push({
       kind: "card",
       key: `${hashValue}:${index}:${nextCard.key}`,
-      card: createRenderableBookmarkCard(nextCard),
+      card: createRenderableBookmarkCard(nextCard, selectedAncestorCards),
     });
+    selectedAncestorCards = [...selectedAncestorCards, nextCard];
     previousEntity = {
       ...resolvedEntity,
       card: nextCard,

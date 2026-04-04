@@ -37,6 +37,7 @@ describe("buildBookmarkRowData", () => {
   });
 
   it("rebuilds person-to-movie bookmarks as association cards with role text and rank", async () => {
+    const fetchedAt = "2026-03-29T20:03:24.000Z";
     const heatRecord = makeFilmRecord({
       id: 321,
       tmdbId: 321,
@@ -44,18 +45,13 @@ describe("buildBookmarkRowData", () => {
       year: "1995",
       popularity: 66,
       personConnectionKeys: ["al pacino", "val kilmer"],
-      rawTmdbMovie: makeTmdbMovieSearchResult({
-        id: 321,
-        title: "Heat",
-        release_date: "1995-12-15",
-        popularity: 66,
-      }),
     });
     const pacinoRecord = makePersonRecord({
       id: 60,
       tmdbId: 60,
       name: "Al Pacino",
       movieConnectionKeys: ["heat (1995)"],
+      fetchTimestamp: fetchedAt,
       rawTmdbPerson: makeTmdbPersonSearchResult({
         id: 60,
         name: "Al Pacino",
@@ -121,6 +117,7 @@ describe("buildBookmarkRowData", () => {
       connectionOrder: 1,
       connectionParentLabel: "Al Pacino",
       connectionRank: 1,
+      tmdbTooltipText: `Data connected ${new Date(fetchedAt).toLocaleString()}.\nClick to refetch.`,
     });
   });
 
@@ -214,6 +211,7 @@ describe("buildBookmarkRowData", () => {
   });
 
   it("resets bookmark association role and rank after an escape break", async () => {
+    const fetchedAt = "2026-03-29T20:03:24.000Z";
     const heatRecord = makeFilmRecord({
       id: 321,
       tmdbId: 321,
@@ -247,6 +245,7 @@ describe("buildBookmarkRowData", () => {
       tmdbId: 60,
       name: "Al Pacino",
       movieConnectionKeys: ["heat (1995)", "scarface (1983)"],
+      fetchTimestamp: fetchedAt,
       rawTmdbPerson: makeTmdbPersonSearchResult({
         id: 60,
         name: "Al Pacino",
@@ -300,6 +299,22 @@ describe("buildBookmarkRowData", () => {
         subtitleDetail: "",
         connectionParentLabel: null,
         connectionRank: null,
+        tmdbTooltipText: "Not fetched from TMDb yet.\nClick to fetch.",
+      }),
+    });
+  });
+
+  it("sets uncached root bookmark cards to the standard unfetched tmdb tooltip text", async () => {
+    const bookmarkRow = await buildBookmarkRowData(serializePathNodes([
+      createPathNode("movie", "Heat", "1995"),
+    ]));
+    const heatCard = bookmarkRow.cards[0];
+
+    expect(heatCard).toMatchObject({
+      kind: "card",
+      card: expect.objectContaining({
+        kind: "movie",
+        tmdbTooltipText: "Not fetched from TMDb yet.\nClick to fetch.",
       }),
     });
   });

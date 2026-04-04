@@ -4,6 +4,7 @@ import {
   CinenerdleEntityCard,
   type RenderableCinenerdleEntityCard,
 } from "../entity_card";
+import { getCinenerdleFooterTooltipContent } from "../entity_card/footer_tooltip";
 import {
   formatRemovedItemAttrMessage,
   getAcceptedItemAttrInput,
@@ -202,6 +203,27 @@ describe("CinenerdleEntityCard", () => {
     expect(html).not.toContain("Click to refetch.");
     expect(html).not.toContain("TMDb movie popularity from the cached movie record.");
     expect(html.match(/role="tooltip"/g)).toHaveLength(1);
+  });
+
+  it("builds the shared read-only footer tooltip without refresh action hints", () => {
+    const footerTooltip = getCinenerdleFooterTooltipContent(
+      makeRenderableMovieCard({
+        tmdbTooltipText: "TMDb data fetched 3/29/2026, 4:03:24 PM.\nClick to refetch.",
+      }),
+      {
+        includeActionHint: false,
+      },
+    );
+    const html = renderToStaticMarkup(<>{footerTooltip?.content}</>);
+
+    expect(footerTooltip).not.toBeNull();
+    expect(footerTooltip?.ariaLabel).not.toContain("Click anywhere in the footer to refetch.");
+    expect(footerTooltip?.ariaLabel).not.toContain("Click to refetch.");
+    expect(html).toContain("cinenerdle-card-footer-tooltip-panel");
+    expect(html).toContain("Heat has 12 connections");
+    expect(html).toContain("Al Pacino is the #3 connection");
+    expect(html).toContain("TMDb data fetched 3/29/2026, 4:03:24 PM.");
+    expect(html).not.toContain("Click to refetch.");
   });
 
   it("wraps the entire footer in the refreshable tooltip anchor when a tmdb row click handler is present", () => {
