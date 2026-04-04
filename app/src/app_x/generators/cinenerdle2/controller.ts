@@ -1404,7 +1404,7 @@ async function resolveInitialSelectedCard(
   personRecord?: PersonRecord | null;
 }> {
   if (card.kind === "movie") {
-    if (hasDirectTmdbMovieSource(card.record)) {
+    if (hasDirectTmdbMovieSource(card.record) || card.record?.rawTmdbMovieCreditsResponse) {
       return {
         selectedCard: card,
         movieRecord: card.record,
@@ -1430,7 +1430,7 @@ async function resolveInitialSelectedCard(
     };
   }
 
-  if (hasDirectTmdbPersonSource(card.record)) {
+  if (hasDirectTmdbPersonSource(card.record) || card.record?.rawTmdbMovieCreditsResponse) {
     return {
       selectedCard: card,
       personRecord: card.record,

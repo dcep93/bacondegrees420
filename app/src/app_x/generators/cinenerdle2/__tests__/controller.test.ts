@@ -1304,6 +1304,173 @@ describe("useCinenerdleController", () => {
     }));
   });
 
+  it("builds the next row immediately for connection-derived movie cards that already have TMDb credits", async () => {
+    const connectionDerivedHeatRecord = makeFilmRecord({
+      id: 321,
+      tmdbId: 321,
+      title: "Heat",
+      year: "1995",
+      personConnectionKeys: ["al pacino"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({ id: 60, name: "Al Pacino", popularity: 88 }),
+        ],
+        crew: [],
+      },
+    });
+    const hydratedHeatRecord = makeFilmRecord({
+      ...connectionDerivedHeatRecord,
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 321,
+        title: "Heat",
+        release_date: "1995-12-15",
+        popularity: 99,
+      }),
+    });
+    const pacinoRecord = makePersonRecord({
+      id: 60,
+      tmdbId: 60,
+      name: "Al Pacino",
+      movieConnectionKeys: ["heat (1995)"],
+    });
+    const hydrationDeferred = createDeferred<ReturnType<typeof makeFilmRecord> | null>();
+    const controller = renderController({ writeHash: vi.fn() });
+    const applyUpdate = vi.fn();
+    const scrollGenerationIntoVerticalView = vi.fn();
+    const scrollGenerationLikeBubble = vi.fn();
+
+    indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(
+      new Map([["Al Pacino", 8]]),
+    );
+    indexedDbMock.getPersonRecordById.mockResolvedValue(pacinoRecord);
+    indexedDbMock.getPersonRecordByName.mockImplementation(async (personName: string) =>
+      personName === "Al Pacino" ? pacinoRecord : null,
+    );
+    tmdbMock.prepareSelectedMovie.mockReturnValue(hydrationDeferred.promise);
+
+    const effectPromise = controller.runEffect(
+      {
+        type: "load-selected-card",
+        isReselection: false,
+        removedDescendantRows: false,
+        row: 1,
+        col: 0,
+        tree: [
+          [{ data: makeCinenerdleRootCard(), selected: true }],
+          [{ data: makeMovieCard({ key: "movie:321", record: connectionDerivedHeatRecord }), selected: true }],
+        ],
+      },
+      {
+        applyUpdate,
+        getState: () => createControllerState(),
+        lifecycleId: 1,
+        selectionId: 1,
+        scrollGenerationIntoVerticalView,
+        scrollGenerationLikeBubble,
+      },
+    );
+
+    await flushAsyncWork();
+
+    expect(indexedDbMock.getFilmRecordById).not.toHaveBeenCalled();
+    expect(indexedDbMock.getFilmRecordByTitleAndYear).not.toHaveBeenCalled();
+    expect(applyUpdate).toHaveBeenCalledTimes(1);
+    expect(applyUpdate.mock.calls[0]?.[0]?.tree?.[2]?.map((node: { data: CinenerdleCard }) => node.data.name))
+      .toEqual(["Al Pacino"]);
+    expect(scrollGenerationIntoVerticalView).toHaveBeenCalledWith(2, {
+      alignRowHorizontally: false,
+    });
+
+    hydrationDeferred.resolve(hydratedHeatRecord);
+    await effectPromise;
+    await flushAsyncWork();
+
+    expect(tmdbMock.prepareSelectedMovie).toHaveBeenCalledWith("Heat", "1995", 321, {
+      forceRefresh: true,
+    });
+  });
+
+  it("builds the next row immediately for connection-derived person cards that already have TMDb credits", async () => {
+    const connectionDerivedPacinoRecord = makePersonRecord({
+      id: 60,
+      tmdbId: 60,
+      name: "Al Pacino",
+      movieConnectionKeys: ["heat (1995)"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({ id: 321, title: "Heat", release_date: "1995-12-15", popularity: 66 }),
+        ],
+        crew: [],
+      },
+    });
+    const hydratedPacinoRecord = makePersonRecord({
+      ...connectionDerivedPacinoRecord,
+      rawTmdbPerson: makeTmdbPersonSearchResult({
+        id: 60,
+        name: "Al Pacino",
+        popularity: 88,
+      }),
+    });
+    const heatRecord = makeFilmRecord({
+      id: 321,
+      tmdbId: 321,
+      title: "Heat",
+      year: "1995",
+      popularity: 66,
+      personConnectionKeys: ["al pacino"],
+    });
+    const hydrationDeferred = createDeferred<ReturnType<typeof makePersonRecord> | null>();
+    const controller = renderController({ writeHash: vi.fn() });
+    const applyUpdate = vi.fn();
+    const scrollGenerationIntoVerticalView = vi.fn();
+    const scrollGenerationLikeBubble = vi.fn();
+
+    indexedDbMock.getFilmRecordsByIds.mockResolvedValue(new Map([[321, heatRecord]]));
+    indexedDbMock.getPersonRecordCountsByMovieKeys.mockResolvedValue(new Map([["heat (1995)", 8]]));
+    tmdbMock.prepareSelectedPerson.mockReturnValue(hydrationDeferred.promise);
+
+    const effectPromise = controller.runEffect(
+      {
+        type: "load-selected-card",
+        isReselection: false,
+        removedDescendantRows: false,
+        row: 1,
+        col: 0,
+        tree: [
+          [{ data: makeCinenerdleRootCard(), selected: true }],
+          [{ data: makePersonCard({ key: "person:60", record: connectionDerivedPacinoRecord }), selected: true }],
+        ],
+      },
+      {
+        applyUpdate,
+        getState: () => createControllerState(),
+        lifecycleId: 1,
+        selectionId: 1,
+        scrollGenerationIntoVerticalView,
+        scrollGenerationLikeBubble,
+      },
+    );
+
+    await flushAsyncWork();
+
+    expect(indexedDbMock.getPersonRecordById).not.toHaveBeenCalled();
+    expect(indexedDbMock.getPersonRecordByName).not.toHaveBeenCalled();
+    expect(applyUpdate).toHaveBeenCalledTimes(1);
+    expect(applyUpdate.mock.calls[0]?.[0]?.tree?.[2]?.map((node: { data: CinenerdleCard }) => node.data.name))
+      .toEqual(["Heat"]);
+    expect(scrollGenerationIntoVerticalView).toHaveBeenCalledWith(2, {
+      alignRowHorizontally: false,
+    });
+
+    hydrationDeferred.resolve(hydratedPacinoRecord);
+    await effectPromise;
+    await flushAsyncWork();
+
+    expect(tmdbMock.prepareSelectedPerson).toHaveBeenCalledWith("Al Pacino", 60, {
+      forceRefresh: true,
+    });
+  });
+
   it("renders a DB-backed movie subtree before force hydrating a connection-derived selection", async () => {
     const connectionDerivedHeatRecord = makeFilmRecord({
       id: 321,

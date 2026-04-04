@@ -787,27 +787,6 @@ function waitForNextFrame(): Promise<void> {
   });
 }
 
-async function waitForBrowserPaint(): Promise<void> {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  if (typeof window.requestAnimationFrame !== "function") {
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 0);
-    });
-    return;
-  }
-
-  await new Promise<void>((resolve) => {
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        resolve();
-      });
-    });
-  });
-}
-
 async function waitForGenerationToRender<T, TMeta>(
   generationIndex: number,
   options: {
@@ -2002,40 +1981,36 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
         setState(transition.state);
       });
 
-      schedulePostSelectionWork(() => {
-        void (async () => {
-          await waitForBrowserPaint();
-
-          if (
-            !mountedRef.current ||
-            activeSelectionRef.current !== nextSelectionId
-          ) {
-            if (isPerfLoggingEnabled()) {
-              logPerfSinceMark("abstractGenerator.selectCard.effectsAborted", selectionMarkName, {
-                col,
-                reason: !mountedRef.current ? "unmounted" : "superseded",
-                row,
-                selectionId: nextSelectionId,
-              });
-            }
-            return;
-          }
-
+      void (async () => {
+        if (
+          !mountedRef.current ||
+          activeSelectionRef.current !== nextSelectionId
+        ) {
           if (isPerfLoggingEnabled()) {
-            logPerfSinceMark("abstractGenerator.selectCard.effectsStarted", selectionMarkName, {
+            logPerfSinceMark("abstractGenerator.selectCard.effectsAborted", selectionMarkName, {
               col,
-              effectCount: transition.effects.length,
+              reason: !mountedRef.current ? "unmounted" : "superseded",
               row,
               selectionId: nextSelectionId,
             });
           }
-          await runEffects(
-            transition.effects,
-            activeLifecycleRef.current,
-            nextSelectionId,
-          );
-        })();
-      });
+          return;
+        }
+
+        if (isPerfLoggingEnabled()) {
+          logPerfSinceMark("abstractGenerator.selectCard.effectsStarted", selectionMarkName, {
+            col,
+            effectCount: transition.effects.length,
+            row,
+            selectionId: nextSelectionId,
+          });
+        }
+        await runEffects(
+          transition.effects,
+          activeLifecycleRef.current,
+          nextSelectionId,
+        );
+      })();
     });
   }, [reduce, runEffects, scrollCardElementIntoViewInTree, scrollToCardIndexInTree]);
 
