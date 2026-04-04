@@ -203,6 +203,108 @@ function getGeneratorDebugItemLabel(data: unknown): string | null {
   return null;
 }
 
+type GeneratorRectSnapshot = {
+  ariaLabel: string | null;
+  className: string | null;
+  clientHeight: number;
+  clientWidth: number;
+  isConnected: boolean;
+  label: string;
+  offsetHeight: number;
+  offsetWidth: number;
+  rect: {
+    bottom: number;
+    height: number;
+    left: number;
+    right: number;
+    top: number;
+    width: number;
+    x: number;
+    y: number;
+  };
+  role: string | null;
+  scrollHeight: number;
+  scrollLeft: number;
+  scrollTop: number;
+  scrollWidth: number;
+  tagName: string;
+  text: string | null;
+};
+
+function roundGeneratorRectValue(value: number): number {
+  return Number(value.toFixed(2));
+}
+
+function getGeneratorRectSnapshot(
+  label: string,
+  element: HTMLElement | null,
+): GeneratorRectSnapshot | null {
+  if (!element) {
+    return null;
+  }
+
+  const rect = element.getBoundingClientRect();
+  const normalizedText = element.textContent?.replace(/\s+/g, " ").trim() ?? "";
+
+  return {
+    ariaLabel: element.getAttribute("aria-label"),
+    className:
+      typeof element.className === "string" && element.className.trim()
+        ? element.className.trim()
+        : null,
+    clientHeight: element.clientHeight,
+    clientWidth: element.clientWidth,
+    isConnected: element.isConnected,
+    label,
+    offsetHeight: element.offsetHeight,
+    offsetWidth: element.offsetWidth,
+    rect: {
+      bottom: roundGeneratorRectValue(rect.bottom),
+      height: roundGeneratorRectValue(rect.height),
+      left: roundGeneratorRectValue(rect.left),
+      right: roundGeneratorRectValue(rect.right),
+      top: roundGeneratorRectValue(rect.top),
+      width: roundGeneratorRectValue(rect.width),
+      x: roundGeneratorRectValue(rect.x),
+      y: roundGeneratorRectValue(rect.y),
+    },
+    role: element.getAttribute("role"),
+    scrollHeight: element.scrollHeight,
+    scrollLeft: roundGeneratorRectValue(element.scrollLeft),
+    scrollTop: roundGeneratorRectValue(element.scrollTop),
+    scrollWidth: element.scrollWidth,
+    tagName: element.tagName.toLowerCase(),
+    text: normalizedText ? normalizedText.slice(0, 120) : null,
+  };
+}
+
+function getGeneratorAncestorRectSnapshots(
+  element: HTMLElement | null,
+): GeneratorRectSnapshot[] {
+  const snapshots: GeneratorRectSnapshot[] = [];
+  let currentElement = element?.parentElement ?? null;
+  let ancestorIndex = 1;
+
+  while (currentElement) {
+    const snapshot = getGeneratorRectSnapshot(
+      `ancestor-${ancestorIndex}`,
+      currentElement,
+    );
+    if (snapshot) {
+      snapshots.push(snapshot);
+    }
+
+    if (currentElement === document.body) {
+      break;
+    }
+
+    currentElement = currentElement.parentElement;
+    ancestorIndex += 1;
+  }
+
+  return snapshots;
+}
+
 function getReorderedItems({
   nextEntries,
   previousEntries,
@@ -893,6 +995,8 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     lifecycleId: number,
     selectionId: number,
   ) => Promise<void>)>(null);
+  const generationRectTraceAnimationFrameIdsRef = useRef<number[]>([]);
+  const generationRectTraceRequestIdRef = useRef(0);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -904,6 +1008,85 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  const cancelGenerationRectTrace = useCallback(() => {
+    if (typeof window === "undefined") {
+      generationRectTraceAnimationFrameIdsRef.current = [];
+      return;
+    }
+
+    generationRectTraceAnimationFrameIdsRef.current.forEach((frameId) => {
+      window.cancelAnimationFrame(frameId);
+    });
+    generationRectTraceAnimationFrameIdsRef.current = [];
+  }, []);
+
+  useEffect(() => cancelGenerationRectTrace, [cancelGenerationRectTrace]);
+
+  const traceGenerationOneRects = useCallback((options: {
+    generationIndex: number;
+    targetCard: HTMLDivElement | null;
+    targetDataKey: string | null;
+    targetLabel: string | null;
+    trackElement: HTMLDivElement;
+    trigger: "scroll-card-into-view" | "scroll-generation-into-vertical-view";
+  }) => {
+    if (options.generationIndex !== 1 || !debugLog || typeof window === "undefined") {
+      return;
+    }
+
+    cancelGenerationRectTrace();
+    generationRectTraceRequestIdRef.current += 1;
+    const requestId = generationRectTraceRequestIdRef.current;
+
+    const logSnapshot = (phase: string) => {
+      if (
+        !mountedRef.current ||
+        generationRectTraceRequestIdRef.current !== requestId
+      ) {
+        return;
+      }
+
+      debugLog("generator:generation-1-rect-snapshot", {
+        ancestors: getGeneratorAncestorRectSnapshots(options.targetCard),
+        card: getGeneratorRectSnapshot("card", options.targetCard),
+        generationIndex: options.generationIndex,
+        phase,
+        row: getGeneratorRectSnapshot(
+          "generator-row",
+          options.trackElement.closest(".generator-row") as HTMLDivElement | null,
+        ),
+        targetDataKey: options.targetDataKey,
+        targetLabel: options.targetLabel,
+        track: getGeneratorRectSnapshot("generator-row-track", options.trackElement),
+        trigger: options.trigger,
+        viewport: {
+          innerHeight: window.innerHeight,
+          innerWidth: window.innerWidth,
+          scrollX: roundGeneratorRectValue(window.scrollX ?? 0),
+          scrollY: roundGeneratorRectValue(window.scrollY ?? 0),
+        },
+      });
+    };
+
+    logSnapshot("before-scroll");
+
+    const scheduleNextFrame = (frameNumber: number) => {
+      const frameId = window.requestAnimationFrame(() => {
+        generationRectTraceAnimationFrameIdsRef.current =
+          generationRectTraceAnimationFrameIdsRef.current.filter((id) => id !== frameId);
+
+        logSnapshot(`raf-${frameNumber}`);
+        if (frameNumber < 6) {
+          scheduleNextFrame(frameNumber + 1);
+        }
+      });
+
+      generationRectTraceAnimationFrameIdsRef.current.push(frameId);
+    };
+
+    scheduleNextFrame(1);
+  }, [cancelGenerationRectTrace, debugLog]);
 
   const createGuardedApplyUpdate = useCallback(
     (
@@ -1207,6 +1390,14 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
 
       scrollElementToLeft(rowTrack, targetScrollLeft, behavior);
       if (options?.includeVerticalScroll) {
+        traceGenerationOneRects({
+          generationIndex,
+          targetCard,
+          targetDataKey: null,
+          targetLabel: null,
+          trackElement: rowTrack,
+          trigger: "scroll-card-into-view",
+        });
         scrollElementIntoVerticalView(rowTrack, behavior);
       }
       return;
@@ -1217,7 +1408,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       block: "nearest",
       inline: alignment,
     });
-  }, []);
+  }, [traceGenerationOneRects]);
 
   const scrollToCardIndex = useCallback((
     generationIndex: number,
@@ -1373,8 +1564,8 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       return;
     }
 
-    const rowElement = rowRefs.current[generationIndex];
-    if (!rowElement) {
+    const rowTrack = rowRefs.current[generationIndex];
+    if (!rowTrack) {
       debugLog?.("generator:scroll-vertical-aborted", {
         generationIndex,
         reason: "missing-row-element",
@@ -1400,12 +1591,29 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       handleBubbleClickRef.current?.(generationIndex);
     }
 
+    const targetCard = waitResult.targetDataKey
+      ? cardRefs.current[`${generationIndex}:${waitResult.targetDataKey}`] ?? null
+      : null;
+    const targetLabel =
+      waitResult.targetCardIndex !== null
+        ? getGeneratorDebugItemLabel(
+          resolvedTree[generationIndex]?.[waitResult.targetCardIndex]?.data ?? null,
+        )
+        : null;
+    traceGenerationOneRects({
+      generationIndex,
+      targetCard,
+      targetDataKey: waitResult.targetDataKey,
+      targetLabel,
+      trackElement: rowTrack,
+      trigger: "scroll-generation-into-vertical-view",
+    });
     debugLog?.("generator:scroll-vertical-execute", {
       alignRowHorizontally,
       generationIndex,
     });
-    scrollElementIntoVerticalView(rowElement, "smooth");
-  }, [debugLog]);
+    scrollElementIntoVerticalView(rowTrack, "smooth");
+  }, [debugLog, resolvedTree, traceGenerationOneRects]);
 
   const runEffects = useCallback(async (
     effects: TEffect[],
