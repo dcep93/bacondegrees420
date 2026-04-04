@@ -564,14 +564,6 @@ export default function AppX() {
               selectedPathTooltipEntries={selectedPathTooltipEntries}
               selectedSuggestionIndex={selectedSuggestionIndex}
             />
-            <ConnectionResults
-              connectionSession={connectionSession}
-              navigateToConnectionEntity={navigateToConnectionEntity}
-              navigateToConnectionPath={navigateToConnectionPath}
-              openConnectionEntityInNewTab={openConnectionEntityInNewTab}
-              openConnectionPathInNewTab={openConnectionPathInNewTab}
-              spawnAlternativeConnectionRow={spawnAlternativeConnectionRow}
-            />
           </section>
         ) : null}
       </div>
@@ -589,15 +581,25 @@ export default function AppX() {
               onRemoveBookmark={handleRemoveBookmark}
             />
           ) : (
-            <Cinenerdle2
-              connectedSuggestionSelectionRequest={connectedSuggestionSelectionRequest}
-              hashValue={hashValue}
-              highlightedConnectedSuggestionKey={highlightedConnectedSuggestionKey}
-              navigationVersion={navigationVersion}
-              onYoungestSelectedCardChange={setYoungestSelectedCard}
-              onHashWrite={handleHashWrite}
-              resetVersion={resetVersion}
-            />
+            <div className="bacon-app-main-stack">
+              <ConnectionResults
+                connectionSession={connectionSession}
+                navigateToConnectionEntity={navigateToConnectionEntity}
+                navigateToConnectionPath={navigateToConnectionPath}
+                openConnectionEntityInNewTab={openConnectionEntityInNewTab}
+                openConnectionPathInNewTab={openConnectionPathInNewTab}
+                spawnAlternativeConnectionRow={spawnAlternativeConnectionRow}
+              />
+              <Cinenerdle2
+                connectedSuggestionSelectionRequest={connectedSuggestionSelectionRequest}
+                hashValue={hashValue}
+                highlightedConnectedSuggestionKey={highlightedConnectedSuggestionKey}
+                navigationVersion={navigationVersion}
+                onYoungestSelectedCardChange={setYoungestSelectedCard}
+                onHashWrite={handleHashWrite}
+                resetVersion={resetVersion}
+              />
+            </div>
           )}
         </main>
       ) : null}
