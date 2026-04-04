@@ -192,6 +192,7 @@ describe("CinenerdleEntityCard", () => {
 
     expect(html).toContain("cinenerdle-card-footer-tooltip-anchor");
     expect(html).toContain("cinenerdle-card-footer-tooltip-panel");
+    expect(html).toContain("cinenerdle-card-has-refreshable-tmdb-tooltip");
     expect(html).not.toContain("cinenerdle-card-footer-tooltip-header");
     expect(html).not.toContain("cinenerdle-card-footer-tooltip-section-label");
     expect(html).not.toContain("cinenerdle-card-footer-tooltip-action");
@@ -216,6 +217,7 @@ describe("CinenerdleEntityCard", () => {
     expect(html).toContain("<footer class=\"cinenerdle-card-footer\">");
     expect(html.indexOf("cinenerdle-card-footer-tooltip-anchor"))
       .toBeLessThan(html.indexOf("<footer class=\"cinenerdle-card-footer\">"));
+    expect(html).toContain("cinenerdle-card-has-refreshable-tmdb-tooltip");
     expect(html).toContain("cinenerdle-card-footer-top cinenerdle-card-footer-top-refreshable");
     expect(html).toContain("cinenerdle-card-footer-bottom");
   });

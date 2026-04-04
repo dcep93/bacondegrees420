@@ -1223,7 +1223,7 @@ describe("useCinenerdleController", () => {
 
     expect(tmdbMock.prepareSelectedMovie).not.toHaveBeenCalled();
     expect(tmdbMock.prepareSelectedPerson).not.toHaveBeenCalled();
-    expect(indexedDbMock.getMoviePopularityByLabels).not.toHaveBeenCalled();
+    expect(indexedDbMock.getMoviePopularityByLabels).toHaveBeenCalledWith(["heat (1995)"]);
     expect(indexedDbMock.getFilmRecordById).not.toHaveBeenCalled();
     expect(indexedDbMock.getFilmRecordByTitleAndYear).not.toHaveBeenCalled();
     expect(tmdbMock.prefetchTopPopularUnhydratedConnections).toHaveBeenCalledTimes(1);
@@ -1499,6 +1499,71 @@ describe("useCinenerdleController", () => {
 
     expect(tmdbMock.prepareSelectedMovie).toHaveBeenCalledWith("Heat", "1995", 321, {
       forceRefresh: true,
+    });
+  });
+
+  it("computes connection rank for TMDb-backed movie-to-person rows", async () => {
+    const heatRecord = makeFilmRecord({
+      id: 321,
+      tmdbId: 321,
+      title: "Heat",
+      year: "1995",
+      popularity: 66,
+      personConnectionKeys: ["al pacino"],
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 321,
+        title: "Heat",
+        release_date: "1995-12-15",
+        popularity: 66,
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({
+            id: 60,
+            name: "Al Pacino",
+            popularity: 88,
+            character: "Lt. Vincent Hanna",
+          }),
+        ],
+        crew: [],
+      },
+    });
+    const pacinoRecord = makePersonRecord({
+      id: 60,
+      tmdbId: 60,
+      name: "Al Pacino",
+      movieConnectionKeys: ["heat (1995)", "scarface (1983)"],
+      rawTmdbPerson: makeTmdbPersonSearchResult({
+        id: 60,
+        name: "Al Pacino",
+        popularity: 88,
+      }),
+    });
+
+    indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(
+      new Map([["Al Pacino", 2]]),
+    );
+    indexedDbMock.getPersonRecordById.mockResolvedValue(pacinoRecord);
+    indexedDbMock.getMoviePopularityByLabels.mockResolvedValue(new Map([
+      ["heat (1995)", 66],
+      ["scarface (1983)", 99],
+    ]));
+
+    const childRow = await buildChildRowForCard(
+      makeMovieCard({
+        key: "movie:321",
+        record: heatRecord,
+      }),
+    );
+
+    expect(childRow).not.toBeNull();
+    expect(childRow?.[0]?.data).toMatchObject({
+      kind: "person",
+      name: "Al Pacino",
+      connectionCount: 2,
+      connectionOrder: 1,
+      connectionParentLabel: "Heat (1995)",
+      connectionRank: 2,
     });
   });
 

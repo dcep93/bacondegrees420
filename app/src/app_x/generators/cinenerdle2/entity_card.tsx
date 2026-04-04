@@ -145,6 +145,7 @@ export function CinenerdleEntityCard({
       className={joinClassNames(
         "cinenerdle-card",
         isCinenerdleRootCard && "cinenerdle-card-root",
+        card.onTmdbRowClick && "cinenerdle-card-has-refreshable-tmdb-tooltip",
         card.isSelected && "cinenerdle-card-selected",
         card.isLocked && "cinenerdle-card-locked",
         card.isAncestorSelected && "cinenerdle-card-ancestor-selected",

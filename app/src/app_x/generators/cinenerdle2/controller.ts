@@ -952,6 +952,28 @@ async function buildChildRowForMovieCard(
           ] as const;
         }),
       );
+      const movieLabels = Array.from(
+        new Set(
+          cachedPersonRecords.flatMap(([, , cachedPersonRecord]) =>
+            cachedPersonRecord
+              ? cachedPersonRecord.movieConnectionKeys.map((movieKey) => {
+                  const parsedMovie = parseMoviePathLabel(movieKey);
+                  return formatMoviePathLabel(parsedMovie.name, parsedMovie.year);
+                })
+              : [],
+          ),
+        ),
+      );
+      const moviePopularityByLabel = await getMoviePopularityByLabels(movieLabels);
+      const popularityByMovieKey = new Map(
+        movieLabels.map((movieLabel) => {
+          const parsedMovie = parseMoviePathLabel(movieLabel);
+          return [
+            getFilmKey(parsedMovie.name, parsedMovie.year),
+            moviePopularityByLabel.get(normalizeTitle(movieLabel)) ?? 0,
+          ] as const;
+        }),
+      );
       const personDetails = new Map(
         cachedPersonRecords.map(([personKey, personName, cachedPersonRecord]) => [
           personKey,
@@ -961,7 +983,11 @@ async function buildChildRowForMovieCard(
               cachedPersonRecord,
               filmConnectionCounts,
             ),
-            connectionRank: null,
+            connectionRank: getParentMovieRankForPerson(
+              movieRecord,
+              cachedPersonRecord,
+              popularityByMovieKey,
+            ),
             personRecord: cachedPersonRecord,
           },
         ]),
