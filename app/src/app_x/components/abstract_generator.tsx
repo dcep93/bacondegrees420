@@ -12,7 +12,6 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import { isPerfLoggingEnabled, logPerf, logPerfSinceMark, markPerf } from "../perf";
-import { addCinenerdleDebugLog } from "../generators/cinenerdle2/debug_log";
 import {
   applyGeneratorUpdate,
   getDataKey,
@@ -116,12 +115,6 @@ type GeneratorRowOrderTelemetry = {
 type GeneratorRowOrderDebugEntry = {
   dataKey: string;
   itemLabel: string | null;
-};
-
-type SelectionClickTelemetry = {
-  clickAtEpochMs: number;
-  clickAtIso: string;
-  clickStartedAt: number;
 };
 
 let nextGeneratorRowTelemetryId = 1;
@@ -283,7 +276,6 @@ type GeneratorRowViewProps<T> = {
 const SLOW_GENERATOR_COMMIT_THRESHOLD_MS = 24;
 const SLOW_GENERATOR_DERIVATION_THRESHOLD_MS = 8;
 const SLOW_GENERATOR_ROW_THRESHOLD_MS = 8;
-const SLOW_GENERATOR_RENDER_WAIT_THRESHOLD_MS = 120;
 
 function getGeneratorPerfNow(): number {
   if (typeof performance !== "undefined" && typeof performance.now === "function") {
@@ -295,50 +287,6 @@ function getGeneratorPerfNow(): number {
 
 function roundGeneratorPerfElapsedMs(value: number): number {
   return Number(value.toFixed(2));
-}
-
-function getGeneratorRowRenderSampleSummary(sample: GeneratorRowRenderSample): Record<string, unknown> {
-  return {
-    cardCount: sample.cardCount,
-    elapsedMs: sample.elapsedMs,
-    generationIndex: sample.generationIndex,
-    metadataCallbackCount: sample.metadataCallbackCount,
-    metadataChangedCount: sample.metadataChangedCount,
-    metadataDeletedCount: sample.metadataDeletedCount,
-    metadataNoopCount: sample.metadataNoopCount,
-    phase: sample.phase,
-    reorderedItemCount: sample.reorderedItemCount,
-    rowOrderChanged: sample.rowOrderChanged,
-    selectedAncestorCount: sample.selectedAncestorCount,
-  };
-}
-
-function logGeneratorRenderWait(
-  context: "scrollGenerationIntoVerticalView" | "scrollGenerationLikeBubble",
-  startedAt: number,
-  result: GenerationRenderWaitResult,
-  details?: Record<string, unknown>,
-): void {
-  const elapsedMs = roundGeneratorPerfElapsedMs(getGeneratorPerfNow() - startedAt);
-  if (elapsedMs < SLOW_GENERATOR_RENDER_WAIT_THRESHOLD_MS && isGenerationRenderReady(result)) {
-    return;
-  }
-
-  addCinenerdleDebugLog("perf:abstractGenerator.generationRenderWait", {
-    context,
-    elapsedMs,
-    framesWaited: result.framesWaited,
-    generationIndex: result.generationIndex,
-    hasGeneration: result.hasGeneration,
-    hasRowElement: result.hasRowElement,
-    hasTargetCard: result.hasTargetCard,
-    renderedOriginalCols: result.renderedOriginalCols,
-    rowLength: result.rowLength,
-    selectedIndex: result.selectedIndex,
-    targetCardIndex: result.targetCardIndex,
-    targetDataKey: result.targetDataKey,
-    ...details,
-  });
 }
 
 function shallowReferenceArrayEqual<T>(left: T[], right: T[]): boolean {
@@ -913,8 +861,11 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     row: number;
     selectionId: number;
   }>(null);
-  const selectionClickTelemetryRef = useRef<Map<number, SelectionClickTelemetry>>(new Map());
-  const loggedImmediateSelectionPaintIdsRef = useRef<Set<number>>(new Set());
+  const selectionClickTelemetryRef = useRef<Map<number, {
+    clickAtEpochMs: number;
+    clickAtIso: string;
+    clickStartedAt: number;
+  }>>(new Map());
   const pendingInitialTreeRenderRef = useRef<null | {
     acceptedAt: number;
     lifecycleId: number;
@@ -1076,53 +1027,6 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     () => resolveGeneratorTree(state),
     [state],
   );
-
-  useEffect(() => {
-    if (!immediateSelection || typeof window === "undefined") {
-      return;
-    }
-
-    const { col, row, selectionId } = immediateSelection;
-    if (loggedImmediateSelectionPaintIdsRef.current.has(selectionId)) {
-      return;
-    }
-
-    const clickTelemetry = selectionClickTelemetryRef.current.get(selectionId);
-    if (!clickTelemetry) {
-      return;
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      if (loggedImmediateSelectionPaintIdsRef.current.has(selectionId)) {
-        return;
-      }
-
-      const isTreeSelected = Boolean(resolvedTree[row]?.[col]?.selected);
-      loggedImmediateSelectionPaintIdsRef.current.add(selectionId);
-      if (loggedImmediateSelectionPaintIdsRef.current.size > 20) {
-        const oldestSelectionId = loggedImmediateSelectionPaintIdsRef.current.values().next().value;
-        if (typeof oldestSelectionId === "number") {
-          loggedImmediateSelectionPaintIdsRef.current.delete(oldestSelectionId);
-        }
-      }
-
-      addCinenerdleDebugLog("perf:abstractGenerator.immediateSelectionPainted", {
-        clickAtEpochMs: clickTelemetry.clickAtEpochMs,
-        clickAtIso: clickTelemetry.clickAtIso,
-        col,
-        elapsedSinceClickMs: roundGeneratorPerfElapsedMs(
-          getGeneratorPerfNow() - clickTelemetry.clickStartedAt,
-        ),
-        row,
-        selectionId,
-        selectedVia: isTreeSelected ? "tree" : "immediate-selection",
-      });
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [immediateSelection, resolvedTree]);
 
   const renderStartedAt = getGeneratorPerfNow();
   const {
@@ -1376,7 +1280,6 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
   }, [handleBubbleClick]);
 
   const scrollGenerationLikeBubble = useCallback(async (generationIndex: number) => {
-    const scrollStartedAt = getGeneratorPerfNow();
     const getWaitResult = () => waitForGenerationToRender(generationIndex, {
       getCardElement: (rowIndex, cardIndex, data) =>
         cardRefs.current[`${rowIndex}:${getDataKey(data, cardIndex)}`],
@@ -1384,7 +1287,6 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       getState: () => stateRef.current,
       getRowElement: (index) => rowRefs.current[index],
     });
-    let didRetryWait = false;
     let waitResult = await getWaitResult();
     debugLog?.(
       isGenerationRenderReady(waitResult)
@@ -1398,7 +1300,6 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       !isGenerationRenderReady(waitResult) &&
       waitResult.hasGeneration
     ) {
-      didRetryWait = true;
       waitResult = await getWaitResult();
       debugLog?.(
         isGenerationRenderReady(waitResult)
@@ -1409,11 +1310,6 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     }
 
     if (!mountedRef.current) {
-      logGeneratorRenderWait("scrollGenerationLikeBubble", scrollStartedAt, waitResult, {
-        didRetryWait,
-        outcome: "aborted",
-        reason: "unmounted",
-      });
       debugLog?.("generator:scroll-like-bubble-aborted", {
         generationIndex,
         reason: "unmounted",
@@ -1422,11 +1318,6 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     }
 
     if (!isGenerationRenderReady(waitResult)) {
-      logGeneratorRenderWait("scrollGenerationLikeBubble", scrollStartedAt, waitResult, {
-        didRetryWait,
-        outcome: "timeout",
-        reason: "row-not-ready",
-      });
       debugLog?.("generator:scroll-like-bubble-aborted", {
         generationIndex,
         reason: "row-not-ready",
@@ -1437,11 +1328,6 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
 
     debugLog?.("generator:scroll-like-bubble-execute", {
       generationIndex,
-      targetRowExists: Boolean(rowRefs.current[generationIndex]),
-    });
-    logGeneratorRenderWait("scrollGenerationLikeBubble", scrollStartedAt, waitResult, {
-      didRetryWait,
-      outcome: "ready",
       targetRowExists: Boolean(rowRefs.current[generationIndex]),
     });
     lastHorizontalAlignmentRef.current = {
@@ -1457,7 +1343,6 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       alignRowHorizontally?: boolean;
     },
   ) => {
-    const scrollStartedAt = getGeneratorPerfNow();
     const alignRowHorizontally = options?.alignRowHorizontally ?? true;
     const waitResult = await waitForGenerationToRender(generationIndex, {
       getCardElement: (rowIndex, cardIndex, data) =>
@@ -1474,11 +1359,6 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     );
 
     if (!mountedRef.current) {
-      logGeneratorRenderWait("scrollGenerationIntoVerticalView", scrollStartedAt, waitResult, {
-        alignRowHorizontally,
-        outcome: "aborted",
-        reason: "unmounted",
-      });
       debugLog?.("generator:scroll-vertical-aborted", {
         generationIndex,
         reason: "unmounted",
@@ -1488,11 +1368,6 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
 
     const rowElement = rowRefs.current[generationIndex];
     if (!rowElement) {
-      logGeneratorRenderWait("scrollGenerationIntoVerticalView", scrollStartedAt, waitResult, {
-        alignRowHorizontally,
-        outcome: "aborted",
-        reason: "missing-row-element",
-      });
       debugLog?.("generator:scroll-vertical-aborted", {
         generationIndex,
         reason: "missing-row-element",
@@ -1521,11 +1396,6 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     debugLog?.("generator:scroll-vertical-execute", {
       alignRowHorizontally,
       generationIndex,
-    });
-    logGeneratorRenderWait("scrollGenerationIntoVerticalView", scrollStartedAt, waitResult, {
-      alignRowHorizontally,
-      outcome: "ready",
-      rowElementWidth: rowElement.getBoundingClientRect().width,
     });
     scrollElementIntoVerticalView(rowElement, "smooth");
   }, [debugLog]);
@@ -1724,46 +1594,6 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       });
     }
 
-    if (previousCommittedTree.length > 0 && appendedGenerationIndexes.length > 0) {
-      const elapsedMs = roundGeneratorPerfElapsedMs(getGeneratorPerfNow() - renderStartedAt);
-      const appendedGenerationIndexSet = new Set(appendedGenerationIndexes);
-      const appendedGenerationSamples = rowRenderSamples
-        .filter((sample) => appendedGenerationIndexSet.has(sample.generationIndex))
-        .map(getGeneratorRowRenderSampleSummary);
-      const slowestRowSamples = [...rowRenderSamples]
-        .sort((left, right) => right.elapsedMs - left.elapsedMs)
-        .slice(0, 5)
-        .map(getGeneratorRowRenderSampleSummary);
-      const selectionId = activeSelectionRef.current;
-      const clickTelemetry = selectionClickTelemetryRef.current.get(selectionId);
-
-      addCinenerdleDebugLog("perf:abstractGenerator.newRowCommitted", {
-        appendedGenerationIndexes,
-        appendedGenerationSamples,
-        changedGenerationCount: changedGenerationIndexes.length,
-        changedGenerationIndexes,
-        clickAtEpochMs: clickTelemetry?.clickAtEpochMs ?? null,
-        clickAtIso: clickTelemetry?.clickAtIso ?? null,
-        derivationElapsedMs,
-        elapsedMs,
-        elapsedSinceClickMs: clickTelemetry
-          ? roundGeneratorPerfElapsedMs(getGeneratorPerfNow() - clickTelemetry.clickStartedAt)
-          : null,
-        renderedGenerationCount: rowRenderSamples.length,
-        renderedGenerationIndexes: rowRenderSamples.map((sample) => sample.generationIndex),
-        rerenderedUnchangedGenerationIndexes: rowRenderSamples
-          .filter((sample) => !changedGenerationIndexSet.has(sample.generationIndex))
-          .map((sample) => sample.generationIndex),
-        rowCount: resolvedTree.length,
-        rowRenderElapsedMsTotal: roundGeneratorPerfElapsedMs(
-          rowRenderSamples.reduce((total, sample) => total + sample.elapsedMs, 0),
-        ),
-        selectionId,
-        slowestRowSamples,
-        totalCardCount,
-      });
-    }
-
     if (
       (debugLog || onInitialTreePainted) &&
       previousCommittedTree.length === 0 &&
@@ -1876,15 +1706,6 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
         selectionClickTelemetryRef.current.delete(oldestSelectionId);
       }
     }
-    addCinenerdleDebugLog("perf:abstractGenerator.cardClicked", {
-      clickAtEpochMs: clickDate.getTime(),
-      clickAtIso: clickDate.toISOString(),
-      col,
-      row,
-      rowCount: currentTree.length,
-      selectionId: nextSelectionId,
-      totalCardCount: currentTree.reduce((count, generation) => count + generation.length, 0),
-    });
     if (isPerfLoggingEnabled()) {
       pendingSelectionPerfRef.current = {
         col,
