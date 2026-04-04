@@ -1,5 +1,5 @@
 import type { GeneratorCardRowOrderMetadata } from "../../types/generator";
-import type { FilmRecord, PersonRecord } from "./types";
+import type { FilmRecord, PersonRecord, ResolvedFilmRecord, ResolvedPersonRecord } from "./types";
 
 export type CardSource = {
   iconUrl: string;
@@ -100,6 +100,21 @@ export type MovieCard = BaseCard & EntityCardItemAttrs & {
 };
 
 export type CinenerdleCard = CinenerdleRootCard | BreakCard | PersonCard | MovieCard | DbInfoCard;
+
+export type ResolvedPersonCard = Omit<PersonCard, "record"> & {
+  kind: "person";
+  record: ResolvedPersonRecord;
+};
+
+export type ResolvedMovieCard = Omit<MovieCard, "record"> & {
+  kind: "movie";
+  record: ResolvedFilmRecord;
+};
+
+export type ResolvedCinenerdleEntityCard =
+  | Extract<CinenerdleCard, { kind: "cinenerdle" }>
+  | ResolvedMovieCard
+  | ResolvedPersonCard;
 
 type BaseCardViewModel = {
   key: string;

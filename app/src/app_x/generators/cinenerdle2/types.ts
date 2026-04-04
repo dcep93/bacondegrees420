@@ -121,3 +121,12 @@ export type SearchableConnectionEntityRecord = {
   nameLower: string;
   popularity?: number;
 };
+
+export type ResolvedPersonRecord = Omit<PersonRecord, "tmdbId"> & {
+  tmdbId: number;
+};
+
+export type ResolvedFilmRecord = Omit<FilmRecord, "id" | "tmdbId"> & {
+  id: number;
+  tmdbId: number;
+};
