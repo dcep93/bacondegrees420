@@ -834,6 +834,7 @@
 .bacon-fancy-tooltip-anchor:focus-within .bacon-fancy-tooltip {
   opacity: 1;
   visibility: visible;
+  pointer-events: auto;
 }
 
 .bacon-fancy-tooltip-bottom-center {
