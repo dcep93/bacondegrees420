@@ -55,7 +55,8 @@
   align-items: stretch;
   gap: 13.3px;
   overflow-x: auto;
-  overflow-y: visible;
+  overflow-y: hidden;
+  overflow-anchor: none;
   padding: 2px 4px 2px 2px;
   scroll-behavior: smooth;
 }

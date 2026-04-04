@@ -7,9 +7,6 @@ import {
 import "../../styles/cinenerdle2.css";
 import type { GeneratorNode } from "../../types/generator";
 import {
-  addCinenerdleDebugLog,
-} from "./debug";
-import {
   buildTreeFromHash,
   type CinenerdleTreeMeta,
   markInitialViewportSettled,
@@ -392,13 +389,6 @@ const Cinenerdle2 = memo(function Cinenerdle2({
     const rootNode = info.tree[0]?.find((node) => node.selected) ?? null;
     return rootNode?.data.kind === "cinenerdle";
   }, []);
-  const handleGeneratorDebugLog = useCallback((event: string, details?: unknown) => {
-    if (!event.startsWith("generator:generation-1-rect-")) {
-      return;
-    }
-
-    addCinenerdleDebugLog(event, details);
-  }, []);
   const generatorResetKey = `${resetVersion}:${navigationVersion}`;
 
   if (lastGeneratorResetKeyRef.current !== generatorResetKey) {
@@ -532,7 +522,6 @@ const Cinenerdle2 = memo(function Cinenerdle2({
     >
       <AbstractGenerator
         createInitialState={controller.createInitialState}
-        debugLog={handleGeneratorDebugLog}
         generatorHandleRef={generatorHandleRef}
         getRowPresentation={getRowPresentation}
         key={generatorResetKey}
