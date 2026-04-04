@@ -1549,7 +1549,6 @@ export function useCinenerdleController({
           getState,
           scrollGenerationIntoVerticalView,
           scrollGenerationLikeBubble,
-          selectionId,
         },
       ) {
         const commitSelectionUpdate = applyUrgentUpdate ?? applyUpdate;
@@ -1687,12 +1686,10 @@ export function useCinenerdleController({
                   return;
                 }
 
-                const revealStartedAt = getCinenerdleDebugNow();
                 await scrollGenerationIntoVerticalView(childGenerationIndex, {
                   alignRowHorizontally: false,
                 });
                 didRevealChildGeneration = true;
-                void revealStartedAt;
               }
 
               async function scrollFinalizedChildGenerationHorizontally(
@@ -1706,7 +1703,6 @@ export function useCinenerdleController({
                 await scrollGenerationLikeBubble(childGenerationIndex);
               }
 
-              const initialSelectionResolveStartedAt = getCinenerdleDebugNow();
               const initialSelection =
                 selectedCard.kind === "movie" || selectedCard.kind === "person"
                   ? await resolveInitialSelectedCard(selectedCard)
@@ -1715,10 +1711,6 @@ export function useCinenerdleController({
                       movieRecord: undefined,
                       personRecord: undefined,
                     };
-              const initialSelectionResolveElapsedMs = roundCinenerdleDebugElapsedMs(
-                getCinenerdleDebugNow() - initialSelectionResolveStartedAt,
-              );
-              void initialSelectionResolveElapsedMs;
               const initialMovieRecord =
                 initialSelection.selectedCard.kind === "movie"
                   ? initialSelection.movieRecord ?? null
@@ -1736,20 +1728,14 @@ export function useCinenerdleController({
                       selectedEffectCol,
                       initialSelection.selectedCard,
                     );
-              const initialChildRowBuildStartedAt = getCinenerdleDebugNow();
               const initialChildRow = await buildChildRowForCard(initialSelection.selectedCard, {
                 movieRecord: initialMovieRecord,
                 personRecord: initialPersonRecord,
               });
-              const initialChildRowBuildElapsedMs = roundCinenerdleDebugElapsedMs(
-                getCinenerdleDebugNow() - initialChildRowBuildStartedAt,
-              );
-              void initialChildRowBuildElapsedMs;
               const initialSelectedTree = appendChildRow(
                 initialSelectedTreeBase,
                 initialChildRow,
               );
-              const initialPrepareTreeStartedAt = getCinenerdleDebugNow();
               const preparedInitialTree = await prepareTreeRowsForRender(
                 initialSelectedTree,
                 itemAttrsSnapshot,
@@ -1758,18 +1744,12 @@ export function useCinenerdleController({
                   ...(initialChildRow && initialChildRow.length > 0 ? [childGenerationIndex] : []),
                 ],
               );
-              const initialPrepareTreeElapsedMs = roundCinenerdleDebugElapsedMs(
-                getCinenerdleDebugNow() - initialPrepareTreeStartedAt,
-              );
-              const initialCommitStartedAt = getCinenerdleDebugNow();
               commitSelectionUpdate({
                 meta: {
                   itemAttrsSnapshot,
                 },
                 tree: preparedInitialTree,
               });
-              void initialCommitStartedAt;
-              void initialPrepareTreeElapsedMs;
 
               setTmdbLogGeneration(Math.max(0, preparedInitialTree.length - 1));
               await revealChildGenerationVertically(initialChildRow);

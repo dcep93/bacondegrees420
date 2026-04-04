@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, useEffect, useRef } from "react";
 import ConnectionEntityCard from "./connection_entity_card";
 import { didRequestNewTabNavigation } from "../index_helpers";
 import { getConnectionEdgeKey, type ConnectionEntity } from "../generators/cinenerdle2/connection_graph";
@@ -20,6 +20,32 @@ export default function ConnectionResults({
   openConnectionPathInNewTab: (path: ConnectionEntity[]) => void;
   spawnAlternativeConnectionRow: (parentRowId: string, exclusion: ConnectionExclusion) => void;
 }) {
+  const resultsRef = useRef<HTMLDivElement | null>(null);
+  const connectionSessionId = connectionSession?.id ?? null;
+
+  useEffect(() => {
+    if (!connectionSessionId) {
+      return;
+    }
+
+    const resultsElement = resultsRef.current;
+
+    if (!resultsElement) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      resultsElement.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [connectionSessionId]);
+
   if (!connectionSession) {
     return null;
   }
@@ -28,7 +54,7 @@ export default function ConnectionResults({
     connectionSession.rows.some((row) => row.status === "found" && row.path.length > 0);
 
   return (
-    <div className="bacon-connection-results">
+    <div className="bacon-connection-results" ref={resultsRef}>
       {!hasFoundConnectionRow ? (
         <div className="bacon-connection-row">
           <ConnectionEntityCard
