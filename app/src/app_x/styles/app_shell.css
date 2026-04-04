@@ -406,7 +406,8 @@
 
 .bacon-title-action-icon-button:disabled {
   opacity: 0.58;
-  cursor: wait;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .bacon-title-action-icon-button-danger {
@@ -867,9 +868,23 @@
   overscroll-behavior: contain;
 }
 
+.bacon-bookmark-row-action-tooltip-anchor {
+  width: 100%;
+  display: flex;
+}
+
+.bacon-bookmark-row-action-tooltip-anchor > :not(.bacon-fancy-tooltip) {
+  width: 100%;
+}
+
+.bacon-bookmark-index-tooltip-anchor {
+  position: static;
+}
+
 .bacon-bookmark-index-tooltip.bacon-fancy-tooltip-right-center {
-  top: auto;
-  bottom: 0;
+  top: 0;
+  bottom: auto;
+  left: calc(var(--bacon-title-control-size) + 16px);
   transform: translate(4px, 0);
 }
 

@@ -995,9 +995,6 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     lifecycleId: number,
     selectionId: number,
   ) => Promise<void>)>(null);
-  const generationRectTraceAnimationFrameIdsRef = useRef<number[]>([]);
-  const generationRectTraceRequestIdRef = useRef(0);
-
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -1008,85 +1005,6 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
-
-  const cancelGenerationRectTrace = useCallback(() => {
-    if (typeof window === "undefined") {
-      generationRectTraceAnimationFrameIdsRef.current = [];
-      return;
-    }
-
-    generationRectTraceAnimationFrameIdsRef.current.forEach((frameId) => {
-      window.cancelAnimationFrame(frameId);
-    });
-    generationRectTraceAnimationFrameIdsRef.current = [];
-  }, []);
-
-  useEffect(() => cancelGenerationRectTrace, [cancelGenerationRectTrace]);
-
-  const traceGenerationOneRects = useCallback((options: {
-    generationIndex: number;
-    targetCard: HTMLDivElement | null;
-    targetDataKey: string | null;
-    targetLabel: string | null;
-    trackElement: HTMLDivElement;
-    trigger: "scroll-card-into-view" | "scroll-generation-into-vertical-view";
-  }) => {
-    if (options.generationIndex !== 1 || !debugLog || typeof window === "undefined") {
-      return;
-    }
-
-    cancelGenerationRectTrace();
-    generationRectTraceRequestIdRef.current += 1;
-    const requestId = generationRectTraceRequestIdRef.current;
-
-    const logSnapshot = (phase: string) => {
-      if (
-        !mountedRef.current ||
-        generationRectTraceRequestIdRef.current !== requestId
-      ) {
-        return;
-      }
-
-      debugLog("generator:generation-1-rect-snapshot", {
-        ancestors: getGeneratorAncestorRectSnapshots(options.targetCard),
-        card: getGeneratorRectSnapshot("card", options.targetCard),
-        generationIndex: options.generationIndex,
-        phase,
-        row: getGeneratorRectSnapshot(
-          "generator-row",
-          options.trackElement.closest(".generator-row") as HTMLDivElement | null,
-        ),
-        targetDataKey: options.targetDataKey,
-        targetLabel: options.targetLabel,
-        track: getGeneratorRectSnapshot("generator-row-track", options.trackElement),
-        trigger: options.trigger,
-        viewport: {
-          innerHeight: window.innerHeight,
-          innerWidth: window.innerWidth,
-          scrollX: roundGeneratorRectValue(window.scrollX ?? 0),
-          scrollY: roundGeneratorRectValue(window.scrollY ?? 0),
-        },
-      });
-    };
-
-    logSnapshot("before-scroll");
-
-    const scheduleNextFrame = (frameNumber: number) => {
-      const frameId = window.requestAnimationFrame(() => {
-        generationRectTraceAnimationFrameIdsRef.current =
-          generationRectTraceAnimationFrameIdsRef.current.filter((id) => id !== frameId);
-
-        logSnapshot(`raf-${frameNumber}`);
-        if (frameNumber < 6) {
-          scheduleNextFrame(frameNumber + 1);
-        }
-      });
-
-      generationRectTraceAnimationFrameIdsRef.current.push(frameId);
-    };
-
-    scheduleNextFrame(1);
-  }, [cancelGenerationRectTrace, debugLog]);
 
   const createGuardedApplyUpdate = useCallback(
     (
@@ -1217,6 +1135,66 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     () => resolveGeneratorTree(state),
     [state],
   );
+
+  const logGenerationOneRectSnapshot = useCallback((trigger: string) => {
+    if (!debugLog || typeof window === "undefined" || typeof document === "undefined") {
+      return;
+    }
+
+    const generationIndex = 1;
+    const generationRow = resolvedTree[generationIndex] ?? [];
+    const targetCardIndex = generationRow.findIndex((node) => node.selected);
+    const resolvedCardIndex = targetCardIndex >= 0 ? targetCardIndex : 0;
+    const targetNode = generationRow[resolvedCardIndex] ?? null;
+    const targetDataKey = targetNode
+      ? getDataKey(targetNode.data, resolvedCardIndex)
+      : null;
+    const targetCard = targetDataKey
+      ? cardRefs.current[`${generationIndex}:${targetDataKey}`] ?? null
+      : null;
+    const trackElement = rowRefs.current[generationIndex] ?? null;
+
+    debugLog("generator:generation-1-rect-snapshot", {
+      ancestors: getGeneratorAncestorRectSnapshots(targetCard),
+      card: getGeneratorRectSnapshot("card", targetCard),
+      generationIndex,
+      row: getGeneratorRectSnapshot(
+        "generator-row",
+        trackElement?.closest(".generator-row") as HTMLDivElement | null,
+      ),
+      targetDataKey,
+      targetLabel: targetNode ? getGeneratorDebugItemLabel(targetNode.data) : null,
+      track: getGeneratorRectSnapshot("generator-row-track", trackElement),
+      trigger,
+      viewport: {
+        innerHeight: window.innerHeight,
+        innerWidth: window.innerWidth,
+        scrollX: roundGeneratorRectValue(window.scrollX ?? 0),
+        scrollY: roundGeneratorRectValue(window.scrollY ?? 0),
+      },
+      visibilityState: document.visibilityState,
+    });
+  }, [debugLog, resolvedTree]);
+
+  useEffect(() => {
+    if (!debugLog || typeof window === "undefined" || typeof document === "undefined") {
+      return;
+    }
+
+    const sample = () => {
+      if (!mountedRef.current || document.visibilityState !== "visible") {
+        return;
+      }
+
+      logGenerationOneRectSnapshot("interval");
+    };
+
+    sample();
+    const intervalId = window.setInterval(sample, 1000);
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [debugLog, logGenerationOneRectSnapshot]);
 
   const renderStartedAt = getGeneratorPerfNow();
   const {
@@ -1390,14 +1368,6 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
 
       scrollElementToLeft(rowTrack, targetScrollLeft, behavior);
       if (options?.includeVerticalScroll) {
-        traceGenerationOneRects({
-          generationIndex,
-          targetCard,
-          targetDataKey: null,
-          targetLabel: null,
-          trackElement: rowTrack,
-          trigger: "scroll-card-into-view",
-        });
         scrollElementIntoVerticalView(rowTrack, behavior);
       }
       return;
@@ -1408,7 +1378,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       block: "nearest",
       inline: alignment,
     });
-  }, [traceGenerationOneRects]);
+  }, []);
 
   const scrollToCardIndex = useCallback((
     generationIndex: number,
@@ -1591,29 +1561,12 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       handleBubbleClickRef.current?.(generationIndex);
     }
 
-    const targetCard = waitResult.targetDataKey
-      ? cardRefs.current[`${generationIndex}:${waitResult.targetDataKey}`] ?? null
-      : null;
-    const targetLabel =
-      waitResult.targetCardIndex !== null
-        ? getGeneratorDebugItemLabel(
-          resolvedTree[generationIndex]?.[waitResult.targetCardIndex]?.data ?? null,
-        )
-        : null;
-    traceGenerationOneRects({
-      generationIndex,
-      targetCard,
-      targetDataKey: waitResult.targetDataKey,
-      targetLabel,
-      trackElement: rowTrack,
-      trigger: "scroll-generation-into-vertical-view",
-    });
     debugLog?.("generator:scroll-vertical-execute", {
       alignRowHorizontally,
       generationIndex,
     });
     scrollElementIntoVerticalView(rowTrack, "smooth");
-  }, [debugLog, resolvedTree, traceGenerationOneRects]);
+  }, [debugLog]);
 
   const runEffects = useCallback(async (
     effects: TEffect[],

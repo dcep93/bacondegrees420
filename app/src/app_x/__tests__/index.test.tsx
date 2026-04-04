@@ -14,6 +14,7 @@ import BaconTitleBar from "../components/bacon_title_bar";
 import BookmarksJsonlEditorModal, {
   BookmarksJsonlEditButton,
 } from "../components/bookmarks_jsonl_editor";
+import BookmarksPage from "../components/bookmarks_page";
 import ConnectionBoostPreview from "../components/connection_boost_preview";
 import { getFullyVisibleViewportScrollTop } from "../components/abstract_generator_scroll";
 import ConnectionEntityCard from "../components/connection_entity_card";
@@ -678,6 +679,29 @@ describe("BaconTitleBar", () => {
     expect(html).toContain("aria-label=\"Close bookmarks\"");
     expect(html).toContain("bacon-copy-status-overlay-toast");
     expect(html).toContain(">Bookmarks updated<");
+  });
+
+  it("renders bookmark row tooltips only for the index, load, and remove controls", () => {
+    const html = renderToStaticMarkup(
+      <BookmarksPage
+        bookmarkRows={[{
+          cards: [{ key: "break:0", kind: "break", label: "Start" }],
+          hash: "movie|Heat (1995)",
+        }]}
+        bookmarks={[{ hash: "movie|Heat (1995)" }]}
+        onLoadBookmark={() => { }}
+        onLoadBookmarkCard={() => { }}
+        onMoveBookmark={() => { }}
+        onOpenBookmarkCardAsRootInNewTab={() => { }}
+        onRemoveBookmark={() => { }}
+      />,
+    );
+
+    expect(html).toContain("bacon-bookmark-index-tooltip-anchor");
+    expect(html).toContain("bacon-bookmark-row-action-tooltip-anchor");
+    expect(html.match(/role="tooltip"/g)).toHaveLength(3);
+    expect(html).toContain(">Load bookmark<");
+    expect(html).toContain(">Remove bookmark<");
   });
 });
 

@@ -49,6 +49,7 @@ export default function BookmarksPage({
                 ⬆️
               </button>
               <Tooltip
+                anchorClassName="bacon-bookmark-index-tooltip-anchor"
                 content={formatBookmarkIndexTooltip(bookmarkRow.hash)}
                 placement="right-center"
                 tooltipClassName="bacon-bookmark-index-tooltip"
@@ -66,7 +67,11 @@ export default function BookmarksPage({
               >
                 ⬇️
               </button>
-              <Tooltip content="Load bookmark" placement="right-center">
+              <Tooltip
+                anchorClassName="bacon-bookmark-row-action-tooltip-anchor"
+                content="Load bookmark"
+                placement="right-center"
+              >
                 <button
                   aria-label={`Load ${formatBookmarkLabel(bookmarkRow.hash)}`}
                   className="bacon-title-action-icon-button"
@@ -76,7 +81,11 @@ export default function BookmarksPage({
                   📥
                 </button>
               </Tooltip>
-              <Tooltip content="Remove bookmark" placement="right-center">
+              <Tooltip
+                anchorClassName="bacon-bookmark-row-action-tooltip-anchor"
+                content="Remove bookmark"
+                placement="right-center"
+              >
                 <button
                   aria-label={`Remove ${formatBookmarkLabel(bookmarkRow.hash)}`}
                   className="bacon-title-action-icon-button bacon-title-action-icon-button-danger"
