@@ -363,6 +363,131 @@ describe("buildChildRowForCard", () => {
         node.data.kind === "person" ? node.data.connectionOrder : null),
     ).toEqual([1, 2]);
   });
+
+  it("reuses a primed person parent record for later child-row builds", async () => {
+    const pacinoRecord = makePersonRecord({
+      id: 60,
+      tmdbId: 60,
+      name: "Al Pacino",
+      movieConnectionKeys: ["heat (1995)", "scarface (1983)"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({ id: 321, title: "Heat", release_date: "1995-12-15", order: 0 }),
+          makeMovieCredit({ id: 322, title: "Scarface", release_date: "1983-12-09", order: 1 }),
+        ],
+        crew: [],
+      },
+    });
+    const heatRecord = makeFilmRecord({
+      id: 321,
+      tmdbId: 321,
+      title: "Heat",
+      year: "1995",
+      personConnectionKeys: ["al pacino"],
+    });
+    const scarfaceRecord = makeFilmRecord({
+      id: 322,
+      tmdbId: 322,
+      title: "Scarface",
+      year: "1983",
+      personConnectionKeys: ["al pacino"],
+    });
+    const sparsePacinoCard = makePersonCard({
+      key: "person:60",
+      name: "Al Pacino",
+      record: null,
+    });
+
+    indexedDbMock.getFilmRecordsByIds.mockResolvedValue(
+      new Map([
+        [321, heatRecord],
+        [322, scarfaceRecord],
+      ]),
+    );
+    indexedDbMock.getPersonRecordCountsByMovieKeys.mockResolvedValue(
+      new Map([
+        ["heat (1995)", 8],
+        ["scarface (1983)", 6],
+      ]),
+    );
+
+    const primedRow = await buildChildRowForCard(sparsePacinoCard, {
+      personRecord: pacinoRecord,
+    });
+    const cachedRow = await buildChildRowForCard(sparsePacinoCard);
+
+    expect(primedRow?.map((node) => node.data.name)).toEqual([
+      "Heat",
+      "Scarface",
+    ]);
+    expect(cachedRow?.map((node) => node.data.name)).toEqual([
+      "Heat",
+      "Scarface",
+    ]);
+    expect(indexedDbMock.getPersonRecordById).not.toHaveBeenCalled();
+    expect(indexedDbMock.getPersonRecordByName).not.toHaveBeenCalled();
+  });
+
+  it("reuses a primed movie parent record for later child-row builds", async () => {
+    const heatRecord = makeFilmRecord({
+      id: 321,
+      tmdbId: 321,
+      title: "Heat",
+      year: "1995",
+      personConnectionKeys: ["al pacino", "robert de niro"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({ id: 60, name: "Al Pacino", order: 1, popularity: 88 }),
+          makePersonCredit({ id: 61, name: "Robert De Niro", order: 2, popularity: 87 }),
+        ],
+        crew: [],
+      },
+    });
+    const pacinoRecord = makePersonRecord({
+      id: 60,
+      tmdbId: 60,
+      name: "Al Pacino",
+      movieConnectionKeys: ["heat (1995)"],
+    });
+    const deniroRecord = makePersonRecord({
+      id: 61,
+      tmdbId: 61,
+      name: "Robert De Niro",
+      movieConnectionKeys: ["heat (1995)"],
+    });
+    const sparseHeatCard = makeMovieCard({
+      key: "movie:321",
+      name: "Heat",
+      year: "1995",
+      record: null,
+    });
+
+    indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(
+      new Map([
+        ["Al Pacino", 8],
+        ["Robert De Niro", 7],
+      ]),
+    );
+    indexedDbMock.getPersonRecordById.mockImplementation(async (personId: number) =>
+      personId === 60 ? pacinoRecord : personId === 61 ? deniroRecord : null,
+    );
+
+    const primedRow = await buildChildRowForCard(sparseHeatCard, {
+      movieRecord: heatRecord,
+    });
+    const cachedRow = await buildChildRowForCard(sparseHeatCard);
+
+    expect(primedRow?.map((node) => node.data.name)).toEqual([
+      "Al Pacino",
+      "Robert De Niro",
+    ]);
+    expect(cachedRow?.map((node) => node.data.name)).toEqual([
+      "Al Pacino",
+      "Robert De Niro",
+    ]);
+    expect(indexedDbMock.getFilmRecordById).not.toHaveBeenCalled();
+    expect(indexedDbMock.getFilmRecordByTitleAndYear).not.toHaveBeenCalled();
+  });
 });
 
 describe("buildTreeFromHash", () => {
@@ -987,6 +1112,9 @@ describe("useCinenerdleController", () => {
 
     expect(tmdbMock.prepareSelectedMovie).not.toHaveBeenCalled();
     expect(tmdbMock.prepareSelectedPerson).not.toHaveBeenCalled();
+    expect(indexedDbMock.getMoviePopularityByLabels).not.toHaveBeenCalled();
+    expect(indexedDbMock.getFilmRecordById).not.toHaveBeenCalled();
+    expect(indexedDbMock.getFilmRecordByTitleAndYear).not.toHaveBeenCalled();
     expect(tmdbMock.prefetchTopPopularUnhydratedConnections).toHaveBeenCalledTimes(1);
     expect(tmdbMock.prefetchTopPopularUnhydratedConnections).toHaveBeenCalledWith(
       makeMovieCard({ key: "movie:321", record: heatRecord }),
@@ -1148,6 +1276,9 @@ describe("useCinenerdleController", () => {
 
     expect(tmdbMock.prepareSelectedMovie).not.toHaveBeenCalled();
     expect(tmdbMock.prepareSelectedPerson).not.toHaveBeenCalled();
+    expect(indexedDbMock.getPersonPopularityByNames).not.toHaveBeenCalled();
+    expect(indexedDbMock.getPersonRecordById).not.toHaveBeenCalled();
+    expect(indexedDbMock.getPersonRecordByName).not.toHaveBeenCalled();
     expect(tmdbMock.prefetchTopPopularUnhydratedConnections).toHaveBeenCalledTimes(1);
     expect(tmdbMock.prefetchTopPopularUnhydratedConnections).toHaveBeenCalledWith(
       makePersonCard({ key: "person:60", record: pacinoRecord }),
@@ -1519,6 +1650,8 @@ describe("useCinenerdleController", () => {
     expect(tmdbMock.prepareSelectedPerson).toHaveBeenCalledWith("Al Pacino", 60, {
       forceRefresh: true,
     });
+    expect(indexedDbMock.getPersonRecordById).toHaveBeenCalledTimes(1);
+    expect(indexedDbMock.getPersonRecordByName).not.toHaveBeenCalled();
     expect(applyUpdate).toHaveBeenCalledTimes(2);
     expect(scrollGenerationLikeBubble).toHaveBeenCalledTimes(1);
     expect(scrollGenerationLikeBubble).toHaveBeenCalledWith(2);

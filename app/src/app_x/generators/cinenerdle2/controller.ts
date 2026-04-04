@@ -60,6 +60,7 @@ import {
 } from "./tmdb";
 import type { FilmRecord, PersonRecord } from "./types";
 import {
+  getAssociatedPeopleFromMovieCredits,
   formatFallbackPersonDisplayName,
   formatMoviePathLabel,
   getAssociatedMovieCreditGroupsFromPersonCredits,
@@ -98,6 +99,18 @@ const resolvedConnectedItemAttrChildSourcesCache = new Map<
   string,
   ConnectedItemAttrSourceCard[]
 >();
+const resolvedMovieParentRecordCache = new Map<string, Promise<FilmRecord | null>>();
+const resolvedPersonParentRecordCache = new Map<string, Promise<PersonRecord | null>>();
+const MAX_LONG_TASK_SAMPLES = 120;
+const recentLongTaskSamples: Array<{
+  attribution: Array<Record<string, unknown>>;
+  durationMs: number;
+  endTimeMs: number;
+  name: string;
+  startTimeMs: number;
+}> = [];
+let cinenerdleLongTaskObserverInitialized = false;
+let cinenerdleLongTaskObserverSupported = false;
 
 function areCardsDirectlyConnected(
   card: ConnectedItemAttrSourceCard,
@@ -164,11 +177,133 @@ function roundCinenerdleDebugElapsedMs(value: number): number {
   return Number(value.toFixed(1));
 }
 
+function trimRecentLongTaskSamples(): void {
+  if (recentLongTaskSamples.length <= MAX_LONG_TASK_SAMPLES) {
+    return;
+  }
+
+  recentLongTaskSamples.splice(0, recentLongTaskSamples.length - MAX_LONG_TASK_SAMPLES);
+}
+
+function ensureCinenerdleLongTaskObserver(): boolean {
+  if (cinenerdleLongTaskObserverInitialized) {
+    return cinenerdleLongTaskObserverSupported;
+  }
+
+  cinenerdleLongTaskObserverInitialized = true;
+
+  if (
+    !import.meta.env.DEV ||
+    typeof window === "undefined" ||
+    typeof PerformanceObserver === "undefined"
+  ) {
+    return false;
+  }
+
+  const supportedEntryTypes = Array.isArray(PerformanceObserver.supportedEntryTypes)
+    ? PerformanceObserver.supportedEntryTypes
+    : [];
+  if (!supportedEntryTypes.includes("longtask")) {
+    return false;
+  }
+
+  try {
+    const observer = new PerformanceObserver((list) => {
+      list.getEntries().forEach((entry) => {
+        const longTaskEntry = entry as PerformanceEntry & {
+          attribution?: Array<Record<string, unknown>>;
+        };
+        recentLongTaskSamples.push({
+          attribution: Array.isArray(longTaskEntry.attribution)
+            ? longTaskEntry.attribution.slice(0, 3).map((attribution) => ({
+                containerId: attribution.containerId,
+                containerName: attribution.containerName,
+                containerSrc: attribution.containerSrc,
+                containerType: attribution.containerType,
+                name: attribution.name,
+              }))
+            : [],
+          durationMs: roundCinenerdleDebugElapsedMs(entry.duration),
+          endTimeMs: roundCinenerdleDebugElapsedMs(entry.startTime + entry.duration),
+          name: entry.name,
+          startTimeMs: roundCinenerdleDebugElapsedMs(entry.startTime),
+        });
+      });
+      trimRecentLongTaskSamples();
+    });
+
+    observer.observe({ type: "longtask", buffered: true } as PerformanceObserverInit);
+    cinenerdleLongTaskObserverSupported = true;
+  } catch {
+    cinenerdleLongTaskObserverSupported = false;
+  }
+
+  return cinenerdleLongTaskObserverSupported;
+}
+
+function getCinenerdleLongTaskSamplesOverlapping(
+  startedAt: number,
+  endedAt: number,
+): Array<{
+  attribution: Array<Record<string, unknown>>;
+  durationMs: number;
+  endTimeMs: number;
+  name: string;
+  overlapDurationMs: number;
+  startTimeMs: number;
+}> {
+  return recentLongTaskSamples
+    .filter((sample) => sample.startTimeMs <= endedAt && sample.endTimeMs >= startedAt)
+    .map((sample) => ({
+      ...sample,
+      overlapDurationMs: roundCinenerdleDebugElapsedMs(
+        Math.min(sample.endTimeMs, endedAt) - Math.max(sample.startTimeMs, startedAt),
+      ),
+    }));
+}
+
+function logCinenerdleLongTasksForWindow(
+  event: string,
+  startedAt: number,
+  endedAt: number,
+  details?: Record<string, unknown>,
+): void {
+  const longTaskObserverSupported = ensureCinenerdleLongTaskObserver();
+  const overlappingLongTasks = longTaskObserverSupported
+    ? getCinenerdleLongTaskSamplesOverlapping(startedAt, endedAt)
+    : [];
+
+  addCinenerdleDebugLog(event, {
+    ...details,
+    longTaskCount: overlappingLongTasks.length,
+    longTaskObserverSupported,
+    longTaskSamples: overlappingLongTasks.slice(-5),
+    longestLongTaskMs: overlappingLongTasks.reduce(
+      (longestDuration, sample) => Math.max(longestDuration, sample.durationMs),
+      0,
+    ),
+    totalLongTaskOverlapMs: roundCinenerdleDebugElapsedMs(
+      overlappingLongTasks.reduce((totalDuration, sample) => totalDuration + sample.overlapDurationMs, 0),
+    ),
+    windowElapsedMs: roundCinenerdleDebugElapsedMs(endedAt - startedAt),
+  });
+}
+
 async function prepareTreeForRender(
   tree: GeneratorTree<CinenerdleCard>,
   itemAttrsSnapshot: CinenerdleItemAttrs,
 ): Promise<GeneratorTree<CinenerdleCard>> {
   return enrichCinenerdleTreeWithItemAttrs(tree, itemAttrsSnapshot);
+}
+
+async function prepareTreeRowsForRender(
+  tree: GeneratorTree<CinenerdleCard>,
+  itemAttrsSnapshot: CinenerdleItemAttrs,
+  generationIndexes: number[],
+): Promise<GeneratorTree<CinenerdleCard>> {
+  return enrichCinenerdleTreeWithItemAttrs(tree, itemAttrsSnapshot, {
+    generationIndexes,
+  });
 }
 
 function createUncachedMovieCard(name: string, year: string): Extract<CinenerdleCard, { kind: "movie" }> {
@@ -371,37 +506,29 @@ async function getLocalPersonRecord(
   personTmdbId?: number | null,
 ): Promise<PersonRecord | null> {
   const validPersonTmdbId = getValidTmdbEntityId(personTmdbId);
-  const [personRecordById, personRecordByName] = await Promise.all([
-    validPersonTmdbId ? getPersonRecordById(validPersonTmdbId) : Promise.resolve(null),
-    personName ? getPersonRecordByName(personName) : Promise.resolve(null),
-  ]);
-  const personRecordByIdTmdbId = getValidTmdbEntityId(
-    personRecordById?.tmdbId ?? personRecordById?.id,
-  );
-  const personRecordByNameTmdbId = getValidTmdbEntityId(
-    personRecordByName?.tmdbId ?? personRecordByName?.id,
-  );
-
-  if (
-    validPersonTmdbId &&
-    personRecordByIdTmdbId === validPersonTmdbId &&
-    personRecordByNameTmdbId !== validPersonTmdbId
-  ) {
-    return personRecordById;
+  if (validPersonTmdbId) {
+    return getPersonRecordById(validPersonTmdbId);
   }
 
-  if (
-    validPersonTmdbId &&
-    !personRecordById &&
-    personRecordByName &&
-    personRecordByNameTmdbId !== validPersonTmdbId
-  ) {
-    return null;
-  }
+  return personName ? getPersonRecordByName(personName) : null;
+}
 
-  const chosenRecord = pickBestPersonRecord(personRecordById, personRecordByName);
+function cacheResolvedMovieParentRecord(
+  card: Extract<CinenerdleCard, { kind: "movie" }>,
+  ...records: Array<FilmRecord | null | undefined>
+): FilmRecord | null {
+  const resolvedMovieRecord = pickBestMovieRecord(...records);
+  resolvedMovieParentRecordCache.set(card.key, Promise.resolve(resolvedMovieRecord));
+  return resolvedMovieRecord;
+}
 
-  return chosenRecord;
+function cacheResolvedPersonParentRecord(
+  card: Extract<CinenerdleCard, { kind: "person" }>,
+  ...records: Array<PersonRecord | null | undefined>
+): PersonRecord | null {
+  const resolvedPersonRecord = pickBestPersonRecord(...records);
+  resolvedPersonParentRecordCache.set(card.key, Promise.resolve(resolvedPersonRecord));
+  return resolvedPersonRecord;
 }
 
 function getMovieRecordQualityScore(movieRecord: FilmRecord | null | undefined): number {
@@ -463,37 +590,186 @@ async function getLocalMovieRecord(
   movieId?: number | string | null,
 ): Promise<FilmRecord | null> {
   const validMovieTmdbId = getValidTmdbEntityId(movieId);
-  const [movieRecordById, movieRecordByTitleAndYear] = await Promise.all([
-    validMovieTmdbId ? getFilmRecordById(validMovieTmdbId) : Promise.resolve(null),
-    movieName ? getFilmRecordByTitleAndYear(movieName, movieYear) : Promise.resolve(null),
-  ]);
+  if (validMovieTmdbId) {
+    return getFilmRecordById(validMovieTmdbId);
+  }
 
-  return pickBestMovieRecord(movieRecordById, movieRecordByTitleAndYear);
+  return movieName ? getFilmRecordByTitleAndYear(movieName, movieYear) : null;
 }
 
 async function resolveMovieParentRecord(
   card: Extract<CinenerdleCard, { kind: "movie" }>,
   movieRecordOverride?: FilmRecord | null,
 ): Promise<FilmRecord | null> {
-  const localMovieRecord = await getLocalMovieRecord(
+  const resolveStartedAt = getCinenerdleDebugNow();
+  if (movieRecordOverride !== undefined) {
+    const resolvedMovieRecord = cacheResolvedMovieParentRecord(card, movieRecordOverride, card.record);
+    addCinenerdleDebugLog("perf:controller.resolveMovieParentRecord", {
+      elapsedMs: roundCinenerdleDebugElapsedMs(getCinenerdleDebugNow() - resolveStartedAt),
+      hasCardRecord: Boolean(card.record),
+      hasOverride: true,
+      overrideHasCredits: Boolean(movieRecordOverride?.rawTmdbMovieCreditsResponse),
+      path: "override",
+      resolvedHasCredits: Boolean(resolvedMovieRecord?.rawTmdbMovieCreditsResponse),
+      selectedCardKey: card.key,
+    });
+    return resolvedMovieRecord;
+  }
+
+  if (card.record?.rawTmdbMovieCreditsResponse) {
+    const resolvedMovieRecord = cacheResolvedMovieParentRecord(card, card.record);
+    addCinenerdleDebugLog("perf:controller.resolveMovieParentRecord", {
+      elapsedMs: roundCinenerdleDebugElapsedMs(getCinenerdleDebugNow() - resolveStartedAt),
+      hasCardRecord: true,
+      hasOverride: false,
+      path: "card-record",
+      resolvedHasCredits: Boolean(resolvedMovieRecord?.rawTmdbMovieCreditsResponse),
+      selectedCardKey: card.key,
+    });
+    return resolvedMovieRecord;
+  }
+
+  const cachedMovieRecordPromise = resolvedMovieParentRecordCache.get(card.key);
+  if (cachedMovieRecordPromise) {
+    const cachedAwaitStartedAt = getCinenerdleDebugNow();
+    const cachedMovieRecord = await cachedMovieRecordPromise;
+    const resolvedMovieRecord = cacheResolvedMovieParentRecord(card, cachedMovieRecord, card.record);
+    addCinenerdleDebugLog("perf:controller.resolveMovieParentRecord", {
+      awaitCachedRecordElapsedMs: roundCinenerdleDebugElapsedMs(
+        getCinenerdleDebugNow() - cachedAwaitStartedAt,
+      ),
+      elapsedMs: roundCinenerdleDebugElapsedMs(getCinenerdleDebugNow() - resolveStartedAt),
+      hasCardRecord: Boolean(card.record),
+      hasOverride: false,
+      path: "cache-hit",
+      resolvedHasCredits: Boolean(resolvedMovieRecord?.rawTmdbMovieCreditsResponse),
+      selectedCardKey: card.key,
+    });
+    return resolvedMovieRecord;
+  }
+
+  const lookupStartedAt = getCinenerdleDebugNow();
+  const nextMovieRecordPromise = getLocalMovieRecord(
     card.name,
     card.year,
     card.record?.tmdbId ?? card.record?.id ?? null,
+  ).then((localMovieRecord) =>
+    cacheResolvedMovieParentRecord(card, card.record, localMovieRecord)
   );
 
-  return pickBestMovieRecord(movieRecordOverride, card.record, localMovieRecord);
+  resolvedMovieParentRecordCache.set(card.key, nextMovieRecordPromise);
+
+  try {
+    const resolvedMovieRecord = await nextMovieRecordPromise;
+    addCinenerdleDebugLog("perf:controller.resolveMovieParentRecord", {
+      elapsedMs: roundCinenerdleDebugElapsedMs(getCinenerdleDebugNow() - resolveStartedAt),
+      hasCardRecord: Boolean(card.record),
+      hasOverride: false,
+      lookupElapsedMs: roundCinenerdleDebugElapsedMs(getCinenerdleDebugNow() - lookupStartedAt),
+      lookupStrategy: getValidTmdbEntityId(card.record?.tmdbId ?? card.record?.id ?? null) !== null
+        ? "id"
+        : card.name
+          ? "title-year"
+          : "none",
+      path: "lookup",
+      resolvedHasCredits: Boolean(resolvedMovieRecord?.rawTmdbMovieCreditsResponse),
+      selectedCardKey: card.key,
+    });
+    return resolvedMovieRecord;
+  } catch (error) {
+    if (resolvedMovieParentRecordCache.get(card.key) === nextMovieRecordPromise) {
+      resolvedMovieParentRecordCache.delete(card.key);
+    }
+
+    throw error;
+  }
 }
 
 async function resolvePersonParentRecord(
   card: Extract<CinenerdleCard, { kind: "person" }>,
   personRecordOverride?: PersonRecord | null,
 ): Promise<PersonRecord | null> {
-  const localPersonRecord = await getLocalPersonRecord(
+  const resolveStartedAt = getCinenerdleDebugNow();
+  if (personRecordOverride !== undefined) {
+    const resolvedPersonRecord = cacheResolvedPersonParentRecord(card, personRecordOverride, card.record);
+    addCinenerdleDebugLog("perf:controller.resolvePersonParentRecord", {
+      elapsedMs: roundCinenerdleDebugElapsedMs(getCinenerdleDebugNow() - resolveStartedAt),
+      hasCardRecord: Boolean(card.record),
+      hasOverride: true,
+      overrideHasCredits: Boolean(personRecordOverride?.rawTmdbMovieCreditsResponse),
+      path: "override",
+      resolvedHasCredits: Boolean(resolvedPersonRecord?.rawTmdbMovieCreditsResponse),
+      selectedCardKey: card.key,
+    });
+    return resolvedPersonRecord;
+  }
+
+  if (card.record?.rawTmdbMovieCreditsResponse) {
+    const resolvedPersonRecord = cacheResolvedPersonParentRecord(card, card.record);
+    addCinenerdleDebugLog("perf:controller.resolvePersonParentRecord", {
+      elapsedMs: roundCinenerdleDebugElapsedMs(getCinenerdleDebugNow() - resolveStartedAt),
+      hasCardRecord: true,
+      hasOverride: false,
+      path: "card-record",
+      resolvedHasCredits: Boolean(resolvedPersonRecord?.rawTmdbMovieCreditsResponse),
+      selectedCardKey: card.key,
+    });
+    return resolvedPersonRecord;
+  }
+
+  const cachedPersonRecordPromise = resolvedPersonParentRecordCache.get(card.key);
+  if (cachedPersonRecordPromise) {
+    const cachedAwaitStartedAt = getCinenerdleDebugNow();
+    const cachedPersonRecord = await cachedPersonRecordPromise;
+    const resolvedPersonRecord = cacheResolvedPersonParentRecord(card, cachedPersonRecord, card.record);
+    addCinenerdleDebugLog("perf:controller.resolvePersonParentRecord", {
+      awaitCachedRecordElapsedMs: roundCinenerdleDebugElapsedMs(
+        getCinenerdleDebugNow() - cachedAwaitStartedAt,
+      ),
+      elapsedMs: roundCinenerdleDebugElapsedMs(getCinenerdleDebugNow() - resolveStartedAt),
+      hasCardRecord: Boolean(card.record),
+      hasOverride: false,
+      path: "cache-hit",
+      resolvedHasCredits: Boolean(resolvedPersonRecord?.rawTmdbMovieCreditsResponse),
+      selectedCardKey: card.key,
+    });
+    return resolvedPersonRecord;
+  }
+
+  const lookupStartedAt = getCinenerdleDebugNow();
+  const nextPersonRecordPromise = getLocalPersonRecord(
     card.name,
     getPersonTmdbIdFromCard(card),
+  ).then((localPersonRecord) =>
+    cacheResolvedPersonParentRecord(card, card.record, localPersonRecord)
   );
 
-  return pickBestPersonRecord(personRecordOverride, card.record, localPersonRecord);
+  resolvedPersonParentRecordCache.set(card.key, nextPersonRecordPromise);
+
+  try {
+    const resolvedPersonRecord = await nextPersonRecordPromise;
+    addCinenerdleDebugLog("perf:controller.resolvePersonParentRecord", {
+      elapsedMs: roundCinenerdleDebugElapsedMs(getCinenerdleDebugNow() - resolveStartedAt),
+      hasCardRecord: Boolean(card.record),
+      hasOverride: false,
+      lookupElapsedMs: roundCinenerdleDebugElapsedMs(getCinenerdleDebugNow() - lookupStartedAt),
+      lookupStrategy: getPersonTmdbIdFromCard(card) !== null
+        ? "id"
+        : card.name
+          ? "name"
+          : "none",
+      path: "lookup",
+      resolvedHasCredits: Boolean(resolvedPersonRecord?.rawTmdbMovieCreditsResponse),
+      selectedCardKey: card.key,
+    });
+    return resolvedPersonRecord;
+  } catch (error) {
+    if (resolvedPersonParentRecordCache.get(card.key) === nextPersonRecordPromise) {
+      resolvedPersonParentRecordCache.delete(card.key);
+    }
+
+    throw error;
+  }
 }
 
 async function createDailyStarterRow() {
@@ -541,6 +817,31 @@ function appendChildRow(
   childRow: GeneratorNode<CinenerdleCard>[] | null,
 ): GeneratorTree<CinenerdleCard> {
   return childRow && childRow.length > 0 ? [...tree, childRow] : tree;
+}
+
+function getPopularityByPersonNameFromFilmRecords(
+  filmRecords: Iterable<FilmRecord>,
+): Map<string, number> {
+  const popularityByPersonName = new Map<string, number>();
+
+  Array.from(filmRecords).forEach((filmRecord) => {
+    getAssociatedPeopleFromMovieCredits(filmRecord).forEach((credit) => {
+      const personName = normalizeName(credit.name ?? "");
+      if (!personName) {
+        return;
+      }
+
+      popularityByPersonName.set(
+        personName,
+        Math.max(
+          popularityByPersonName.get(personName) ?? 0,
+          credit.popularity ?? 0,
+        ),
+      );
+    });
+  });
+
+  return popularityByPersonName;
 }
 
 function scheduleConnectionPrefetch(
@@ -661,11 +962,15 @@ async function buildChildRowForPersonCard(
   return measureAsync(
     "controller.buildChildRowForPersonCard",
     async () => {
+      const buildStartedAt = getCinenerdleDebugNow();
+      const resolveParentRecordStartedAt = getCinenerdleDebugNow();
       const personRecord = await resolvePersonParentRecord(card, personRecordOverride);
+      const resolveParentRecordElapsedMs = roundCinenerdleDebugElapsedMs(
+        getCinenerdleDebugNow() - resolveParentRecordStartedAt,
+      );
       if (!personRecord) {
         return null;
       }
-
       const movieCreditGroups = getAssociatedMovieCreditGroupsFromPersonCredits(personRecord)
         .filter((creditGroup) => creditGroup.some((credit) => isAllowedBfsTmdbMovieCredit(credit)));
       if (movieCreditGroups.length === 0) {
@@ -676,6 +981,7 @@ async function buildChildRowForPersonCard(
           return null;
         }
 
+        const fallbackFilmsStartedAt = getCinenerdleDebugNow();
         const fallbackFilms = await Promise.all(
           movieKeys.map(async (movieKey) => {
             const parsedMovie = parseMoviePathLabel(movieKey);
@@ -686,11 +992,23 @@ async function buildChildRowForPersonCard(
             };
           }),
         );
+        const fallbackFilmsElapsedMs = roundCinenerdleDebugElapsedMs(
+          getCinenerdleDebugNow() - fallbackFilmsStartedAt,
+        );
+        const popularityLookupStartedAt = getCinenerdleDebugNow();
         const popularityByPersonName = await getPersonPopularityByNames(
           fallbackFilms.flatMap(({ movieRecord }) => movieRecord?.personConnectionKeys ?? []),
         );
+        const popularityLookupElapsedMs = roundCinenerdleDebugElapsedMs(
+          getCinenerdleDebugNow() - popularityLookupStartedAt,
+        );
+        const connectionCountsStartedAt = getCinenerdleDebugNow();
         const connectionCounts = await getPersonRecordCountsByMovieKeys(movieKeys);
+        const connectionCountsElapsedMs = roundCinenerdleDebugElapsedMs(
+          getCinenerdleDebugNow() - connectionCountsStartedAt,
+        );
         const connectionParentLabel = card.name;
+        const childCardAssemblyStartedAt = getCinenerdleDebugNow();
         const childCards = sortCardsByPopularity(
           fallbackFilms.map(({ movieKey, parsedMovie, movieRecord }) => ({
             ...(movieRecord
@@ -712,24 +1030,55 @@ async function buildChildRowForPersonCard(
           ...childCard,
           connectionOrder: index + 1,
         }));
+        addCinenerdleDebugLog("perf:controller.buildChildRowForPersonCard.breakdown", {
+          childCount: childCards.length,
+          childCardAssemblyElapsedMs: roundCinenerdleDebugElapsedMs(
+            getCinenerdleDebugNow() - childCardAssemblyStartedAt,
+          ),
+          connectionCountsElapsedMs,
+          overrideProvided: personRecordOverride !== undefined,
+          movieCreditGroupCount: movieCreditGroups.length,
+          movieKeyCount: movieKeys.length,
+          path: "fallback",
+          popularityLookupElapsedMs,
+          resolveParentRecordElapsedMs,
+          selectedCardKey: card.key,
+          totalElapsedMs: roundCinenerdleDebugElapsedMs(
+            getCinenerdleDebugNow() - buildStartedAt,
+          ),
+          fallbackFilmsElapsedMs,
+        });
 
         return createRow(childCards);
       }
 
       const movieCredits = movieCreditGroups.map((group) => group[0]).filter(Boolean);
+      const filmRecordsByIdStartedAt = getCinenerdleDebugNow();
       const filmRecordsById = await getFilmRecordsByIds(
         movieCredits
           .map((credit) => credit.id)
           .filter((creditId): creditId is number => typeof creditId === "number"),
       );
-      const popularityByPersonName = await getPersonPopularityByNames(
-        Array.from(filmRecordsById.values()).flatMap((filmRecord) => filmRecord.personConnectionKeys),
+      const filmRecordsByIdElapsedMs = roundCinenerdleDebugElapsedMs(
+        getCinenerdleDebugNow() - filmRecordsByIdStartedAt,
       );
+      const popularityLookupStartedAt = getCinenerdleDebugNow();
+      const popularityByPersonName = getPopularityByPersonNameFromFilmRecords(
+        filmRecordsById.values(),
+      );
+      const popularityLookupElapsedMs = roundCinenerdleDebugElapsedMs(
+        getCinenerdleDebugNow() - popularityLookupStartedAt,
+      );
+      const connectionCountsStartedAt = getCinenerdleDebugNow();
       const connectionCounts = await getPersonRecordCountsByMovieKeys(
         movieCredits.map((credit) => getMovieKeyFromCredit(credit)),
       );
+      const connectionCountsElapsedMs = roundCinenerdleDebugElapsedMs(
+        getCinenerdleDebugNow() - connectionCountsStartedAt,
+      );
       const parentPersonRecord = personRecord;
       const connectionParentLabel = card.name;
+      const childCardAssemblyStartedAt = getCinenerdleDebugNow();
       const childCards = movieCreditGroups.map((creditGroup, index) => {
         const credit = creditGroup[0];
         if (!credit) {
@@ -754,6 +1103,24 @@ async function buildChildRowForPersonCard(
         } as Extract<CinenerdleCard, { kind: "movie" }>;
         return cardWithOrdering;
       }).filter((child): child is NonNullable<typeof child> => child !== null);
+        addCinenerdleDebugLog("perf:controller.buildChildRowForPersonCard.breakdown", {
+          childCount: childCards.length,
+          childCardAssemblyElapsedMs: roundCinenerdleDebugElapsedMs(
+            getCinenerdleDebugNow() - childCardAssemblyStartedAt,
+          ),
+          connectionCountsElapsedMs,
+          filmRecordCount: filmRecordsById.size,
+          filmRecordsByIdElapsedMs,
+          movieCreditGroupCount: movieCreditGroups.length,
+          overrideProvided: personRecordOverride !== undefined,
+          path: "tmdb-credits",
+          popularityLookupElapsedMs,
+          resolveParentRecordElapsedMs,
+        selectedCardKey: card.key,
+        totalElapsedMs: roundCinenerdleDebugElapsedMs(
+          getCinenerdleDebugNow() - buildStartedAt,
+        ),
+      });
 
       return createRow(childCards);
     },
@@ -776,7 +1143,12 @@ async function buildChildRowForMovieCard(
   return measureAsync(
     "controller.buildChildRowForMovieCard",
     async () => {
+      const buildStartedAt = getCinenerdleDebugNow();
+      const resolveParentRecordStartedAt = getCinenerdleDebugNow();
       const movieRecord = await resolveMovieParentRecord(card, movieRecordOverride);
+      const resolveParentRecordElapsedMs = roundCinenerdleDebugElapsedMs(
+        getCinenerdleDebugNow() - resolveParentRecordStartedAt,
+      );
       if (!movieRecord) {
         return null;
       }
@@ -790,11 +1162,15 @@ async function buildChildRowForMovieCard(
           return null;
         }
 
+        const cachedPersonRecordsStartedAt = getCinenerdleDebugNow();
         const cachedPersonRecords = await Promise.all(
           personNames.map(async (personName) => [
             personName,
             await getLocalPersonRecord(personName),
           ] as const),
+        );
+        const cachedPersonRecordsElapsedMs = roundCinenerdleDebugElapsedMs(
+          getCinenerdleDebugNow() - cachedPersonRecordsStartedAt,
         );
         const movieLabels = Array.from(
           new Set(
@@ -804,11 +1180,15 @@ async function buildChildRowForMovieCard(
                     const parsedMovie = parseMoviePathLabel(movieKey);
                     return formatMoviePathLabel(parsedMovie.name, parsedMovie.year);
                   })
-                : [],
+              : [],
             ),
           ),
         );
+        const moviePopularityStartedAt = getCinenerdleDebugNow();
         const moviePopularityByLabel = await getMoviePopularityByLabels(movieLabels);
+        const moviePopularityElapsedMs = roundCinenerdleDebugElapsedMs(
+          getCinenerdleDebugNow() - moviePopularityStartedAt,
+        );
         const popularityByMovieKey = new Map(
           movieLabels.map((movieLabel) => {
             const parsedMovie = parseMoviePathLabel(movieLabel);
@@ -818,8 +1198,13 @@ async function buildChildRowForMovieCard(
             ] as const;
           }),
         );
+        const connectionCountsStartedAt = getCinenerdleDebugNow();
         const filmConnectionCounts = await getFilmRecordCountsByPersonConnectionKeys(personNames);
+        const connectionCountsElapsedMs = roundCinenerdleDebugElapsedMs(
+          getCinenerdleDebugNow() - connectionCountsStartedAt,
+        );
         const connectionParentLabel = formatMoviePathLabel(card.name, card.year);
+        const childCardAssemblyStartedAt = getCinenerdleDebugNow();
         const childCards = sortCardsByPopularity(
           cachedPersonRecords.map(([personName, personRecord]) => {
             const displayName =
@@ -858,14 +1243,37 @@ async function buildChildRowForMovieCard(
           ...childCard,
           connectionOrder: index + 1,
         }));
+        addCinenerdleDebugLog("perf:controller.buildChildRowForMovieCard.breakdown", {
+          cachedPersonRecordCount: cachedPersonRecords.length,
+          cachedPersonRecordsElapsedMs,
+          childCardAssemblyElapsedMs: roundCinenerdleDebugElapsedMs(
+            getCinenerdleDebugNow() - childCardAssemblyStartedAt,
+          ),
+          childCount: childCards.length,
+          connectionCountsElapsedMs,
+          moviePopularityElapsedMs,
+          overrideProvided: movieRecordOverride !== undefined,
+          path: "fallback",
+          personNameCount: personNames.length,
+          resolveParentRecordElapsedMs,
+          selectedCardKey: card.key,
+          totalElapsedMs: roundCinenerdleDebugElapsedMs(
+            getCinenerdleDebugNow() - buildStartedAt,
+          ),
+        });
 
         return createRow(childCards);
       }
 
       const tmdbCredits = tmdbCreditGroups.map((group) => group[0]).filter(Boolean);
+      const connectionCountsStartedAt = getCinenerdleDebugNow();
       const filmConnectionCounts = await getFilmRecordCountsByPersonConnectionKeys(
         tmdbCredits.map((credit) => credit.name ?? ""),
       );
+      const connectionCountsElapsedMs = roundCinenerdleDebugElapsedMs(
+        getCinenerdleDebugNow() - connectionCountsStartedAt,
+      );
+      const cachedPersonRecordsStartedAt = getCinenerdleDebugNow();
       const cachedPersonRecords = await Promise.all(
         tmdbCredits.map(async (credit) => {
           const personName = credit.name ?? "";
@@ -879,27 +1287,10 @@ async function buildChildRowForMovieCard(
           ] as const;
         }),
       );
-      const movieLabels = Array.from(
-        new Set(
-          cachedPersonRecords.flatMap(([, , personRecord]) =>
-            personRecord
-              ? personRecord.movieConnectionKeys.map((movieKey) => {
-                  const parsedMovie = parseMoviePathLabel(movieKey);
-                  return formatMoviePathLabel(parsedMovie.name, parsedMovie.year);
-                })
-              : []),
-        ),
+      const cachedPersonRecordsElapsedMs = roundCinenerdleDebugElapsedMs(
+        getCinenerdleDebugNow() - cachedPersonRecordsStartedAt,
       );
-      const moviePopularityByLabel = await getMoviePopularityByLabels(movieLabels);
-      const popularityByMovieKey = new Map(
-        movieLabels.map((movieLabel) => {
-          const parsedMovie = parseMoviePathLabel(movieLabel);
-          return [
-            getFilmKey(parsedMovie.name, parsedMovie.year),
-            moviePopularityByLabel.get(normalizeTitle(movieLabel)) ?? 0,
-          ] as const;
-        }),
-      );
+      const personDetailsStartedAt = getCinenerdleDebugNow();
       const personDetails = new Map(
         cachedPersonRecords.map(([personKey, personName, cachedPersonRecord]) => [
           personKey,
@@ -909,17 +1300,17 @@ async function buildChildRowForMovieCard(
               cachedPersonRecord,
               filmConnectionCounts,
             ),
-            connectionRank: getParentMovieRankForPerson(
-              movieRecord,
-              cachedPersonRecord,
-              popularityByMovieKey,
-            ),
+            connectionRank: null,
             personRecord: cachedPersonRecord,
           },
         ]),
       );
+      const personDetailsElapsedMs = roundCinenerdleDebugElapsedMs(
+        getCinenerdleDebugNow() - personDetailsStartedAt,
+      );
 
       const connectionParentLabel = formatMoviePathLabel(card.name, card.year);
+      const childCardAssemblyStartedAt = getCinenerdleDebugNow();
       const childCards = tmdbCreditGroups.map((creditGroup, index) => {
         const credit = creditGroup[0];
         if (!credit) {
@@ -936,11 +1327,7 @@ async function buildChildRowForMovieCard(
               cachedPersonRecord,
               filmConnectionCounts,
             ),
-            connectionRank: getParentMovieRankForPerson(
-              movieRecord,
-              cachedPersonRecord,
-              popularityByMovieKey,
-            ),
+            connectionRank: null,
             personRecord: cachedPersonRecord,
           };
         const connectionOrder = index + 1;
@@ -956,6 +1343,24 @@ async function buildChildRowForMovieCard(
         } as Extract<CinenerdleCard, { kind: "person" }>;
         return cardWithOrdering;
       }).filter((child): child is NonNullable<typeof child> => child !== null);
+      addCinenerdleDebugLog("perf:controller.buildChildRowForMovieCard.breakdown", {
+        cachedPersonRecordCount: cachedPersonRecords.length,
+        cachedPersonRecordsElapsedMs,
+        childCardAssemblyElapsedMs: roundCinenerdleDebugElapsedMs(
+          getCinenerdleDebugNow() - childCardAssemblyStartedAt,
+        ),
+        childCount: childCards.length,
+        connectionCountsElapsedMs,
+        overrideProvided: movieRecordOverride !== undefined,
+        path: "tmdb-credits",
+        personDetailsElapsedMs,
+        resolveParentRecordElapsedMs,
+        selectedCardKey: card.key,
+        tmdbCreditCount: tmdbCredits.length,
+        totalElapsedMs: roundCinenerdleDebugElapsedMs(
+          getCinenerdleDebugNow() - buildStartedAt,
+        ),
+      });
 
       return createRow(childCards);
     },
@@ -999,6 +1404,13 @@ async function resolveInitialSelectedCard(
   personRecord?: PersonRecord | null;
 }> {
   if (card.kind === "movie") {
+    if (hasDirectTmdbMovieSource(card.record)) {
+      return {
+        selectedCard: card,
+        movieRecord: card.record,
+      };
+    }
+
     const localMovieRecord = await getLocalMovieRecord(
       card.name,
       card.year,
@@ -1015,6 +1427,13 @@ async function resolveInitialSelectedCard(
           ? refreshSelectedMovieCard(card, movieRecord)
           : card,
       movieRecord,
+    };
+  }
+
+  if (hasDirectTmdbPersonSource(card.record)) {
+    return {
+      selectedCard: card,
+      personRecord: card.record,
     };
   }
 
@@ -1418,6 +1837,8 @@ export function getConnectedItemAttrSourceCards({
 export function resetConnectedItemAttrChildSourcesCache(): void {
   connectedItemAttrChildSourcesCache.clear();
   resolvedConnectedItemAttrChildSourcesCache.clear();
+  resolvedMovieParentRecordCache.clear();
+  resolvedPersonParentRecordCache.clear();
 }
 
 export async function getConnectedItemAttrChildSourceCards(
@@ -1627,21 +2048,20 @@ export function useCinenerdleController({
             "controller.afterCardSelected",
             async () => {
               let didRevealChildGeneration = false;
-              const stageStartedAt = getCinenerdleDebugNow();
-              function logAfterSelectionStage(
-                stage: string,
+              const selectionStartedAt = getCinenerdleDebugNow();
+              function logNewRowDebug(
+                event: string,
                 details?: Record<string, unknown>,
               ) {
-                addCinenerdleDebugLog("perf:controller.afterCardSelected.stage", {
+                addCinenerdleDebugLog(event, {
                   childGenerationIndex,
-                  elapsedMs: roundCinenerdleDebugElapsedMs(
-                    getCinenerdleDebugNow() - stageStartedAt,
-                  ),
                   row: selectedEffectRow,
                   selectedCardKey: selectedCard.key,
                   selectedCardKind: selectedCard.kind,
                   selectionId,
-                  stage,
+                  totalElapsedMs: roundCinenerdleDebugElapsedMs(
+                    getCinenerdleDebugNow() - selectionStartedAt,
+                  ),
                   ...details,
                 });
               }
@@ -1653,33 +2073,31 @@ export function useCinenerdleController({
                   return;
                 }
 
+                const revealStartedAt = getCinenerdleDebugNow();
                 await scrollGenerationIntoVerticalView(childGenerationIndex, {
                   alignRowHorizontally: false,
                 });
                 didRevealChildGeneration = true;
+                logNewRowDebug("perf:controller.newRowRevealed", {
+                  childCount: childRow.length,
+                  revealElapsedMs: roundCinenerdleDebugElapsedMs(
+                    getCinenerdleDebugNow() - revealStartedAt,
+                  ),
+                });
               }
 
               async function scrollFinalizedChildGenerationHorizontally(
                 childRow: GeneratorNode<CinenerdleCard>[] | null,
               ) {
                 if (!childRow || childRow.length === 0) {
-                  logAfterSelectionStage("child-row-horizontal-scroll-skipped", {
-                    childCount: childRow?.length ?? 0,
-                  });
                   return;
                 }
 
                 await revealChildGenerationVertically(childRow);
-                logAfterSelectionStage("child-row-horizontal-scroll-requested", {
-                  childCount: childRow.length,
-                });
                 await scrollGenerationLikeBubble(childGenerationIndex);
-                logAfterSelectionStage("child-row-horizontal-scroll-completed", {
-                  childCount: childRow.length,
-                });
               }
 
-              logAfterSelectionStage("initial-selection-resolve-started");
+              const initialSelectionResolveStartedAt = getCinenerdleDebugNow();
               const initialSelection =
                 selectedCard.kind === "movie" || selectedCard.kind === "person"
                   ? await resolveInitialSelectedCard(selectedCard)
@@ -1688,10 +2106,9 @@ export function useCinenerdleController({
                       movieRecord: undefined,
                       personRecord: undefined,
                     };
-              logAfterSelectionStage("initial-selection-resolved", {
-                resolvedCardKey: initialSelection.selectedCard.key,
-                resolvedCardKind: initialSelection.selectedCard.kind,
-              });
+              const initialSelectionResolveElapsedMs = roundCinenerdleDebugElapsedMs(
+                getCinenerdleDebugNow() - initialSelectionResolveStartedAt,
+              );
               const initialMovieRecord =
                 initialSelection.selectedCard.kind === "movie"
                   ? initialSelection.movieRecord ?? null
@@ -1709,31 +2126,67 @@ export function useCinenerdleController({
                       selectedEffectCol,
                       initialSelection.selectedCard,
                     );
-              logAfterSelectionStage("initial-child-row-build-started");
+              const initialChildRowBuildStartedAt = getCinenerdleDebugNow();
+              const initialLongTaskObserverSupported = ensureCinenerdleLongTaskObserver();
+              logNewRowDebug("perf:controller.selectedChildRowBuildRequested", {
+                hasMovieRecordOverride: initialMovieRecord !== undefined,
+                hasPersonRecordOverride: initialPersonRecord !== undefined,
+                longTaskObserverSupported: initialLongTaskObserverSupported,
+                movieOverrideHasCredits: Boolean(initialMovieRecord?.rawTmdbMovieCreditsResponse),
+                personOverrideHasCredits: Boolean(initialPersonRecord?.rawTmdbMovieCreditsResponse),
+              });
               const initialChildRow = await buildChildRowForCard(initialSelection.selectedCard, {
                 movieRecord: initialMovieRecord,
                 personRecord: initialPersonRecord,
               });
-              logAfterSelectionStage("initial-child-row-built", {
-                childCount: initialChildRow?.length ?? 0,
-              });
+              const initialChildRowBuildEndedAt = getCinenerdleDebugNow();
+              const initialChildRowBuildElapsedMs = roundCinenerdleDebugElapsedMs(
+                initialChildRowBuildEndedAt - initialChildRowBuildStartedAt,
+              );
+              logCinenerdleLongTasksForWindow(
+                "perf:controller.selectedChildRowBuildLongTasks",
+                initialChildRowBuildStartedAt,
+                initialChildRowBuildEndedAt,
+                {
+                  childCount: initialChildRow?.length ?? 0,
+                  hasMovieRecordOverride: initialMovieRecord !== undefined,
+                  hasPersonRecordOverride: initialPersonRecord !== undefined,
+                },
+              );
               const initialSelectedTree = appendChildRow(
                 initialSelectedTreeBase,
                 initialChildRow,
               );
-              const preparedInitialTree = await prepareTreeForRender(
+              const initialPrepareTreeStartedAt = getCinenerdleDebugNow();
+              const preparedInitialTree = await prepareTreeRowsForRender(
                 initialSelectedTree,
                 itemAttrsSnapshot,
+                [
+                  ...(initialSelection.selectedCard === selectedCard ? [] : [selectedEffectRow]),
+                  ...(initialChildRow && initialChildRow.length > 0 ? [childGenerationIndex] : []),
+                ],
               );
+              const initialPrepareTreeElapsedMs = roundCinenerdleDebugElapsedMs(
+                getCinenerdleDebugNow() - initialPrepareTreeStartedAt,
+              );
+              const initialCommitStartedAt = getCinenerdleDebugNow();
               commitSelectionUpdate({
                 meta: {
                   itemAttrsSnapshot,
                 },
                 tree: preparedInitialTree,
               });
-              logAfterSelectionStage("initial-tree-applied", {
+              logNewRowDebug("perf:controller.localTreeCommitted", {
                 childCount: initialChildRow?.length ?? 0,
+                commitElapsedMs: roundCinenerdleDebugElapsedMs(
+                  getCinenerdleDebugNow() - initialCommitStartedAt,
+                ),
+                prepareTreeElapsedMs: initialPrepareTreeElapsedMs,
                 rowCount: preparedInitialTree.length,
+                resolveSelectedCardElapsedMs: initialSelectionResolveElapsedMs,
+                resolvedCardKey: initialSelection.selectedCard.key,
+                resolvedCardKind: initialSelection.selectedCard.kind,
+                selectedChildRowBuildElapsedMs: initialChildRowBuildElapsedMs,
               });
 
               setTmdbLogGeneration(Math.max(0, preparedInitialTree.length - 1));
@@ -1747,15 +2200,17 @@ export function useCinenerdleController({
                 return initialChildRow;
               }
 
-              logAfterSelectionStage("tmdb-refresh-started", {
-                source: "selected-card",
-              });
+              const tmdbRefreshStartedAt = getCinenerdleDebugNow();
               const refreshResult = await refreshCardFromTmdb(initialSelection.selectedCard, {
                 skipIfAlreadyHydrated: true,
               });
-              logAfterSelectionStage("tmdb-refresh-completed", {
+              logNewRowDebug("perf:controller.tmdbRefreshCompleted", {
                 didRefresh: refreshResult.didRefresh,
+                refreshElapsedMs: roundCinenerdleDebugElapsedMs(
+                  getCinenerdleDebugNow() - tmdbRefreshStartedAt,
+                ),
                 refreshedCardKey: refreshResult.refreshedCard.key,
+                refreshedCardKind: refreshResult.refreshedCard.kind,
               });
               if (!refreshResult.didRefresh) {
                 void scrollFinalizedChildGenerationHorizontally(initialChildRow).catch(() => { });
@@ -1768,28 +2223,79 @@ export function useCinenerdleController({
                 selectedEffectCol,
                 refreshResult.refreshedCard,
               );
-              logAfterSelectionStage("refreshed-child-row-build-started");
-              const refreshedChildRow = await buildChildRowForCard(refreshResult.refreshedCard);
-              logAfterSelectionStage("refreshed-child-row-built", {
-                childCount: refreshedChildRow?.length ?? 0,
+              const refreshedChildRowBuildStartedAt = getCinenerdleDebugNow();
+              const refreshedLongTaskObserverSupported = ensureCinenerdleLongTaskObserver();
+              logNewRowDebug("perf:controller.refreshedChildRowBuildRequested", {
+                hasMovieRecordOverride: refreshResult.refreshedCard.kind === "movie",
+                hasPersonRecordOverride: refreshResult.refreshedCard.kind === "person",
+                longTaskObserverSupported: refreshedLongTaskObserverSupported,
+                movieOverrideHasCredits: Boolean(
+                  refreshResult.refreshedCard.kind === "movie"
+                    ? refreshResult.refreshedCard.record?.rawTmdbMovieCreditsResponse
+                    : false,
+                ),
+                personOverrideHasCredits: Boolean(
+                  refreshResult.refreshedCard.kind === "person"
+                    ? refreshResult.refreshedCard.record?.rawTmdbMovieCreditsResponse
+                    : false,
+                ),
               });
+              const refreshedChildRow = await buildChildRowForCard(refreshResult.refreshedCard, {
+                movieRecord:
+                  refreshResult.refreshedCard.kind === "movie"
+                    ? refreshResult.refreshedCard.record
+                    : undefined,
+                personRecord:
+                  refreshResult.refreshedCard.kind === "person"
+                    ? refreshResult.refreshedCard.record
+                    : undefined,
+              });
+              const refreshedChildRowBuildEndedAt = getCinenerdleDebugNow();
+              const refreshedChildRowBuildElapsedMs = roundCinenerdleDebugElapsedMs(
+                refreshedChildRowBuildEndedAt - refreshedChildRowBuildStartedAt,
+              );
+              logCinenerdleLongTasksForWindow(
+                "perf:controller.refreshedChildRowBuildLongTasks",
+                refreshedChildRowBuildStartedAt,
+                refreshedChildRowBuildEndedAt,
+                {
+                  childCount: refreshedChildRow?.length ?? 0,
+                  refreshedCardKey: refreshResult.refreshedCard.key,
+                  refreshedCardKind: refreshResult.refreshedCard.kind,
+                },
+              );
               const refreshedTree = appendChildRow(
                 refreshedSelectedTreeBase,
                 refreshedChildRow,
               );
-              const preparedRefreshedTree = await prepareTreeForRender(
+              const refreshedPrepareTreeStartedAt = getCinenerdleDebugNow();
+              const preparedRefreshedTree = await prepareTreeRowsForRender(
                 refreshedTree,
                 itemAttrsSnapshot,
+                [
+                  selectedEffectRow,
+                  ...(refreshedChildRow && refreshedChildRow.length > 0 ? [childGenerationIndex] : []),
+                ],
               );
+              const refreshedPrepareTreeElapsedMs = roundCinenerdleDebugElapsedMs(
+                getCinenerdleDebugNow() - refreshedPrepareTreeStartedAt,
+              );
+              const refreshedCommitStartedAt = getCinenerdleDebugNow();
               commitSelectionUpdate({
                 meta: {
                   itemAttrsSnapshot,
                 },
                 tree: preparedRefreshedTree,
               });
-              logAfterSelectionStage("refreshed-tree-applied", {
+              logNewRowDebug("perf:controller.tmdbTreeCommitted", {
                 childCount: refreshedChildRow?.length ?? 0,
+                commitElapsedMs: roundCinenerdleDebugElapsedMs(
+                  getCinenerdleDebugNow() - refreshedCommitStartedAt,
+                ),
+                prepareTreeElapsedMs: refreshedPrepareTreeElapsedMs,
+                refreshedCardKey: refreshResult.refreshedCard.key,
                 rowCount: preparedRefreshedTree.length,
+                selectedChildRowBuildElapsedMs: refreshedChildRowBuildElapsedMs,
               });
 
               setTmdbLogGeneration(Math.max(0, preparedRefreshedTree.length - 1));

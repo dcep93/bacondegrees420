@@ -32,6 +32,26 @@ function dedupeItemAttrs(itemAttrs: string[]): string[] {
   return dedupedAttrs;
 }
 
+function areItemAttrArraysEqual(left: string[] | undefined, right: string[]): boolean {
+  if (left === right) {
+    return true;
+  }
+
+  if (!left || left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((entry, index) => entry === right[index]);
+}
+
+function areRowOrderMetadataEqual(
+  left: GeneratorNode<CinenerdleCard>["rowOrderMetadata"],
+  right: GeneratorNode<CinenerdleCard>["rowOrderMetadata"],
+): boolean {
+  return (left?.activeCount ?? 0) === (right?.activeCount ?? 0) &&
+    (left?.passiveCount ?? 0) === (right?.passiveCount ?? 0);
+}
+
 function getMovieConnectionTargets(
   card: Extract<CinenerdleCard, { kind: "movie" }>,
 ): CinenerdleItemAttrTarget[] {
@@ -136,13 +156,23 @@ export function enrichCinenerdleCardWithItemAttrs(
       getItemAttrsForTargetFromSnapshot(itemAttrsSnapshot, target)),
   );
   const inheritedItemAttrs = connectedItemAttrs.filter((itemAttr) => !itemAttrs.includes(itemAttr));
+  const itemAttrCounts = getCinenerdleItemAttrCounts(itemAttrs, inheritedItemAttrs);
+
+  if (
+    areItemAttrArraysEqual(card.itemAttrs, itemAttrs) &&
+    areItemAttrArraysEqual(card.connectedItemAttrs, connectedItemAttrs) &&
+    areItemAttrArraysEqual(card.inheritedItemAttrs, inheritedItemAttrs) &&
+    areRowOrderMetadataEqual(card.itemAttrCounts, itemAttrCounts)
+  ) {
+    return card;
+  }
 
   return {
     ...card,
     itemAttrs,
     connectedItemAttrs,
     inheritedItemAttrs,
-    itemAttrCounts: getCinenerdleItemAttrCounts(itemAttrs, inheritedItemAttrs),
+    itemAttrCounts,
   };
 }
 
@@ -159,15 +189,46 @@ export function getCinenerdleCardRowOrderMetadata(
 export function enrichCinenerdleTreeWithItemAttrs(
   tree: GeneratorTree<CinenerdleCard>,
   itemAttrsSnapshot: CinenerdleItemAttrs,
+  options?: {
+    generationIndexes?: number[];
+  },
 ): GeneratorTree<CinenerdleCard> {
-  return tree.map((row) =>
-    row.map((node) => {
+  const targetedGenerationIndexes = options?.generationIndexes
+    ? new Set(options.generationIndexes)
+    : null;
+  let didChangeTree = false;
+  const nextTree = tree.map((row, generationIndex) => {
+    if (targetedGenerationIndexes && !targetedGenerationIndexes.has(generationIndex)) {
+      return row;
+    }
+
+    let didChangeRow = false;
+    const nextRow = row.map((node) => {
       const enrichedCard = enrichCinenerdleCardWithItemAttrs(node.data, itemAttrsSnapshot);
+      const rowOrderMetadata = getCinenerdleCardRowOrderMetadata(enrichedCard);
+
+      if (
+        enrichedCard === node.data &&
+        areRowOrderMetadataEqual(node.rowOrderMetadata, rowOrderMetadata)
+      ) {
+        return node;
+      }
+
+      didChangeRow = true;
       return {
         ...node,
         data: enrichedCard,
-        rowOrderMetadata: getCinenerdleCardRowOrderMetadata(enrichedCard),
+        rowOrderMetadata,
       };
-    }),
-  );
+    });
+
+    if (!didChangeRow) {
+      return row;
+    }
+
+    didChangeTree = true;
+    return nextRow;
+  });
+
+  return didChangeTree ? nextTree : tree;
 }

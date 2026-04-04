@@ -118,6 +118,12 @@ type GeneratorRowOrderDebugEntry = {
   itemLabel: string | null;
 };
 
+type SelectionClickTelemetry = {
+  clickAtEpochMs: number;
+  clickAtIso: string;
+  clickStartedAt: number;
+};
+
 let nextGeneratorRowTelemetryId = 1;
 const generatorRowTelemetryById = new Map<number, GeneratorRowOrderTelemetry>();
 const MAX_REORDERED_ITEMS_TO_LOG = 32;
@@ -277,6 +283,7 @@ type GeneratorRowViewProps<T> = {
 const SLOW_GENERATOR_COMMIT_THRESHOLD_MS = 24;
 const SLOW_GENERATOR_DERIVATION_THRESHOLD_MS = 8;
 const SLOW_GENERATOR_ROW_THRESHOLD_MS = 8;
+const SLOW_GENERATOR_RENDER_WAIT_THRESHOLD_MS = 120;
 
 function getGeneratorPerfNow(): number {
   if (typeof performance !== "undefined" && typeof performance.now === "function") {
@@ -290,13 +297,46 @@ function roundGeneratorPerfElapsedMs(value: number): number {
   return Number(value.toFixed(2));
 }
 
-function addGeneratorStageDebugLog(
-  event: string,
+function getGeneratorRowRenderSampleSummary(sample: GeneratorRowRenderSample): Record<string, unknown> {
+  return {
+    cardCount: sample.cardCount,
+    elapsedMs: sample.elapsedMs,
+    generationIndex: sample.generationIndex,
+    metadataCallbackCount: sample.metadataCallbackCount,
+    metadataChangedCount: sample.metadataChangedCount,
+    metadataDeletedCount: sample.metadataDeletedCount,
+    metadataNoopCount: sample.metadataNoopCount,
+    phase: sample.phase,
+    reorderedItemCount: sample.reorderedItemCount,
+    rowOrderChanged: sample.rowOrderChanged,
+    selectedAncestorCount: sample.selectedAncestorCount,
+  };
+}
+
+function logGeneratorRenderWait(
+  context: "scrollGenerationIntoVerticalView" | "scrollGenerationLikeBubble",
   startedAt: number,
-  details: Record<string, unknown>,
+  result: GenerationRenderWaitResult,
+  details?: Record<string, unknown>,
 ): void {
-  addCinenerdleDebugLog(event, {
-    elapsedMs: roundGeneratorPerfElapsedMs(getGeneratorPerfNow() - startedAt),
+  const elapsedMs = roundGeneratorPerfElapsedMs(getGeneratorPerfNow() - startedAt);
+  if (elapsedMs < SLOW_GENERATOR_RENDER_WAIT_THRESHOLD_MS && isGenerationRenderReady(result)) {
+    return;
+  }
+
+  addCinenerdleDebugLog("perf:abstractGenerator.generationRenderWait", {
+    context,
+    elapsedMs,
+    framesWaited: result.framesWaited,
+    generationIndex: result.generationIndex,
+    hasGeneration: result.hasGeneration,
+    hasRowElement: result.hasRowElement,
+    hasTargetCard: result.hasTargetCard,
+    renderedOriginalCols: result.renderedOriginalCols,
+    rowLength: result.rowLength,
+    selectedIndex: result.selectedIndex,
+    targetCardIndex: result.targetCardIndex,
+    targetDataKey: result.targetDataKey,
     ...details,
   });
 }
@@ -894,6 +934,8 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     row: number;
     selectionId: number;
   }>(null);
+  const selectionClickTelemetryRef = useRef<Map<number, SelectionClickTelemetry>>(new Map());
+  const loggedImmediateSelectionPaintIdsRef = useRef<Set<number>>(new Set());
   const pendingInitialTreeRenderRef = useRef<null | {
     acceptedAt: number;
     lifecycleId: number;
@@ -1055,6 +1097,54 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     () => resolveGeneratorTree(state),
     [state],
   );
+
+  useEffect(() => {
+    if (!immediateSelection || typeof window === "undefined") {
+      return;
+    }
+
+    const { col, row, selectionId } = immediateSelection;
+    if (loggedImmediateSelectionPaintIdsRef.current.has(selectionId)) {
+      return;
+    }
+
+    const clickTelemetry = selectionClickTelemetryRef.current.get(selectionId);
+    if (!clickTelemetry) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      if (loggedImmediateSelectionPaintIdsRef.current.has(selectionId)) {
+        return;
+      }
+
+      const isTreeSelected = Boolean(resolvedTree[row]?.[col]?.selected);
+      loggedImmediateSelectionPaintIdsRef.current.add(selectionId);
+      if (loggedImmediateSelectionPaintIdsRef.current.size > 20) {
+        const oldestSelectionId = loggedImmediateSelectionPaintIdsRef.current.values().next().value;
+        if (typeof oldestSelectionId === "number") {
+          loggedImmediateSelectionPaintIdsRef.current.delete(oldestSelectionId);
+        }
+      }
+
+      addCinenerdleDebugLog("perf:abstractGenerator.immediateSelectionPainted", {
+        clickAtEpochMs: clickTelemetry.clickAtEpochMs,
+        clickAtIso: clickTelemetry.clickAtIso,
+        col,
+        elapsedSinceClickMs: roundGeneratorPerfElapsedMs(
+          getGeneratorPerfNow() - clickTelemetry.clickStartedAt,
+        ),
+        row,
+        selectionId,
+        selectedVia: isTreeSelected ? "tree" : "immediate-selection",
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [immediateSelection, resolvedTree]);
+
   const renderStartedAt = getGeneratorPerfNow();
   const {
     derivationElapsedMs,
@@ -1315,23 +1405,8 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       getState: () => stateRef.current,
       getRowElement: (index) => rowRefs.current[index],
     });
+    let didRetryWait = false;
     let waitResult = await getWaitResult();
-    addGeneratorStageDebugLog(
-      "perf:abstractGenerator.scrollGenerationLikeBubble.stage",
-      scrollStartedAt,
-      {
-        framesWaited: waitResult.framesWaited,
-        generationIndex,
-        hasGeneration: waitResult.hasGeneration,
-        hasRowElement: waitResult.hasRowElement,
-        hasTargetCard: waitResult.hasTargetCard,
-        stage: isGenerationRenderReady(waitResult)
-          ? "initial-wait-completed"
-          : "initial-wait-timeout",
-        targetCardIndex: waitResult.targetCardIndex,
-        targetDataKey: waitResult.targetDataKey,
-      },
-    );
     debugLog?.(
       isGenerationRenderReady(waitResult)
         ? "generator:scroll-like-bubble-ready"
@@ -1344,23 +1419,8 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       !isGenerationRenderReady(waitResult) &&
       waitResult.hasGeneration
     ) {
+      didRetryWait = true;
       waitResult = await getWaitResult();
-      addGeneratorStageDebugLog(
-        "perf:abstractGenerator.scrollGenerationLikeBubble.stage",
-        scrollStartedAt,
-        {
-          framesWaited: waitResult.framesWaited,
-          generationIndex,
-          hasGeneration: waitResult.hasGeneration,
-          hasRowElement: waitResult.hasRowElement,
-          hasTargetCard: waitResult.hasTargetCard,
-          stage: isGenerationRenderReady(waitResult)
-            ? "retry-wait-completed"
-            : "retry-wait-timeout",
-          targetCardIndex: waitResult.targetCardIndex,
-          targetDataKey: waitResult.targetDataKey,
-        },
-      );
       debugLog?.(
         isGenerationRenderReady(waitResult)
           ? "generator:scroll-like-bubble-retry-ready"
@@ -1370,15 +1430,11 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     }
 
     if (!mountedRef.current) {
-      addGeneratorStageDebugLog(
-        "perf:abstractGenerator.scrollGenerationLikeBubble.stage",
-        scrollStartedAt,
-        {
-          generationIndex,
-          reason: "unmounted",
-          stage: "aborted",
-        },
-      );
+      logGeneratorRenderWait("scrollGenerationLikeBubble", scrollStartedAt, waitResult, {
+        didRetryWait,
+        outcome: "aborted",
+        reason: "unmounted",
+      });
       debugLog?.("generator:scroll-like-bubble-aborted", {
         generationIndex,
         reason: "unmounted",
@@ -1387,17 +1443,11 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     }
 
     if (!isGenerationRenderReady(waitResult)) {
-      addGeneratorStageDebugLog(
-        "perf:abstractGenerator.scrollGenerationLikeBubble.stage",
-        scrollStartedAt,
-        {
-          generationIndex,
-          reason: "row-not-ready",
-          stage: "aborted",
-          targetCardIndex: waitResult.targetCardIndex,
-          targetDataKey: waitResult.targetDataKey,
-        },
-      );
+      logGeneratorRenderWait("scrollGenerationLikeBubble", scrollStartedAt, waitResult, {
+        didRetryWait,
+        outcome: "timeout",
+        reason: "row-not-ready",
+      });
       debugLog?.("generator:scroll-like-bubble-aborted", {
         generationIndex,
         reason: "row-not-ready",
@@ -1410,16 +1460,11 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       generationIndex,
       targetRowExists: Boolean(rowRefs.current[generationIndex]),
     });
-    addGeneratorStageDebugLog(
-      "perf:abstractGenerator.scrollGenerationLikeBubble.stage",
-      scrollStartedAt,
-      {
-        generationIndex,
-        stage: "execute",
-        targetDataKey: waitResult.targetDataKey,
-        targetRowExists: Boolean(rowRefs.current[generationIndex]),
-      },
-    );
+    logGeneratorRenderWait("scrollGenerationLikeBubble", scrollStartedAt, waitResult, {
+      didRetryWait,
+      outcome: "ready",
+      targetRowExists: Boolean(rowRefs.current[generationIndex]),
+    });
     lastHorizontalAlignmentRef.current = {
       generationIndex,
       targetDataKey: waitResult.targetDataKey,
@@ -1442,24 +1487,6 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       getState: () => stateRef.current,
       getRowElement: (index) => rowRefs.current[index],
     });
-    addGeneratorStageDebugLog(
-      "perf:abstractGenerator.scrollGenerationIntoVerticalView.stage",
-      scrollStartedAt,
-      {
-        alignRowHorizontally,
-        framesWaited: waitResult.framesWaited,
-        generationIndex,
-        hasGeneration: waitResult.hasGeneration,
-        hasRowElement: waitResult.hasRowElement,
-        hasTargetCard: waitResult.hasTargetCard,
-        stage:
-          waitResult.hasGeneration && waitResult.hasRowElement && waitResult.hasTargetCard
-            ? "wait-completed"
-            : "wait-timeout",
-        targetCardIndex: waitResult.targetCardIndex,
-        targetDataKey: waitResult.targetDataKey,
-      },
-    );
     debugLog?.(
       waitResult.hasGeneration && waitResult.hasRowElement && waitResult.hasTargetCard
         ? "generator:scroll-vertical-ready"
@@ -1468,16 +1495,11 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     );
 
     if (!mountedRef.current) {
-      addGeneratorStageDebugLog(
-        "perf:abstractGenerator.scrollGenerationIntoVerticalView.stage",
-        scrollStartedAt,
-        {
-          alignRowHorizontally,
-          generationIndex,
-          reason: "unmounted",
-          stage: "aborted",
-        },
-      );
+      logGeneratorRenderWait("scrollGenerationIntoVerticalView", scrollStartedAt, waitResult, {
+        alignRowHorizontally,
+        outcome: "aborted",
+        reason: "unmounted",
+      });
       debugLog?.("generator:scroll-vertical-aborted", {
         generationIndex,
         reason: "unmounted",
@@ -1487,16 +1509,11 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
 
     const rowElement = rowRefs.current[generationIndex];
     if (!rowElement) {
-      addGeneratorStageDebugLog(
-        "perf:abstractGenerator.scrollGenerationIntoVerticalView.stage",
-        scrollStartedAt,
-        {
-          alignRowHorizontally,
-          generationIndex,
-          reason: "missing-row-element",
-          stage: "aborted",
-        },
-      );
+      logGeneratorRenderWait("scrollGenerationIntoVerticalView", scrollStartedAt, waitResult, {
+        alignRowHorizontally,
+        outcome: "aborted",
+        reason: "missing-row-element",
+      });
       debugLog?.("generator:scroll-vertical-aborted", {
         generationIndex,
         reason: "missing-row-element",
@@ -1515,16 +1532,6 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
         generationIndex,
         targetDataKey: waitResult.targetDataKey,
       });
-      addGeneratorStageDebugLog(
-        "perf:abstractGenerator.scrollGenerationIntoVerticalView.stage",
-        scrollStartedAt,
-        {
-          alignRowHorizontally,
-          generationIndex,
-          stage: "align-row",
-          targetDataKey: waitResult.targetDataKey,
-        },
-      );
       lastHorizontalAlignmentRef.current = {
         generationIndex,
         targetDataKey: waitResult.targetDataKey,
@@ -1536,16 +1543,11 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       alignRowHorizontally,
       generationIndex,
     });
-    addGeneratorStageDebugLog(
-      "perf:abstractGenerator.scrollGenerationIntoVerticalView.stage",
-      scrollStartedAt,
-      {
-        alignRowHorizontally,
-        generationIndex,
-        stage: "execute",
-        targetDataKey: waitResult.targetDataKey,
-      },
-    );
+    logGeneratorRenderWait("scrollGenerationIntoVerticalView", scrollStartedAt, waitResult, {
+      alignRowHorizontally,
+      outcome: "ready",
+      rowElementWidth: rowElement.getBoundingClientRect().width,
+    });
     scrollElementIntoVerticalView(rowElement, "smooth");
   }, [debugLog]);
 
@@ -1657,13 +1659,13 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       },
       [],
     );
+    const appendedGenerationIndexes = changedGenerationIndexes.filter((generationIndex) =>
+      generationIndex >= previousCommittedTree.length,
+    );
+    const changedGenerationIndexSet = new Set(changedGenerationIndexes);
 
     if (isPerfLoggingEnabled()) {
-      const appendedGenerationIndexes = changedGenerationIndexes.filter((generationIndex) =>
-        generationIndex >= previousCommittedTree.length,
-      );
       const elapsedMs = roundGeneratorPerfElapsedMs(getGeneratorPerfNow() - renderStartedAt);
-      const changedGenerationIndexSet = new Set(changedGenerationIndexes);
       const rerenderedUnchangedGenerationIndexes = rowRenderSamples
         .filter((sample) => !changedGenerationIndexSet.has(sample.generationIndex))
         .map((sample) => sample.generationIndex);
@@ -1740,6 +1742,46 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
 
       slowRowSamples.forEach((sample) => {
         logPerf("abstractGenerator.renderRow", sample);
+      });
+    }
+
+    if (previousCommittedTree.length > 0 && appendedGenerationIndexes.length > 0) {
+      const elapsedMs = roundGeneratorPerfElapsedMs(getGeneratorPerfNow() - renderStartedAt);
+      const appendedGenerationIndexSet = new Set(appendedGenerationIndexes);
+      const appendedGenerationSamples = rowRenderSamples
+        .filter((sample) => appendedGenerationIndexSet.has(sample.generationIndex))
+        .map(getGeneratorRowRenderSampleSummary);
+      const slowestRowSamples = [...rowRenderSamples]
+        .sort((left, right) => right.elapsedMs - left.elapsedMs)
+        .slice(0, 5)
+        .map(getGeneratorRowRenderSampleSummary);
+      const selectionId = activeSelectionRef.current;
+      const clickTelemetry = selectionClickTelemetryRef.current.get(selectionId);
+
+      addCinenerdleDebugLog("perf:abstractGenerator.newRowCommitted", {
+        appendedGenerationIndexes,
+        appendedGenerationSamples,
+        changedGenerationCount: changedGenerationIndexes.length,
+        changedGenerationIndexes,
+        clickAtEpochMs: clickTelemetry?.clickAtEpochMs ?? null,
+        clickAtIso: clickTelemetry?.clickAtIso ?? null,
+        derivationElapsedMs,
+        elapsedMs,
+        elapsedSinceClickMs: clickTelemetry
+          ? roundGeneratorPerfElapsedMs(getGeneratorPerfNow() - clickTelemetry.clickStartedAt)
+          : null,
+        renderedGenerationCount: rowRenderSamples.length,
+        renderedGenerationIndexes: rowRenderSamples.map((sample) => sample.generationIndex),
+        rerenderedUnchangedGenerationIndexes: rowRenderSamples
+          .filter((sample) => !changedGenerationIndexSet.has(sample.generationIndex))
+          .map((sample) => sample.generationIndex),
+        rowCount: resolvedTree.length,
+        rowRenderElapsedMsTotal: roundGeneratorPerfElapsedMs(
+          rowRenderSamples.reduce((total, sample) => total + sample.elapsedMs, 0),
+        ),
+        selectionId,
+        slowestRowSamples,
+        totalCardCount,
       });
     }
 
@@ -1842,13 +1884,26 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     const nextSelectionId = activeSelectionRef.current + 1;
     activeSelectionRef.current = nextSelectionId;
     const selectionMarkName = `abstractGenerator.selectCard.${nextSelectionId}`;
-    const selectionStartedAt = getGeneratorPerfNow();
-    addGeneratorStageDebugLog("perf:abstractGenerator.selectCard.stage", selectionStartedAt, {
+    const clickStartedAt = getGeneratorPerfNow();
+    const clickDate = new Date();
+    selectionClickTelemetryRef.current.set(nextSelectionId, {
+      clickAtEpochMs: clickDate.getTime(),
+      clickAtIso: clickDate.toISOString(),
+      clickStartedAt,
+    });
+    if (selectionClickTelemetryRef.current.size > 20) {
+      const oldestSelectionId = selectionClickTelemetryRef.current.keys().next().value;
+      if (typeof oldestSelectionId === "number") {
+        selectionClickTelemetryRef.current.delete(oldestSelectionId);
+      }
+    }
+    addCinenerdleDebugLog("perf:abstractGenerator.cardClicked", {
+      clickAtEpochMs: clickDate.getTime(),
+      clickAtIso: clickDate.toISOString(),
       col,
       row,
       rowCount: currentTree.length,
       selectionId: nextSelectionId,
-      stage: "click-received",
       totalCardCount: currentTree.reduce((count, generation) => count + generation.length, 0),
     });
     if (isPerfLoggingEnabled()) {
@@ -1898,119 +1953,89 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
         selectionId: nextSelectionId,
       });
     }
-    addGeneratorStageDebugLog("perf:abstractGenerator.selectCard.stage", selectionStartedAt, {
-      col,
-      row,
-      selectionId: nextSelectionId,
-      stage: "local-state-applied",
-    });
-
-    if (isPerfLoggingEnabled()) {
-      logPerfSinceMark("abstractGenerator.selectCard.scrollRequested", selectionMarkName, {
-        col,
-        row,
-        selectionId: nextSelectionId,
-      });
-    }
-    addGeneratorStageDebugLog("perf:abstractGenerator.selectCard.stage", selectionStartedAt, {
-      col,
-      row,
-      selectionId: nextSelectionId,
-      stage: "scroll-requested",
-    });
-    if (currentCardElement) {
-      scrollCardElementIntoViewInTree(currentTree, row, currentCardElement, {
-        behavior: "smooth",
-        includeVerticalScroll: true,
-      });
-    } else {
-      scrollToCardIndexInTree(currentTree, row, col, {
-        behavior: "smooth",
-      });
-      const rowTrack = rowRefs.current[row];
-      if (rowTrack) {
-        scrollElementIntoVerticalView(rowTrack, "smooth");
-      }
-    }
-    if (isPerfLoggingEnabled()) {
-      logPerfSinceMark("abstractGenerator.selectCard.scrollIssued", selectionMarkName, {
-        col,
-        row,
-        selectionId: nextSelectionId,
-      });
-    }
-    addGeneratorStageDebugLog("perf:abstractGenerator.selectCard.stage", selectionStartedAt, {
-      col,
-      row,
-      selectionId: nextSelectionId,
-      stage: "scroll-issued",
-      usedCardElement: Boolean(currentCardElement),
-    });
-
-    const transition = reduce(stateRef.current, {
-      type: "select",
-      row,
-      col,
-    });
-    addGeneratorStageDebugLog("perf:abstractGenerator.selectCard.stage", selectionStartedAt, {
-      col,
-      effectCount: transition.effects.length,
-      row,
-      selectionId: nextSelectionId,
-      stage: "selection-transition-derived",
-    });
-
-    stateRef.current = transition.state;
-    flushSync(() => {
-      setState(transition.state);
-    });
-    addGeneratorStageDebugLog("perf:abstractGenerator.selectCard.stage", selectionStartedAt, {
-      col,
-      row,
-      selectionId: nextSelectionId,
-      stage: "selection-state-enqueued",
-    });
 
     schedulePostSelectionWork(() => {
-      void (async () => {
-        await waitForBrowserPaint();
+      if (
+        !mountedRef.current ||
+        activeSelectionRef.current !== nextSelectionId
+      ) {
+        return;
+      }
 
-        if (
-          !mountedRef.current ||
-          activeSelectionRef.current !== nextSelectionId
-        ) {
+      if (isPerfLoggingEnabled()) {
+        logPerfSinceMark("abstractGenerator.selectCard.scrollRequested", selectionMarkName, {
+          col,
+          row,
+          selectionId: nextSelectionId,
+        });
+      }
+      if (currentCardElement) {
+        scrollCardElementIntoViewInTree(currentTree, row, currentCardElement, {
+          behavior: "smooth",
+          includeVerticalScroll: true,
+        });
+      } else {
+        scrollToCardIndexInTree(currentTree, row, col, {
+          behavior: "smooth",
+        });
+        const rowTrack = rowRefs.current[row];
+        if (rowTrack) {
+          scrollElementIntoVerticalView(rowTrack, "smooth");
+        }
+      }
+      if (isPerfLoggingEnabled()) {
+        logPerfSinceMark("abstractGenerator.selectCard.scrollIssued", selectionMarkName, {
+          col,
+          row,
+          selectionId: nextSelectionId,
+        });
+      }
+
+      const transition = reduce(stateRef.current, {
+        type: "select",
+        row,
+        col,
+      });
+
+      stateRef.current = transition.state;
+      flushSync(() => {
+        setState(transition.state);
+      });
+
+      schedulePostSelectionWork(() => {
+        void (async () => {
+          await waitForBrowserPaint();
+
+          if (
+            !mountedRef.current ||
+            activeSelectionRef.current !== nextSelectionId
+          ) {
+            if (isPerfLoggingEnabled()) {
+              logPerfSinceMark("abstractGenerator.selectCard.effectsAborted", selectionMarkName, {
+                col,
+                reason: !mountedRef.current ? "unmounted" : "superseded",
+                row,
+                selectionId: nextSelectionId,
+              });
+            }
+            return;
+          }
+
           if (isPerfLoggingEnabled()) {
-            logPerfSinceMark("abstractGenerator.selectCard.effectsAborted", selectionMarkName, {
+            logPerfSinceMark("abstractGenerator.selectCard.effectsStarted", selectionMarkName, {
               col,
-              reason: !mountedRef.current ? "unmounted" : "superseded",
+              effectCount: transition.effects.length,
               row,
               selectionId: nextSelectionId,
             });
           }
-          return;
-        }
-
-        if (isPerfLoggingEnabled()) {
-          logPerfSinceMark("abstractGenerator.selectCard.effectsStarted", selectionMarkName, {
-            col,
-            effectCount: transition.effects.length,
-            row,
-            selectionId: nextSelectionId,
-          });
-        }
-        addGeneratorStageDebugLog("perf:abstractGenerator.selectCard.stage", selectionStartedAt, {
-          col,
-          effectCount: transition.effects.length,
-          row,
-          selectionId: nextSelectionId,
-          stage: "effects-started",
-        });
-        await runEffects(
-          transition.effects,
-          activeLifecycleRef.current,
-          nextSelectionId,
-        );
-      })();
+          await runEffects(
+            transition.effects,
+            activeLifecycleRef.current,
+            nextSelectionId,
+          );
+        })();
+      });
     });
   }, [reduce, runEffects, scrollCardElementIntoViewInTree, scrollToCardIndexInTree]);
 
