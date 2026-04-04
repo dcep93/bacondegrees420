@@ -30,6 +30,7 @@ import {
   connectCinenerdleIndexedDbBootstrap,
   type CinenerdleIndexedDbBootstrapStatus,
 } from "./generators/cinenerdle2/bootstrap";
+import type { ConnectedSuggestionMatchTarget } from "./generators/cinenerdle2/connected_suggestion_match";
 import {
   copyCinenerdleBootstrapDebugLogToClipboard,
   copyCinenerdleDebugLogToClipboard,
@@ -42,6 +43,7 @@ import {
   CINENERDLE_DEBUG_LOG_UPDATED_EVENT,
   getCinenerdleFetchDebugEntryCount,
 } from "./generators/cinenerdle2/debug_log";
+import { getValidTmdbEntityId } from "./generators/cinenerdle2/utils";
 import {
   startIdleFetch,
   type IdleFetchHandle,
@@ -108,7 +110,7 @@ export default function AppX() {
   const [connectedSuggestionSelectionRequest, setConnectedSuggestionSelectionRequest] = useState<{
     nextHash: string;
     requestKey: string;
-    suggestionKey: string;
+    suggestion: ConnectedSuggestionMatchTarget;
   } | null>(null);
   const [connectionPathAppendRequest, setConnectionPathAppendRequest] = useState<{
     nextHash: string;
@@ -135,7 +137,8 @@ export default function AppX() {
   const [clearDbFetchCount, setClearDbFetchCount] = useState(() => getCinenerdleFetchDebugEntryCount());
   const [clearDbTotalFetchCount, setClearDbTotalFetchCount] =
     useState(() => getCinenerdleFetchDebugEntryCount());
-  const [highlightedConnectedSuggestionKey, setHighlightedConnectedSuggestionKey] = useState<string | null>(null);
+  const [highlightedConnectedSuggestion, setHighlightedConnectedSuggestion] =
+    useState<ConnectedSuggestionMatchTarget | null>(null);
   const titleRef = useRef<HTMLHeadingElement | null>(null);
   const clearDbButtonRef = useRef<HTMLButtonElement | null>(null);
   const toastStatusRef = useRef<HTMLSpanElement | null>(null);
@@ -194,18 +197,43 @@ export default function AppX() {
     [openHashInNewTab],
   );
 
-  const handleConnectedSuggestionHighlight = useCallback((suggestion: ConnectionSuggestion | null) => {
-    setHighlightedConnectedSuggestionKey(suggestion?.key ?? null);
+  const createConnectedSuggestionMatchTarget = useCallback((
+    suggestion: ConnectionSuggestion,
+  ): ConnectedSuggestionMatchTarget | null => {
+    const id = getValidTmdbEntityId(suggestion.tmdbId);
+    if (id === null) {
+      return null;
+    }
+
+    return {
+      bucket: suggestion.kind,
+      id,
+    };
   }, []);
+
+  const handleConnectedSuggestionHighlight = useCallback((suggestion: ConnectionSuggestion | null) => {
+    setHighlightedConnectedSuggestion(
+      suggestion ? createConnectedSuggestionMatchTarget(suggestion) : null,
+    );
+  }, [createConnectedSuggestionMatchTarget]);
 
   const handleSelectConnectedSuggestionAsYoungest = useCallback((suggestion: ConnectionSuggestion) => {
     connectedSuggestionSelectionRequestIdRef.current += 1;
+    const requestKey = `connected-suggestion-selection-${connectedSuggestionSelectionRequestIdRef.current}`;
+    const nextHash = appendConnectionEntityToHash(hashValue, suggestion);
+    const suggestionTarget = createConnectedSuggestionMatchTarget(suggestion);
+
+    if (!suggestionTarget) {
+      navigateToHash(nextHash, "navigation");
+      return;
+    }
+
     setConnectedSuggestionSelectionRequest({
-      nextHash: appendConnectionEntityToHash(hashValue, suggestion),
-      requestKey: `connected-suggestion-selection-${connectedSuggestionSelectionRequestIdRef.current}`,
-      suggestionKey: suggestion.key,
+      nextHash,
+      requestKey,
+      suggestion: suggestionTarget,
     });
-  }, [hashValue]);
+  }, [createConnectedSuggestionMatchTarget, hashValue, navigateToHash]);
 
   const {
     connectionInputWrapRef,
@@ -603,7 +631,7 @@ export default function AppX() {
                 connectionPathAppendRequest={connectionPathAppendRequest}
                 connectedSuggestionSelectionRequest={connectedSuggestionSelectionRequest}
                 hashValue={hashValue}
-                highlightedConnectedSuggestionKey={highlightedConnectedSuggestionKey}
+                highlightedConnectedSuggestion={highlightedConnectedSuggestion}
                 navigationVersion={navigationVersion}
                 onYoungestSelectedCardChange={setYoungestSelectedCard}
                 onHashWrite={handleHashWrite}

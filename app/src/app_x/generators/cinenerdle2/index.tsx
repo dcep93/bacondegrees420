@@ -19,6 +19,10 @@ import {
   type EntityRefreshRequest,
 } from "./entity_refresh";
 import {
+  findConnectedSuggestionCardIndex,
+  type ConnectedSuggestionMatchTarget,
+} from "./connected_suggestion_match";
+import {
   normalizeHashValue,
 } from "./hash";
 import {
@@ -55,10 +59,10 @@ type Cinenerdle2Props = {
   connectedSuggestionSelectionRequest?: {
     nextHash: string;
     requestKey: string;
-    suggestionKey: string;
+    suggestion: ConnectedSuggestionMatchTarget;
   } | null;
   hashValue: string;
-  highlightedConnectedSuggestionKey?: string | null;
+  highlightedConnectedSuggestion?: ConnectedSuggestionMatchTarget | null;
   navigationVersion: number;
   onYoungestSelectedCardChange?: (
     card: Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }> | null,
@@ -105,7 +109,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   connectionPathAppendRequest = null,
   connectedSuggestionSelectionRequest = null,
   hashValue,
-  highlightedConnectedSuggestionKey = null,
+  highlightedConnectedSuggestion = null,
   navigationVersion,
   onYoungestSelectedCardChange,
   onHashWrite,
@@ -422,7 +426,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   }, [generatorResetKey, setInitialTreeShellVisibility]);
 
   useEffect(() => {
-    if (!highlightedConnectedSuggestionKey) {
+    if (!highlightedConnectedSuggestion) {
       return;
     }
 
@@ -432,8 +436,9 @@ const Cinenerdle2 = memo(function Cinenerdle2({
     }
 
     const latestGeneration = treeRef.current[latestGenerationIndex] ?? [];
-    const highlightedCardIndex = latestGeneration.findIndex(
-      (node) => node.data.key === highlightedConnectedSuggestionKey,
+    const highlightedCardIndex = findConnectedSuggestionCardIndex(
+      latestGeneration,
+      highlightedConnectedSuggestion,
     );
 
     if (highlightedCardIndex < 0) {
@@ -443,7 +448,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
     generatorHandleRef.current?.scrollToCard(latestGenerationIndex, highlightedCardIndex, {
       behavior: "smooth",
     });
-  }, [highlightedConnectedSuggestionKey]);
+  }, [highlightedConnectedSuggestion]);
 
   useEffect(() => {
     if (
@@ -484,13 +489,14 @@ const Cinenerdle2 = memo(function Cinenerdle2({
 
     const latestGenerationIndex = treeRef.current.length - 1;
     if (latestGenerationIndex < 0) {
-      writeHash(connectedSuggestionSelectionRequest.nextHash, "selection");
+      writeHash(connectedSuggestionSelectionRequest.nextHash, "navigation");
       return;
     }
 
     const latestGeneration = treeRef.current[latestGenerationIndex] ?? [];
-    const selectedCardIndex = latestGeneration.findIndex(
-      (node) => node.data.key === connectedSuggestionSelectionRequest.suggestionKey,
+    const selectedCardIndex = findConnectedSuggestionCardIndex(
+      latestGeneration,
+      connectedSuggestionSelectionRequest.suggestion,
     );
 
     const generatorHandle = generatorHandleRef.current;
@@ -499,7 +505,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
       return;
     }
 
-    writeHash(connectedSuggestionSelectionRequest.nextHash, "selection");
+    writeHash(connectedSuggestionSelectionRequest.nextHash, "navigation");
   }, [connectedSuggestionSelectionRequest, writeHash]);
 
   return (

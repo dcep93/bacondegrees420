@@ -42,7 +42,7 @@ export default function ConnectionBar({
       ? optionRefs.current[selectedSuggestion.key] ?? null
       : null;
 
-    if (!dropdownRef.current || !selectedOption) {
+    if (!dropdownRef.current || !selectedOption || !selectedSuggestion) {
       return;
     }
 
