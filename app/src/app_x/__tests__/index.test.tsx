@@ -1,8 +1,4 @@
-import {
-  isValidElement,
-  type ReactElement,
-  type ReactNode,
-} from "react";
+import { type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -18,6 +14,7 @@ import BookmarksPage from "../components/bookmarks_page";
 import ConnectionBoostPreview from "../components/connection_boost_preview";
 import { getFullyVisibleViewportScrollTop } from "../components/abstract_generator_scroll";
 import ConnectionEntityCard from "../components/connection_entity_card";
+import ConnectionResults from "../components/connection_results";
 import ConnectionMatchupPreview from "../components/connection_matchup_preview";
 import IndexedDbBootstrapLoadingIndicator from "../components/indexed_db_bootstrap_loading_indicator";
 import {
@@ -30,7 +27,11 @@ import {
   makePersonRecord,
 } from "../generators/cinenerdle2/__tests__/factories";
 import type { CinenerdleIndexedDbBootstrapStatus } from "../generators/cinenerdle2/bootstrap";
-import type { ConnectionEntity } from "../generators/cinenerdle2/connection_graph";
+import { CINENERDLE_ICON_URL } from "../generators/cinenerdle2/constants";
+import {
+  getConnectionEdgeKey,
+  type ConnectionEntity,
+} from "../generators/cinenerdle2/connection_graph";
 import {
   createIndexedDbBootstrapLoadingShellDelayManager,
   INDEXED_DB_BOOTSTRAP_LOADING_SHELL_DELAY_MS,
@@ -68,39 +69,6 @@ function renderMatchupPreviewStub() {
 
 function renderBoostPreviewStub() {
   return <div className="boost-preview-stub">boost</div>;
-}
-
-function findElementByClassName(
-  node: ReactNode,
-  className: string,
-): ReactElement<Record<string, unknown>> | null {
-  if (!isValidElement(node)) {
-    return null;
-  }
-
-  const element = node as ReactElement<{
-    children?: ReactNode;
-    className?: string;
-  }>;
-
-  const nodeClassName = typeof element.props.className === "string"
-    ? element.props.className.split(/\s+/)
-    : [];
-  if (nodeClassName.includes(className)) {
-    return element as ReactElement<Record<string, unknown>>;
-  }
-
-  const children = Array.isArray(element.props.children)
-    ? element.props.children
-    : [element.props.children];
-  for (const child of children) {
-    const match = findElementByClassName(child, className);
-    if (match) {
-      return match;
-    }
-  }
-
-  return null;
 }
 
 function makeCinenerdleIndexedDbBootstrapStatus(
@@ -717,6 +685,7 @@ describe("ConnectionEntityCard", () => {
 
     expect(html).toContain("#3 / 12");
     expect(html).toContain("cinenerdle-card-footer-left");
+    expect(html).toContain("cinenerdle-card");
   });
 
   it("renders a separate popularity badge row when popularity is available", () => {
@@ -724,8 +693,8 @@ describe("ConnectionEntityCard", () => {
       <ConnectionEntityCard entity={makeConnectionEntity()} />,
     );
 
-    expect(html).toContain("bacon-connection-node-meta-primary");
-    expect(html).toContain("bacon-connection-node-popularity");
+    expect(html).toContain("cinenerdle-card-footer-top");
+    expect(html).toContain("cinenerdle-card-chip-heat");
     expect(html).toContain("Popularity 62.46");
   });
 
@@ -738,8 +707,8 @@ describe("ConnectionEntityCard", () => {
     expect(html).not.toContain(" / 12");
   });
 
-  it("renders compact source-logo tooltips with connection copy for TMDb and Cinenerdle", () => {
-    const movieHtml = renderToStaticMarkup(
+  it("renders shared footer tooltips with connection copy for movie cards", () => {
+    const html = renderToStaticMarkup(
       <ConnectionEntityCard
         entity={makeConnectionEntity({
           connectionParentLabel: "Freddie Highmore",
@@ -747,66 +716,72 @@ describe("ConnectionEntityCard", () => {
         })}
       />,
     );
-    const cinenerdleHtml = renderToStaticMarkup(
+
+    expect(html).toContain("alt=\"TMDb\"");
+    expect(html).toContain("cinenerdle-card-chip-tooltip-anchor");
+    expect(html).toContain("cinenerdle-card-inline-tooltip-left");
+    expect(html).toContain("Heat has 12 connections");
+    expect(html).toContain("Freddie Highmore is the #3 connection");
+  });
+
+  it("renders the shared cinenerdle root card presentation for cinenerdle entities", () => {
+    const html = renderToStaticMarkup(
       <ConnectionEntityCard
         entity={makeConnectionEntity({
-          connectionParentLabel: "Freddie Highmore",
           key: "cinenerdle",
           kind: "cinenerdle",
           name: "cinenerdle",
           year: "",
           tmdbId: null,
           label: "cinenerdle",
-          connectionRank: 3,
         })}
       />,
     );
 
-    expect(movieHtml).toContain("alt=\"TMDb\"");
-    expect(movieHtml).toContain("bacon-inline-tooltip");
-    expect(movieHtml).toContain("Heat has 12 connections");
-    expect(movieHtml).toContain("Freddie Highmore is the #3 connection");
-    expect(cinenerdleHtml).toContain("alt=\"Cinenerdle\"");
-    expect(cinenerdleHtml).toContain("bacon-inline-tooltip");
-    expect(cinenerdleHtml).toContain("cinenerdle has 12 connections");
-    expect(cinenerdleHtml).toContain("Freddie Highmore is the #3 connection");
+    expect(html).toContain("cinenerdle-card-root");
+    expect(html).toContain(`src="${CINENERDLE_ICON_URL}"`);
+    expect(html).not.toContain("cinenerdle-card-copy");
   });
 
-  it("renders a leading thumbnail when imageUrl is present", () => {
+  it("renders the shared image slot when imageUrl is present", () => {
     const html = renderToStaticMarkup(
       <ConnectionEntityCard
         entity={makeConnectionEntity({
-          connectionRank: 3,
           imageUrl: "https://img.test/heat.jpg",
         })}
       />,
     );
 
-    expect(html).toContain("bacon-connection-node-has-image");
-    expect(html).toContain("bacon-connection-node-thumbnail");
+    expect(html).toContain("cinenerdle-card-image");
     expect(html).toContain("src=\"https://img.test/heat.jpg\"");
   });
 
-  it("does not render a thumbnail when imageUrl is missing", () => {
+  it("renders the shared fallback image shell when imageUrl is missing", () => {
     const html = renderToStaticMarkup(
       <ConnectionEntityCard entity={makeConnectionEntity()} />,
     );
 
-    expect(html).not.toContain("bacon-connection-node-thumbnail");
-    expect(html).not.toContain("bacon-connection-node-has-image");
+    expect(html).toContain("cinenerdle-card-image-fallback");
+    expect(html).toContain(">Heat<");
   });
 
-  it("keeps the title click isolated from the card click target", () => {
+  it("passes title clicks through the shared card title action without invoking the card action", () => {
     const onCardClick = vi.fn();
     const onNameClick = vi.fn();
     const tree = ConnectionEntityCard({
       entity: makeConnectionEntity(),
       onCardClick,
       onNameClick,
-    });
-    const titleButton = findElementByClassName(tree, "bacon-connection-node-name");
-
-    expect(titleButton).not.toBeNull();
+    }) as ReactElement<{
+      className?: string;
+      onTitleClick?: (event: {
+        ctrlKey: boolean;
+        metaKey: boolean;
+        preventDefault: () => void;
+        stopPropagation: () => void;
+      }) => void;
+      titleElement?: string;
+    }>;
 
     const preventDefault = vi.fn();
     const stopPropagation = vi.fn();
@@ -816,21 +791,105 @@ describe("ConnectionEntityCard", () => {
       preventDefault,
       stopPropagation,
     };
-    const titleButtonOnClick = titleButton?.props.onClick as
-      | ((event: {
-        ctrlKey: boolean;
-        metaKey: boolean;
-        preventDefault: () => void;
-        stopPropagation: () => void;
-      }) => void)
-      | undefined;
-    titleButtonOnClick?.(clickEvent);
+    expect(tree.props.titleElement).toBe("button");
+    tree.props.onTitleClick?.(clickEvent);
 
-    expect(preventDefault).toHaveBeenCalledOnce();
-    expect(stopPropagation).toHaveBeenCalledOnce();
     expect(onNameClick).toHaveBeenCalledOnce();
     expect(onNameClick).toHaveBeenCalledWith(clickEvent);
     expect(onCardClick).not.toHaveBeenCalled();
+    expect(preventDefault).not.toHaveBeenCalled();
+    expect(stopPropagation).not.toHaveBeenCalled();
+  });
+
+  it("adds the dimmed class to shared cards for excluded nodes", () => {
+    const html = renderToStaticMarkup(
+      <ConnectionEntityCard
+        dimmed
+        entity={makeConnectionEntity()}
+      />,
+    );
+
+    expect(html).toContain("bacon-connection-node-dimmed");
+  });
+});
+
+describe("ConnectionResults", () => {
+  it("uses bookmark-row track styling for the initial comparison row", () => {
+    const html = renderToStaticMarkup(
+      <ConnectionResults
+        appendConnectionPathToTree={vi.fn()}
+        connectionSession={{
+          id: "session:initial",
+          left: makeConnectionEntity(),
+          right: makeConnectionEntity({
+            key: "person:287",
+            kind: "person",
+            name: "Brad Pitt",
+            year: "",
+            tmdbId: 287,
+            label: "Brad Pitt",
+          }),
+          rows: [{
+            id: "row:searching",
+            excludedNodeKeys: [],
+            excludedEdgeKeys: [],
+            childDisallowedNodeKeys: [],
+            childDisallowedEdgeKeys: [],
+            parentRowId: null,
+            sourceExclusion: null,
+            status: "searching",
+            path: [],
+          }],
+        }}
+        navigateToConnectionEntity={vi.fn()}
+        openConnectionEntityInNewTab={vi.fn()}
+        spawnAlternativeConnectionRow={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain("bacon-connection-row bacon-bookmark-card-row");
+    expect(html).toContain("bacon-connection-arrow bacon-connection-arrow-static");
+  });
+
+  it("keeps connection arrow button state classes on found rows that reuse bookmark-row styling", () => {
+    const left = makeConnectionEntity();
+    const right = makeConnectionEntity({
+      key: "person:287",
+      kind: "person",
+      name: "Brad Pitt",
+      year: "",
+      tmdbId: 287,
+      label: "Brad Pitt",
+    });
+    const edgeKey = getConnectionEdgeKey(left.key, right.key);
+    const html = renderToStaticMarkup(
+      <ConnectionResults
+        appendConnectionPathToTree={vi.fn()}
+        connectionSession={{
+          id: "session:found",
+          left,
+          right,
+          rows: [{
+            id: "row:found",
+            excludedNodeKeys: [],
+            excludedEdgeKeys: [],
+            childDisallowedNodeKeys: [right.key],
+            childDisallowedEdgeKeys: [edgeKey],
+            parentRowId: null,
+            sourceExclusion: null,
+            status: "found",
+            path: [left, right],
+          }],
+        }}
+        navigateToConnectionEntity={vi.fn()}
+        openConnectionEntityInNewTab={vi.fn()}
+        spawnAlternativeConnectionRow={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain("bacon-connection-row bacon-bookmark-card-row");
+    expect(html).toContain("bacon-connection-node-dimmed");
+    expect(html).toContain("bacon-connection-arrow-button bacon-connection-arrow-disconnected");
   });
 });
 

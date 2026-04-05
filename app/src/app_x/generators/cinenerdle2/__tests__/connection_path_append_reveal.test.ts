@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AbstractGeneratorHandle } from "../../../components/abstract_generator";
 import type { GeneratorNode } from "../../../types/generator";
+import type { ConnectionPathAppendRevealTarget } from "../connection_path_append_reveal";
 import type { CinenerdleCard } from "../view_types";
 import {
   getConnectionPathAppendRevealGenerationIndex,
@@ -10,28 +11,61 @@ import {
 function createNode(
   key: string,
   options?: {
+    kind?: "movie" | "person";
+    name?: string;
     selected?: boolean;
+    year?: string;
   },
 ): GeneratorNode<CinenerdleCard> {
+  const kind = options?.kind ?? "movie";
+  const baseCard = {
+    key,
+    name: options?.name ?? key,
+    popularity: 0,
+    popularitySource: null,
+    imageUrl: null,
+    subtitleDetail: "",
+    connectionCount: null,
+    sources: [] as Array<{ iconUrl: string; label: string }>,
+    status: null,
+  };
+
+  if (kind === "movie") {
+    return {
+      selected: options?.selected ?? false,
+      data: {
+        ...baseCard,
+        kind: "movie",
+        year: options?.year ?? "2000",
+        subtitle: options?.year ?? "2000",
+        voteAverage: null,
+        voteCount: null,
+        record: null,
+      },
+    };
+  }
+
   return {
     selected: options?.selected ?? false,
     data: {
-      key,
-      kind: "movie",
-      name: key,
-      year: "2000",
-      popularity: 0,
-      popularitySource: null,
-      imageUrl: null,
-      subtitle: "2000",
-      subtitleDetail: "",
-      connectionCount: null,
-      sources: [],
-      status: null,
-      voteAverage: null,
-      voteCount: null,
+      ...baseCard,
+      kind: "person",
+      subtitle: "",
       record: null,
     },
+  };
+}
+
+function createRevealTarget(
+  overrides: Partial<ConnectionPathAppendRevealTarget> = {},
+): ConnectionPathAppendRevealTarget {
+  return {
+    key: "movie:spider-man:2002",
+    kind: "movie",
+    name: "Spider-Man",
+    tmdbId: null,
+    year: "2002",
+    ...overrides,
   };
 }
 
@@ -44,7 +78,14 @@ describe("getConnectionPathAppendRevealGenerationIndex", () => {
       [createNode("child-of-spider-man")],
     ];
 
-    expect(getConnectionPathAppendRevealGenerationIndex(tree, "spider-man")).toBe(3);
+    expect(getConnectionPathAppendRevealGenerationIndex(
+      tree,
+      createRevealTarget({
+        key: "spider-man",
+        name: "spider-man",
+        year: "2000",
+      }),
+    )).toBe(3);
   });
 
   it("falls back to the target generation when no child row was appended", () => {
@@ -54,7 +95,36 @@ describe("getConnectionPathAppendRevealGenerationIndex", () => {
       [createNode("spider-man", { selected: true })],
     ];
 
-    expect(getConnectionPathAppendRevealGenerationIndex(tree, "spider-man")).toBe(2);
+    expect(getConnectionPathAppendRevealGenerationIndex(
+      tree,
+      createRevealTarget({
+        key: "spider-man",
+        name: "spider-man",
+        year: "2000",
+      }),
+    )).toBe(2);
+  });
+
+  it("matches the selected row by semantic movie identity when the card key differs", () => {
+    const tree = [
+      [createNode("root", { name: "Root", selected: true })],
+      [createNode("movie:299534", {
+        name: "Ad Astra",
+        selected: true,
+        year: "2019",
+      })],
+      [createNode("child-of-ad-astra")],
+    ];
+
+    expect(getConnectionPathAppendRevealGenerationIndex(
+      tree,
+      createRevealTarget({
+        key: "movie:ad astra:2019",
+        name: "Ad Astra",
+        tmdbId: null,
+        year: "2019",
+      }),
+    )).toBe(2);
   });
 });
 

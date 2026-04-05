@@ -23,6 +23,7 @@ import {
   type ConnectedSuggestionMatchTarget,
 } from "./connected_suggestion_match";
 import {
+  type ConnectionPathAppendRevealTarget,
   getConnectionPathAppendRevealGenerationIndex,
   revealConnectionPathAppendTarget,
 } from "./connection_path_append_reveal";
@@ -58,7 +59,7 @@ type Cinenerdle2Props = {
   connectionPathAppendRequest?: {
     nextHash: string;
     requestKey: string;
-    targetEntityKey: string;
+    targetEntity: ConnectionPathAppendRevealTarget;
   } | null;
   connectedSuggestionSelectionRequest?: {
     nextHash: string;
@@ -85,7 +86,7 @@ type ConnectionPathAppendTreeRefreshRequest = {
   kind: "connection-path-append";
   nextHash: string;
   requestKey: string;
-  targetEntityKey: string;
+  targetEntity: ConnectionPathAppendRevealTarget;
 };
 
 type TreeRefreshRequestState =
@@ -143,7 +144,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   const itemAttrTreeRefreshRequestSequenceRef = useRef(0);
   const pendingConnectionPathAppendRevealRef = useRef<{
     requestKey: string;
-    targetEntityKey: string;
+    targetEntity: ConnectionPathAppendRevealTarget;
   } | null>(null);
 
   useLayoutEffect(() => {
@@ -336,7 +337,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
             });
             pendingConnectionPathAppendRevealRef.current = {
               requestKey: activeTreeRefreshRequest.requestKey,
-              targetEntityKey: activeTreeRefreshRequest.targetEntityKey,
+              targetEntity: activeTreeRefreshRequest.targetEntity,
             };
             writeHash(activeTreeRefreshRequest.nextHash, "selection");
             return {
@@ -472,7 +473,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
         kind: "connection-path-append",
         nextHash: connectionPathAppendRequest.nextHash,
         requestKey: connectionPathAppendRequest.requestKey,
-        targetEntityKey: connectionPathAppendRequest.targetEntityKey,
+        targetEntity: connectionPathAppendRequest.targetEntity,
       },
     ];
     setActiveTreeRefreshRequest((currentRequest) =>
@@ -558,7 +559,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
           if (pendingConnectionPathAppendReveal) {
             const revealGenerationIndex = getConnectionPathAppendRevealGenerationIndex(
               tree,
-              pendingConnectionPathAppendReveal.targetEntityKey,
+              pendingConnectionPathAppendReveal.targetEntity,
             );
 
             if (revealGenerationIndex !== null) {

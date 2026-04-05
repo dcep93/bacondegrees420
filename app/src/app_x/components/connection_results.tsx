@@ -54,7 +54,7 @@ export default function ConnectionResults({
   return (
     <div className="bacon-connection-results" ref={resultsRef}>
       {!hasFoundConnectionRow ? (
-        <div className="bacon-connection-row">
+        <div className="bacon-connection-row bacon-bookmark-card-row">
           <ConnectionEntityCard
             entity={connectionSession.left}
             onCardClick={() => navigateToConnectionEntity(connectionSession.left)}
@@ -113,7 +113,7 @@ export default function ConnectionResults({
         }
 
         return (
-          <div className="bacon-connection-row" key={row.id}>
+          <div className="bacon-connection-row bacon-bookmark-card-row" key={row.id}>
             {row.path.map((entity, index) => {
               const nextEntity = row.path[index + 1] ?? null;
               const edgeKey = nextEntity ? getConnectionEdgeKey(entity.key, nextEntity.key) : "";

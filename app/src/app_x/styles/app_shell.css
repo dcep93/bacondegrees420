@@ -1047,73 +1047,25 @@
 
 .bacon-connection-row {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: max-content;
+  gap: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 2px 6px;
+  scrollbar-width: none;
 }
 
-.bacon-connection-node,
+.bacon-connection-row::-webkit-scrollbar {
+  display: none;
+}
+
 .bacon-connection-status-card {
   box-sizing: border-box;
   min-height: 82px;
+  padding: 12px 14px;
   border: 1px solid var(--bacon-border-strong);
   border-radius: 18px;
   background: rgba(17, 12, 10, 0.92);
-}
-
-.bacon-connection-node {
-  width: 132px;
-  min-width: 132px;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0;
-  overflow: visible;
-  box-shadow: none;
-}
-
-.bacon-connection-status-card {
-  padding: 12px 14px;
   box-shadow: var(--bacon-shadow);
-}
-
-.bacon-connection-node-thumbnail-shell {
-  width: 100%;
-  aspect-ratio: 2 / 3;
-  overflow: hidden;
-  border-radius: 18px 18px 0 0;
-  background: linear-gradient(135deg, rgba(31, 41, 55, 0.92), rgba(17, 24, 39, 0.92));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.bacon-connection-node-thumbnail {
-  width: 100%;
-  height: 100%;
-  display: block;
-  object-fit: contain;
-}
-
-.bacon-connection-node-body {
-  min-width: 0;
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-  gap: 5px;
-  padding: 8px 9px;
-  overflow: visible;
-}
-
-.bacon-connection-node-cinenerdle .bacon-connection-node-body {
-  min-height: 100%;
-  justify-content: center;
-}
-
-.bacon-connection-node-cinenerdle {
-  align-self: center;
 }
 
 .bacon-connection-node-clickable {
@@ -1122,85 +1074,6 @@
 
 .bacon-connection-node-dimmed {
   opacity: 0.5;
-}
-
-.bacon-connection-node-name {
-  display: block;
-  height: 3em;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  font-family: inherit;
-  color: var(--bacon-text);
-  font-size: 0.67rem;
-  font-weight: 700;
-  line-height: 1.15;
-  text-align: left;
-  text-decoration: underline;
-  text-decoration-color: rgba(228, 193, 150, 0.35);
-  text-underline-offset: 2px;
-  cursor: pointer;
-  white-space: normal;
-  text-wrap: pretty;
-  overflow-x: hidden;
-  overflow-y: auto;
-  scrollbar-width: thin;
-}
-
-.bacon-connection-node-meta {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-  color: var(--bacon-text-muted);
-  font-size: 0.54rem;
-  font-weight: 700;
-  line-height: 1.2;
-  overflow: visible;
-}
-
-.bacon-connection-node-meta-tooltip-anchor {
-  display: block;
-  width: 100%;
-  overflow: visible;
-}
-
-.bacon-connection-node-meta-primary {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-}
-
-.bacon-connection-node-count {
-  white-space: nowrap;
-}
-
-.bacon-connection-node-source-anchor {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  outline: none;
-}
-
-.bacon-connection-node-source-anchor:focus-visible {
-  border-radius: 999px;
-  box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.55);
-}
-
-.bacon-connection-node-source-icon {
-  width: 14px;
-  height: 14px;
-  border-radius: 3px;
-  display: block;
-}
-
-.bacon-connection-node-popularity {
-  padding: 3px 6px;
-  border-radius: 999px;
-  font-size: 0.51rem;
-  font-weight: 700;
-  white-space: nowrap;
 }
 
 .bacon-connection-arrow {
@@ -1399,7 +1272,8 @@
   outline-offset: 3px;
 }
 
-.bacon-bookmark-card-row {
+.bacon-bookmark-card-row,
+.bacon-connection-row {
   display: flex;
   gap: 12px;
   overflow-x: auto;
@@ -1408,7 +1282,8 @@
   scrollbar-width: none;
 }
 
-.bacon-bookmark-card-row::-webkit-scrollbar {
+.bacon-bookmark-card-row::-webkit-scrollbar,
+.bacon-connection-row::-webkit-scrollbar {
   display: none;
 }
 
@@ -1559,7 +1434,8 @@
     align-self: stretch;
   }
 
-  .bacon-bookmark-card-row {
+  .bacon-bookmark-card-row,
+  .bacon-connection-row {
     gap: 10px;
   }
 }

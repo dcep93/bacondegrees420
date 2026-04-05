@@ -115,7 +115,7 @@ export default function AppX() {
   const [connectionPathAppendRequest, setConnectionPathAppendRequest] = useState<{
     nextHash: string;
     requestKey: string;
-    targetEntityKey: string;
+    targetEntity: Pick<ConnectionEntity, "key" | "kind" | "name" | "year" | "tmdbId">;
   } | null>(null);
   const [connectionBoostPreview, setConnectionBoostPreview] =
     useState<ConnectionBoostPreviewData | null>(null);
@@ -268,7 +268,13 @@ export default function AppX() {
       setConnectionPathAppendRequest({
         nextHash,
         requestKey: `connection-path-append-${connectionPathAppendRequestIdRef.current}`,
-        targetEntityKey: targetEntity.key,
+        targetEntity: {
+          key: targetEntity.key,
+          kind: targetEntity.kind,
+          name: targetEntity.name,
+          year: targetEntity.year,
+          tmdbId: targetEntity.tmdbId,
+        },
       });
     },
     [hashValue],
