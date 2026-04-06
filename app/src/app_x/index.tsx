@@ -113,6 +113,7 @@ export default function AppX() {
     suggestion: ConnectedSuggestionMatchTarget;
   } | null>(null);
   const [connectionPathAppendRequest, setConnectionPathAppendRequest] = useState<{
+    sourceHash: string;
     nextHash: string;
     requestKey: string;
     targetEntity: Pick<ConnectionEntity, "key" | "kind" | "name" | "year" | "tmdbId">;
@@ -266,6 +267,7 @@ export default function AppX() {
 
       connectionPathAppendRequestIdRef.current += 1;
       setConnectionPathAppendRequest({
+        sourceHash: hashValue,
         nextHash,
         requestKey: `connection-path-append-${connectionPathAppendRequestIdRef.current}`,
         targetEntity: {

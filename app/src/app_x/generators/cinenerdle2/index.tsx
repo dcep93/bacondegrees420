@@ -57,6 +57,7 @@ export {
 
 type Cinenerdle2Props = {
   connectionPathAppendRequest?: {
+    sourceHash: string;
     nextHash: string;
     requestKey: string;
     targetEntity: ConnectionPathAppendRevealTarget;
@@ -84,6 +85,7 @@ type ItemAttrTreeRefreshRequest = {
 
 type ConnectionPathAppendTreeRefreshRequest = {
   kind: "connection-path-append";
+  sourceHash: string;
   nextHash: string;
   requestKey: string;
   targetEntity: ConnectionPathAppendRevealTarget;
@@ -335,6 +337,16 @@ const Cinenerdle2 = memo(function Cinenerdle2({
               hydrateYoungestSelection: true,
               itemAttrsSnapshot,
             });
+            const normalizedCurrentHash = normalizeHashValue(readHash());
+            const normalizedSourceHash = normalizeHashValue(activeTreeRefreshRequest.sourceHash);
+            const normalizedNextHash = normalizeHashValue(activeTreeRefreshRequest.nextHash);
+
+            if (
+              normalizedCurrentHash !== normalizedSourceHash &&
+              normalizedCurrentHash !== normalizedNextHash
+            ) {
+              return null;
+            }
             pendingConnectionPathAppendRevealRef.current = {
               requestKey: activeTreeRefreshRequest.requestKey,
               targetEntity: activeTreeRefreshRequest.targetEntity,
@@ -471,6 +483,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
         request.requestKey !== connectionPathAppendRequest.requestKey),
       {
         kind: "connection-path-append",
+        sourceHash: connectionPathAppendRequest.sourceHash,
         nextHash: connectionPathAppendRequest.nextHash,
         requestKey: connectionPathAppendRequest.requestKey,
         targetEntity: connectionPathAppendRequest.targetEntity,

@@ -18,6 +18,10 @@ export type AppLocationState = {
   hash: string;
 };
 
+type BookmarksHistoryState = {
+  bookmarkReturnHash?: string;
+};
+
 const BOOKMARKS_PATH_SUFFIX = "/bookmarks";
 
 export function normalizePathname(pathname: string): string {
@@ -69,6 +73,20 @@ export function buildLocationHref(pathname: string, hashValue: string) {
   return `${normalizePathname(pathname)}${window.location.search}${normalizeHashValue(hashValue)}`;
 }
 
+export function getBookmarksReturnHashValue(
+  hashValue: string,
+  lastSyncedHashValue = "",
+): string {
+  const normalizedWindowHash = normalizeHashValue(window.location.hash);
+  const normalizedLastSyncedHash = normalizeHashValue(lastSyncedHashValue);
+
+  if (normalizedWindowHash && normalizedWindowHash === normalizedLastSyncedHash) {
+    return normalizedWindowHash;
+  }
+
+  return normalizedLastSyncedHash || normalizedWindowHash || normalizeHashValue(hashValue);
+}
+
 export function useAppLocationState() {
   const initialLocationState = readAppLocationState();
   const [appLocation, setAppLocation] = useState(initialLocationState);
@@ -81,14 +99,9 @@ export function useAppLocationState() {
   const syncLocationFromWindow = useCallback((options?: {
     incrementNavigationVersion?: boolean;
     nextHashOverride?: string;
-    preserveHashValue?: boolean;
   }) => {
     const nextLocation = readAppLocationState();
     setAppLocation(nextLocation);
-
-    if (options?.preserveHashValue) {
-      return;
-    }
 
     const normalizedNextHash = normalizeHashValue(
       options?.nextHashOverride ?? nextLocation.hash,
@@ -188,12 +201,17 @@ export function useAppLocationState() {
   );
 
   const toggleBookmarks = useCallback(() => {
-    if (appLocation.viewMode === "bookmarks") {
-      const restoreHash = bookmarksReturnHashRef.current;
+    const currentLocation = readAppLocationState();
+
+    if (currentLocation.viewMode === "bookmarks") {
+      const restoreHash = normalizeHashValue(
+        ((window.history.state as BookmarksHistoryState | null)?.bookmarkReturnHash) ??
+        bookmarksReturnHashRef.current,
+      );
       window.history.replaceState(
         null,
         "",
-        buildLocationHref(appLocation.basePathname, restoreHash),
+        buildLocationHref(currentLocation.basePathname, restoreHash),
       );
       syncLocationFromWindow({
         incrementNavigationVersion: true,
@@ -202,16 +220,17 @@ export function useAppLocationState() {
       return;
     }
 
-    bookmarksReturnHashRef.current = normalizeHashValue(hashValue);
+    const restoreHash = getBookmarksReturnHashValue(hashValue, lastSyncedHashRef.current);
+    bookmarksReturnHashRef.current = restoreHash;
     window.history.pushState(
-      null,
+      { bookmarkReturnHash: restoreHash } satisfies BookmarksHistoryState,
       "",
-      buildLocationHref(getBookmarksPathname(appLocation.basePathname), ""),
+      buildLocationHref(getBookmarksPathname(currentLocation.basePathname), ""),
     );
     syncLocationFromWindow({
-      preserveHashValue: true,
+      nextHashOverride: restoreHash,
     });
-  }, [appLocation.basePathname, appLocation.viewMode, hashValue, syncLocationFromWindow]);
+  }, [hashValue, syncLocationFromWindow]);
 
   const resetLocation = useCallback(() => {
     bookmarksReturnHashRef.current = "";
@@ -225,18 +244,6 @@ export function useAppLocationState() {
       nextHashOverride: "",
     });
   }, [appLocation.basePathname, syncLocationFromWindow]);
-
-  useEffect(() => {
-    if (window.location.hash === hashValue) {
-      return;
-    }
-
-    window.history.replaceState(
-      null,
-      "",
-      buildLocationHref(appLocation.pathname, hashValue),
-    );
-  }, [appLocation.pathname, hashValue]);
 
   useEffect(() => {
     function syncHashState(nextHash: string) {

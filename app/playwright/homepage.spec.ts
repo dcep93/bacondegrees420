@@ -2483,7 +2483,7 @@ test("deep descendant selection renders cached DB children before the delayed TM
   await expect(getGenerationCardByTitle(page, 2, "Alpha Movie A")).toHaveCount(0);
 });
 
-test("zootopia-to-fred-willard regression keeps generation rendering and bookmark toggle stable", async ({ page }) => {
+test("zootopia-to-fred-willard regression keeps fred root navigation and bookmark toggle stable", async ({ page }) => {
   const dumpSnapshot = {
     format: "cinenerdle-indexed-db-snapshot",
     version: 11,
@@ -2579,6 +2579,22 @@ test("zootopia-to-fred-willard regression keeps generation rendering and bookmar
               popularity: 88,
               vote_average: 7.7,
               vote_count: 16000,
+            }]
+          : [],
+      }));
+      return;
+    }
+
+    if (url.pathname === "/3/search/person") {
+      const query = (url.searchParams.get("query") ?? "").trim().toLowerCase();
+      await route.fulfill(createJsonResponse({
+        results: query === "fred willard"
+          ? [{
+              id: 9002,
+              name: "Fred Willard",
+              popularity: 41,
+              profile_path: "/fred-willard.jpg",
+              known_for_department: "Acting",
             }]
           : [],
       }));
@@ -2743,15 +2759,21 @@ test("zootopia-to-fred-willard regression keeps generation rendering and bookmar
   await expect(gen4FredWillard).toBeVisible();
   await gen4FredWillard.locator(".cinenerdle-card-title", { hasText: "Fred Willard" }).click();
 
+  await expect.poll(() => page.url()).toContain("#person|Fred+Willard");
   await expect(page.locator(".generator-row")).toHaveCount(2);
-  await expect(getGenerationRow(page, 0)).toBeVisible();
-  await expect(getGenerationRow(page, 1)).toBeVisible();
+  await expect(getGenerationCardByTitle(page, 0, "Fred Willard")).toBeVisible();
+  await expect(getGenerationCardByTitle(page, 1, "Best in Show")).toBeVisible();
+  await expect(getGenerationRow(page, 0).locator("img[alt='cinenerdle']")).toHaveCount(0);
   await expect(getGenerationRow(page, 2)).toHaveCount(0);
 
   await page.keyboard.press("b");
+  await expect.poll(() => page.url()).toContain("/bookmarks");
   await expect(page.locator(".generator-row")).toHaveCount(0);
 
   await page.keyboard.press("b");
-  await expect(getGenerationRow(page, 0)).toBeVisible();
-  await expect(getGenerationRow(page, 0).locator("img[alt='cinenerdle']")).toBeVisible();
+  await expect.poll(() => page.url()).toContain("#person|Fred+Willard");
+  await expect(page.locator(".generator-row")).toHaveCount(2);
+  await expect(getGenerationCardByTitle(page, 0, "Fred Willard")).toBeVisible();
+  await expect(getGenerationCardByTitle(page, 1, "Best in Show")).toBeVisible();
+  await expect(getGenerationRow(page, 0).locator("img[alt='cinenerdle']")).toHaveCount(0);
 });
