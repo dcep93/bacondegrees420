@@ -4,13 +4,30 @@ const BACONDEGREES_HOME_URL = "https://bacondegrees420.web.app";
 const CINENERDLE_GAME_OVER_DATASET_KEY = "bacondegreesCinenerdleGameOverLink";
 const CINENERDLE_FANCY_TOOLTIP_DATASET_KEY = "bacondegreesFancyTooltipAttached";
 const CINENERDLE_HIDE_STYLES_ID = "bacondegrees-cinenerdle-hide-styles";
+const CINENERDLE_POSTER_HOVER_DATASET_KEY = "bacondegreesCinenerdlePosterHoverAttached";
+const CINENERDLE_POSTER_PREVIEW_ID = "bacondegrees-cinenerdle-poster-preview";
+const CINENERDLE_POSTER_PREVIEW_HIDE_DELAY_MS = 250;
+const CINENERDLE_POSTER_PREVIEW_CLASS_NAMES = [
+  "h-auto",
+  "w-full",
+  "object-contain",
+  "transition-opacity",
+  "duration-300",
+  "opacity-100",
+];
 const CINENERDLE_BREAK_CONNECTOR_TYPES = new Set(["escape"]);
 const CINENERDLE_SKIP_CONNECTOR_TYPE = "skip";
+
+let cinenerdlePosterPreviewElement = null;
+let cinenerdleHoveredPosterElement = null;
+let cinenerdlePosterPreviewHovered = false;
+let cinenerdlePosterPreviewHideTimeoutId = null;
 
 if (window.location.hostname === "www.cinenerdle2.app") {
   injectCinenerdleHideStyles();
   window.setInterval(() => {
     attachCinenerdleGameOverLink();
+    attachCinenerdlePosterHoverPreviews();
   }, 1000);
 }
 
@@ -273,6 +290,201 @@ function getCinenerdleBattleUrl() {
   }
 
   return `${BACONDEGREES_HOME_URL}/${battleHash}`;
+}
+
+function clearCinenerdlePosterPreviewHideTimeout() {
+  if (cinenerdlePosterPreviewHideTimeoutId === null) {
+    return;
+  }
+
+  window.clearTimeout(cinenerdlePosterPreviewHideTimeoutId);
+  cinenerdlePosterPreviewHideTimeoutId = null;
+}
+
+function hideCinenerdlePosterPreview() {
+  const previewElement = cinenerdlePosterPreviewElement;
+  if (!previewElement) {
+    return;
+  }
+
+  clearCinenerdlePosterPreviewHideTimeout();
+  previewElement.style.opacity = "0";
+  previewElement.style.visibility = "hidden";
+  previewElement.style.pointerEvents = "none";
+  previewElement.style.transform = "translate(-50%, -50%) scale(0.98)";
+}
+
+function scheduleCinenerdlePosterPreviewHide() {
+  clearCinenerdlePosterPreviewHideTimeout();
+
+  cinenerdlePosterPreviewHideTimeoutId = window.setTimeout(() => {
+    cinenerdlePosterPreviewHideTimeoutId = null;
+
+    if (cinenerdleHoveredPosterElement || cinenerdlePosterPreviewHovered) {
+      return;
+    }
+
+    hideCinenerdlePosterPreview();
+  }, CINENERDLE_POSTER_PREVIEW_HIDE_DELAY_MS);
+}
+
+function updateCinenerdlePosterPreviewSize() {
+  const previewElement = cinenerdlePosterPreviewElement;
+  if (!previewElement) {
+    return;
+  }
+
+  const { naturalWidth, naturalHeight } = previewElement;
+  if (!naturalWidth || !naturalHeight) {
+    return;
+  }
+
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  if (!viewportWidth || !viewportHeight) {
+    return;
+  }
+
+  const scale = Math.min(viewportWidth / naturalWidth, viewportHeight / naturalHeight);
+  previewElement.style.width = `${Math.round(naturalWidth * scale)}px`;
+  previewElement.style.height = `${Math.round(naturalHeight * scale)}px`;
+}
+
+function getCinenerdlePosterPreviewElement() {
+  if (cinenerdlePosterPreviewElement?.isConnected) {
+    return cinenerdlePosterPreviewElement;
+  }
+
+  const existingPreviewElement = document.getElementById(CINENERDLE_POSTER_PREVIEW_ID);
+  if (existingPreviewElement instanceof HTMLImageElement) {
+    cinenerdlePosterPreviewElement = existingPreviewElement;
+    return cinenerdlePosterPreviewElement;
+  }
+
+  const parentElement = document.body || document.documentElement;
+  if (!parentElement) {
+    return null;
+  }
+
+  const previewElement = document.createElement("img");
+  previewElement.id = CINENERDLE_POSTER_PREVIEW_ID;
+  previewElement.setAttribute("aria-hidden", "true");
+  Object.assign(previewElement.style, {
+    position: "fixed",
+    top: "50%",
+    left: "50%",
+    zIndex: "2147483647",
+    maxWidth: "100vw",
+    maxHeight: "100vh",
+    width: "0px",
+    height: "0px",
+    objectFit: "contain",
+    pointerEvents: "none",
+    opacity: "0",
+    visibility: "hidden",
+    transform: "translate(-50%, -50%) scale(0.98)",
+    transition: "opacity 120ms ease, transform 120ms ease, visibility 120ms ease",
+  });
+
+  previewElement.addEventListener("load", () => {
+    updateCinenerdlePosterPreviewSize();
+  });
+  previewElement.addEventListener("mouseenter", () => {
+    cinenerdlePosterPreviewHovered = true;
+    clearCinenerdlePosterPreviewHideTimeout();
+  });
+  previewElement.addEventListener("mouseleave", () => {
+    cinenerdlePosterPreviewHovered = false;
+    scheduleCinenerdlePosterPreviewHide();
+  });
+  window.addEventListener("resize", () => {
+    if (previewElement.style.visibility === "visible") {
+      updateCinenerdlePosterPreviewSize();
+    }
+  });
+
+  parentElement.appendChild(previewElement);
+  cinenerdlePosterPreviewElement = previewElement;
+  return cinenerdlePosterPreviewElement;
+}
+
+function showCinenerdlePosterPreview(imageElement) {
+  const previewElement = getCinenerdlePosterPreviewElement();
+  if (!previewElement) {
+    return;
+  }
+
+  clearCinenerdlePosterPreviewHideTimeout();
+  cinenerdleHoveredPosterElement = imageElement;
+  previewElement.alt = imageElement.alt;
+  previewElement.style.width = "0px";
+  previewElement.style.height = "0px";
+  previewElement.style.opacity = "1";
+  previewElement.style.visibility = "visible";
+  previewElement.style.pointerEvents = "auto";
+  previewElement.style.transform = "translate(-50%, -50%) scale(1)";
+
+  const previewSource = imageElement.currentSrc || imageElement.src;
+  if (previewElement.src !== previewSource) {
+    previewElement.src = previewSource;
+  }
+
+  if (previewElement.complete) {
+    updateCinenerdlePosterPreviewSize();
+  }
+}
+
+function hasCinenerdlePosterPreviewClasses(imageElement) {
+  return CINENERDLE_POSTER_PREVIEW_CLASS_NAMES.every((className) => {
+    return imageElement.classList.contains(className);
+  });
+}
+
+function isCinenerdleBattlePosterImage(imageElement, battleBoard) {
+  if (!(imageElement instanceof HTMLImageElement)) {
+    return false;
+  }
+
+  if (!hasCinenerdlePosterPreviewClasses(imageElement)) {
+    return false;
+  }
+
+  return Boolean(getCinenerdleRoundCardElement(imageElement, battleBoard));
+}
+
+function getCinenerdleBattlePosterImages() {
+  const battleBoard = document.querySelector("#battle-board");
+  if (!battleBoard) {
+    return [];
+  }
+
+  return Array.from(battleBoard.querySelectorAll("img[alt]")).filter((imageElement) => {
+    return isCinenerdleBattlePosterImage(imageElement, battleBoard);
+  });
+}
+
+function attachCinenerdlePosterHoverPreviews() {
+  if (!isCinenerdleBattlePage()) {
+    return;
+  }
+
+  getCinenerdleBattlePosterImages().forEach((imageElement) => {
+    if (imageElement.dataset[CINENERDLE_POSTER_HOVER_DATASET_KEY] === "true") {
+      return;
+    }
+
+    imageElement.dataset[CINENERDLE_POSTER_HOVER_DATASET_KEY] = "true";
+    imageElement.addEventListener("mouseenter", () => {
+      showCinenerdlePosterPreview(imageElement);
+    });
+    imageElement.addEventListener("mouseleave", () => {
+      if (cinenerdleHoveredPosterElement === imageElement) {
+        cinenerdleHoveredPosterElement = null;
+      }
+
+      scheduleCinenerdlePosterPreviewHide();
+    });
+  });
 }
 
 function attachFancyTooltip(element, label) {
