@@ -210,7 +210,50 @@ async function seedCinenerdleStorage(
 }
 
 async function primeCinenerdlePage(page: Page) {
-  await seedCinenerdleStorage(page);
+  await seedCinenerdleStorage(page, {
+    dailyStarterTitles: ["Zootopia (2016)"],
+  });
+
+  await page.addInitScript(() => {
+    const originalFetch = window.fetch.bind(window);
+
+    window.fetch = async (input, init) => {
+      const requestUrl = typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
+      const parsedUrl = new URL(requestUrl, window.location.href);
+
+      if (parsedUrl.origin === "https://api.themoviedb.org" && parsedUrl.pathname === "/3/search/movie") {
+        const query = parsedUrl.searchParams.get("query") ?? "";
+        if (query.trim().toLowerCase() === "zootopia") {
+          return new Response(JSON.stringify({
+            results: [{
+              id: 269149,
+              title: "Zootopia",
+              original_title: "Zootopia",
+              poster_path: "/zootopia.jpg",
+              release_date: "2016-03-04",
+              popularity: 88,
+              vote_average: 7.7,
+              vote_count: 16000,
+            }],
+          }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+
+        return new Response(JSON.stringify({ results: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+
+      return originalFetch(input, init);
+    };
+  });
 
   await page.route("https://www.cinenerdle2.app/api/battle-data/daily-starters?*", async (route) => {
     await route.fulfill(createJsonResponse({ data: [] }));
@@ -2438,4 +2481,277 @@ test("deep descendant selection renders cached DB children before the delayed TM
   await expect(getGenerationCardByTitle(page, 2, "India Movie A")).toBeVisible();
   await expect(getGenerationCardByTitle(page, 2, "India Movie B")).toBeVisible();
   await expect(getGenerationCardByTitle(page, 2, "Alpha Movie A")).toHaveCount(0);
+});
+
+test("zootopia-to-fred-willard regression keeps generation rendering and bookmark toggle stable", async ({ page }) => {
+  const dumpSnapshot = {
+    format: "cinenerdle-indexed-db-snapshot",
+    version: 11,
+    people: [
+      {
+        tmdbId: 9001,
+        name: "Judy Hopps",
+        movieConnectionKeys: [
+          "zootopia (2016)",
+          "best in show (2000)",
+        ],
+        popularity: 44,
+        fromTmdb: {
+          fetchTimestamp: "2026-03-28T12:00:00.000Z",
+          profilePath: "/judy-hopps.jpg",
+        },
+      },
+      {
+        tmdbId: 9002,
+        name: "Fred Willard",
+        movieConnectionKeys: [
+          "best in show (2000)",
+        ],
+        popularity: 41,
+        fromTmdb: {
+          fetchTimestamp: "2026-03-28T12:00:00.000Z",
+          profilePath: "/fred-willard.jpg",
+        },
+      },
+    ],
+    films: [
+      {
+        tmdbId: 269149,
+        title: "Zootopia",
+        year: "2016",
+        posterPath: "/zootopia.jpg",
+        popularity: 88,
+        voteAverage: 7.7,
+        voteCount: 16000,
+        releaseDate: "2016-03-04",
+        fromTmdb: {
+          fetchTimestamp: "2026-03-28T12:00:00.000Z",
+          genres: [],
+        },
+        personConnectionKeys: ["judy hopps"],
+        people: [],
+      },
+      {
+        tmdbId: 11011,
+        title: "Best in Show",
+        year: "2000",
+        posterPath: "/best-in-show.jpg",
+        popularity: 54,
+        voteAverage: 7.1,
+        voteCount: 1300,
+        releaseDate: "2000-09-29",
+        fromTmdb: {
+          fetchTimestamp: "2026-03-28T12:00:00.000Z",
+          genres: [],
+        },
+        personConnectionKeys: ["judy hopps", "fred willard"],
+        people: [],
+      },
+    ],
+  };
+  await seedCinenerdleStorage(page, {
+    dailyStarterTitles: ["Zootopia (2016)"],
+  });
+
+  await page.route("https://www.cinenerdle2.app/api/battle-data/daily-starters?*", async (route) => {
+    await route.fulfill(createJsonResponse({
+      data: [{ id: "starter-zootopia", title: "Zootopia (2016)" }],
+    }));
+  });
+
+  await page.route("**/dump.json", async (route) => {
+    await route.fulfill(createJsonResponse(dumpSnapshot));
+  });
+
+  await page.route("https://api.themoviedb.org/**", async (route) => {
+    const url = new URL(route.request().url());
+
+    if (url.pathname === "/3/search/movie") {
+      const query = (url.searchParams.get("query") ?? "").trim().toLowerCase();
+      await route.fulfill(createJsonResponse({
+        results: query === "zootopia"
+          ? [{
+              id: 269149,
+              title: "Zootopia",
+              original_title: "Zootopia",
+              poster_path: "/zootopia.jpg",
+              release_date: "2016-03-04",
+              popularity: 88,
+              vote_average: 7.7,
+              vote_count: 16000,
+            }]
+          : [],
+      }));
+      return;
+    }
+
+    if (url.pathname === "/3/movie/269149/credits") {
+      await route.fulfill(createJsonResponse({
+        cast: [{
+          id: 9001,
+          name: "Judy Hopps",
+          popularity: 44,
+          profile_path: "/judy-hopps.jpg",
+          character: "Officer Judy Hopps",
+          known_for_department: "Acting",
+          order: 0,
+        }],
+        crew: [],
+      }));
+      return;
+    }
+
+    if (url.pathname === "/3/movie/11011/credits") {
+      await route.fulfill(createJsonResponse({
+        cast: [
+          {
+            id: 9001,
+            name: "Judy Hopps",
+            popularity: 44,
+            profile_path: "/judy-hopps.jpg",
+            character: "Self",
+            known_for_department: "Acting",
+            order: 0,
+          },
+          {
+            id: 9002,
+            name: "Fred Willard",
+            popularity: 41,
+            profile_path: "/fred-willard.jpg",
+            character: "Buck Laughlin",
+            known_for_department: "Acting",
+            order: 1,
+          },
+        ],
+        crew: [],
+      }));
+      return;
+    }
+
+    if (url.pathname === "/3/person/9001") {
+      await route.fulfill(createJsonResponse({
+        id: 9001,
+        name: "Judy Hopps",
+        popularity: 44,
+        profile_path: "/judy-hopps.jpg",
+      }));
+      return;
+    }
+
+    if (url.pathname === "/3/person/9002") {
+      await route.fulfill(createJsonResponse({
+        id: 9002,
+        name: "Fred Willard",
+        popularity: 41,
+        profile_path: "/fred-willard.jpg",
+      }));
+      return;
+    }
+
+    if (url.pathname === "/3/person/9001/movie_credits") {
+      await route.fulfill(createJsonResponse({
+        cast: [
+          {
+            id: 269149,
+            title: "Zootopia",
+            original_title: "Zootopia",
+            poster_path: "/zootopia.jpg",
+            release_date: "2016-03-04",
+            popularity: 88,
+            vote_average: 7.7,
+            vote_count: 16000,
+            character: "Officer Judy Hopps",
+          },
+          {
+            id: 11011,
+            title: "Best in Show",
+            original_title: "Best in Show",
+            poster_path: "/best-in-show.jpg",
+            release_date: "2000-09-29",
+            popularity: 54,
+            vote_average: 7.1,
+            vote_count: 1300,
+            character: "Self",
+          },
+        ],
+        crew: [],
+      }));
+      return;
+    }
+
+    if (url.pathname === "/3/person/9002/movie_credits") {
+      await route.fulfill(createJsonResponse({
+        cast: [
+          {
+            id: 11011,
+            title: "Best in Show",
+            original_title: "Best in Show",
+            poster_path: "/best-in-show.jpg",
+            release_date: "2000-09-29",
+            popularity: 54,
+            vote_average: 7.1,
+            vote_count: 1300,
+            character: "Buck Laughlin",
+          },
+        ],
+        crew: [],
+      }));
+      return;
+    }
+
+    throw new Error(`Unexpected TMDb request: ${url.pathname}`);
+  });
+
+  await page.route("https://image.tmdb.org/**", async (route) => {
+    await route.fulfill({
+      status: 204,
+      body: "",
+    });
+  });
+
+  await page.route("https://www.cinenerdle2.app/icon.png", async (route) => {
+    await route.fulfill({
+      status: 204,
+      body: "",
+    });
+  });
+
+  await page.goto("/");
+
+  const connectionInput = page.locator(".bacon-connection-input");
+  const zootopiaCard = getGenerationCardByTitle(page, 1, "Zootopia");
+  await expect(connectionInput).toBeEnabled();
+  await expect(zootopiaCard).toBeVisible();
+
+  await zootopiaCard.click();
+
+  await connectionInput.click();
+  await connectionInput.fill("Fred Willard");
+  await connectionInput.press("Enter");
+
+  await expect.poll(async () => page.evaluate(() => window.scrollY)).toBe(0);
+
+  const fredWillardInConnectionResults = page
+    .locator(".bacon-connection-results .cinenerdle-card-title", {
+      hasText: "Fred Willard",
+    })
+    .first();
+  await expect(fredWillardInConnectionResults).toBeVisible();
+  await fredWillardInConnectionResults.click();
+
+  const gen4FredWillard = getGenerationCardByTitle(page, 4, "Fred Willard");
+  await expect(gen4FredWillard).toBeVisible();
+  await gen4FredWillard.locator(".cinenerdle-card-title", { hasText: "Fred Willard" }).click();
+
+  await expect(page.locator(".generator-row")).toHaveCount(2);
+  await expect(getGenerationRow(page, 0)).toBeVisible();
+  await expect(getGenerationRow(page, 1)).toBeVisible();
+  await expect(getGenerationRow(page, 2)).toHaveCount(0);
+
+  await page.keyboard.press("b");
+  await expect(page.locator(".generator-row")).toHaveCount(0);
+
+  await page.keyboard.press("b");
+  await expect(getGenerationRow(page, 0)).toBeVisible();
+  await expect(getGenerationRow(page, 0).locator("img[alt='cinenerdle']")).toBeVisible();
 });
