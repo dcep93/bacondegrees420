@@ -18,6 +18,7 @@ import {
   CINENERDLE_ITEM_ATTRS_UPDATED_EVENT,
   writeCinenerdleItemAttrs,
 } from "./generators/cinenerdle2/item_attrs";
+import { hydrateHashPath } from "./generators/cinenerdle2/tmdb";
 
 export function isBookmarksJsonlDraftChanged(
   serializedBookmarksJsonl: string,
@@ -30,12 +31,60 @@ export function resetBookmarksJsonlDraft(serializedBookmarksJsonl: string): stri
   return serializedBookmarksJsonl;
 }
 
+type HydrateBookmarksSequentiallyOptions = {
+  bookmarkHashes: string[];
+  getActiveHydration: () => Promise<void> | null;
+  hydrateBookmarkHash?: (bookmarkHash: string) => Promise<void>;
+  isCurrentRun: () => boolean;
+  setActiveHydration: (promise: Promise<void> | null) => void;
+};
+
+export async function hydrateBookmarksSequentially({
+  bookmarkHashes,
+  getActiveHydration,
+  hydrateBookmarkHash = (bookmarkHash: string) => hydrateHashPath(bookmarkHash, {
+    prefetchConnections: false,
+  }),
+  isCurrentRun,
+  setActiveHydration,
+}: HydrateBookmarksSequentiallyOptions): Promise<void> {
+  const waitForActiveHydration = getActiveHydration();
+  if (waitForActiveHydration) {
+    try {
+      await waitForActiveHydration;
+    } catch {
+      // Ignore the replaced run's failure and continue with the latest snapshot.
+    }
+  }
+
+  for (const bookmarkHash of bookmarkHashes) {
+    if (!isCurrentRun()) {
+      return;
+    }
+
+    const hydrationPromise = hydrateBookmarkHash(bookmarkHash);
+    setActiveHydration(hydrationPromise);
+
+    try {
+      await hydrationPromise;
+    } catch {
+      // Keep walking the queue even if a single bookmark fails to hydrate.
+    } finally {
+      if (getActiveHydration() === hydrationPromise) {
+        setActiveHydration(null);
+      }
+    }
+  }
+}
+
 export function useBookmarksState({
   hashValue,
   onToast,
+  shouldHydrateBookmarks,
 }: {
   hashValue: string;
   onToast: (message: string) => void;
+  shouldHydrateBookmarks: boolean;
 }) {
   const [bookmarks, setBookmarks] = useState<BookmarkEntry[]>([]);
   const [bookmarkRows, setBookmarkRows] = useState<BookmarkRowData[]>([]);
@@ -44,6 +93,8 @@ export function useBookmarksState({
   const [isSavingBookmark, setIsSavingBookmark] = useState(false);
   const [itemAttrsVersion, setItemAttrsVersion] = useState(0);
   const bookmarksRef = useRef<BookmarkEntry[]>([]);
+  const bookmarksHydrationRunIdRef = useRef(0);
+  const bookmarksHydrationInFlightRef = useRef<Promise<void> | null>(null);
   const bookmarksPersistenceRequestIdRef = useRef(0);
   const serializedBookmarksJsonlRef = useRef("");
   const bookmarksJsonlTextareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -118,6 +169,31 @@ export function useBookmarksState({
       cancelled = true;
     };
   }, [bookmarks]);
+
+  useEffect(() => {
+    bookmarksHydrationRunIdRef.current += 1;
+    const runId = bookmarksHydrationRunIdRef.current;
+
+    if (!shouldHydrateBookmarks || bookmarks.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+    const pendingBookmarkHashes = bookmarks.map((bookmark) => bookmark.hash);
+
+    void hydrateBookmarksSequentially({
+      bookmarkHashes: pendingBookmarkHashes,
+      getActiveHydration: () => bookmarksHydrationInFlightRef.current,
+      isCurrentRun: () => !cancelled && bookmarksHydrationRunIdRef.current === runId,
+      setActiveHydration: (promise) => {
+        bookmarksHydrationInFlightRef.current = promise;
+      },
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [bookmarks, shouldHydrateBookmarks]);
 
   useEffect(() => {
     function handleCinenerdleRecordsUpdated() {

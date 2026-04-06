@@ -178,6 +178,7 @@ export default function AppX() {
   } = useBookmarksState({
     hashValue,
     onToast: sayToast,
+    shouldHydrateBookmarks: isBookmarksView && !isCinenerdleIndexedDbBootstrapLoading,
   });
   const shouldShowIndexedDbBootstrapLoadingShellIndicator = shouldShowIndexedDbBootstrapLoadingShell({
     hasLoadingShellDelayElapsed: hasIndexedDbBootstrapLoadingShellDelayElapsed,

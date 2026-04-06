@@ -2098,7 +2098,15 @@ async function hydrateHashPathNode(
   };
 }
 
-export async function hydrateHashPath(hashValue: string): Promise<void> {
+type HydrateHashPathOptions = {
+  prefetchConnections?: boolean;
+};
+
+export async function hydrateHashPath(
+  hashValue: string,
+  options: HydrateHashPathOptions = {},
+): Promise<void> {
+  const shouldPrefetchConnections = options.prefetchConnections ?? true;
   const pathNodes = buildPathNodesFromSegments(parseHashSegments(hashValue)).filter(
     (pathNode): pathNode is Extract<CinenerdlePathNode, { kind: "movie" | "person" }> =>
       pathNode.kind === "movie" || pathNode.kind === "person",
@@ -2145,7 +2153,11 @@ export async function hydrateHashPath(hashValue: string): Promise<void> {
 
   for (const planItem of hydrationPlan) {
     const hydrationResult = await hydrateHashPathNode(planItem);
-    if (hydrationResult.didHydrate && hydrationResult.selectedCard) {
+    if (
+      shouldPrefetchConnections &&
+      hydrationResult.didHydrate &&
+      hydrationResult.selectedCard
+    ) {
       await prefetchTopPopularUnhydratedConnections(hydrationResult.selectedCard);
     }
   }

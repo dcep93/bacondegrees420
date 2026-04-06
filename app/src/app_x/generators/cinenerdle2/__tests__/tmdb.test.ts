@@ -53,6 +53,7 @@ import {
   hasHydratedPersonRecord,
   hasMovieFullState,
   hasPersonFullState,
+  hydrateHashPath,
   hydrateCinenerdleDailyStarterMovies,
   prefetchTopPopularUnhydratedConnections,
   prepareConnectionEntityForPreview,
@@ -60,6 +61,7 @@ import {
   prepareSelectedPerson,
   resolveConnectionQuery,
 } from "../tmdb";
+import { createPathNode, serializePathNodes } from "../hash";
 
 function createJsonResponse(payload: unknown) {
   return {
@@ -1274,6 +1276,159 @@ describe("tmdb forced refresh helpers", () => {
     );
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/search/movie"))).toBe(false);
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/search/person"))).toBe(false);
+  });
+
+  it("hydrates bookmark paths without global prefetch fan-out when prefetchConnections is disabled", async () => {
+    const bookmarkHash = serializePathNodes([
+      createPathNode("movie", "Heat", "1995"),
+    ]);
+    const placeholderMovieRecord = makeFilmRecord({
+      id: 321,
+      tmdbId: 321,
+      title: "Heat",
+      year: "1995",
+      tmdbSource: "connection-derived",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 321,
+        title: "Heat",
+        release_date: "1995-12-15",
+        popularity: 99,
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+    });
+    const fetchMock = vi.fn(async (input: string) => {
+      const url = String(input);
+      if (url.includes("/movie/321/credits")) {
+        return createJsonResponse({ cast: [], crew: [] });
+      }
+
+      if (url.includes("/movie/321?")) {
+        return createJsonResponse(
+          makeTmdbMovieSearchResult({
+            id: 321,
+            title: "Heat",
+            release_date: "1995-12-15",
+            popularity: 99,
+          }),
+        );
+      }
+
+      if (url.includes("/person/12?")) {
+        return createJsonResponse(
+          makeTmdbPersonSearchResult({
+            id: 12,
+            name: "Tom Brady",
+            popularity: 75,
+          }),
+        );
+      }
+
+      if (url.includes("/person/12/movie_credits")) {
+        return createJsonResponse({ cast: [], crew: [] });
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    indexedDbMock.getAllSearchableConnectionEntities.mockResolvedValue([
+      {
+        key: "person:12",
+        type: "person",
+        nameLower: "tom brady",
+        popularity: 10,
+      },
+    ]);
+    indexedDbMock.getFilmRecordById.mockResolvedValue(placeholderMovieRecord);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(placeholderMovieRecord);
+    indexedDbMock.getPersonRecordById.mockResolvedValue(null);
+    indexedDbMock.getPersonRecordByName.mockResolvedValue(null);
+    vi.stubGlobal("fetch", fetchMock);
+
+    await hydrateHashPath(bookmarkHash, {
+      prefetchConnections: false,
+    });
+
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      expect.stringContaining("/movie/321?"),
+      expect.stringContaining("/movie/321/credits?"),
+    ]);
+  });
+
+  it("keeps the existing global prefetch fan-out when hydrateHashPath uses default options", async () => {
+    const bookmarkHash = serializePathNodes([
+      createPathNode("movie", "Heat", "1995"),
+    ]);
+    const placeholderMovieRecord = makeFilmRecord({
+      id: 321,
+      tmdbId: 321,
+      title: "Heat",
+      year: "1995",
+      tmdbSource: "connection-derived",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 321,
+        title: "Heat",
+        release_date: "1995-12-15",
+        popularity: 99,
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+    });
+    const fetchMock = vi.fn(async (input: string) => {
+      const url = String(input);
+      if (url.includes("/movie/321/credits")) {
+        return createJsonResponse({ cast: [], crew: [] });
+      }
+
+      if (url.includes("/movie/321?")) {
+        return createJsonResponse(
+          makeTmdbMovieSearchResult({
+            id: 321,
+            title: "Heat",
+            release_date: "1995-12-15",
+            popularity: 99,
+          }),
+        );
+      }
+
+      if (url.includes("/person/12?")) {
+        return createJsonResponse(
+          makeTmdbPersonSearchResult({
+            id: 12,
+            name: "Tom Brady",
+            popularity: 75,
+          }),
+        );
+      }
+
+      if (url.includes("/person/12/movie_credits")) {
+        return createJsonResponse({ cast: [], crew: [] });
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    indexedDbMock.getAllSearchableConnectionEntities.mockResolvedValue([
+      {
+        key: "person:12",
+        type: "person",
+        nameLower: "tom brady",
+        popularity: 10,
+      },
+    ]);
+    indexedDbMock.getFilmRecordById.mockResolvedValue(placeholderMovieRecord);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(placeholderMovieRecord);
+    indexedDbMock.getPersonRecordById.mockResolvedValue(null);
+    indexedDbMock.getPersonRecordByName.mockResolvedValue(null);
+    vi.stubGlobal("fetch", fetchMock);
+
+    await hydrateHashPath(bookmarkHash);
+
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/person/12?"))).toBe(true);
   });
 
   it("prefetches the top unfinished movie and person queues", async () => {
