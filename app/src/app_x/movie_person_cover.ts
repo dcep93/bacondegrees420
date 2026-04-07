@@ -1,10 +1,12 @@
 import {
   getFilmRecordByTitleAndYear,
+  saveFilmRecord,
   getPersonRecordsByMovieId,
 } from "./generators/cinenerdle2/indexed_db";
 import {
   hasMovieFullState,
   prepareConnectionEntityForPreview,
+  prepareSelectedMovie,
 } from "./generators/cinenerdle2/tmdb";
 import type { FilmRecord } from "./generators/cinenerdle2/types";
 import {
@@ -123,6 +125,48 @@ function normalizeMovieLabels(movieLabels: string[]): string[] {
     .filter(Boolean);
 }
 
+async function ensureMovieHasPersonRecords(
+  movieRecord: ResolvedMovieCoverRecord["movieRecord"],
+  formattedMovieLabel: string,
+  movieName: string,
+  movieYear: string,
+): Promise<ResolvedMovieCoverRecord["movieRecord"]> {
+  const tmdbId = getValidTmdbEntityId(movieRecord.tmdbId ?? movieRecord.id);
+  if (tmdbId === null) {
+    throw new Error(`Unable to resolve movie: ${formattedMovieLabel}`);
+  }
+
+  const existingPersonRecords = await getPersonRecordsByMovieId(tmdbId);
+  if (existingPersonRecords.length > 0) {
+    return movieRecord;
+  }
+
+  await saveFilmRecord(movieRecord);
+
+  const derivedPersonRecords = await getPersonRecordsByMovieId(tmdbId);
+  if (derivedPersonRecords.length > 0) {
+    return movieRecord;
+  }
+
+  const refreshedMovieRecord = await prepareSelectedMovie(
+    movieName,
+    movieYear,
+    tmdbId,
+    {
+      forceRefresh: true,
+    },
+  );
+  if (
+    refreshedMovieRecord &&
+    hasMovieFullState(refreshedMovieRecord) &&
+    (await getPersonRecordsByMovieId(tmdbId)).length > 0
+  ) {
+    return refreshedMovieRecord;
+  }
+
+  throw new Error(`Unable to derive connected people for movie: ${formattedMovieLabel}`);
+}
+
 async function resolveMovieRecordForLabel(inputLabel: string): Promise<ResolvedMovieCoverRecord> {
   const parsedMovie = parseMoviePathLabel(inputLabel);
   const formattedMovieLabel = formatMoviePathLabel(parsedMovie.name, parsedMovie.year);
@@ -145,9 +189,16 @@ async function resolveMovieRecordForLabel(inputLabel: string): Promise<ResolvedM
     throw new Error(`Unable to resolve movie: ${formattedMovieLabel}`);
   }
 
+  const movieRecordWithPeople = await ensureMovieHasPersonRecords(
+    validMovieRecord,
+    formattedMovieLabel,
+    parsedMovie.name,
+    parsedMovie.year,
+  );
+
   return {
     inputLabel: formattedMovieLabel,
-    movieRecord: validMovieRecord,
+    movieRecord: movieRecordWithPeople,
     tmdbId,
   };
 }
