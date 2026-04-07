@@ -1,4 +1,5 @@
 import {
+  getFilmRecordById,
   getFilmRecordByTitleAndYear,
   getFilmRecordsByPersonConnectionKey,
   getPersonRecordById,
@@ -24,7 +25,6 @@ import {
   getValidTmdbEntityId,
   normalizeName,
   normalizeWhitespace,
-  parseMoviePathLabel,
 } from "./generators/cinenerdle2/utils";
 import type { YoungestSelectedCard } from "./connection_matchup_preview";
 
@@ -280,8 +280,19 @@ async function getMovieDirectChildren(
   }
 
   const fallbackCandidates = await Promise.all(
-    movieRecord.personConnectionKeys.map((personName) =>
-      createPersonChildCandidateFromName(personName)),
+    movieRecord.personConnectionKeys.map(async (personId) => {
+      const validPersonId = getValidTmdbEntityId(personId);
+      if (validPersonId === null) {
+        return null;
+      }
+
+      const personRecord = await getPersonRecordById(validPersonId);
+      return createPersonChildCandidateFromName(
+        personRecord?.name ?? "",
+        null,
+        validPersonId,
+      );
+    }),
   );
 
   fallbackCandidates.forEach((candidate) => {
@@ -322,9 +333,16 @@ async function getPersonDirectChildren(
   }
 
   const fallbackCandidates = await Promise.all(
-    personRecord.movieConnectionKeys.map(async (movieKey) => {
-      const movie = parseMoviePathLabel(movieKey);
-      return createMovieChildCandidateFromParts(movie.name, movie.year);
+    personRecord.movieConnectionKeys.map(async (movieId) => {
+      const validMovieId = getValidTmdbEntityId(movieId);
+      if (validMovieId === null) {
+        return null;
+      }
+
+      const movieRecord = await getFilmRecordById(validMovieId);
+      return movieRecord
+        ? createMovieChildCandidateFromParts(movieRecord.title, movieRecord.year)
+        : null;
     }),
   );
 

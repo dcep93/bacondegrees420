@@ -11,6 +11,16 @@ import type {
 import { getCinenerdleMovieId, getCinenerdlePersonId, getFilmKey, normalizeName, normalizeTitle } from "../utils";
 import { getFilmTmdbSource, getPersonTmdbSource } from "../tmdb_provenance";
 
+type LegacyConnectionKey = string | number;
+
+type FilmRecordOverrides = Omit<Partial<FilmRecord>, "personConnectionKeys"> & {
+  personConnectionKeys?: LegacyConnectionKey[];
+};
+
+type PersonRecordOverrides = Omit<Partial<PersonRecord>, "movieConnectionKeys"> & {
+  movieConnectionKeys?: LegacyConnectionKey[];
+};
+
 function pickOverride<T extends object, K extends keyof T>(
   overrides: Partial<T>,
   key: K,
@@ -19,6 +29,89 @@ function pickOverride<T extends object, K extends keyof T>(
   return Object.prototype.hasOwnProperty.call(overrides, key)
     ? (overrides[key] as T[K])
     : fallback;
+}
+
+function getStableLegacyConnectionId(
+  kind: "movie" | "person",
+  value: string,
+): number {
+  const normalizedValue = kind === "movie" ? normalizeTitle(value) : normalizeName(value);
+  let hash = kind === "movie" ? 17 : 31;
+
+  for (const character of normalizedValue) {
+    hash = ((hash * 33) + character.charCodeAt(0)) % 2147483647;
+  }
+
+  return Math.max(hash, 1);
+}
+
+export function getLegacyMovieConnectionId(value: string): number {
+  return getStableLegacyConnectionId("movie", value);
+}
+
+export function getLegacyPersonConnectionId(value: string): number {
+  return getStableLegacyConnectionId("person", value);
+}
+
+function normalizeLegacyMovieConnectionKeys(
+  connectionKeys: LegacyConnectionKey[],
+  rawCredits: FilmRecord["rawTmdbMovieCreditsResponse"],
+): number[] {
+  const creditIdsByName = new Map(
+    (rawCredits?.cast ?? [])
+      .concat(rawCredits?.crew ?? [])
+      .flatMap((credit) => {
+        const validId = typeof credit.id === "number" ? credit.id : null;
+        const normalizedName = normalizeName(credit.name ?? "");
+        return validId && normalizedName ? [[normalizedName, validId] as const] : [];
+      }),
+  );
+
+  return Array.from(new Set(connectionKeys.flatMap((connectionKey) => {
+    if (typeof connectionKey === "number") {
+      return [connectionKey];
+    }
+
+    const normalizedName = normalizeName(connectionKey);
+    if (!normalizedName) {
+      return [];
+    }
+
+    return [creditIdsByName.get(normalizedName) ?? getLegacyPersonConnectionId(connectionKey)];
+  })));
+}
+
+function normalizeLegacyPersonMovieConnectionKeys(
+  connectionKeys: LegacyConnectionKey[],
+  rawCredits: PersonRecord["rawTmdbMovieCreditsResponse"],
+): number[] {
+  const creditIdsByMovieKey = new Map(
+    (rawCredits?.cast ?? [])
+      .concat(rawCredits?.crew ?? [])
+      .flatMap((credit) => {
+        const validId = typeof credit.id === "number" ? credit.id : null;
+        const movieKey = getFilmKey(credit.title ?? credit.original_title ?? "", credit.release_date?.slice(0, 4) ?? "");
+        return validId && movieKey ? [[movieKey, validId] as const] : [];
+      }),
+  );
+
+  return Array.from(new Set(connectionKeys.flatMap((connectionKey) => {
+    if (typeof connectionKey === "number") {
+      return [connectionKey];
+    }
+
+    const movieKey = getFilmKey(
+      ...(() => {
+        const match = connectionKey.match(/^(.*) \((\d{4})\)$/);
+        return match ? [match[1].trim(), match[2]] as const : [connectionKey, ""] as const;
+      })(),
+    );
+    if (!movieKey) {
+      return [];
+    }
+
+    return [creditIdsByMovieKey.get(movieKey) ?? getLegacyMovieConnectionId(connectionKey)];
+  })));
 }
 
 export function makeStarter(
@@ -112,11 +205,17 @@ export function makePersonCredit(
 }
 
 export function makeFilmRecord(
-  overrides: Partial<FilmRecord> = {},
+  overrides: FilmRecordOverrides = {},
 ): FilmRecord {
   const title = pickOverride(overrides, "title", "Heat");
   const year = pickOverride(overrides, "year", "1995");
-  const rawTmdbMovie = pickOverride(overrides, "rawTmdbMovie", undefined);
+  const rawTmdbMovie =
+    overrides.rawTmdbMovie as FilmRecord["rawTmdbMovie"] | undefined;
+  const rawTmdbMovieCreditsResponse =
+    overrides.rawTmdbMovieCreditsResponse as FilmRecord["rawTmdbMovieCreditsResponse"] | undefined;
+  const rawTmdbMovieSearchResponse =
+    overrides.rawTmdbMovieSearchResponse as FilmRecord["rawTmdbMovieSearchResponse"] | undefined;
+  const fetchTimestamp = overrides.fetchTimestamp as FilmRecord["fetchTimestamp"] | undefined;
 
   return {
     id: pickOverride(overrides, "id", 50),
@@ -132,7 +231,10 @@ export function makeFilmRecord(
       "genreIds",
       rawTmdbMovie?.genres?.map((genre) => genre.id) ?? [],
     ),
-    personConnectionKeys: pickOverride(overrides, "personConnectionKeys", []),
+    personConnectionKeys: normalizeLegacyMovieConnectionKeys(
+      pickOverride(overrides, "personConnectionKeys", []),
+      rawTmdbMovieCreditsResponse,
+    ),
     tmdbSource: pickOverride(
       overrides,
       "tmdbSource",
@@ -141,16 +243,22 @@ export function makeFilmRecord(
       } as FilmRecord),
     ),
     rawTmdbMovie,
-    rawTmdbMovieSearchResponse: pickOverride(overrides, "rawTmdbMovieSearchResponse", undefined),
-    rawTmdbMovieCreditsResponse: pickOverride(overrides, "rawTmdbMovieCreditsResponse", undefined),
-    fetchTimestamp: pickOverride(overrides, "fetchTimestamp", undefined),
+    rawTmdbMovieSearchResponse,
+    rawTmdbMovieCreditsResponse,
+    fetchTimestamp,
   };
 }
 
 export function makePersonRecord(
-  overrides: Partial<PersonRecord> = {},
+  overrides: PersonRecordOverrides = {},
 ): PersonRecord {
   const name = pickOverride(overrides, "name", "Al Pacino");
+  const rawTmdbMovieCreditsResponse =
+    overrides.rawTmdbMovieCreditsResponse as PersonRecord["rawTmdbMovieCreditsResponse"] | undefined;
+  const rawTmdbPerson = overrides.rawTmdbPerson as PersonRecord["rawTmdbPerson"] | undefined;
+  const rawTmdbPersonSearchResponse =
+    overrides.rawTmdbPersonSearchResponse as PersonRecord["rawTmdbPersonSearchResponse"] | undefined;
+  const fetchTimestamp = overrides.fetchTimestamp as PersonRecord["fetchTimestamp"] | undefined;
 
   return {
     id: pickOverride(overrides, "id", 60),
@@ -158,17 +266,20 @@ export function makePersonRecord(
     lookupKey: pickOverride(overrides, "lookupKey", getCinenerdlePersonId(name)),
     name,
     nameLower: pickOverride(overrides, "nameLower", normalizeName(name)),
-    movieConnectionKeys: pickOverride(overrides, "movieConnectionKeys", []),
+    movieConnectionKeys: normalizeLegacyPersonMovieConnectionKeys(
+      pickOverride(overrides, "movieConnectionKeys", []),
+      rawTmdbMovieCreditsResponse,
+    ),
     tmdbSource: pickOverride(
       overrides,
       "tmdbSource",
       getPersonTmdbSource({
-        rawTmdbPerson: pickOverride(overrides, "rawTmdbPerson", undefined),
+        rawTmdbPerson,
       } as PersonRecord),
     ),
-    rawTmdbPerson: pickOverride(overrides, "rawTmdbPerson", undefined),
-    rawTmdbPersonSearchResponse: pickOverride(overrides, "rawTmdbPersonSearchResponse", undefined),
-    rawTmdbMovieCreditsResponse: pickOverride(overrides, "rawTmdbMovieCreditsResponse", undefined),
-    fetchTimestamp: pickOverride(overrides, "fetchTimestamp", undefined),
+    rawTmdbPerson,
+    rawTmdbPersonSearchResponse,
+    rawTmdbMovieCreditsResponse,
+    fetchTimestamp,
   };
 }

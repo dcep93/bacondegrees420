@@ -7,7 +7,7 @@ import type {
   FilmRecord,
   PersonRecord,
 } from "./generators/cinenerdle2/types";
-import { getFilmKey, normalizeName } from "./generators/cinenerdle2/utils";
+import { getValidTmdbEntityId } from "./generators/cinenerdle2/utils";
 import {
   getParentMovieRankForPerson,
   getParentPersonRankForMovie,
@@ -28,8 +28,8 @@ export async function annotateDirectionalConnectionPathRanks(
     ) => Promise<PersonRecord[]>;
   },
 ): Promise<ConnectionEntity[]> {
-  const popularityByMovieKey = new Map<string, number>();
-  const popularityByPersonName = new Map<string, number>();
+  const popularityByMovieKey = new Map<number, number>();
+  const popularityByPersonName = new Map<number, number>();
   const movieRecordCache = new Map<string, Promise<FilmRecord | null>>();
   const personRecordCache = new Map<string, Promise<PersonRecord | null>>();
   const populatedMovieConnectionKeys = new Set<string>();
@@ -80,7 +80,11 @@ export async function annotateDirectionalConnectionPathRanks(
     populatedMovieConnectionKeys.add(entity.key);
     const movieRecords = await options.getConnectedMovieRecordsForPerson(entity, personRecord);
     movieRecords.forEach((movieRecord) => {
-      const movieKey = movieRecord.titleYear ?? getFilmKey(movieRecord.title, movieRecord.year);
+      const movieKey = getValidTmdbEntityId(movieRecord.tmdbId ?? movieRecord.id);
+      if (movieKey === null) {
+        return;
+      }
+
       popularityByMovieKey.set(
         movieKey,
         Math.max(popularityByMovieKey.get(movieKey) ?? 0, movieRecord.popularity ?? 0),
@@ -99,14 +103,14 @@ export async function annotateDirectionalConnectionPathRanks(
     populatedPersonConnectionKeys.add(entity.key);
     const personRecords = await options.getConnectedPersonRecordsForMovie(entity, movieRecord);
     personRecords.forEach((personRecord) => {
-      const personName = normalizeName(personRecord.name);
-      if (!personName) {
+      const personId = getValidTmdbEntityId(personRecord.tmdbId ?? personRecord.id);
+      if (personId === null) {
         return;
       }
 
       popularityByPersonName.set(
-        personName,
-        Math.max(popularityByPersonName.get(personName) ?? 0, personRecord.rawTmdbPerson?.popularity ?? 0),
+        personId,
+        Math.max(popularityByPersonName.get(personId) ?? 0, personRecord.rawTmdbPerson?.popularity ?? 0),
       );
     });
   };
@@ -139,7 +143,11 @@ export async function annotateDirectionalConnectionPathRanks(
 
       if (entity.kind === "movie") {
         const movieRecord = await getMovieRecord(entity);
-        const movieKey = movieRecord?.titleYear ?? getFilmKey(entity.name, entity.year);
+        const movieKey = getValidTmdbEntityId(movieRecord?.tmdbId ?? movieRecord?.id ?? entity.tmdbId);
+        if (movieKey === null) {
+          return;
+        }
+
         popularityByMovieKey.set(
           movieKey,
           Math.max(popularityByMovieKey.get(movieKey) ?? 0, entity.popularity),
@@ -148,14 +156,14 @@ export async function annotateDirectionalConnectionPathRanks(
       }
 
       if (entity.kind === "person") {
-        const personName = normalizeName(entity.name);
-        if (!personName) {
+        const personId = getValidTmdbEntityId(entity.tmdbId);
+        if (personId === null) {
           return;
         }
 
         popularityByPersonName.set(
-          personName,
-          Math.max(popularityByPersonName.get(personName) ?? 0, entity.popularity),
+          personId,
+          Math.max(popularityByPersonName.get(personId) ?? 0, entity.popularity),
         );
       }
     }),

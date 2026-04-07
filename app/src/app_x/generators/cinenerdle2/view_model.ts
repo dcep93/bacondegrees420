@@ -5,8 +5,6 @@ import { getResolvedPersonMovieConnectionKeys } from "./records";
 import { hasDirectTmdbMovieSource, hasDirectTmdbPersonSource } from "./tmdb_provenance";
 import type { FilmRecord, PersonRecord } from "./types";
 import {
-  getFilmKey,
-  getMovieKeyFromCredit,
   getValidTmdbEntityId,
   normalizeName,
   normalizeTitle,
@@ -184,39 +182,42 @@ function getOrdinalRank<T>(
 export function getParentPersonRankForMovie(
   movieRecord: FilmRecord | null,
   parentPersonRecord: PersonRecord | null,
-  popularityByPersonName: Map<string, number>,
+  popularityByPersonId: Map<number, number>,
 ): number | null {
   if (!movieRecord || !parentPersonRecord) {
     return null;
   }
 
-  const parentPersonName = normalizeName(parentPersonRecord.name);
-  const linkedPersonNames = Array.from(
-    new Set(movieRecord.personConnectionKeys.map(normalizeName).filter(Boolean)),
+  const parentPersonId = getValidTmdbEntityId(parentPersonRecord.tmdbId ?? parentPersonRecord.id);
+  const linkedPersonIds = Array.from(
+    new Set(movieRecord.personConnectionKeys.flatMap((personId) => {
+      const validPersonId = getValidTmdbEntityId(personId);
+      return validPersonId === null ? [] : [validPersonId];
+    })),
   );
-  if (!parentPersonName || !linkedPersonNames.includes(parentPersonName)) {
+  if (parentPersonId === null || !linkedPersonIds.includes(parentPersonId)) {
     return null;
   }
 
-  popularityByPersonName.set(
-    parentPersonName,
+  popularityByPersonId.set(
+    parentPersonId,
     Math.max(
-      popularityByPersonName.get(parentPersonName) ?? 0,
+      popularityByPersonId.get(parentPersonId) ?? 0,
       parentPersonRecord.rawTmdbPerson?.popularity ?? 0,
     ),
   );
 
   return getOrdinalRank(
-    linkedPersonNames,
-    (personName) => personName === parentPersonName,
+    linkedPersonIds,
+    (personId) => personId === parentPersonId,
     (left, right) => {
       const popularityDifference =
-        (popularityByPersonName.get(right) ?? 0) - (popularityByPersonName.get(left) ?? 0);
+        (popularityByPersonId.get(right) ?? 0) - (popularityByPersonId.get(left) ?? 0);
       if (popularityDifference !== 0) {
         return popularityDifference;
       }
 
-      return left.localeCompare(right);
+      return left - right;
     },
   );
 }
@@ -224,58 +225,60 @@ export function getParentPersonRankForMovie(
 export function getParentMovieRankForPerson(
   parentMovieRecord: FilmRecord | null,
   personRecord: PersonRecord | null,
-  popularityByMovieKey: Map<string, number>,
+  popularityByMovieId: Map<number, number>,
 ): number | null {
   if (!parentMovieRecord || !personRecord) {
     return null;
   }
 
-  const parentMovieKey = getFilmKey(parentMovieRecord.title, parentMovieRecord.year);
-  const linkedMovieKeys = getResolvedPersonMovieConnectionKeys(personRecord);
-  if (!linkedMovieKeys.includes(parentMovieKey)) {
+  const parentMovieId = getValidTmdbEntityId(parentMovieRecord.tmdbId ?? parentMovieRecord.id);
+  const linkedMovieIds = getResolvedPersonMovieConnectionKeys(personRecord);
+  if (parentMovieId === null || !linkedMovieIds.includes(parentMovieId)) {
     return null;
   }
 
-  popularityByMovieKey.set(
-    parentMovieKey,
-    Math.max(popularityByMovieKey.get(parentMovieKey) ?? 0, parentMovieRecord.popularity ?? 0),
+  popularityByMovieId.set(
+    parentMovieId,
+    Math.max(popularityByMovieId.get(parentMovieId) ?? 0, parentMovieRecord.popularity ?? 0),
   );
 
   return getOrdinalRank(
-    linkedMovieKeys,
-    (movieKey) => movieKey === parentMovieKey,
+    linkedMovieIds,
+    (movieId) => movieId === parentMovieId,
     (left, right) => {
       const popularityDifference =
-        (popularityByMovieKey.get(right) ?? 0) - (popularityByMovieKey.get(left) ?? 0);
+        (popularityByMovieId.get(right) ?? 0) - (popularityByMovieId.get(left) ?? 0);
       if (popularityDifference !== 0) {
         return popularityDifference;
       }
 
-      return left.localeCompare(right);
+      return left - right;
     },
   );
 }
 
 export function getResolvedMovieConnectionCount(
-  credit: { title?: string; release_date?: string },
+  credit: { id?: number | null },
   movieRecord: FilmRecord | null,
-  connectionCounts: Map<string, number>,
+  connectionCounts: Map<number, number>,
 ) {
+  const movieTmdbId = getValidTmdbEntityId(credit.id ?? movieRecord?.tmdbId ?? movieRecord?.id);
   return Math.max(
     movieRecord?.personConnectionKeys.length ?? 0,
-    connectionCounts.get(getMovieKeyFromCredit(credit)) ?? 0,
+    movieTmdbId === null ? 0 : (connectionCounts.get(movieTmdbId) ?? 0),
     1,
   );
 }
 
 export function getResolvedPersonConnectionCount(
-  personName: string,
+  personTmdbId: number | null,
   personRecord: PersonRecord | null,
-  connectionCounts: Map<string, number>,
+  connectionCounts: Map<number, number>,
 ) {
+  const validPersonTmdbId = getValidTmdbEntityId(personTmdbId ?? personRecord?.tmdbId ?? personRecord?.id);
   return Math.max(
     personRecord?.movieConnectionKeys.length ?? 0,
-    connectionCounts.get(normalizeName(personName)) ?? 0,
+    validPersonTmdbId === null ? 0 : (connectionCounts.get(validPersonTmdbId) ?? 0),
     1,
   );
 }

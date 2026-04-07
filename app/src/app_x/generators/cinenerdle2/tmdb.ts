@@ -200,13 +200,16 @@ function createConnectionDerivedFilmRecord(
   connectedPerson: PersonRecord,
 ): FilmRecord | null {
   const tmdbId = getValidTmdbEntityId(movieCredit.id);
+  const connectedPersonTmdbId = getValidTmdbEntityId(
+    connectedPerson.tmdbId ?? connectedPerson.id,
+  );
   const title = getMovieTitleFromCredit(movieCredit);
   const year = getMovieYearFromCredit(movieCredit);
   const partialFilmCredit = createPartialFilmCreditFromMovieCredit(
     connectedPerson,
     movieCredit,
   );
-  if (!tmdbId || !title || !partialFilmCredit) {
+  if (!tmdbId || !connectedPersonTmdbId || !title || !partialFilmCredit) {
     return null;
   }
 
@@ -232,7 +235,7 @@ function createConnectionDerivedFilmRecord(
         : normalizeGenreIds(movieCredit.genre_ids),
     personConnectionKeys: [
       ...(existingFilmRecord?.personConnectionKeys ?? []),
-      normalizeName(connectedPerson.name),
+      connectedPersonTmdbId,
     ],
     tmdbSource: existingIsDirect ? "direct-film-fetch" : "connection-derived",
     rawTmdbMovie: existingFilmRecord?.rawTmdbMovie ?? {

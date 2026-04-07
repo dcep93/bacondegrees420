@@ -30,10 +30,12 @@ const indexedDbMock = vi.hoisted(() => ({
   getFilmRecordByTitleAndYear: vi.fn(),
   getFilmRecordCountsByPersonConnectionKeys: vi.fn(),
   getFilmRecordsByIds: vi.fn(),
+  getMoviePopularityByIds: vi.fn(),
   getMoviePopularityByLabels: vi.fn(),
   getPersonRecordById: vi.fn(),
   getPersonRecordByName: vi.fn(),
   getPersonRecordCountsByMovieKeys: vi.fn(),
+  getPersonPopularityByIds: vi.fn(),
   getPersonPopularityByNames: vi.fn(),
 }));
 
@@ -220,10 +222,12 @@ beforeEach(() => {
   indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(null);
   indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(new Map());
   indexedDbMock.getFilmRecordsByIds.mockResolvedValue(new Map());
+  indexedDbMock.getMoviePopularityByIds.mockResolvedValue(new Map());
   indexedDbMock.getMoviePopularityByLabels.mockResolvedValue(new Map());
   indexedDbMock.getPersonRecordById.mockResolvedValue(null);
   indexedDbMock.getPersonRecordByName.mockResolvedValue(null);
   indexedDbMock.getPersonRecordCountsByMovieKeys.mockResolvedValue(new Map());
+  indexedDbMock.getPersonPopularityByIds.mockResolvedValue(new Map());
   indexedDbMock.getPersonPopularityByNames.mockResolvedValue(new Map());
 
   tmdbMock.fetchCinenerdleDailyStarterMovies.mockResolvedValue([]);
@@ -1223,7 +1227,7 @@ describe("useCinenerdleController", () => {
 
     expect(tmdbMock.prepareSelectedMovie).not.toHaveBeenCalled();
     expect(tmdbMock.prepareSelectedPerson).not.toHaveBeenCalled();
-    expect(indexedDbMock.getMoviePopularityByLabels).toHaveBeenCalledWith(["heat (1995)"]);
+    expect(indexedDbMock.getMoviePopularityByIds).toHaveBeenCalledWith([321]);
     expect(indexedDbMock.getFilmRecordById).not.toHaveBeenCalled();
     expect(indexedDbMock.getFilmRecordByTitleAndYear).not.toHaveBeenCalled();
     expect(tmdbMock.prefetchTopPopularUnhydratedConnections).toHaveBeenCalledTimes(1);
@@ -1359,8 +1363,8 @@ describe("useCinenerdleController", () => {
     const scrollGenerationLikeBubble = vi.fn();
 
     indexedDbMock.getFilmRecordsByIds.mockResolvedValue(new Map([[321, heatRecord]]));
-    indexedDbMock.getPersonPopularityByNames.mockResolvedValue(new Map([["al pacino", 88]]));
-    indexedDbMock.getPersonRecordCountsByMovieKeys.mockResolvedValue(new Map([["heat (1995)", 8]]));
+    indexedDbMock.getPersonPopularityByIds.mockResolvedValue(new Map([[60, 88]]));
+    indexedDbMock.getPersonRecordCountsByMovieKeys.mockResolvedValue(new Map([[321, 8]]));
 
     await controller.runEffect(
       {
@@ -1388,7 +1392,7 @@ describe("useCinenerdleController", () => {
 
     expect(tmdbMock.prepareSelectedMovie).not.toHaveBeenCalled();
     expect(tmdbMock.prepareSelectedPerson).not.toHaveBeenCalled();
-    expect(indexedDbMock.getPersonPopularityByNames).not.toHaveBeenCalled();
+    expect(indexedDbMock.getPersonPopularityByIds).not.toHaveBeenCalled();
     expect(indexedDbMock.getPersonRecordById).not.toHaveBeenCalled();
     expect(indexedDbMock.getPersonRecordByName).not.toHaveBeenCalled();
     expect(tmdbMock.prefetchTopPopularUnhydratedConnections).toHaveBeenCalledTimes(1);
@@ -1541,12 +1545,12 @@ describe("useCinenerdleController", () => {
     });
 
     indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(
-      new Map([["Al Pacino", 2]]),
+      new Map([[60, 2]]),
     );
     indexedDbMock.getPersonRecordById.mockResolvedValue(pacinoRecord);
-    indexedDbMock.getMoviePopularityByLabels.mockResolvedValue(new Map([
-      ["heat (1995)", 66],
-      ["scarface (1983)", 99],
+    indexedDbMock.getMoviePopularityByIds.mockResolvedValue(new Map([
+      [321, 66],
+      [322, 99],
     ]));
 
     const childRow = await buildChildRowForCard(
@@ -1957,12 +1961,12 @@ describe("useCinenerdleController", () => {
     );
     indexedDbMock.getPersonRecordCountsByMovieKeys.mockResolvedValue(
       new Map([
-        ["heat (1995)", 8],
-        ["scarface (1983)", 6],
+        [321, 8],
+        [322, 6],
       ]),
     );
-    indexedDbMock.getPersonPopularityByNames.mockResolvedValue(
-      new Map([["al pacino", 88]]),
+    indexedDbMock.getPersonPopularityByIds.mockResolvedValue(
+      new Map([[60, 88]]),
     );
     tmdbMock.prepareSelectedPerson.mockResolvedValue(hydratedPacinoRecord);
 

@@ -1,6 +1,7 @@
 import {
   getCinenerdleStarterFilmRecords,
   getFilmRecordByTitleAndYear,
+  getFilmRecordsByIds,
   getFilmRecordsByPersonConnectionKey,
   getPersonRecordById,
   getPersonRecordByName,
@@ -247,17 +248,6 @@ function getMovieLookupKeyFromConnectionEntityKey(key: string): string {
   return getFilmKey(parsedMovie.name, parsedMovie.year);
 }
 
-function getMovieConnectionEntityKeyFromLookupKey(movieKey: string): string {
-  const normalizedMovie = normalizeTitle(movieKey);
-  const match = normalizedMovie.match(/^(.*) \((\d{4})\)$/);
-
-  if (!match) {
-    return getMovieConnectionEntityKey(normalizedMovie, "");
-  }
-
-  return getMovieConnectionEntityKey(match[1], match[2]);
-}
-
 function createReadableFallbackLabel(normalizedLabel: string): string {
   return normalizedLabel.replace(
     /(^|[^\p{L}\p{N}]+)(\p{L})/gu,
@@ -498,42 +488,37 @@ export async function getConnectionNeighborKeysForEntityKey(entityKey: string): 
     const visibleFilmRecords = filmRecords.filter(isFilmRecordAllowedInConnectionGraph);
     const movieKeys = new Set<string>();
     const popularityByKey = new Map<string, number>();
-    const moviePopularityByLookupKey = new Map<string, number>();
-    const filmRecordByLookupKey = new Map(
-      filmRecords.map((filmRecord) => [getFilmKey(filmRecord.title, filmRecord.year), filmRecord] as const),
-    );
+    const moviePopularityById = new Map<number, number>();
+    const resolvedMovieIds = getResolvedPersonMovieConnectionKeys(personRecord);
+    const filmRecordsById = await getFilmRecordsByIds(resolvedMovieIds);
 
     getAllowedConnectedTmdbMovieCredits(personRecord).forEach((credit) => {
-      const title = getMovieTitleFromCredit(credit);
-      if (!title) {
+      const movieTmdbId = getValidTmdbEntityId(credit.id);
+      if (movieTmdbId === null) {
         return;
       }
 
-      const movieLookupKey = getFilmKey(title, getMovieYearFromCredit(credit));
-      moviePopularityByLookupKey.set(
-        movieLookupKey,
-        Math.max(moviePopularityByLookupKey.get(movieLookupKey) ?? 0, credit.popularity ?? 0),
+      moviePopularityById.set(
+        movieTmdbId,
+        Math.max(moviePopularityById.get(movieTmdbId) ?? 0, credit.popularity ?? 0),
       );
     });
 
-    for (const movieKey of getResolvedPersonMovieConnectionKeys(personRecord)) {
-      const matchingFilmRecord = filmRecordByLookupKey.get(movieKey);
-      if (matchingFilmRecord) {
-        if (!isFilmRecordAllowedInConnectionGraph(matchingFilmRecord)) {
-          continue;
-        }
-      } else if (!await isConnectionEntityKeyAllowedInGraph(
-        getMovieConnectionEntityKeyFromLookupKey(movieKey),
-      )) {
+    for (const movieId of resolvedMovieIds) {
+      const matchingFilmRecord = filmRecordsById.get(movieId) ?? null;
+      if (!matchingFilmRecord || !isFilmRecordAllowedInConnectionGraph(matchingFilmRecord)) {
         continue;
       }
 
-      const connectionMovieKey = getMovieConnectionEntityKeyFromLookupKey(movieKey);
+      const connectionMovieKey = getMovieConnectionEntityKey(
+        matchingFilmRecord.title,
+        matchingFilmRecord.year,
+      );
       movieKeys.add(connectionMovieKey);
       setPopularityScore(
         popularityByKey,
         connectionMovieKey,
-        moviePopularityByLookupKey.get(movieKey) ?? 0,
+        moviePopularityById.get(movieId) ?? matchingFilmRecord.popularity ?? 0,
       );
     }
 
@@ -557,51 +542,73 @@ export async function getConnectionNeighborKeysForEntityKey(entityKey: string): 
   }
   const personKeys = new Set<string>();
   const popularityByKey = new Map<string, number>();
-  const personPopularityByKey = new Map<string, number>();
-  const resolvedPersonNames = new Set<string>();
+  const personPopularityByKey = new Map<number, number>();
+  const resolvedPersonIds = new Set<number>();
+  const personRecordsById = new Map(
+    personRecords.flatMap((personRecord) => {
+      const personTmdbId = getValidTmdbEntityId(personRecord.tmdbId ?? personRecord.id);
+      return personTmdbId === null ? [] : [[personTmdbId, personRecord] as const];
+    }),
+  );
 
   getAssociatedPeopleFromMovieCredits(filmRecord).forEach((credit) => {
-    const personName = normalizeName(credit.name ?? "");
-    if (!personName) {
+    const personTmdbId = getValidTmdbEntityId(credit.id);
+    if (personTmdbId === null) {
       return;
     }
 
     const connectionPersonKey = getPersonConnectionEntityKey(credit.name ?? "", credit.id);
     personKeys.add(connectionPersonKey);
-    resolvedPersonNames.add(personName);
+    resolvedPersonIds.add(personTmdbId);
     setPopularityScore(popularityByKey, connectionPersonKey, credit.popularity ?? 0);
 
     personPopularityByKey.set(
-      personName,
-      Math.max(personPopularityByKey.get(personName) ?? 0, credit.popularity ?? 0),
+      personTmdbId,
+      Math.max(personPopularityByKey.get(personTmdbId) ?? 0, credit.popularity ?? 0),
     );
   });
 
-  filmRecord?.personConnectionKeys.forEach((personName) => {
-    if (resolvedPersonNames.has(normalizeName(personName))) {
+  filmRecord?.personConnectionKeys.forEach((personId) => {
+    const validPersonId = getValidTmdbEntityId(personId);
+    if (validPersonId === null || resolvedPersonIds.has(validPersonId)) {
       return;
     }
 
-    const connectionPersonKey = getPersonConnectionEntityKey(personName);
+    const personRecord = personRecordsById.get(validPersonId);
+    if (!personRecord) {
+      return;
+    }
+
+    const connectionPersonKey = getPersonConnectionEntityKey(
+      personRecord.name,
+      validPersonId,
+    );
     personKeys.add(connectionPersonKey);
     setPopularityScore(
       popularityByKey,
       connectionPersonKey,
-      personPopularityByKey.get(normalizeName(personName)) ?? 0,
+      personPopularityByKey.get(validPersonId) ??
+        personRecord.rawTmdbPerson?.popularity ??
+        0,
     );
   });
   personRecords.forEach((personRecord) => {
+    const personTmdbId = getValidTmdbEntityId(personRecord.tmdbId ?? personRecord.id);
+    if (personTmdbId === null) {
+      return;
+    }
+
     const connectionPersonKey = getPersonConnectionEntityKey(
       personRecord.name,
-      personRecord.tmdbId ?? personRecord.id,
+      personTmdbId,
     );
     personKeys.add(connectionPersonKey);
-    resolvedPersonNames.add(normalizeName(personRecord.name));
+    resolvedPersonIds.add(personTmdbId);
     setPopularityScore(
       popularityByKey,
       connectionPersonKey,
       personRecord.rawTmdbPerson?.popularity ??
-        personPopularityByKey.get(normalizeName(personRecord.name)) ??
+        personPopularityByKey.get(personTmdbId) ??
         0,
     );
   });

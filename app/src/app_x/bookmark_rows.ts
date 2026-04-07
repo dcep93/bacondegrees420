@@ -10,6 +10,7 @@ import {
   createPersonRootCard,
 } from "./generators/cinenerdle2/cards";
 import {
+  getFilmRecordById,
   getFilmRecordByTitleAndYear,
   getPersonRecordByName,
   getPersonRecordById,
@@ -25,10 +26,9 @@ import type {
 import type { CinenerdleCard, CinenerdlePathNode } from "./generators/cinenerdle2/view_types";
 import {
   formatMoviePathLabel,
-  getFilmKey,
+  getValidTmdbEntityId,
   normalizeName,
   normalizeTitle,
-  parseMoviePathLabel,
 } from "./generators/cinenerdle2/utils";
 import {
   createCardViewModel,
@@ -172,7 +172,7 @@ function getBookmarkParentLabel(entity: ResolvedBookmarkEntity): string | null {
 
 async function buildPopularityByMovieKey(
   personRecord: PersonRecord | null,
-): Promise<Map<string, number>> {
+): Promise<Map<number, number>> {
   if (!personRecord) {
     return new Map();
   }
@@ -180,21 +180,14 @@ async function buildPopularityByMovieKey(
   const movieKeys = Array.from(
     new Set(
       personRecord.movieConnectionKeys
-        .map((movieKey) => {
-          const parsedMovie = parseMoviePathLabel(movieKey);
-          return getFilmKey(parsedMovie.name, parsedMovie.year);
-        })
-        .filter(Boolean),
+        .flatMap((movieId) => {
+          const validMovieId = getValidTmdbEntityId(movieId);
+          return validMovieId === null ? [] : [validMovieId];
+        }),
     ),
   );
   const movieRecords = await Promise.all(
-    movieKeys.map(async (movieKey) => {
-      const parsedMovie = parseMoviePathLabel(movieKey);
-      return [
-        movieKey,
-        await getFilmRecordByTitleAndYear(parsedMovie.name, parsedMovie.year),
-      ] as const;
-    }),
+    movieKeys.map(async (movieKey) => [movieKey, await getFilmRecordById(movieKey)] as const),
   );
 
   return new Map(
@@ -204,18 +197,23 @@ async function buildPopularityByMovieKey(
 
 async function buildPopularityByPersonName(
   movieRecord: FilmRecord | null,
-): Promise<Map<string, number>> {
+): Promise<Map<number, number>> {
   if (!movieRecord) {
     return new Map();
   }
 
   const personNames = Array.from(
-    new Set(movieRecord.personConnectionKeys.map(normalizeName).filter(Boolean)),
+    new Set(
+      movieRecord.personConnectionKeys.flatMap((personId) => {
+        const validPersonId = getValidTmdbEntityId(personId);
+        return validPersonId === null ? [] : [validPersonId];
+      }),
+    ),
   );
   const personRecords = await Promise.all(
     personNames.map(async (personName) => [
       personName,
-      await getPersonRecordByName(personName),
+      await getPersonRecordById(personName),
     ] as const),
   );
 

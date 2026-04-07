@@ -185,7 +185,7 @@ describe("IndexedDB snapshot film genre preservation", () => {
 
     const inflatedSnapshot = inflateIndexedDbSnapshot({
       format: "cinenerdle-indexed-db-snapshot",
-      version: 11,
+      version: 12,
       people: [],
       films: [storedFilm],
     });
@@ -234,7 +234,7 @@ describe("IndexedDB snapshot film genre preservation", () => {
 
     const inflatedSnapshot = inflateIndexedDbSnapshot({
       format: "cinenerdle-indexed-db-snapshot",
-      version: 11,
+      version: 12,
       people: [],
       films: [
         createStoredFilmRecord(documentaryFilm),
@@ -290,7 +290,7 @@ describe("IndexedDB snapshot film genre preservation", () => {
 
     const inflatedSnapshot = inflateIndexedDbSnapshot({
       format: "cinenerdle-indexed-db-snapshot",
-      version: 11,
+      version: 12,
       people: [],
       films: [
         createStoredFilmRecord(allowedSparseFilm),
@@ -320,7 +320,7 @@ describe("IndexedDB snapshot film genre preservation", () => {
       title: "Overnight",
       year: "2003",
       genreIds: [99],
-      personConnectionKeys: ["willem dafoe"],
+      personConnectionKeys: [5293],
       rawTmdbMovie: makeTmdbMovieSearchResult({
         id: 27007,
         title: "Overnight",
@@ -336,7 +336,7 @@ describe("IndexedDB snapshot film genre preservation", () => {
     const personSnapshot: IndexedDbSnapshotPerson = {
       tmdbId: 5293,
       name: "Willem Dafoe",
-      movieConnectionKeys: ["overnight (2003)"],
+      movieConnectionKeys: [32082],
       popularity: 4.4078,
       fromTmdb: null,
     };
@@ -356,7 +356,7 @@ describe("IndexedDB snapshot film genre preservation", () => {
 
     const inflatedSnapshot = inflateIndexedDbSnapshot({
       format: "cinenerdle-indexed-db-snapshot",
-      version: 11,
+      version: 12,
       people: [personSnapshot],
       films: [storedFilm],
     });
@@ -374,7 +374,7 @@ describe("IndexedDB snapshot film genre preservation", () => {
       title: "Overnight",
       year: "2003",
       genreIds: [99],
-      personConnectionKeys: ["willem dafoe"],
+      personConnectionKeys: [5293],
       rawTmdbMovie: makeTmdbMovieSearchResult({
         id: 27007,
         title: "Overnight",
@@ -402,7 +402,7 @@ describe("IndexedDB snapshot film genre preservation", () => {
 
     const inflatedSnapshot = inflateIndexedDbSnapshot({
       format: "cinenerdle-indexed-db-snapshot",
-      version: 11,
+      version: 12,
       people: [],
       films: [
         createStoredFilmRecord(excludedConnectionDerivedFilm),

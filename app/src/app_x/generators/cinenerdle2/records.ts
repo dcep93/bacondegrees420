@@ -11,9 +11,8 @@ import {
   getAllowedConnectedTmdbMovieCredits,
   getCinenerdleMovieId,
   getCinenerdlePersonId,
-  getMovieKeyFromCredit,
-  getValidTmdbEntityId,
   getFilmKey,
+  getValidTmdbEntityId,
   normalizeName,
   normalizeTitle,
 } from "./utils";
@@ -114,6 +113,17 @@ function normalizeFetchedTmdbGenres(
   });
 
   return normalizedGenres.length > 0 ? normalizedGenres : [];
+}
+
+function dedupeConnectionIds(
+  ids: Array<number | null | undefined>,
+): number[] {
+  return Array.from(
+    new Set(ids.flatMap((id) => {
+      const validId = getValidTmdbEntityId(id);
+      return validId === null ? [] : [validId];
+    })),
+  );
 }
 
 export function normalizeGenreIds(
@@ -402,20 +412,19 @@ function getPersonRecordQualityScore(personRecord: PersonRecord | null): number 
 
 export function getResolvedPersonMovieConnectionKeys(
   personRecord: PersonRecord | null,
-): string[] {
+): number[] {
   if (!personRecord) {
     return [];
   }
 
-  const tmdbMovieKeys = getAllowedConnectedTmdbMovieCredits(personRecord)
-    .map((credit) => getMovieKeyFromCredit(credit))
-    .filter(Boolean);
+  const tmdbMovieIds = getAllowedConnectedTmdbMovieCredits(personRecord)
+    .map((credit) => getValidTmdbEntityId(credit.id));
 
   if (personRecord.rawTmdbMovieCreditsResponse) {
-    return Array.from(new Set(tmdbMovieKeys));
+    return dedupeConnectionIds(tmdbMovieIds);
   }
 
-  return Array.from(new Set(personRecord.movieConnectionKeys.filter(Boolean)));
+  return dedupeConnectionIds(personRecord.movieConnectionKeys);
 }
 
 export function withDerivedPersonFields(personRecord: PersonRecord): PersonRecord {
@@ -433,12 +442,13 @@ export function withDerivedPersonFields(personRecord: PersonRecord): PersonRecor
 }
 
 export function buildPersonRecordFromFilmCredit(
-  filmRecord: Pick<FilmRecord, "title" | "year" | "fetchTimestamp">,
+  filmRecord: Pick<FilmRecord, "id" | "tmdbId" | "title" | "year" | "fetchTimestamp">,
   credit: TmdbPersonCredit,
 ): PersonRecord | null {
   const tmdbId = getValidTmdbEntityId(credit.id);
+  const filmTmdbId = getValidTmdbEntityId(filmRecord.tmdbId ?? filmRecord.id);
   const normalizedName = normalizeName(credit.name ?? "");
-  if (!tmdbId || !normalizedName) {
+  if (!tmdbId || !filmTmdbId || !normalizedName) {
     return null;
   }
 
@@ -448,7 +458,7 @@ export function buildPersonRecordFromFilmCredit(
     lookupKey: getCinenerdlePersonId(credit.name ?? ""),
     name: credit.name ?? "",
     nameLower: normalizedName,
-    movieConnectionKeys: [getFilmKey(filmRecord.title, filmRecord.year)],
+    movieConnectionKeys: [filmTmdbId],
     tmdbSource: "connection-derived",
     rawTmdbPerson: {
       id: tmdbId,
@@ -464,16 +474,13 @@ export function buildPersonRecordFromFilmCredit(
 
 export function withDerivedFilmFields(filmRecord: FilmRecord): FilmRecord {
   const tmdbPeople = getAssociatedPeopleFromMovieCredits(filmRecord)
-    .map((credit) => normalizeName(credit.name ?? ""))
-    .filter(Boolean);
+    .map((credit) => getValidTmdbEntityId(credit.id));
   const personConnectionKeys = filmRecord.rawTmdbMovieCreditsResponse
-    ? tmdbPeople
-    : Array.from(
-      new Set([
-        ...filmRecord.personConnectionKeys,
-        ...tmdbPeople,
-      ]),
-    );
+    ? dedupeConnectionIds(tmdbPeople)
+    : dedupeConnectionIds([
+      ...filmRecord.personConnectionKeys,
+      ...tmdbPeople,
+    ]);
 
   return {
     ...filmRecord,
@@ -658,7 +665,7 @@ export function mergePersonRecords(
         nextFetchTimestamp,
       ) ?? nextPersonRecord.nameLower,
     movieConnectionKeys: Array.from(
-      new Set([
+      new Set<number>([
         ...(existingPersonRecord?.movieConnectionKeys ?? []),
         ...nextPersonRecord.movieConnectionKeys,
       ]),

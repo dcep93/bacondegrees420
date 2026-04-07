@@ -3,6 +3,7 @@ import {
   getPersonConnectionEntityKey,
 } from "./generators/cinenerdle2/connection_graph";
 import {
+  getFilmRecordById,
   getFilmRecordByTitleAndYear,
   getMoviePopularityByLabels,
   getFilmRecordsByPersonConnectionKey,
@@ -27,7 +28,6 @@ import {
   normalizeName,
   normalizeTitle,
   normalizeWhitespace,
-  parseMoviePathLabel,
 } from "./generators/cinenerdle2/utils";
 import type { CinenerdleCard } from "./generators/cinenerdle2/view_types";
 
@@ -264,8 +264,19 @@ async function getMovieDirectChildren(
   }
 
   const fallbackCandidates = await Promise.all(
-    movieRecord.personConnectionKeys.map((personName) =>
-      createPersonChildCandidateFromName(personName)),
+    movieRecord.personConnectionKeys.map(async (personId) => {
+      const validPersonId = getValidTmdbEntityId(personId);
+      if (validPersonId === null) {
+        return null;
+      }
+
+      const personRecord = await getPersonRecordById(validPersonId);
+      return createPersonChildCandidateFromName(
+        personRecord?.name ?? "",
+        null,
+        validPersonId,
+      );
+    }),
   );
 
   fallbackCandidates.forEach((candidate) => {
@@ -308,9 +319,16 @@ async function getPersonDirectChildren(
   }
 
   const fallbackCandidates = await Promise.all(
-    personRecord.movieConnectionKeys.map(async (movieKey) => {
-      const movie = parseMoviePathLabel(movieKey);
-      return createMovieChildCandidateFromParts(movie.name, movie.year);
+    personRecord.movieConnectionKeys.map(async (movieId) => {
+      const validMovieId = getValidTmdbEntityId(movieId);
+      if (validMovieId === null) {
+        return null;
+      }
+
+      const movieRecord = await getFilmRecordById(validMovieId);
+      return movieRecord
+        ? createMovieChildCandidateFromParts(movieRecord.title, movieRecord.year)
+        : null;
     }),
   );
 
@@ -339,14 +357,19 @@ function getMovieConnectedPersonMatchKeys(movieRecord: FilmRecord): Set<string> 
     ).forEach((matchKey) => connectedKeys.add(matchKey));
   });
 
-  movieRecord.personConnectionKeys.forEach((personName) => {
-    getPersonMatchKeys(personName, null).forEach((matchKey) => connectedKeys.add(matchKey));
+  movieRecord.personConnectionKeys.forEach((personId) => {
+    const validPersonId = getValidTmdbEntityId(personId);
+    if (validPersonId === null) {
+      return;
+    }
+
+    getPersonMatchKeys("", validPersonId).forEach((matchKey) => connectedKeys.add(matchKey));
   });
 
   return connectedKeys;
 }
 
-function getPersonConnectedMovieMatchKeys(personRecord: PersonRecord): Set<string> {
+async function getPersonConnectedMovieMatchKeys(personRecord: PersonRecord): Promise<Set<string>> {
   const connectedKeys = new Set<string>();
   const credits = getAssociatedMoviesFromPersonCredits(personRecord);
 
@@ -362,9 +385,19 @@ function getPersonConnectedMovieMatchKeys(personRecord: PersonRecord): Set<strin
     ).forEach((matchKey) => connectedKeys.add(matchKey));
   });
 
-  personRecord.movieConnectionKeys.forEach((movieKey) => {
-    const movie = parseMoviePathLabel(movieKey);
-    getMovieMatchKeys(movie.name, movie.year).forEach((matchKey) => connectedKeys.add(matchKey));
+  const fallbackMovieRecords = await Promise.all(
+    personRecord.movieConnectionKeys.map(async (movieId) => {
+      const validMovieId = getValidTmdbEntityId(movieId);
+      return validMovieId === null ? null : getFilmRecordById(validMovieId);
+    }),
+  );
+  fallbackMovieRecords.forEach((movieRecord) => {
+    if (!movieRecord) {
+      return;
+    }
+
+    getMovieMatchKeys(movieRecord.title, movieRecord.year)
+      .forEach((matchKey) => connectedKeys.add(matchKey));
   });
 
   return connectedKeys;
@@ -840,7 +873,7 @@ async function findSelectedPersonSpoiler(
   counterpartPersonRecord: PersonRecord,
 ): Promise<{ spoiler: ConnectionMatchupPreviewEntity | null; debug: MatchupSpoilerSearchDebug }> {
   const directChildren = await getPersonDirectChildren(selectedPersonRecord);
-  const counterpartMatchKeys = getPersonConnectedMovieMatchKeys(counterpartPersonRecord);
+  const counterpartMatchKeys = await getPersonConnectedMovieMatchKeys(counterpartPersonRecord);
   const exclusiveChildren: MovieChildCandidate[] = [];
   const debug: MatchupSpoilerSearchDebug = {
     reason: "",

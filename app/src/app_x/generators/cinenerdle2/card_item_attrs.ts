@@ -9,10 +9,7 @@ import {
 import { getResolvedPersonMovieConnectionKeys } from "./records";
 import type { CinenerdleCard } from "./view_types";
 import {
-  getAllowedConnectedTmdbMovieCredits,
   getAssociatedPeopleFromMovieCredits,
-  getCinenerdlePersonId,
-  getMovieKeyFromCredit,
   getValidTmdbEntityId,
 } from "./utils";
 
@@ -61,8 +58,12 @@ function getMovieConnectionTargets(
   getAssociatedPeopleFromMovieCredits(card.record).forEach((credit) => {
     const name = credit.name?.trim() ?? "";
     const id = getValidTmdbEntityId(credit.id);
-    const targetId = String(id ?? getCinenerdlePersonId(name));
-    if (!name || seenTargets.has(targetId)) {
+    if (!name || id === null) {
+      return;
+    }
+
+    const targetId = String(id);
+    if (seenTargets.has(targetId)) {
       return;
     }
 
@@ -75,8 +76,13 @@ function getMovieConnectionTargets(
   });
 
   card.record?.personConnectionKeys.forEach((personName) => {
-    const normalizedName = getCinenerdlePersonId(personName);
-    if (!normalizedName || seenTargets.has(normalizedName)) {
+    const personId = getValidTmdbEntityId(personName);
+    if (personId === null) {
+      return;
+    }
+
+    const normalizedName = String(personId);
+    if (seenTargets.has(normalizedName)) {
       return;
     }
 
@@ -84,7 +90,7 @@ function getMovieConnectionTargets(
     targets.push({
       bucket: "person",
       id: normalizedName,
-      name: personName,
+      name: String(personId),
     });
   });
 
@@ -96,20 +102,9 @@ function getPersonConnectionTargets(
 ): CinenerdleItemAttrTarget[] {
   const targets: CinenerdleItemAttrTarget[] = [];
   const seenTargets = new Set<string>();
-  const tmdbMovieIdsByMovieKey = new Map<string, number>();
-
-  getAllowedConnectedTmdbMovieCredits(card.record).forEach((credit) => {
-    const movieKey = getMovieKeyFromCredit(credit);
-    const tmdbId = getValidTmdbEntityId(credit.id);
-    if (!movieKey || tmdbId === null) {
-      return;
-    }
-
-    tmdbMovieIdsByMovieKey.set(movieKey, tmdbId);
-  });
 
   getResolvedPersonMovieConnectionKeys(card.record).forEach((movieKey) => {
-    const targetId = String(tmdbMovieIdsByMovieKey.get(movieKey) ?? movieKey);
+    const targetId = String(movieKey);
     if (!targetId || seenTargets.has(targetId)) {
       return;
     }
@@ -118,7 +113,7 @@ function getPersonConnectionTargets(
     targets.push({
       bucket: "film",
       id: targetId,
-      name: movieKey,
+      name: String(movieKey),
     });
   });
 

@@ -8,6 +8,7 @@ import {
 
 const indexedDbMock = vi.hoisted(() => ({
   getCinenerdleStarterFilmRecords: vi.fn(),
+  getFilmRecordsByIds: vi.fn(),
   getFilmRecordByTitleAndYear: vi.fn(),
   getFilmRecordsByPersonConnectionKey: vi.fn(),
   getPersonRecordById: vi.fn(),
@@ -35,6 +36,7 @@ describe("findConnectionPathBidirectional", () => {
   beforeEach(() => {
     Object.values(indexedDbMock).forEach((mock) => mock.mockReset());
     indexedDbMock.getCinenerdleStarterFilmRecords.mockResolvedValue([]);
+    indexedDbMock.getFilmRecordsByIds.mockResolvedValue(new Map());
     indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(null);
     indexedDbMock.getFilmRecordsByPersonConnectionKey.mockResolvedValue([]);
     indexedDbMock.getPersonRecordById.mockResolvedValue(null);
@@ -116,13 +118,11 @@ describe("findConnectionPathBidirectional", () => {
       title: "Heat",
       year: "1995",
     });
-    const producerOnlyPerson = {
+    const producerOnlyPerson = makePersonRecord({
       id: 44,
       tmdbId: 44,
       name: "Producer Person",
-      nameLower: "producer person",
-      lookupKey: "producer person",
-      movieConnectionKeys: ["heat (1995)"],
+      movieConnectionKeys: [10],
       rawTmdbMovieCreditsResponse: {
         cast: [],
         crew: [
@@ -134,7 +134,7 @@ describe("findConnectionPathBidirectional", () => {
           },
         ],
       },
-    };
+    });
 
     indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(
       async (title: string, year: string) =>

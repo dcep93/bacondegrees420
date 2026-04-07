@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  getLegacyPersonConnectionId,
   makeFilmRecord,
   makePersonRecord,
 } from "../generators/cinenerdle2/__tests__/factories";
@@ -97,7 +98,13 @@ describe("resolveConnectionBoostPreview", () => {
     );
     indexedDbMock.getFilmRecordsByPersonConnectionKey.mockImplementation(async (personName: string) =>
       [selectedMovie, highPopMovie, moreSharedButLowerMovie].filter((film) =>
-        film.personConnectionKeys.some((candidate) => normalizeName(candidate) === normalizeName(personName)),
+        film.personConnectionKeys.some((candidate) => {
+          const matchingPersonId =
+            [personAlpha, personBeta, personGamma].find(
+              (person) => normalizeName(person.name) === normalizeName(personName),
+            )?.tmdbId ?? null;
+          return candidate === matchingPersonId || candidate === getLegacyPersonConnectionId(personName);
+        }),
       ),
     );
     indexedDbMock.getPersonRecordById.mockImplementation(async (id: number) =>

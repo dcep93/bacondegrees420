@@ -1,7 +1,7 @@
 import { measureAsync } from "./perf";
 import { parseHashSegments, buildPathNodesFromSegments } from "./generators/cinenerdle2/hash";
-import { formatMoviePathLabel, getAssociatedMoviesFromPersonCredits, getAssociatedPeopleFromMovieCredits, getValidTmdbEntityId, normalizeName, normalizeWhitespace, parseMoviePathLabel } from "./generators/cinenerdle2/utils";
-import { getFilmRecordByTitleAndYear, getPersonRecordById, getPersonRecordByName } from "./generators/cinenerdle2/indexed_db";
+import { formatMoviePathLabel, getAssociatedMoviesFromPersonCredits, getAssociatedPeopleFromMovieCredits, getValidTmdbEntityId, normalizeName, normalizeWhitespace } from "./generators/cinenerdle2/utils";
+import { getFilmRecordById, getFilmRecordByTitleAndYear, getPersonRecordById, getPersonRecordByName } from "./generators/cinenerdle2/indexed_db";
 import { getMovieConnectionEntityKey, getPersonConnectionEntityKey } from "./generators/cinenerdle2/connection_graph";
 import type { YoungestSelectedCard } from "./connection_matchup_preview";
 
@@ -140,9 +140,10 @@ export async function getDirectConnectionOrdersForYoungestSelectedCard(
             }
           });
         } else {
-          movieRecord.personConnectionKeys.forEach((personName) => {
-            if (normalizeName(personName)) {
-              setDirectConnectionOrder(getPersonConnectionEntityKey(personName));
+          movieRecord.personConnectionKeys.forEach((personId) => {
+            const validPersonId = getValidTmdbEntityId(personId);
+            if (validPersonId !== null) {
+              setDirectConnectionOrder(getPersonConnectionEntityKey("", validPersonId));
             }
           });
         }
@@ -166,12 +167,13 @@ export async function getDirectConnectionOrdersForYoungestSelectedCard(
           }
         });
       } else {
-        personRecord.movieConnectionKeys.forEach((movieKey) => {
-          const parsedMovie = parseMoviePathLabel(movieKey);
-          if (parsedMovie.name) {
-            setDirectConnectionOrder(getMovieConnectionEntityKey(parsedMovie.name, parsedMovie.year));
+        for (const movieId of personRecord.movieConnectionKeys) {
+          const validMovieId = getValidTmdbEntityId(movieId);
+          const movieRecord = validMovieId ? await getFilmRecordById(validMovieId) : null;
+          if (movieRecord) {
+            setDirectConnectionOrder(getMovieConnectionEntityKey(movieRecord.title, movieRecord.year));
           }
-        });
+        }
       }
 
       return Object.fromEntries(directConnectionOrders);

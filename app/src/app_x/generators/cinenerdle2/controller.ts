@@ -33,11 +33,11 @@ import {
   getFilmRecordByTitleAndYear,
   getFilmRecordCountsByPersonConnectionKeys,
   getFilmRecordsByIds,
-  getMoviePopularityByLabels,
+  getMoviePopularityByIds,
   getPersonRecordById,
   getPersonRecordByName,
   getPersonRecordCountsByMovieKeys,
-  getPersonPopularityByNames,
+  getPersonPopularityByIds,
 } from "./indexed_db";
 import {
   createEmptyItemAttrs,
@@ -65,13 +65,10 @@ import {
   formatMoviePathLabel,
   getAssociatedMovieCreditGroupsFromPersonCredits,
   getAssociatedPersonCreditGroupsFromMovieCredits,
-  getFilmKey,
-  getMovieKeyFromCredit,
   getValidTmdbEntityId,
   isAllowedBfsTmdbMovieCredit,
   normalizeName,
   normalizeTitle,
-  parseMoviePathLabel,
 } from "./utils";
 import {
   cardsMatch,
@@ -589,20 +586,20 @@ function appendChildRow(
 
 function getPopularityByPersonNameFromFilmRecords(
   filmRecords: Iterable<FilmRecord>,
-): Map<string, number> {
-  const popularityByPersonName = new Map<string, number>();
+): Map<number, number> {
+  const popularityByPersonName = new Map<number, number>();
 
   Array.from(filmRecords).forEach((filmRecord) => {
     getAssociatedPeopleFromMovieCredits(filmRecord).forEach((credit) => {
-      const personName = normalizeName(credit.name ?? "");
-      if (!personName) {
+      const personTmdbId = getValidTmdbEntityId(credit.id);
+      if (personTmdbId === null) {
         return;
       }
 
       popularityByPersonName.set(
-        personName,
+        personTmdbId,
         Math.max(
-          popularityByPersonName.get(personName) ?? 0,
+          popularityByPersonName.get(personTmdbId) ?? 0,
           credit.popularity ?? 0,
         ),
       );
@@ -737,36 +734,37 @@ async function buildChildRowForPersonCard(
       const movieCreditGroups = getAssociatedMovieCreditGroupsFromPersonCredits(personRecord)
         .filter((creditGroup) => creditGroup.some((credit) => isAllowedBfsTmdbMovieCredit(credit)));
       if (movieCreditGroups.length === 0) {
-        const movieKeys = Array.from(
-          new Set(personRecord.movieConnectionKeys.map((movieKey) => normalizeTitle(movieKey)).filter(Boolean)),
+        const movieIds = Array.from(
+          new Set(
+            personRecord.movieConnectionKeys.flatMap((movieId) => {
+              const validMovieId = getValidTmdbEntityId(movieId);
+              return validMovieId === null ? [] : [validMovieId];
+            }),
+          ),
         );
-        if (movieKeys.length === 0) {
+        if (movieIds.length === 0) {
           return null;
         }
 
-        const fallbackFilms = await Promise.all(
-          movieKeys.map(async (movieKey) => {
-            const parsedMovie = parseMoviePathLabel(movieKey);
-            return {
-              movieKey,
-              parsedMovie,
-              movieRecord: await getFilmRecordByTitleAndYear(parsedMovie.name, parsedMovie.year),
-            };
-          }),
+        const filmRecordsById = await getFilmRecordsByIds(movieIds);
+        const fallbackFilms = movieIds.flatMap((movieId) => {
+          const movieRecord = filmRecordsById.get(movieId) ?? null;
+          return movieRecord ? [{ movieId, movieRecord }] : [];
+        });
+        if (fallbackFilms.length === 0) {
+          return null;
+        }
+        const popularityByPersonName = await getPersonPopularityByIds(
+          fallbackFilms.flatMap(({ movieRecord }) => movieRecord.personConnectionKeys),
         );
-        const popularityByPersonName = await getPersonPopularityByNames(
-          fallbackFilms.flatMap(({ movieRecord }) => movieRecord?.personConnectionKeys ?? []),
-        );
-        const connectionCounts = await getPersonRecordCountsByMovieKeys(movieKeys);
+        const connectionCounts = await getPersonRecordCountsByMovieKeys(movieIds);
         const connectionParentLabel = card.name;
         const childCards = sortCardsByPopularity(
-          fallbackFilms.map(({ movieKey, parsedMovie, movieRecord }) => ({
-            ...(movieRecord
-              ? createMovieRootCard(movieRecord, parsedMovie.name)
-              : createUncachedMovieCard(parsedMovie.name, parsedMovie.year)),
+          fallbackFilms.map(({ movieId, movieRecord }) => ({
+            ...createMovieRootCard(movieRecord, movieRecord.title),
             connectionCount: Math.max(
-              movieRecord?.personConnectionKeys.length ?? 0,
-              connectionCounts.get(movieKey) ?? 0,
+              movieRecord.personConnectionKeys.length,
+              connectionCounts.get(movieId) ?? 0,
               1,
             ),
             connectionRank: getParentPersonRankForMovie(
@@ -796,7 +794,10 @@ async function buildChildRowForPersonCard(
         filmRecordsById.values(),
       );
       const connectionCounts = await getPersonRecordCountsByMovieKeys(
-        movieCredits.map((credit) => getMovieKeyFromCredit(credit)),
+        movieCredits.flatMap((credit) => {
+          const validMovieId = getValidTmdbEntityId(credit.id);
+          return validMovieId === null ? [] : [validMovieId];
+        }),
       );
       const parentPersonRecord = personRecord;
       const connectionParentLabel = card.name;
@@ -856,66 +857,41 @@ async function buildChildRowForMovieCard(
 
       const tmdbCreditGroups = getAssociatedPersonCreditGroupsFromMovieCredits(movieRecord);
       if (tmdbCreditGroups.length === 0) {
-        const personNames = Array.from(
-          new Set(movieRecord.personConnectionKeys.map((personName) => normalizeName(personName)).filter(Boolean)),
+        const personIds = Array.from(
+          new Set(
+            movieRecord.personConnectionKeys.flatMap((personId) => {
+              const validPersonId = getValidTmdbEntityId(personId);
+              return validPersonId === null ? [] : [validPersonId];
+            }),
+          ),
         );
-        if (personNames.length === 0) {
+        if (personIds.length === 0) {
           return null;
         }
 
         const cachedPersonRecords = await Promise.all(
-          personNames.map(async (personName) => [
-            personName,
-            await getLocalPersonRecord(personName),
+          personIds.map(async (personId) => [
+            personId,
+            await getLocalPersonRecord("", personId),
           ] as const),
         );
-        const movieLabels = Array.from(
-          new Set(
-            cachedPersonRecords.flatMap(([, personRecord]) =>
-              personRecord
-                ? personRecord.movieConnectionKeys.map((movieKey) => {
-                    const parsedMovie = parseMoviePathLabel(movieKey);
-                    return formatMoviePathLabel(parsedMovie.name, parsedMovie.year);
-                  })
-              : [],
-            ),
-          ),
+        const popularityByMovieKey = await getMoviePopularityByIds(
+          cachedPersonRecords.flatMap(([, personRecord]) => personRecord?.movieConnectionKeys ?? []),
         );
-        const moviePopularityByLabel = await getMoviePopularityByLabels(movieLabels);
-        const popularityByMovieKey = new Map(
-          movieLabels.map((movieLabel) => {
-            const parsedMovie = parseMoviePathLabel(movieLabel);
-            return [
-              getFilmKey(parsedMovie.name, parsedMovie.year),
-              moviePopularityByLabel.get(normalizeTitle(movieLabel)) ?? 0,
-            ] as const;
-          }),
-        );
-        const filmConnectionCounts = await getFilmRecordCountsByPersonConnectionKeys(personNames);
+        const filmConnectionCounts = await getFilmRecordCountsByPersonConnectionKeys(personIds);
         const connectionParentLabel = formatMoviePathLabel(card.name, card.year);
         const childCards = sortCardsByPopularity(
-          cachedPersonRecords.map(([personName, personRecord]) => {
+          cachedPersonRecords.flatMap(([personId, personRecord]) => {
+            if (!personRecord) {
+              return [];
+            }
+
             const displayName =
-              personRecord?.name ?? formatFallbackPersonDisplayName(personName);
-            return {
-              ...(personRecord
-                ? createPersonRootCard(personRecord, displayName)
-                : {
-                    key: `person:${normalizeName(displayName)}`,
-                    kind: "person" as const,
-                    name: displayName,
-                    popularity: 0,
-                    popularitySource: "Popularity is unavailable, so this card falls back to 0.",
-                    imageUrl: null,
-                    subtitle: "",
-                    subtitleDetail: "",
-                    connectionCount: 1,
-                    sources: [{ iconUrl: TMDB_ICON_URL, label: "TMDb" }],
-                    status: null,
-                    record: null,
-                  }),
+              personRecord.name ?? formatFallbackPersonDisplayName(String(personId));
+            return [{
+              ...createPersonRootCard(personRecord, displayName),
               connectionCount: getResolvedPersonConnectionCount(
-                displayName,
+                personId,
                 personRecord,
                 filmConnectionCounts,
               ),
@@ -925,7 +901,7 @@ async function buildChildRowForMovieCard(
                 popularityByMovieKey,
               ),
               connectionParentLabel,
-            };
+            }];
           }),
         ).map((childCard, index) => ({
           ...childCard,
@@ -937,7 +913,10 @@ async function buildChildRowForMovieCard(
 
       const tmdbCredits = tmdbCreditGroups.map((group) => group[0]).filter(Boolean);
       const filmConnectionCounts = await getFilmRecordCountsByPersonConnectionKeys(
-        tmdbCredits.map((credit) => credit.name ?? ""),
+        tmdbCredits.flatMap((credit) => {
+          const validPersonId = getValidTmdbEntityId(credit.id);
+          return validPersonId === null ? [] : [validPersonId];
+        }),
       );
       const cachedPersonRecords = await Promise.all(
         tmdbCredits.map(async (credit) => {
@@ -952,34 +931,20 @@ async function buildChildRowForMovieCard(
           ] as const;
         }),
       );
-      const movieLabels = Array.from(
-        new Set(
-          cachedPersonRecords.flatMap(([, , cachedPersonRecord]) =>
-            cachedPersonRecord
-              ? cachedPersonRecord.movieConnectionKeys.map((movieKey) => {
-                  const parsedMovie = parseMoviePathLabel(movieKey);
-                  return formatMoviePathLabel(parsedMovie.name, parsedMovie.year);
-                })
-              : [],
-          ),
-        ),
-      );
-      const moviePopularityByLabel = await getMoviePopularityByLabels(movieLabels);
-      const popularityByMovieKey = new Map(
-        movieLabels.map((movieLabel) => {
-          const parsedMovie = parseMoviePathLabel(movieLabel);
-          return [
-            getFilmKey(parsedMovie.name, parsedMovie.year),
-            moviePopularityByLabel.get(normalizeTitle(movieLabel)) ?? 0,
-          ] as const;
-        }),
+      const popularityByMovieKey = await getMoviePopularityByIds(
+        cachedPersonRecords.flatMap(([, , cachedPersonRecord]) =>
+          cachedPersonRecord?.movieConnectionKeys ?? []),
       );
       const personDetails = new Map(
         cachedPersonRecords.map(([personKey, personName, cachedPersonRecord]) => [
           personKey,
           {
             connectionCount: getResolvedPersonConnectionCount(
-              personName,
+              getValidTmdbEntityId(cachedPersonRecord?.tmdbId ?? cachedPersonRecord?.id) ??
+                getValidTmdbEntityId(
+                  tmdbCredits.find((credit) =>
+                    getPersonIdentityKey(personName, credit.id) === personKey)?.id,
+                ),
               cachedPersonRecord,
               filmConnectionCounts,
             ),
@@ -1006,7 +971,7 @@ async function buildChildRowForMovieCard(
         const personDetail =
           personDetails.get(getPersonIdentityKey(personName, credit.id)) ?? {
             connectionCount: getResolvedPersonConnectionCount(
-              personName,
+              getValidTmdbEntityId(credit.id),
               cachedPersonRecord,
               filmConnectionCounts,
             ),

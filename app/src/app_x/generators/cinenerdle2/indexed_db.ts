@@ -63,7 +63,7 @@ const REQUIRED_OBJECT_STORE_NAMES = [
 export const CINENERDLE_RECORDS_UPDATED_EVENT = "cinenerdle:records-updated";
 export const CINENERDLE_INDEXED_DB_FETCH_COUNT_UPDATED_EVENT =
   "cinenerdle:indexed-db-fetch-count-updated";
-const INDEXED_DB_SNAPSHOT_VERSION = 11 as const;
+const INDEXED_DB_SNAPSHOT_VERSION = 12 as const;
 const INDEXED_DB_FETCH_COUNT_KEY = "tmdbFetchCount";
 const INDEXED_DB_BOOKMARK_HASHES_KEY = "bookmarkHashes";
 
@@ -83,8 +83,8 @@ const filmRecordQueryCache = new Map<string, FilmRecord | null>();
 const filmRecordsByNormalizedTitleCache = new Map<string, FilmRecord[]>();
 let allPersonRecordsCache: PersonRecord[] | null = null;
 let allFilmRecordsCache: FilmRecord[] | null = null;
-const personCountByMovieKeyCache = new Map<string, number>();
-const filmCountByPersonNameCache = new Map<string, number>();
+const personCountByMovieKeyCache = new Map<number, number>();
+const filmCountByPersonNameCache = new Map<number, number>();
 const personPopularityByNameCache = new Map<string, number>();
 const moviePopularityByLabelCache = new Map<string, number>();
 const searchableConnectionEntityByKeyCache = new Map<string, SearchableConnectionEntityRecord>();
@@ -434,25 +434,25 @@ function rebuildConnectionCountCaches(
   filmCountByPersonNameCache.clear();
 
   people.forEach((personRecord) => {
-    personRecord.movieConnectionKeys.forEach((movieKey) => {
-      if (!movieKey) {
+    personRecord.movieConnectionKeys.forEach((movieId) => {
+      if (!movieId) {
         return;
       }
       personCountByMovieKeyCache.set(
-        movieKey,
-        (personCountByMovieKeyCache.get(movieKey) ?? 0) + 1,
+        movieId,
+        (personCountByMovieKeyCache.get(movieId) ?? 0) + 1,
       );
     });
   });
 
   films.forEach((filmRecord) => {
-    filmRecord.personConnectionKeys.forEach((personName) => {
-      if (!personName) {
+    filmRecord.personConnectionKeys.forEach((personId) => {
+      if (!personId) {
         return;
       }
       filmCountByPersonNameCache.set(
-        personName,
-        (filmCountByPersonNameCache.get(personName) ?? 0) + 1,
+        personId,
+        (filmCountByPersonNameCache.get(personId) ?? 0) + 1,
       );
     });
   });
@@ -553,8 +553,8 @@ function invalidateSearchableConnectionPopularityCachesForRecords(
 }
 
 function setConnectionCountCacheValue(
-  cache: Map<string, number>,
-  key: string,
+  cache: Map<number, number>,
+  key: number | null,
   nextCount: number,
 ): void {
   if (!key) {
@@ -569,26 +569,38 @@ function setConnectionCountCacheValue(
   cache.delete(key);
 }
 
-function updatePersonCountCacheForMovieKeys(movieKeys: Iterable<string>): void {
+function updatePersonCountCacheForMovieKeys(movieKeys: Iterable<number>): void {
   if (!allPersonRecordsCache) {
     return;
   }
 
-  Array.from(new Set(Array.from(movieKeys).map((movieKey) => normalizeTitle(movieKey)).filter(Boolean)))
-    .forEach((movieKey) => {
+  Array.from(
+    new Set(
+      Array.from(movieKeys).flatMap((movieKey) => {
+        const validMovieId = getValidTmdbEntityId(movieKey);
+        return validMovieId === null ? [] : [validMovieId];
+      }),
+    ),
+  ).forEach((movieKey) => {
       const nextCount = allPersonRecordsCache?.reduce((count, personRecord) =>
         count + Number(personRecord.movieConnectionKeys.includes(movieKey)), 0) ?? 0;
       setConnectionCountCacheValue(personCountByMovieKeyCache, movieKey, nextCount);
     });
 }
 
-function updateFilmCountCacheForPersonNames(personNames: Iterable<string>): void {
+function updateFilmCountCacheForPersonNames(personNames: Iterable<number>): void {
   if (!allFilmRecordsCache) {
     return;
   }
 
-  Array.from(new Set(Array.from(personNames).map((personName) => normalizeName(personName)).filter(Boolean)))
-    .forEach((personName) => {
+  Array.from(
+    new Set(
+      Array.from(personNames).flatMap((personName) => {
+        const validPersonId = getValidTmdbEntityId(personName);
+        return validPersonId === null ? [] : [validPersonId];
+      }),
+    ),
+  ).forEach((personName) => {
       const nextCount = allFilmRecordsCache?.reduce((count, filmRecord) =>
         count + Number(filmRecord.personConnectionKeys.includes(personName)), 0) ?? 0;
       setConnectionCountCacheValue(filmCountByPersonNameCache, personName, nextCount);
@@ -1255,15 +1267,35 @@ export async function getPersonRecordsByMovieKey(
     return [];
   }
 
+  const parsedMovie = parseMoviePathLabel(movieKey);
+  const filmRecord = await getFilmRecordByTitleAndYear(parsedMovie.name, parsedMovie.year);
+  const movieTmdbId = getValidTmdbEntityId(filmRecord?.tmdbId ?? filmRecord?.id);
+  if (movieTmdbId === null) {
+    return [];
+  }
+
   await ensureCoreRecordCachesReady();
   return (allPersonRecordsCache ?? []).filter((personRecord) =>
-    personRecord.movieConnectionKeys.includes(movieKey));
+    personRecord.movieConnectionKeys.includes(movieTmdbId));
+}
+
+export async function getPersonRecordsByMovieId(
+  movieTmdbId: number | null | undefined,
+): Promise<PersonRecord[]> {
+  const validMovieTmdbId = getValidTmdbEntityId(movieTmdbId);
+  if (validMovieTmdbId === null) {
+    return [];
+  }
+
+  await ensureCoreRecordCachesReady();
+  return (allPersonRecordsCache ?? []).filter((personRecord) =>
+    personRecord.movieConnectionKeys.includes(validMovieTmdbId));
 }
 
 export async function getPersonMovieConnectionKeys(
   personName: string,
   personTmdbId?: number | null,
-): Promise<string[]> {
+): Promise<number[]> {
   const normalizedPersonName = normalizeName(personName);
   const validPersonTmdbId = getValidTmdbEntityId(personTmdbId);
 
@@ -1278,27 +1310,28 @@ export async function getPersonMovieConnectionKeys(
   );
 
   return Array.from(
-    new Set(
-      getResolvedPersonMovieConnectionKeys(personRecord)
-        .map((movieKey) => normalizeTitle(movieKey))
-        .filter(Boolean),
-    ),
+    new Set(getResolvedPersonMovieConnectionKeys(personRecord)),
   );
 }
 
 export async function getPersonRecordCountsByMovieKeys(
-  movieKeys: string[],
-): Promise<Map<string, number>> {
+  movieKeys: number[],
+): Promise<Map<number, number>> {
   return measureAsync(
     "idb.getPersonRecordCountsByMovieKeys",
     async () => {
-      const uniqueMovieKeys = Array.from(new Set(movieKeys.filter(Boolean)));
+      const uniqueMovieKeys = Array.from(
+        new Set(movieKeys.flatMap((movieKey) => {
+          const validMovieKey = getValidTmdbEntityId(movieKey);
+          return validMovieKey === null ? [] : [validMovieKey];
+        })),
+      );
 
       if (uniqueMovieKeys.length === 0) {
         return new Map();
       }
 
-      const resolvedCounts = new Map<string, number>();
+      const resolvedCounts = new Map<number, number>();
       const missingMovieKeys = uniqueMovieKeys.filter((movieKey) => {
         if (!personCountByMovieKeyCache.has(movieKey)) {
           return true;
@@ -1660,6 +1693,28 @@ export async function getPersonPopularityByNames(
   );
 }
 
+export async function getPersonPopularityByIds(
+  ids: number[],
+): Promise<Map<number, number>> {
+  const uniqueIds = Array.from(
+    new Set(ids.flatMap((id) => {
+      const validId = getValidTmdbEntityId(id);
+      return validId === null ? [] : [validId];
+    })),
+  );
+  if (uniqueIds.length === 0) {
+    return new Map();
+  }
+
+  const personRecords = await Promise.all(uniqueIds.map((id) => getPersonRecordById(id)));
+  return new Map(
+    uniqueIds.map((id, index) => [
+      id,
+      personRecords[index]?.rawTmdbPerson?.popularity ?? 0,
+    ] as const),
+  );
+}
+
 export async function getMoviePopularityByLabels(
   labels: string[],
 ): Promise<Map<string, number>> {
@@ -1667,6 +1722,28 @@ export async function getMoviePopularityByLabels(
     labels.map((label) => normalizeTitle(label)),
     "movie",
     moviePopularityByLabelCache,
+  );
+}
+
+export async function getMoviePopularityByIds(
+  ids: number[],
+): Promise<Map<number, number>> {
+  const uniqueIds = Array.from(
+    new Set(ids.flatMap((id) => {
+      const validId = getValidTmdbEntityId(id);
+      return validId === null ? [] : [validId];
+    })),
+  );
+  if (uniqueIds.length === 0) {
+    return new Map();
+  }
+
+  const filmRecords = await Promise.all(uniqueIds.map((id) => getFilmRecordById(id)));
+  return new Map(
+    uniqueIds.map((id, index) => [
+      id,
+      filmRecords[index]?.popularity ?? 0,
+    ] as const),
   );
 }
 
@@ -1681,31 +1758,48 @@ export async function getFilmRecordsByPersonConnectionKey(
   const movieConnectionKeys = await getPersonMovieConnectionKeys(normalizedPersonName);
   if (movieConnectionKeys.length > 0) {
     const filmRecords = await Promise.all(
-      movieConnectionKeys.map(async (movieConnectionKey) => {
-        const parsedMovie = parseMoviePathLabel(movieConnectionKey);
-        return getFilmRecordByTitleAndYear(parsedMovie.name, parsedMovie.year);
-      }),
+      movieConnectionKeys.map(async (movieConnectionKey) => getFilmRecordById(movieConnectionKey)),
     );
 
     return filmRecords.filter((filmRecord): filmRecord is FilmRecord => filmRecord !== null);
   }
 
   await ensureCoreRecordCachesReady();
+  const personRecord = await getPersonRecordByName(normalizedPersonName);
+  const personTmdbId = getValidTmdbEntityId(personRecord?.tmdbId ?? personRecord?.id);
+  if (personTmdbId === null) {
+    return [];
+  }
+
   return (allFilmRecordsCache ?? []).filter((filmRecord) =>
-    filmRecord.personConnectionKeys.includes(normalizedPersonName));
+    filmRecord.personConnectionKeys.includes(personTmdbId));
+}
+
+export async function getFilmRecordsByPersonConnectionId(
+  personTmdbId: number | null | undefined,
+): Promise<FilmRecord[]> {
+  const validPersonTmdbId = getValidTmdbEntityId(personTmdbId);
+  if (validPersonTmdbId === null) {
+    return [];
+  }
+
+  await ensureCoreRecordCachesReady();
+  return (allFilmRecordsCache ?? []).filter((filmRecord) =>
+    filmRecord.personConnectionKeys.includes(validPersonTmdbId));
 }
 
 export async function getFilmRecordCountsByPersonConnectionKeys(
-  personNames: string[],
-): Promise<Map<string, number>> {
+  personNames: number[],
+): Promise<Map<number, number>> {
   return measureAsync(
     "idb.getFilmRecordCountsByPersonConnectionKeys",
     async () => {
       const normalizedNames = Array.from(
         new Set(
-          personNames
-            .map((personName) => normalizeName(personName))
-            .filter(Boolean),
+          personNames.flatMap((personName) => {
+            const validPersonId = getValidTmdbEntityId(personName);
+            return validPersonId === null ? [] : [validPersonId];
+          }),
         ),
       );
 
@@ -1713,7 +1807,7 @@ export async function getFilmRecordCountsByPersonConnectionKeys(
         return new Map();
       }
 
-      const resolvedCounts = new Map<string, number>();
+      const resolvedCounts = new Map<number, number>();
       const missingNames = normalizedNames.filter((personName) => {
         if (!filmCountByPersonNameCache.has(personName)) {
           return true;
@@ -1830,7 +1924,7 @@ export type IndexedDbSnapshotConnection = {
 export type IndexedDbSnapshotPerson = {
   tmdbId: number;
   name: string;
-  movieConnectionKeys: string[];
+  movieConnectionKeys: number[];
   popularity: number;
   fromTmdb: {
     fetchTimestamp: string;
@@ -1852,7 +1946,7 @@ export type IndexedDbSnapshotFilm = {
     fetchTimestamp: string;
     genres: TmdbGenre[];
   } | null;
-  personConnectionKeys: string[];
+  personConnectionKeys: number[];
   people: IndexedDbSnapshotConnection[];
 };
 
@@ -2197,11 +2291,7 @@ function createPersonSnapshotFromPersonRecord(
     tmdbId,
     name: personRecord.name,
     movieConnectionKeys: Array.from(
-      new Set(
-        getResolvedPersonMovieConnectionKeys(personRecord)
-          .map((movieKey) => normalizeTitle(movieKey))
-          .filter(Boolean),
-      ),
+      new Set(getResolvedPersonMovieConnectionKeys(personRecord)),
     ),
     popularity: personRecord.rawTmdbPerson?.popularity ?? 0,
     fromTmdb: hasDirectTmdbPersonSource(personRecord) && personRecord.rawTmdbPerson
@@ -2281,9 +2371,10 @@ function createSnapshotFilmRecord(
       : null,
     personConnectionKeys: Array.from(
       new Set(
-        filmRecord.personConnectionKeys
-          .map((personName) => normalizeName(personName))
-          .filter(Boolean),
+        filmRecord.personConnectionKeys.flatMap((personId) => {
+          const validPersonId = getValidTmdbEntityId(personId);
+          return validPersonId === null ? [] : [validPersonId];
+        }),
       ),
     ),
     people: filmCredits.map((credit) => {
@@ -2429,7 +2520,7 @@ function inflateFilmCreditsResponse(
 
 function deriveFilmPersonConnectionKeys(
   creditsResponse: TmdbMovieCreditsResponse | undefined,
-): string[] {
+): number[] {
   if (!creditsResponse) {
     return [];
   }
@@ -2439,8 +2530,10 @@ function deriveFilmPersonConnectionKeys(
       getAssociatedPeopleFromMovieCredits({
         rawTmdbMovieCreditsResponse: creditsResponse,
       } as FilmRecord)
-        .map((credit) => normalizeName(credit.name ?? ""))
-        .filter(Boolean),
+        .flatMap((credit) => {
+          const validPersonId = getValidTmdbEntityId(credit.id);
+          return validPersonId === null ? [] : [validPersonId];
+        }),
     ),
   );
 }
@@ -2521,8 +2614,10 @@ function inflateIndexedDbSnapshotCore(
       movieConnectionKeys: Array.from(
         new Set(
           (personSnapshot.movieConnectionKeys ?? [])
-            .map((movieKey) => normalizeTitle(movieKey))
-            .filter(Boolean),
+            .flatMap((movieKey) => {
+              const validMovieId = getValidTmdbEntityId(movieKey);
+              return validMovieId === null ? [] : [validMovieId];
+            }),
         ),
       ),
       tmdbSource: personSnapshot.fromTmdb ? "direct-person-fetch" : "connection-derived",
@@ -2554,7 +2649,10 @@ function inflateIndexedDbSnapshotCore(
       genreIds: normalizeGenreIds(filmSnapshot.genreIds),
       personConnectionKeys: Array.from(
         new Set([
-          ...filmSnapshot.personConnectionKeys.map((personName) => normalizeName(personName)),
+          ...filmSnapshot.personConnectionKeys.flatMap((personId) => {
+            const validPersonId = getValidTmdbEntityId(personId);
+            return validPersonId === null ? [] : [validPersonId];
+          }),
           ...deriveFilmPersonConnectionKeys(filmCreditsResponse),
         ].filter(Boolean)),
       ),

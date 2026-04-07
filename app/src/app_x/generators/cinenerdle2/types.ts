@@ -89,7 +89,7 @@ export type PersonRecord = {
   lookupKey: string;
   name: string;
   nameLower: string;
-  movieConnectionKeys: string[];
+  movieConnectionKeys: number[];
   tmdbSource?: import("./tmdb_provenance").PersonTmdbSource;
   rawTmdbPerson?: TmdbPersonSearchResult;
   rawTmdbPersonSearchResponse?: TmdbSearchResponse<TmdbPersonSearchResult>;
@@ -107,7 +107,7 @@ export type FilmRecord = {
   titleYear: string;
   popularity: number;
   genreIds: number[];
-  personConnectionKeys: string[];
+  personConnectionKeys: number[];
   tmdbSource?: import("./tmdb_provenance").FilmTmdbSource;
   rawTmdbMovie?: TmdbMovieSearchResult;
   rawTmdbMovieSearchResponse?: TmdbSearchResponse<TmdbMovieSearchResult>;
