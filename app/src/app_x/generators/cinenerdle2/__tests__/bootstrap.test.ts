@@ -43,7 +43,7 @@ type BootstrapStatus = {
 
 const TEST_INDEXED_DB_SNAPSHOT = {
   format: "cinenerdle-indexed-db-snapshot",
-  version: 12,
+  version: 13,
   people: [],
   films: [],
 } as const;

@@ -36,6 +36,15 @@ function isExcludedCard(card: CinenerdleCard): boolean {
   return false;
 }
 
+function isShortDirectTmdbMovieCard(card: CinenerdleCard): boolean {
+  if (card.kind !== "movie" || !hasDirectTmdbMovieSource(card.record)) {
+    return false;
+  }
+
+  const runtime = card.record?.rawTmdbMovie?.runtime;
+  return typeof runtime === "number" && Number.isFinite(runtime) && runtime < 40;
+}
+
 export function getSelectedAncestorCards(
   tree: GeneratorTree<CinenerdleCard>,
   row: number,
@@ -373,6 +382,7 @@ export function createCardViewModel(
     isAncestorSelected: options.isAncestorSelected ?? false,
     hasCachedTmdbSource: hasCachedTmdbSource(card),
     isExcluded: isExcludedCard(card),
+    isShortDirectTmdbMovie: isShortDirectTmdbMovieCard(card),
   };
 
   if (card.kind === "dbinfo") {

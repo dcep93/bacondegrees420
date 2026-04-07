@@ -181,11 +181,12 @@ describe("IndexedDB snapshot film genre preservation", () => {
         { id: 99, name: "Documentary" },
         { id: 36, name: "History" },
       ],
+      runtime: null,
     });
 
     const inflatedSnapshot = inflateIndexedDbSnapshot({
       format: "cinenerdle-indexed-db-snapshot",
-      version: 12,
+      version: 13,
       people: [],
       films: [storedFilm],
     });
@@ -196,6 +197,48 @@ describe("IndexedDB snapshot film genre preservation", () => {
       { id: 36, name: "History" },
     ]);
     expect(isExcludedFilmRecord(inflatedSnapshot.films[0])).toBe(true);
+  });
+
+  it("round-trips direct-film runtime through snapshots", async () => {
+    const { createStoredFilmRecord, inflateIndexedDbSnapshot } = await import("../indexed_db");
+    const filmRecord = makeFilmRecord({
+      id: 514754,
+      tmdbId: 514754,
+      title: "Bao",
+      year: "2018",
+      fetchTimestamp: "2026-04-01T16:00:00.000Z",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 514754,
+        title: "Bao",
+        original_title: "Bao",
+        poster_path: "/bao.jpg",
+        release_date: "2018-06-15",
+        runtime: 8,
+        genres: [{ id: 16, name: "Animation" }],
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+      tmdbSource: "direct-film-fetch",
+    });
+
+    const storedFilm = createStoredFilmRecord(filmRecord);
+
+    expect(storedFilm.fromTmdb).toEqual({
+      fetchTimestamp: "2026-04-01T16:00:00.000Z",
+      genres: [{ id: 16, name: "Animation" }],
+      runtime: 8,
+    });
+
+    const inflatedSnapshot = inflateIndexedDbSnapshot({
+      format: "cinenerdle-indexed-db-snapshot",
+      version: 13,
+      people: [],
+      films: [storedFilm],
+    });
+
+    expect(inflatedSnapshot.films[0]?.rawTmdbMovie?.runtime).toBe(8);
   });
 
   it("keeps excluded documentary movies out of searchable connection entities", async () => {
@@ -234,7 +277,7 @@ describe("IndexedDB snapshot film genre preservation", () => {
 
     const inflatedSnapshot = inflateIndexedDbSnapshot({
       format: "cinenerdle-indexed-db-snapshot",
-      version: 12,
+      version: 13,
       people: [],
       films: [
         createStoredFilmRecord(documentaryFilm),
@@ -290,7 +333,7 @@ describe("IndexedDB snapshot film genre preservation", () => {
 
     const inflatedSnapshot = inflateIndexedDbSnapshot({
       format: "cinenerdle-indexed-db-snapshot",
-      version: 12,
+      version: 13,
       people: [],
       films: [
         createStoredFilmRecord(allowedSparseFilm),
@@ -356,7 +399,7 @@ describe("IndexedDB snapshot film genre preservation", () => {
 
     const inflatedSnapshot = inflateIndexedDbSnapshot({
       format: "cinenerdle-indexed-db-snapshot",
-      version: 12,
+      version: 13,
       people: [personSnapshot],
       films: [storedFilm],
     });
@@ -402,7 +445,7 @@ describe("IndexedDB snapshot film genre preservation", () => {
 
     const inflatedSnapshot = inflateIndexedDbSnapshot({
       format: "cinenerdle-indexed-db-snapshot",
-      version: 12,
+      version: 13,
       people: [],
       films: [
         createStoredFilmRecord(excludedConnectionDerivedFilm),

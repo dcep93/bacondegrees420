@@ -31,6 +31,7 @@ export type TmdbMovieSearchResult = {
   popularity?: number;
   vote_average?: number;
   vote_count?: number;
+  runtime?: number;
   genres?: TmdbGenre[];
 };
 

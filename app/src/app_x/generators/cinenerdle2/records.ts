@@ -311,6 +311,12 @@ export function mergeFetchedTmdbMovie(
       existingFetchTimestamp,
       nextFetchTimestamp,
     ) ?? undefined,
+    runtime: mergeFetchedFieldValue(
+      existingTmdbMovie.runtime,
+      nextTmdbMovie.runtime,
+      existingFetchTimestamp,
+      nextFetchTimestamp,
+    ) ?? undefined,
     genres: (() => {
       const existingGenres = normalizeFetchedTmdbGenres(existingTmdbMovie.genres);
       const nextGenres = normalizeFetchedTmdbGenres(nextTmdbMovie.genres);

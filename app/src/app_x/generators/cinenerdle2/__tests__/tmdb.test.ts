@@ -224,6 +224,7 @@ describe("tmdb forced refresh helpers", () => {
             title: "Heat",
             release_date: "1995-12-15",
             popularity: 99,
+            runtime: 170,
           }),
         );
       }
@@ -346,6 +347,7 @@ describe("tmdb forced refresh helpers", () => {
             title: "Heat",
             release_date: "1995-12-15",
             popularity: 99,
+            runtime: 170,
           }),
         );
       }
@@ -572,6 +574,7 @@ describe("tmdb forced refresh helpers", () => {
             title: "Heat",
             release_date: "1995-12-15",
             popularity: 99,
+            runtime: 170,
           }),
         );
       }
@@ -592,6 +595,13 @@ describe("tmdb forced refresh helpers", () => {
     expect(fetchMock.mock.calls[1]?.[0]).toContain("/movie/321/credits?");
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/search/movie"))).toBe(false);
     expect(indexedDbMock.saveFilmRecord).toHaveBeenCalledTimes(1);
+    expect(indexedDbMock.saveFilmRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rawTmdbMovie: expect.objectContaining({
+          runtime: 170,
+        }),
+      }),
+    );
     expect(indexedDbMock.batchCinenerdleRecordsUpdatedEvents).toHaveBeenCalledTimes(1);
   });
 
@@ -654,6 +664,7 @@ describe("tmdb forced refresh helpers", () => {
         title: "Heat",
         release_date: "1995-12-15",
         popularity: 99,
+        runtime: 170,
       }),
     );
 
@@ -672,6 +683,7 @@ describe("tmdb forced refresh helpers", () => {
         rawTmdbMovie: expect.objectContaining({
           id: 321,
           title: "Heat",
+          runtime: 170,
         }),
         rawTmdbMovieCreditsResponse: {
           cast: [],

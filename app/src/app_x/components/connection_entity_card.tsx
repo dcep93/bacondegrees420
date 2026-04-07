@@ -36,6 +36,7 @@ function createRenderableConnectionCard(
     status: null,
     hasCachedTmdbSource: entity.kind === "cinenerdle" ? false : entity.hasCachedTmdbSource,
     isExcluded: false,
+    isShortDirectTmdbMovie: false,
     isSelected: false,
     isLocked: false,
     isAncestorSelected: false,

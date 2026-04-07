@@ -1,6 +1,6 @@
 {
   "format": "cinenerdle-indexed-db-snapshot",
-  "version": 12,
+  "version": 13,
   "people": [
     {
       "tmdbId": 36,
@@ -381,7 +381,7 @@
     },
     {
       "tmdbId": 1640,
-      "name": "Stellan Skarsg\u00e5rd",
+      "name": "Stellan Skarsgård",
       "movieConnectionKeys": [
         24428
       ],
@@ -832,7 +832,7 @@
     },
     {
       "tmdbId": 2341,
-      "name": "Richy M\u00fcller",
+      "name": "Richy Müller",
       "movieConnectionKeys": [
         7451
       ],
@@ -1569,7 +1569,7 @@
     },
     {
       "tmdbId": 8691,
-      "name": "Zoe Salda\u00f1a",
+      "name": "Zoe Saldaña",
       "movieConnectionKeys": [
         299534
       ],
@@ -1925,7 +1925,7 @@
     },
     {
       "tmdbId": 10583,
-      "name": "Gisele B\u00fcndchen",
+      "name": "Gisele Bündchen",
       "movieConnectionKeys": [
         350
       ],
@@ -1952,7 +1952,7 @@
     },
     {
       "tmdbId": 10849,
-      "name": "Marek Va\u0161ut",
+      "name": "Marek Vašut",
       "movieConnectionKeys": [
         7451
       ],
@@ -2907,7 +2907,7 @@
     },
     {
       "tmdbId": 25731,
-      "name": "V\u00edt\u011bzslav Bouchner",
+      "name": "Vítězslav Bouchner",
       "movieConnectionKeys": [
         7451
       ],
@@ -3186,7 +3186,7 @@
     },
     {
       "tmdbId": 41798,
-      "name": "George L\u00f3pez",
+      "name": "George López",
       "movieConnectionKeys": [
         553147
       ],
@@ -3357,7 +3357,7 @@
     },
     {
       "tmdbId": 53348,
-      "name": "Petr J\u00e1kl",
+      "name": "Petr Jákl",
       "movieConnectionKeys": [
         7451
       ],
@@ -3772,7 +3772,7 @@
     },
     {
       "tmdbId": 66525,
-      "name": "Jesse Garc\u00eda",
+      "name": "Jesse García",
       "movieConnectionKeys": [
         24428
       ],
@@ -3881,7 +3881,7 @@
     },
     {
       "tmdbId": 74354,
-      "name": "Miguel A. N\u00fa\u00f1ez Jr.",
+      "name": "Miguel A. Núñez Jr.",
       "movieConnectionKeys": [
         46702
       ],
@@ -4462,7 +4462,7 @@
     },
     {
       "tmdbId": 115874,
-      "name": "Carlos G\u00f3mez",
+      "name": "Carlos Gómez",
       "movieConnectionKeys": [
         1968
       ],
@@ -4579,7 +4579,7 @@
     },
     {
       "tmdbId": 137332,
-      "name": "Jan Filipensk\u00fd",
+      "name": "Jan Filipenský",
       "movieConnectionKeys": [
         7451
       ],
@@ -4642,7 +4642,7 @@
     },
     {
       "tmdbId": 146847,
-      "name": "Pontus L\u00f6wenhielm",
+      "name": "Pontus Löwenhielm",
       "movieConnectionKeys": [
         20682
       ],
@@ -5201,7 +5201,7 @@
     },
     {
       "tmdbId": 581456,
-      "name": "Mar\u00eda Cellario",
+      "name": "María Cellario",
       "movieConnectionKeys": [
         1968
       ],
@@ -5309,7 +5309,7 @@
     },
     {
       "tmdbId": 964222,
-      "name": "Xavier Fern\u00e1ndez",
+      "name": "Xavier Fernández",
       "movieConnectionKeys": [
         8676
       ],
@@ -5390,7 +5390,7 @@
     },
     {
       "tmdbId": 1018947,
-      "name": "Maximiliano Hern\u00e1ndez",
+      "name": "Maximiliano Hernández",
       "movieConnectionKeys": [
         24428,
         299534
@@ -5697,7 +5697,7 @@
     },
     {
       "tmdbId": 1190668,
-      "name": "Timoth\u00e9e Chalamet",
+      "name": "Timothée Chalamet",
       "movieConnectionKeys": [
         157336
       ],
@@ -5922,7 +5922,7 @@
     },
     {
       "tmdbId": 1257828,
-      "name": "N\u0113v Schulman",
+      "name": "Nēv Schulman",
       "movieConnectionKeys": [
         514619
       ],
@@ -6111,7 +6111,7 @@
     },
     {
       "tmdbId": 1386009,
-      "name": "V\u00e1clav Chalupa",
+      "name": "Václav Chalupa",
       "movieConnectionKeys": [
         7451
       ],
@@ -6653,7 +6653,7 @@
     },
     {
       "tmdbId": 1655748,
-      "name": "Martin B\u00e1rta",
+      "name": "Martin Bárta",
       "movieConnectionKeys": [
         7451
       ],
@@ -7679,7 +7679,7 @@
     },
     {
       "tmdbId": 2423375,
-      "name": "Michal M\u00fcller",
+      "name": "Michal Müller",
       "movieConnectionKeys": [
         7451
       ],
@@ -7805,7 +7805,7 @@
     },
     {
       "tmdbId": 2691036,
-      "name": "Irene Hern\u00e1ndez",
+      "name": "Irene Hernández",
       "movieConnectionKeys": [
         1968
       ],
@@ -7976,7 +7976,7 @@
     },
     {
       "tmdbId": 3174910,
-      "name": "C\u00e9sar Santana",
+      "name": "César Santana",
       "movieConnectionKeys": [
         1968
       ],
@@ -8012,7 +8012,7 @@
     },
     {
       "tmdbId": 3174915,
-      "name": "Salvador Salda\u00f1a",
+      "name": "Salvador Saldaña",
       "movieConnectionKeys": [
         1968
       ],
@@ -8039,7 +8039,7 @@
     },
     {
       "tmdbId": 3260091,
-      "name": "Martina Smukov\u00e1",
+      "name": "Martina Smuková",
       "movieConnectionKeys": [
         7451
       ],
@@ -8066,7 +8066,7 @@
     },
     {
       "tmdbId": 3357875,
-      "name": "Lubo\u0161 Posp\u00ed\u0161il",
+      "name": "Luboš Pospíšil",
       "movieConnectionKeys": [
         7451
       ],
@@ -8138,7 +8138,7 @@
     },
     {
       "tmdbId": 3646335,
-      "name": "Andrea Mu\u00f1oz",
+      "name": "Andrea Muñoz",
       "movieConnectionKeys": [
         718930
       ],
@@ -8363,7 +8363,7 @@
     },
     {
       "tmdbId": 4212490,
-      "name": "Radek Tome\u010dka",
+      "name": "Radek Tomečka",
       "movieConnectionKeys": [
         7451
       ],
@@ -8390,7 +8390,7 @@
     },
     {
       "tmdbId": 4299489,
-      "name": "Martina Bauerov\u00e1",
+      "name": "Martina Bauerová",
       "movieConnectionKeys": [
         7451
       ],
@@ -8668,7 +8668,8 @@
       "releaseDate": "2006-08-17",
       "fromTmdb": {
         "fetchTimestamp": "2026-04-01T18:41:52.423Z",
-        "genres": []
+        "genres": [],
+        "runtime": null
       },
       "personConnectionKeys": [
         2231,
@@ -9072,7 +9073,8 @@
       "releaseDate": "2006-06-29",
       "fromTmdb": {
         "fetchTimestamp": "2026-04-01T18:41:09.002Z",
-        "genres": []
+        "genres": [],
+        "runtime": null
       },
       "personConnectionKeys": [
         5064,
@@ -9693,7 +9695,7 @@
           "personTmdbId": 2231,
           "profilePath": "/AiAYAqwpM5xmiFrAIeQvUXDCVvo.jpg",
           "roleType": "cast",
-          "role": "Mister Se\u00f1or Love Daddy",
+          "role": "Mister Señor Love Daddy",
           "order": 15
         }
       ],
@@ -10060,7 +10062,8 @@
       "releaseDate": "1996-07-24",
       "fromTmdb": {
         "fetchTimestamp": "2026-04-01T18:40:41.155Z",
-        "genres": []
+        "genres": [],
+        "runtime": null
       },
       "personConnectionKeys": [
         10297,
@@ -11019,7 +11022,8 @@
       "releaseDate": "1997-02-14",
       "fromTmdb": {
         "fetchTimestamp": "2026-04-01T18:39:41.619Z",
-        "genres": []
+        "genres": [],
+        "runtime": null
       },
       "personConnectionKeys": [
         14408,
@@ -12159,7 +12163,8 @@
       "releaseDate": "2002-08-09",
       "fromTmdb": {
         "fetchTimestamp": "2026-04-01T18:41:52.582Z",
-        "genres": []
+        "genres": [],
+        "runtime": null
       },
       "personConnectionKeys": [
         12835,
@@ -12922,7 +12927,8 @@
       "releaseDate": "2008-02-07",
       "fromTmdb": {
         "fetchTimestamp": "2026-04-01T18:39:41.618Z",
-        "genres": []
+        "genres": [],
+        "runtime": null
       },
       "personConnectionKeys": [
         10297,
@@ -14796,7 +14802,8 @@
       "releaseDate": "1994-12-23",
       "fromTmdb": {
         "fetchTimestamp": "2026-04-01T18:39:41.620Z",
-        "genres": []
+        "genres": [],
+        "runtime": null
       },
       "personConnectionKeys": [
         3636,
@@ -15771,7 +15778,8 @@
       "releaseDate": "2008-06-05",
       "fromTmdb": {
         "fetchTimestamp": "2026-04-01T18:39:41.621Z",
-        "genres": []
+        "genres": [],
+        "runtime": null
       },
       "personConnectionKeys": [
         8784,
@@ -16284,7 +16292,7 @@
           "personTmdbId": 2231,
           "profilePath": "/AiAYAqwpM5xmiFrAIeQvUXDCVvo.jpg",
           "roleType": "cast",
-          "role": "Charles Morritz (Montr\u00e9al)",
+          "role": "Charles Morritz (Montréal)",
           "order": 0
         }
       ],
@@ -16326,7 +16334,8 @@
       "releaseDate": "2003-10-03",
       "fromTmdb": {
         "fetchTimestamp": "2026-04-01T18:39:41.623Z",
-        "genres": []
+        "genres": [],
+        "runtime": null
       },
       "personConnectionKeys": [
         10859,
@@ -17284,7 +17293,8 @@
       "releaseDate": "2001-03-03",
       "fromTmdb": {
         "fetchTimestamp": "2026-04-01T18:39:41.622Z",
-        "genres": []
+        "genres": [],
+        "runtime": null
       },
       "personConnectionKeys": [
         18324,
@@ -17875,7 +17885,8 @@
       "releaseDate": "2012-04-25",
       "fromTmdb": {
         "fetchTimestamp": "2026-04-01T18:41:44.246Z",
-        "genres": []
+        "genres": [],
+        "runtime": null
       },
       "personConnectionKeys": [
         3223,
@@ -19861,7 +19872,8 @@
       "releaseDate": "1998-08-28",
       "fromTmdb": {
         "fetchTimestamp": "2026-04-01T18:39:41.623Z",
-        "genres": []
+        "genres": [],
+        "runtime": null
       },
       "personConnectionKeys": [
         16395,
@@ -21321,7 +21333,7 @@
     },
     {
       "tmdbId": 82695,
-      "title": "Les Mis\u00e9rables",
+      "title": "Les Misérables",
       "year": "2012",
       "posterPath": "/6CuzBs2Lb8At7qQr64mLXg2RYRb.jpg",
       "popularity": 9.4239,
@@ -22952,7 +22964,8 @@
       "releaseDate": "2014-11-05",
       "fromTmdb": {
         "fetchTimestamp": "2026-04-01T18:40:14.043Z",
-        "genres": []
+        "genres": [],
+        "runtime": null
       },
       "personConnectionKeys": [
         10297,
@@ -23627,7 +23640,7 @@
     },
     {
       "tmdbId": 196241,
-      "title": "Les Mis\u00e9rables: The History of the World's Greatest Story",
+      "title": "Les Misérables: The History of the World's Greatest Story",
       "year": "2013",
       "posterPath": "/eHYrgtxcE6DFJQrZScmVx42p1wI.jpg",
       "popularity": 0.92,
@@ -25472,7 +25485,8 @@
       "releaseDate": "2019-04-24",
       "fromTmdb": {
         "fetchTimestamp": "2026-04-01T18:41:55.084Z",
-        "genres": []
+        "genres": [],
+        "runtime": null
       },
       "personConnectionKeys": [
         3223,
@@ -27234,7 +27248,7 @@
           "personTmdbId": 10297,
           "profilePath": "/lCySuYjhXix3FzQdS4oceDDrXKI.jpg",
           "roleType": "cast",
-          "role": "Walter O\u2019Dim",
+          "role": "Walter O’Dim",
           "order": 1
         }
       ],
@@ -28955,7 +28969,8 @@
       "releaseDate": "2018-10-31",
       "fromTmdb": {
         "fetchTimestamp": "2026-04-01T18:39:41.620Z",
-        "genres": []
+        "genres": [],
+        "runtime": null
       },
       "personConnectionKeys": [
         1230868,
@@ -29689,7 +29704,8 @@
       "releaseDate": "2023-05-12",
       "fromTmdb": {
         "fetchTimestamp": "2026-04-01T18:39:41.621Z",
-        "genres": []
+        "genres": [],
+        "runtime": null
       },
       "personConnectionKeys": [
         95101,
@@ -30372,7 +30388,7 @@
     },
     {
       "tmdbId": 568604,
-      "title": "On the Set: The Princess Diaries 2 \u2013 Royal Engagement",
+      "title": "On the Set: The Princess Diaries 2 – Royal Engagement",
       "year": "2004",
       "posterPath": "/3DtpyLPhHHsh7dUw5QjVB7uvHsN.jpg",
       "popularity": 0.7544,
@@ -30997,7 +31013,7 @@
     },
     {
       "tmdbId": 645788,
-      "title": "The Prot\u00e9g\u00e9",
+      "title": "The Protégé",
       "year": "2021",
       "posterPath": "/iQUj7MptHUlcXpaMLrqRNZRxGA9.jpg",
       "popularity": 5.2896,
@@ -31715,7 +31731,8 @@
       "releaseDate": "2022-08-03",
       "fromTmdb": {
         "fetchTimestamp": "2026-04-01T18:40:51.143Z",
-        "genres": []
+        "genres": [],
+        "runtime": null
       },
       "personConnectionKeys": [
         287,
@@ -32473,7 +32490,7 @@
     },
     {
       "tmdbId": 761892,
-      "title": "John Travolta, le miracul\u00e9 d'Hollywood",
+      "title": "John Travolta, le miraculé d'Hollywood",
       "year": "2017",
       "posterPath": "/32UxBFn2RoK6VhDyQfIw1qbwelm.jpg",
       "popularity": 1.1132,
@@ -32949,7 +32966,7 @@
           "personTmdbId": 1813,
           "profilePath": "/nbccV2pMoyLTCeg5DQip24Eq0Jp.jpg",
           "roleType": "cast",
-          "role": "Sol\u00e8ne",
+          "role": "Solène",
           "order": 0
         }
       ],
@@ -34443,7 +34460,8 @@
       "releaseDate": "2026-02-11",
       "fromTmdb": {
         "fetchTimestamp": "2026-04-01T18:40:41.203Z",
-        "genres": []
+        "genres": [],
+        "runtime": null
       },
       "personConnectionKeys": [
         74568,
@@ -36995,7 +37013,7 @@
     },
     {
       "tmdbId": 1632584,
-      "title": "A CNN & Variety Town Hall Event: Timoth\u00e9e Chalamet and Matthew McConaughey",
+      "title": "A CNN & Variety Town Hall Event: Timothée Chalamet and Matthew McConaughey",
       "year": "2026",
       "posterPath": "/y8TT6puBDeFutQKELfY1Nhu1Kju.jpg",
       "popularity": 0.6198,

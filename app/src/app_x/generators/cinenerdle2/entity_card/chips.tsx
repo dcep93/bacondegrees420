@@ -146,7 +146,7 @@ function renderConnectionBadge(
       connectionCount={card.connectionCount}
       connectionRank={card.connectionRank}
       iconAlt="TMDb"
-      iconStyle={card.isExcluded
+      iconStyle={card.isExcluded || card.isShortDirectTmdbMovie
         ? {
             filter: "grayscale(1)",
             opacity: 0.9,

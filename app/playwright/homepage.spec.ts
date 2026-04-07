@@ -418,7 +418,7 @@ test("bare movie-title submits stay unresolved after dismissing suggestions", as
   await page.route("**/dump.json", async (route) => {
     await route.fulfill(createJsonResponse({
       format: "cinenerdle-indexed-db-snapshot",
-      version: 12,
+      version: 13,
       people: [
         {
           tmdbId: 60,
@@ -444,6 +444,7 @@ test("bare movie-title submits stay unresolved after dismissing suggestions", as
           fromTmdb: {
             fetchTimestamp: "2026-03-28T12:00:00.000Z",
             genres: [],
+            runtime: null,
           },
           personConnectionKeys: [60],
           people: [],
@@ -482,7 +483,7 @@ test("bare movie-title suggestions still work with Enter and click selection", a
   await page.route("**/dump.json", async (route) => {
     await route.fulfill(createJsonResponse({
       format: "cinenerdle-indexed-db-snapshot",
-      version: 12,
+      version: 13,
       people: [
         {
           tmdbId: 60,
@@ -508,6 +509,7 @@ test("bare movie-title suggestions still work with Enter and click selection", a
           fromTmdb: {
             fetchTimestamp: "2026-03-28T12:00:00.000Z",
             genres: [],
+            runtime: null,
           },
           personConnectionKeys: [60],
           people: [],
@@ -1131,7 +1133,7 @@ test("deep links render full hash paths, hydrate unique entities once, and revis
   await page.route("**/dump.json", async (route) => {
     await route.fulfill(createJsonResponse({
       format: "cinenerdle-indexed-db-snapshot",
-      version: 12,
+      version: 13,
       people: [],
       films: [],
     }));
@@ -1358,7 +1360,7 @@ test("deep links render full hash paths, hydrate unique entities once, and revis
   await page2.route("**/dump.json", async (route) => {
     await route.fulfill(createJsonResponse({
       format: "cinenerdle-indexed-db-snapshot",
-      version: 12,
+      version: 13,
       people: [
         {
           tmdbId: 10297,
@@ -2004,7 +2006,7 @@ test("gen 2 refresh redraws gen 3 for the newly selected person", async ({
   await page.route("**/dump.json", async (route) => {
     await route.fulfill(createJsonResponse({
       format: "cinenerdle-indexed-db-snapshot",
-      version: 12,
+      version: 13,
       people: [],
       films: [],
     }));
@@ -2192,7 +2194,7 @@ test("deep descendant selection renders cached DB children before the delayed TM
   await page.route("**/dump.json", async (route) => {
     await route.fulfill(createJsonResponse({
       format: "cinenerdle-indexed-db-snapshot",
-      version: 12,
+      version: 13,
       people: [
         {
           tmdbId: 1001,
@@ -2225,6 +2227,7 @@ test("deep descendant selection renders cached DB children before the delayed TM
           fromTmdb: {
             fetchTimestamp: "2026-03-28T12:00:00.000Z",
             genres: [],
+            runtime: null,
           },
           personConnectionKeys: [1001, 1009],
           people: [],
@@ -2241,6 +2244,7 @@ test("deep descendant selection renders cached DB children before the delayed TM
           fromTmdb: {
             fetchTimestamp: "2026-03-28T12:00:00.000Z",
             genres: [],
+            runtime: null,
           },
           personConnectionKeys: [1001],
           people: [],
@@ -2257,6 +2261,7 @@ test("deep descendant selection renders cached DB children before the delayed TM
           fromTmdb: {
             fetchTimestamp: "2026-03-28T12:00:00.000Z",
             genres: [],
+            runtime: null,
           },
           personConnectionKeys: [1001],
           people: [],
@@ -2273,6 +2278,7 @@ test("deep descendant selection renders cached DB children before the delayed TM
           fromTmdb: {
             fetchTimestamp: "2026-03-28T12:00:00.000Z",
             genres: [],
+            runtime: null,
           },
           personConnectionKeys: [1009],
           people: [],
@@ -2289,6 +2295,7 @@ test("deep descendant selection renders cached DB children before the delayed TM
           fromTmdb: {
             fetchTimestamp: "2026-03-28T12:00:00.000Z",
             genres: [],
+            runtime: null,
           },
           personConnectionKeys: [1009],
           people: [],
@@ -2478,7 +2485,7 @@ test("deep descendant selection renders cached DB children before the delayed TM
 test("zootopia-to-fred-willard regression keeps fred root navigation and bookmark toggle stable", async ({ page }) => {
   const dumpSnapshot = {
     format: "cinenerdle-indexed-db-snapshot",
-    version: 12,
+    version: 13,
     people: [
       {
         tmdbId: 9001,
@@ -2514,6 +2521,7 @@ test("zootopia-to-fred-willard regression keeps fred root navigation and bookmar
         fromTmdb: {
           fetchTimestamp: "2026-03-28T12:00:00.000Z",
           genres: [],
+          runtime: null,
         },
         personConnectionKeys: [9001],
         people: [],
@@ -2530,6 +2538,7 @@ test("zootopia-to-fred-willard regression keeps fred root navigation and bookmar
         fromTmdb: {
           fetchTimestamp: "2026-03-28T12:00:00.000Z",
           genres: [],
+          runtime: null,
         },
         personConnectionKeys: [9001, 9002],
         people: [],

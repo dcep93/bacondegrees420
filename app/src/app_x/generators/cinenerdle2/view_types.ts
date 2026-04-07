@@ -137,6 +137,7 @@ type BaseCardViewModel = {
   isAncestorSelected: boolean;
   hasCachedTmdbSource: boolean;
   isExcluded: boolean;
+  isShortDirectTmdbMovie: boolean;
 };
 
 type EntityCardViewModelAttrs = {

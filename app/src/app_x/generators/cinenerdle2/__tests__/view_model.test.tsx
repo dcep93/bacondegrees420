@@ -152,6 +152,7 @@ describe("createCardViewModel provenance gating", () => {
 
     expect(cardViewModel.hasCachedTmdbSource).toBe(true);
     expect(cardViewModel.isExcluded).toBe(false);
+    expect(cardViewModel.isShortDirectTmdbMovie).toBe(false);
 
     const html = renderToStaticMarkup(
       <CinenerdleEntityCard card={asRenderableEntityCard(cardViewModel)} />,
@@ -186,5 +187,57 @@ describe("createCardViewModel provenance gating", () => {
       <CinenerdleEntityCard card={asRenderableEntityCard(cardViewModel)} />,
     );
     expect(html).toContain("filter:grayscale(1)");
+  });
+
+  it("marks short direct tmdb movies for badge greyscale", () => {
+    const cardViewModel = createCardViewModel(
+      makeMovieCard({
+        sources: [{ iconUrl: "https://img.test/tmdb.png", label: "TMDb" }],
+        record: makeFilmRecord({
+          tmdbSource: "direct-film-fetch",
+          rawTmdbMovie: makeTmdbMovieSearchResult({
+            runtime: 8,
+          }),
+          rawTmdbMovieCreditsResponse: {
+            cast: [],
+            crew: [],
+          },
+        }),
+      }),
+      { isSelected: false },
+    );
+
+    expect(cardViewModel.isShortDirectTmdbMovie).toBe(true);
+
+    const html = renderToStaticMarkup(
+      <CinenerdleEntityCard card={asRenderableEntityCard(cardViewModel)} />,
+    );
+    expect(html).toContain("filter:grayscale(1)");
+  });
+
+  it("does not mark runtime 40 movies as short direct tmdb movies", () => {
+    const cardViewModel = createCardViewModel(
+      makeMovieCard({
+        sources: [{ iconUrl: "https://img.test/tmdb.png", label: "TMDb" }],
+        record: makeFilmRecord({
+          tmdbSource: "direct-film-fetch",
+          rawTmdbMovie: makeTmdbMovieSearchResult({
+            runtime: 40,
+          }),
+          rawTmdbMovieCreditsResponse: {
+            cast: [],
+            crew: [],
+          },
+        }),
+      }),
+      { isSelected: false },
+    );
+
+    expect(cardViewModel.isShortDirectTmdbMovie).toBe(false);
+
+    const html = renderToStaticMarkup(
+      <CinenerdleEntityCard card={asRenderableEntityCard(cardViewModel)} />,
+    );
+    expect(html).not.toContain("filter:grayscale(1)");
   });
 });

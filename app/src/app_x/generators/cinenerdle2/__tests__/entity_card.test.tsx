@@ -32,6 +32,7 @@ function makeRenderableMovieCard(
     status: null,
     hasCachedTmdbSource: true,
     isExcluded: false,
+    isShortDirectTmdbMovie: false,
     isSelected: false,
     isLocked: false,
     isAncestorSelected: false,
@@ -66,6 +67,7 @@ function makeRenderableCinenerdleCard(): RenderableCinenerdleEntityCard {
     status: null,
     hasCachedTmdbSource: false,
     isExcluded: false,
+    isShortDirectTmdbMovie: false,
     isSelected: false,
     isLocked: false,
     isAncestorSelected: false,
@@ -414,6 +416,20 @@ describe("CinenerdleEntityCard", () => {
     expect(html).toContain("opacity:0.9");
     expect(html).toContain("#3 / 12");
     expect(html).toContain("Popularity 88.00");
+  });
+
+  it("renders short direct tmdb movie badge icons in greyscale", () => {
+    const html = renderToStaticMarkup(
+      <CinenerdleEntityCard
+        card={makeRenderableMovieCard({
+          isShortDirectTmdbMovie: true,
+        })}
+      />,
+    );
+
+    expect(html).toContain("cinenerdle-card-count-icon");
+    expect(html).toContain("filter:grayscale(1)");
+    expect(html).toContain("opacity:0.9");
   });
 });
 

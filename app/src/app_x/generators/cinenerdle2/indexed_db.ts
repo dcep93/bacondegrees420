@@ -63,7 +63,7 @@ const REQUIRED_OBJECT_STORE_NAMES = [
 export const CINENERDLE_RECORDS_UPDATED_EVENT = "cinenerdle:records-updated";
 export const CINENERDLE_INDEXED_DB_FETCH_COUNT_UPDATED_EVENT =
   "cinenerdle:indexed-db-fetch-count-updated";
-const INDEXED_DB_SNAPSHOT_VERSION = 12 as const;
+const INDEXED_DB_SNAPSHOT_VERSION = 13 as const;
 const INDEXED_DB_FETCH_COUNT_KEY = "tmdbFetchCount";
 const INDEXED_DB_BOOKMARK_HASHES_KEY = "bookmarkHashes";
 
@@ -1945,6 +1945,7 @@ export type IndexedDbSnapshotFilm = {
   fromTmdb: {
     fetchTimestamp: string;
     genres: TmdbGenre[];
+    runtime: number | null;
   } | null;
   personConnectionKeys: number[];
   people: IndexedDbSnapshotConnection[];
@@ -2367,6 +2368,7 @@ function createSnapshotFilmRecord(
             `film "${filmRecord.title}"`,
           ),
           genres: normalizeSnapshotTmdbGenres(filmRecord.rawTmdbMovie.genres),
+          runtime: filmRecord.rawTmdbMovie.runtime ?? null,
         }
       : null,
     personConnectionKeys: Array.from(
@@ -2420,6 +2422,7 @@ function createTmdbMovieFromSnapshot(
     popularity: filmSnapshot.popularity,
     vote_average: filmSnapshot.voteAverage ?? undefined,
     vote_count: filmSnapshot.voteCount ?? undefined,
+    runtime: filmSnapshot.fromTmdb?.runtime ?? undefined,
     genres: filmSnapshot.fromTmdb?.genres,
   };
 }

@@ -223,6 +223,7 @@ describe("buildFilmRecord", () => {
       popularity: 99,
       vote_average: 8.5,
       vote_count: 9999,
+      runtime: 170,
     });
 
     const filmRecord = buildFilmRecord(existingFilmRecord, tmdbFilm);
@@ -234,6 +235,37 @@ describe("buildFilmRecord", () => {
     expect(filmRecord.rawTmdbMovie).toEqual(tmdbFilm);
     expect(filmRecord.rawTmdbMovieCreditsResponse).toEqual(existingFilmRecord.rawTmdbMovieCreditsResponse);
     expect(filmRecord.fetchTimestamp).toBe("2026-03-28T12:34:56.000Z");
+  });
+
+  it("preserves an older runtime when a newer fetch omits it", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-28T13:00:00.000Z"));
+
+    const existingFilmRecord = makeFilmRecord({
+      id: 999,
+      tmdbId: 999,
+      title: "Heat",
+      year: "1995",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 999,
+        title: "Heat",
+        release_date: "1995-12-15",
+        runtime: 170,
+      }),
+      fetchTimestamp: "2026-03-27T00:00:00.000Z",
+    });
+
+    const filmRecord = buildFilmRecord(
+      existingFilmRecord,
+      makeTmdbMovieSearchResult({
+        id: 999,
+        title: "Heat",
+        release_date: "1995-12-15",
+        runtime: undefined,
+      }),
+    );
+
+    expect(filmRecord.rawTmdbMovie?.runtime).toBe(170);
   });
 
   it("uses original_title and release year when no existing film record is present", () => {
