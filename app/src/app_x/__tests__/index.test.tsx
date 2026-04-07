@@ -959,36 +959,28 @@ describe("annotateDirectionalConnectionPathRanks", () => {
 
     const movieRecords = new Map([
       [adAstra.key, makeFilmRecord({
+        id: 123,
+        tmdbId: 123,
         title: "Ad Astra",
         year: "2019",
         popularity: 4.51,
-        personConnectionKeys: [
-          "Tommy Lee Jones",
-          "Liv Tyler",
-          "Ruth Negga",
-          "Brad Pitt",
-        ],
+        personConnectionKeys: [10227, 10959, 524, 287],
       })],
       [meetJoeBlack.key, makeFilmRecord({
+        id: 9441,
+        tmdbId: 9441,
         title: "Meet Joe Black",
         year: "1998",
         popularity: 10.08,
-        personConnectionKeys: [
-          "Brad Pitt",
-          "Anthony Hopkins",
-          "Claire Forlani",
-          "Jake Weber",
-        ],
+        personConnectionKeys: [287, 4173, 6775, 7011],
       })],
       [shelterMe.key, makeFilmRecord({
+        id: 41234,
+        tmdbId: 41234,
         title: "Shelter Me",
         year: "2007",
         popularity: 0.63,
-        personConnectionKeys: [
-          "Amy Smart",
-          "Chelsea Hobbs",
-          "Marlon Young",
-        ],
+        personConnectionKeys: [12231, 93412, 93413],
       })],
     ]);
     const personRecords = new Map([
@@ -996,12 +988,7 @@ describe("annotateDirectionalConnectionPathRanks", () => {
         id: 287,
         tmdbId: 287,
         name: "Brad Pitt",
-        movieConnectionKeys: [
-          "fight club (1999)",
-          "se7en (1995)",
-          "meet joe black (1998)",
-          "ad astra (2019)",
-        ],
+        movieConnectionKeys: [550, 807, 9441, 123],
         rawTmdbPerson: {
           id: 287,
           name: "Brad Pitt",
@@ -1013,12 +1000,7 @@ describe("annotateDirectionalConnectionPathRanks", () => {
         id: 7011,
         tmdbId: 7011,
         name: "Jake Weber",
-        movieConnectionKeys: [
-          "dawn of the dead (2004)",
-          "meet joe black (1998)",
-          "shelter me (2007)",
-          "medium cool (1969)",
-        ],
+        movieConnectionKeys: [924, 9441, 41234, 37053],
         rawTmdbPerson: {
           id: 7011,
           name: "Jake Weber",
@@ -1081,25 +1063,25 @@ describe("annotateDirectionalConnectionPathRanks", () => {
     });
 
     const connectedMovieRecords = [
-      makeFilmRecord({ title: "F1", year: "2025", popularity: 33.7091 }),
-      makeFilmRecord({ title: "Fight Club", year: "1999", popularity: 28.7569 }),
-      makeFilmRecord({ title: "Se7en", year: "1995", popularity: 23.5364 }),
-      makeFilmRecord({ title: "Inglourious Basterds", year: "2009", popularity: 19.8161 }),
-      makeFilmRecord({ title: "Fury", year: "2014", popularity: 17.4349 }),
-      makeFilmRecord({ title: "Once Upon a Time... in Hollywood", year: "2019", popularity: 16.2024 }),
-      makeFilmRecord({ title: "World War Z", year: "2013", popularity: 14.9884 }),
-      makeFilmRecord({ title: "Deadpool 2", year: "2018", popularity: 14.9561 }),
-      makeFilmRecord({ title: "Bullet Train", year: "2022", popularity: 14.2804 }),
-      makeFilmRecord({ title: "Troy", year: "2004", popularity: 14.0192 }),
-      makeFilmRecord({ title: "Snatch", year: "2000", popularity: 12.798 }),
-      makeFilmRecord({ title: "Babylon", year: "2022", popularity: 11.9869 }),
-      makeFilmRecord({ title: "Ocean's Eleven", year: "2001", popularity: 10.7526 }),
+      makeFilmRecord({ id: 1001, tmdbId: 1001, title: "F1", year: "2025", popularity: 33.7091 }),
+      makeFilmRecord({ id: 550, tmdbId: 550, title: "Fight Club", year: "1999", popularity: 28.7569 }),
+      makeFilmRecord({ id: 807, tmdbId: 807, title: "Se7en", year: "1995", popularity: 23.5364 }),
+      makeFilmRecord({ id: 16869, tmdbId: 16869, title: "Inglourious Basterds", year: "2009", popularity: 19.8161 }),
+      makeFilmRecord({ id: 228150, tmdbId: 228150, title: "Fury", year: "2014", popularity: 17.4349 }),
+      makeFilmRecord({ id: 466272, tmdbId: 466272, title: "Once Upon a Time... in Hollywood", year: "2019", popularity: 16.2024 }),
+      makeFilmRecord({ id: 72190, tmdbId: 72190, title: "World War Z", year: "2013", popularity: 14.9884 }),
+      makeFilmRecord({ id: 383498, tmdbId: 383498, title: "Deadpool 2", year: "2018", popularity: 14.9561 }),
+      makeFilmRecord({ id: 718930, tmdbId: 718930, title: "Bullet Train", year: "2022", popularity: 14.2804 }),
+      makeFilmRecord({ id: 652, tmdbId: 652, title: "Troy", year: "2004", popularity: 14.0192 }),
+      makeFilmRecord({ id: 107, tmdbId: 107, title: "Snatch", year: "2000", popularity: 12.798 }),
+      makeFilmRecord({ id: 615777, tmdbId: 615777, title: "Babylon", year: "2022", popularity: 11.9869 }),
+      makeFilmRecord({ id: 161, tmdbId: 161, title: "Ocean's Eleven", year: "2001", popularity: 10.7526 }),
     ];
     const bradPittRecord = makePersonRecord({
       id: 287,
       tmdbId: 287,
       name: "Brad Pitt",
-      movieConnectionKeys: connectedMovieRecords.map((record) => record.titleYear),
+      movieConnectionKeys: connectedMovieRecords.map((record) => record.tmdbId ?? Number(record.id)),
       rawTmdbPerson: {
         id: 287,
         name: "Brad Pitt",

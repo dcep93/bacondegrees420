@@ -325,7 +325,7 @@ describe("buildChildRowForCard", () => {
       id: 60,
       tmdbId: 60,
       name: "Al Pacino",
-      movieConnectionKeys: ["heat (1995)"],
+      movieConnectionKeys: [321],
     });
     const deniroRecord = makePersonRecord({
       id: 61,
@@ -387,7 +387,7 @@ describe("buildChildRowForCard", () => {
       tmdbId: 321,
       title: "Heat",
       year: "1995",
-      personConnectionKeys: ["al pacino"],
+      personConnectionKeys: [60],
     });
     const scarfaceRecord = makeFilmRecord({
       id: 322,
@@ -522,7 +522,7 @@ describe("buildChildRowForCard", () => {
       id: 60,
       tmdbId: 60,
       name: "Al Pacino",
-      movieConnectionKeys: ["heat (1995)"],
+      movieConnectionKeys: [321],
     });
     const deniroRecord = makePersonRecord({
       id: 61,
@@ -584,7 +584,7 @@ describe("buildTreeFromHash", () => {
       id: 60,
       tmdbId: 60,
       name: "Al Pacino",
-      movieConnectionKeys: ["heat (1995)"],
+      movieConnectionKeys: [321],
     });
 
     window.localStorage.setItem(
@@ -595,7 +595,7 @@ describe("buildTreeFromHash", () => {
     indexedDbMock.getFilmRecordById.mockResolvedValue(heatRecord);
     indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(heatRecord);
     indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(
-      new Map([["Al Pacino", 8]]),
+      new Map([[60, 8]]),
     );
     indexedDbMock.getPersonRecordById.mockResolvedValue(pacinoRecord);
     indexedDbMock.getPersonRecordByName.mockImplementation(async (personName: string) =>
@@ -1183,7 +1183,7 @@ describe("useCinenerdleController", () => {
       id: 60,
       tmdbId: 60,
       name: "Al Pacino",
-      movieConnectionKeys: ["heat (1995)"],
+      movieConnectionKeys: [321],
     });
     const writeHash = vi.fn();
     const controller = renderController({ writeHash });
@@ -1194,7 +1194,7 @@ describe("useCinenerdleController", () => {
     indexedDbMock.getFilmRecordById.mockResolvedValue(heatRecord);
     indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(heatRecord);
     indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(
-      new Map([["Al Pacino", 8]]),
+      new Map([[60, 8]]),
     );
     indexedDbMock.getPersonRecordById.mockResolvedValue(pacinoRecord);
     indexedDbMock.getPersonRecordByName.mockImplementation(async (personName: string) =>
@@ -1536,7 +1536,7 @@ describe("useCinenerdleController", () => {
       id: 60,
       tmdbId: 60,
       name: "Al Pacino",
-      movieConnectionKeys: ["heat (1995)", "scarface (1983)"],
+      movieConnectionKeys: [321, 322],
       rawTmdbPerson: makeTmdbPersonSearchResult({
         id: 60,
         name: "Al Pacino",
@@ -1658,12 +1658,12 @@ describe("useCinenerdleController", () => {
       tmdbId: 321,
       title: "Heat",
       year: "1995",
-      personConnectionKeys: ["al pacino"],
+      personConnectionKeys: [60],
     });
     const locallyCachedHeatRecord = makeFilmRecord({
       ...connectionDerivedHeatRecord,
       popularity: 88,
-      personConnectionKeys: ["al pacino", "robert de niro"],
+      personConnectionKeys: [60, 61],
     });
     const hydratedHeatRecord = makeFilmRecord({
       ...locallyCachedHeatRecord,
@@ -1685,7 +1685,7 @@ describe("useCinenerdleController", () => {
       id: 60,
       tmdbId: 60,
       name: "Al Pacino",
-      movieConnectionKeys: ["heat (1995)"],
+      movieConnectionKeys: [321],
       rawTmdbPerson: makeTmdbPersonSearchResult({
         id: 60,
         name: "Al Pacino",
@@ -1696,7 +1696,7 @@ describe("useCinenerdleController", () => {
       id: 61,
       tmdbId: 61,
       name: "Robert De Niro",
-      movieConnectionKeys: ["heat (1995)"],
+      movieConnectionKeys: [321],
       rawTmdbPerson: makeTmdbPersonSearchResult({
         id: 61,
         name: "Robert De Niro",
@@ -1712,8 +1712,8 @@ describe("useCinenerdleController", () => {
     indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(locallyCachedHeatRecord);
     indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(
       new Map([
-        ["al pacino", 8],
-        ["robert de niro", 7],
+        [60, 8],
+        [61, 7],
       ]),
     );
     indexedDbMock.getPersonRecordById.mockImplementation(async (personId: number) =>
@@ -1797,18 +1797,18 @@ describe("useCinenerdleController", () => {
       tmdbId: 321,
       title: "Heat",
       year: "1995",
-      personConnectionKeys: ["al pacino"],
+      personConnectionKeys: [60],
     });
     const locallyCachedHeatRecord = makeFilmRecord({
       ...connectionDerivedHeatRecord,
       popularity: 88,
-      personConnectionKeys: ["al pacino", "robert de niro"],
+      personConnectionKeys: [60, 61],
     });
     const pacinoRecord = makePersonRecord({
       id: 60,
       tmdbId: 60,
       name: "Al Pacino",
-      movieConnectionKeys: ["heat (1995)"],
+      movieConnectionKeys: [321],
       rawTmdbPerson: makeTmdbPersonSearchResult({
         id: 60,
         name: "Al Pacino",
@@ -1819,7 +1819,7 @@ describe("useCinenerdleController", () => {
       id: 61,
       tmdbId: 61,
       name: "Robert De Niro",
-      movieConnectionKeys: ["heat (1995)"],
+      movieConnectionKeys: [321],
       rawTmdbPerson: makeTmdbPersonSearchResult({
         id: 61,
         name: "Robert De Niro",
@@ -1836,8 +1836,8 @@ describe("useCinenerdleController", () => {
     indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(locallyCachedHeatRecord);
     indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(
       new Map([
-        ["al pacino", 8],
-        ["robert de niro", 7],
+        [60, 8],
+        [61, 7],
       ]),
     );
     indexedDbMock.getPersonRecordById.mockImplementation(async (personId: number) =>
@@ -1895,12 +1895,12 @@ describe("useCinenerdleController", () => {
       id: 60,
       tmdbId: 60,
       name: "Al Pacino",
-      movieConnectionKeys: ["heat (1995)"],
+      movieConnectionKeys: [321],
     });
     const locallyCachedPacinoRecord = makePersonRecord({
       ...sparsePacinoRecord,
       fetchTimestamp: "2026-03-31T12:00:00.000Z",
-      movieConnectionKeys: ["heat (1995)", "scarface (1983)"],
+      movieConnectionKeys: [321, 322],
     });
     const hydratedPacinoRecord = makePersonRecord({
       ...locallyCachedPacinoRecord,
@@ -1935,7 +1935,7 @@ describe("useCinenerdleController", () => {
       title: "Heat",
       year: "1995",
       popularity: 66,
-      personConnectionKeys: ["al pacino"],
+      personConnectionKeys: [60],
     });
     const scarfaceRecord = makeFilmRecord({
       id: 322,
@@ -1943,7 +1943,7 @@ describe("useCinenerdleController", () => {
       title: "Scarface",
       year: "1983",
       popularity: 92,
-      personConnectionKeys: ["al pacino"],
+      personConnectionKeys: [60],
     });
     const controller = renderController({ writeHash: vi.fn() });
     const applyUpdate = vi.fn();
@@ -1952,12 +1952,11 @@ describe("useCinenerdleController", () => {
 
     indexedDbMock.getPersonRecordById.mockResolvedValue(locallyCachedPacinoRecord);
     indexedDbMock.getPersonRecordByName.mockResolvedValue(locallyCachedPacinoRecord);
-    indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (title: string, year: string) =>
-      title.toLowerCase() === "heat" && year === "1995"
-        ? heatRecord
-        : title.toLowerCase() === "scarface" && year === "1983"
-          ? scarfaceRecord
-          : null,
+    indexedDbMock.getFilmRecordsByIds.mockResolvedValue(
+      new Map([
+        [321, heatRecord],
+        [322, scarfaceRecord],
+      ]),
     );
     indexedDbMock.getPersonRecordCountsByMovieKeys.mockResolvedValue(
       new Map([

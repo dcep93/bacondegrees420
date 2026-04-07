@@ -869,7 +869,7 @@ describe("tmdb forced refresh helpers", () => {
         title: "Scream VI",
         year: "2023",
         tmdbSource: "connection-derived",
-        personConnectionKeys: ["samara weaving"],
+        personConnectionKeys: [1372369],
         rawTmdbMovieCreditsResponse: {
           cast: [
             expect.objectContaining({

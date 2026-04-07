@@ -69,11 +69,7 @@ describe("withDerivedPersonFields", () => {
     expect(personRecord.tmdbId).toBe(222);
     expect(personRecord.lookupKey).toBe("kenneth collard");
     expect(personRecord.nameLower).toBe("kenneth collard");
-    expect(personRecord.movieConnectionKeys).toEqual([
-      "heat (1995)",
-      "insomnia (2002)",
-      "the insider (1999)",
-    ]);
+    expect(personRecord.movieConnectionKeys).toEqual([1, 2, 4]);
   });
 
   it("falls back to a numeric record id when no tmdb person payload is present", () => {
@@ -162,8 +158,8 @@ describe("withDerivedFilmFields", () => {
     expect(filmRecord.lookupKey).toBe("heat (1995)");
     expect(filmRecord.titleLower).toBe("heat");
     expect(filmRecord.titleYear).toBe("heat (1995)");
-    expect(filmRecord.personConnectionKeys).toEqual(["al pacino", "robert de niro", "michael mann"]);
-    expect(filmRecord.personConnectionKeys).not.toContain("mark avery");
+    expect(filmRecord.personConnectionKeys).toEqual([1, 2, 3]);
+    expect(filmRecord.personConnectionKeys).not.toContain(4);
   });
 
   it("leaves starter-specific fields out of derived film records", () => {
@@ -408,7 +404,7 @@ describe("buildPersonRecordFromFilmCredit", () => {
         tmdbSource: "connection-derived",
         name: "Russell Crowe",
         nameLower: "russell crowe",
-        movieConnectionKeys: ["gladiator (2000)"],
+        movieConnectionKeys: [50],
         fetchTimestamp: "2026-03-30T00:00:10.000Z",
         rawTmdbPerson: expect.objectContaining({
           id: 934,
@@ -442,7 +438,7 @@ describe("mergePersonRecords", () => {
       id: 934,
       tmdbId: 934,
       name: "Russell Crowe",
-      movieConnectionKeys: ["the quick and the dead (1995)"],
+      movieConnectionKeys: [95],
       fetchTimestamp: "2026-03-27T00:00:00.000Z",
       rawTmdbPerson: makeTmdbPersonSearchResult({
         id: 934,
@@ -455,7 +451,7 @@ describe("mergePersonRecords", () => {
       id: 934,
       tmdbId: 934,
       name: "Russell Crowe",
-      movieConnectionKeys: ["gladiator (2000)"],
+      movieConnectionKeys: [50],
       fetchTimestamp: "2026-03-28T00:00:00.000Z",
       rawTmdbPerson: makeTmdbPersonSearchResult({
         id: 934,
@@ -470,7 +466,7 @@ describe("mergePersonRecords", () => {
         id: 934,
         tmdbId: 934,
         tmdbSource: "direct-person-fetch",
-        movieConnectionKeys: ["the quick and the dead (1995)", "gladiator (2000)"],
+        movieConnectionKeys: [95, 50],
         rawTmdbPerson: expect.objectContaining({
           profile_path: "/russell.jpg",
         }),
@@ -731,7 +727,7 @@ describe("buildPersonRecord", () => {
       lookupKey: "kenneth collard",
       name: "  Kenneth   Collard  ",
       nameLower: "kenneth collard",
-      movieConnectionKeys: ["heat (1995)"],
+      movieConnectionKeys: [1],
       tmdbSource: "direct-person-fetch",
       rawTmdbPerson: person,
       rawTmdbPersonSearchResponse: searchResponse,

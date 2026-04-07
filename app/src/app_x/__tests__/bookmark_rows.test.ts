@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const indexedDbMock = vi.hoisted(() => ({
+  getFilmRecordById: vi.fn(),
   getFilmRecordByTitleAndYear: vi.fn(),
   getPersonRecordById: vi.fn(),
   getPersonRecordByName: vi.fn(),
@@ -27,10 +28,12 @@ import {
 
 describe("buildBookmarkRowData", () => {
   beforeEach(() => {
+    indexedDbMock.getFilmRecordById.mockReset();
     indexedDbMock.getFilmRecordByTitleAndYear.mockReset();
     indexedDbMock.getPersonRecordById.mockReset();
     indexedDbMock.getPersonRecordByName.mockReset();
 
+    indexedDbMock.getFilmRecordById.mockResolvedValue(null);
     indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(null);
     indexedDbMock.getPersonRecordById.mockResolvedValue(null);
     indexedDbMock.getPersonRecordByName.mockResolvedValue(null);
@@ -44,13 +47,13 @@ describe("buildBookmarkRowData", () => {
       title: "Heat",
       year: "1995",
       popularity: 66,
-      personConnectionKeys: ["al pacino", "val kilmer"],
+      personConnectionKeys: [60, 95],
     });
     const pacinoRecord = makePersonRecord({
       id: 60,
       tmdbId: 60,
       name: "Al Pacino",
-      movieConnectionKeys: ["heat (1995)"],
+      movieConnectionKeys: [321],
       fetchTimestamp: fetchedAt,
       rawTmdbPerson: makeTmdbPersonSearchResult({
         id: 60,
@@ -74,7 +77,7 @@ describe("buildBookmarkRowData", () => {
       id: 95,
       tmdbId: 95,
       name: "Val Kilmer",
-      movieConnectionKeys: ["heat (1995)"],
+      movieConnectionKeys: [321],
       rawTmdbPerson: makeTmdbPersonSearchResult({
         id: 95,
         name: "Val Kilmer",
@@ -98,6 +101,9 @@ describe("buildBookmarkRowData", () => {
     });
     indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (title: string, year: string) =>
       title === "Heat" && year === "1995" ? heatRecord : null,
+    );
+    indexedDbMock.getFilmRecordById.mockImplementation(async (tmdbId: number | string) =>
+      Number(tmdbId) === 321 ? heatRecord : null,
     );
 
     const bookmarkRow = await buildBookmarkRowData(serializePathNodes([
@@ -128,7 +134,7 @@ describe("buildBookmarkRowData", () => {
       title: "Heat",
       year: "1995",
       popularity: 66,
-      personConnectionKeys: ["al pacino"],
+      personConnectionKeys: [60],
       rawTmdbMovie: makeTmdbMovieSearchResult({
         id: 321,
         title: "Heat",
@@ -164,7 +170,7 @@ describe("buildBookmarkRowData", () => {
       id: 60,
       tmdbId: 60,
       name: "Al Pacino",
-      movieConnectionKeys: ["heat (1995)", "scarface (1983)"],
+      movieConnectionKeys: [321, 111],
       rawTmdbPerson: makeTmdbPersonSearchResult({
         id: 60,
         name: "Al Pacino",
@@ -184,6 +190,17 @@ describe("buildBookmarkRowData", () => {
       }
 
       if (title.toLowerCase() === "scarface" && year === "1983") {
+        return scarfaceRecord;
+      }
+
+      return null;
+    });
+    indexedDbMock.getFilmRecordById.mockImplementation(async (tmdbId: number | string) => {
+      if (Number(tmdbId) === 321) {
+        return heatRecord;
+      }
+
+      if (Number(tmdbId) === 111) {
         return scarfaceRecord;
       }
 

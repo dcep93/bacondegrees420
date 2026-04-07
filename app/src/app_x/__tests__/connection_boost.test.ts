@@ -14,6 +14,7 @@ function normalizeName(value: string): string {
 }
 
 const indexedDbMock = vi.hoisted(() => ({
+  getFilmRecordById: vi.fn(),
   getFilmRecordByTitleAndYear: vi.fn(),
   getFilmRecordsByPersonConnectionKey: vi.fn(),
   getPersonRecordById: vi.fn(),
@@ -29,6 +30,7 @@ describe("resolveConnectionBoostPreview", () => {
   beforeEach(() => {
     Object.values(indexedDbMock).forEach((mock) => mock.mockReset());
 
+    indexedDbMock.getFilmRecordById.mockResolvedValue(null);
     indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(null);
     indexedDbMock.getFilmRecordsByPersonConnectionKey.mockResolvedValue([]);
     indexedDbMock.getPersonRecordById.mockResolvedValue(null);
@@ -265,7 +267,7 @@ describe("resolveConnectionBoostPreview", () => {
       id: 401,
       tmdbId: 401,
       name: "Selected Person",
-      movieConnectionKeys: ["shared low (2010)", "shared high (2011)", "path only (2012)"],
+      movieConnectionKeys: [301, 302, 303],
       rawTmdbPerson: { id: 401, name: "Selected Person", popularity: 45 },
       rawTmdbMovieCreditsResponse: {
         cast: [
@@ -281,14 +283,14 @@ describe("resolveConnectionBoostPreview", () => {
       id: 402,
       tmdbId: 402,
       name: "Distance Two High",
-      movieConnectionKeys: ["shared low (2010)", "shared high (2011)"],
+      movieConnectionKeys: [301, 302],
       rawTmdbPerson: { id: 402, name: "Distance Two High", popularity: 99 },
     });
     const distanceTwoLower = makePersonRecord({
       id: 403,
       tmdbId: 403,
       name: "Distance Two Lower",
-      movieConnectionKeys: ["shared low (2010)", "shared high (2011)", "path only (2012)"],
+      movieConnectionKeys: [301, 302, 303],
       rawTmdbPerson: { id: 403, name: "Distance Two Lower", popularity: 80 },
     });
     const sharedLowMovie = makeFilmRecord({
@@ -337,6 +339,9 @@ describe("resolveConnectionBoostPreview", () => {
         (film) => film.title === title && film.year === year,
       ) ?? null,
     );
+    indexedDbMock.getFilmRecordById.mockImplementation(async (id: number) =>
+      [sharedLowMovie, sharedHighMovie, pathOnlyMovie].find((film) => film.tmdbId === id) ?? null,
+    );
 
     const preview = await resolveConnectionBoostPreview({
       key: "person:401",
@@ -363,7 +368,7 @@ describe("resolveConnectionBoostPreview", () => {
       id: 401,
       tmdbId: 401,
       name: "Selected Person",
-      movieConnectionKeys: ["solo movie (2010)"],
+      movieConnectionKeys: [301],
       rawTmdbPerson: { id: 401, name: "Selected Person", popularity: 45 },
     });
     const soloMovie = makeFilmRecord({
@@ -377,6 +382,7 @@ describe("resolveConnectionBoostPreview", () => {
     indexedDbMock.getPersonRecordById.mockResolvedValue(selectedPerson);
     indexedDbMock.getPersonRecordByName.mockResolvedValue(selectedPerson);
     indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(soloMovie);
+    indexedDbMock.getFilmRecordById.mockResolvedValue(soloMovie);
     indexedDbMock.getPersonRecordsByMovieKey.mockResolvedValue([selectedPerson]);
 
     const preview = await resolveConnectionBoostPreview({

@@ -423,7 +423,7 @@ test("bare movie-title submits stay unresolved after dismissing suggestions", as
         {
           tmdbId: 60,
           name: "Al Pacino",
-          movieConnectionKeys: ["heat (1995)"],
+          movieConnectionKeys: [321],
           popularity: 77,
           fromTmdb: {
             fetchTimestamp: "2026-03-28T12:00:00.000Z",
@@ -445,7 +445,7 @@ test("bare movie-title submits stay unresolved after dismissing suggestions", as
             fetchTimestamp: "2026-03-28T12:00:00.000Z",
             genres: [],
           },
-          personConnectionKeys: ["al pacino"],
+          personConnectionKeys: [60],
           people: [],
         },
       ],
@@ -487,7 +487,7 @@ test("bare movie-title suggestions still work with Enter and click selection", a
         {
           tmdbId: 60,
           name: "Al Pacino",
-          movieConnectionKeys: ["heat (1995)"],
+          movieConnectionKeys: [321],
           popularity: 77,
           fromTmdb: {
             fetchTimestamp: "2026-03-28T12:00:00.000Z",
@@ -509,7 +509,7 @@ test("bare movie-title suggestions still work with Enter and click selection", a
             fetchTimestamp: "2026-03-28T12:00:00.000Z",
             genres: [],
           },
-          personConnectionKeys: ["al pacino"],
+          personConnectionKeys: [60],
           people: [],
         },
       ],
@@ -1363,7 +1363,7 @@ test("deep links render full hash paths, hydrate unique entities once, and revis
         {
           tmdbId: 10297,
           name: "Matthew McConaughey",
-          movieConnectionKeys: ["contact (1997)"],
+          movieConnectionKeys: [686],
           popularity: 18.4,
           fromTmdb: {
             fetchTimestamp: "2026-03-28T12:00:00.000Z",
@@ -1395,7 +1395,7 @@ test("deep links render full hash paths, hydrate unique entities once, and revis
           voteCount: 1644,
           releaseDate: "1996-07-24",
           fromTmdb: null,
-          personConnectionKeys: ["sandra bullock", "kevin spacey"],
+          personConnectionKeys: [],
           people: [],
         },
         {
@@ -1408,7 +1408,7 @@ test("deep links render full hash paths, hydrate unique entities once, and revis
           voteCount: 4661,
           releaseDate: "1997-07-11",
           fromTmdb: null,
-          personConnectionKeys: ["matthew mcconaughey"],
+          personConnectionKeys: [10297],
           people: [
             {
               personTmdbId: 10297,
@@ -2197,11 +2197,7 @@ test("deep descendant selection renders cached DB children before the delayed TM
         {
           tmdbId: 1001,
           name: "Alpha One",
-          movieConnectionKeys: [
-            "mock starter movie (2001)",
-            "alpha movie a (2003)",
-            "alpha movie b (2004)",
-          ],
+          movieConnectionKeys: [9001, 2101, 2102],
           popularity: 500,
           fromTmdb: {
             fetchTimestamp: "2026-03-28T12:00:00.000Z",
@@ -2211,11 +2207,7 @@ test("deep descendant selection renders cached DB children before the delayed TM
         {
           tmdbId: 1009,
           name: "India Nine",
-          movieConnectionKeys: [
-            "mock starter movie (2001)",
-            "india movie a (2011)",
-            "india movie b (2012)",
-          ],
+          movieConnectionKeys: [9001, 2201, 2202],
           popularity: 40,
           fromTmdb: null,
         },
@@ -2234,7 +2226,7 @@ test("deep descendant selection renders cached DB children before the delayed TM
             fetchTimestamp: "2026-03-28T12:00:00.000Z",
             genres: [],
           },
-          personConnectionKeys: ["alpha one", "india nine"],
+          personConnectionKeys: [1001, 1009],
           people: [],
         },
         {
@@ -2250,7 +2242,7 @@ test("deep descendant selection renders cached DB children before the delayed TM
             fetchTimestamp: "2026-03-28T12:00:00.000Z",
             genres: [],
           },
-          personConnectionKeys: ["alpha one"],
+          personConnectionKeys: [1001],
           people: [],
         },
         {
@@ -2266,7 +2258,7 @@ test("deep descendant selection renders cached DB children before the delayed TM
             fetchTimestamp: "2026-03-28T12:00:00.000Z",
             genres: [],
           },
-          personConnectionKeys: ["alpha one"],
+          personConnectionKeys: [1001],
           people: [],
         },
         {
@@ -2282,7 +2274,7 @@ test("deep descendant selection renders cached DB children before the delayed TM
             fetchTimestamp: "2026-03-28T12:00:00.000Z",
             genres: [],
           },
-          personConnectionKeys: ["india nine"],
+          personConnectionKeys: [1009],
           people: [],
         },
         {
@@ -2298,7 +2290,7 @@ test("deep descendant selection renders cached DB children before the delayed TM
             fetchTimestamp: "2026-03-28T12:00:00.000Z",
             genres: [],
           },
-          personConnectionKeys: ["india nine"],
+          personConnectionKeys: [1009],
           people: [],
         },
       ],
@@ -2491,10 +2483,7 @@ test("zootopia-to-fred-willard regression keeps fred root navigation and bookmar
       {
         tmdbId: 9001,
         name: "Judy Hopps",
-        movieConnectionKeys: [
-          "zootopia (2016)",
-          "best in show (2000)",
-        ],
+        movieConnectionKeys: [269149, 11011],
         popularity: 44,
         fromTmdb: {
           fetchTimestamp: "2026-03-28T12:00:00.000Z",
@@ -2504,9 +2493,7 @@ test("zootopia-to-fred-willard regression keeps fred root navigation and bookmar
       {
         tmdbId: 9002,
         name: "Fred Willard",
-        movieConnectionKeys: [
-          "best in show (2000)",
-        ],
+        movieConnectionKeys: [11011],
         popularity: 41,
         fromTmdb: {
           fetchTimestamp: "2026-03-28T12:00:00.000Z",
@@ -2528,7 +2515,7 @@ test("zootopia-to-fred-willard regression keeps fred root navigation and bookmar
           fetchTimestamp: "2026-03-28T12:00:00.000Z",
           genres: [],
         },
-        personConnectionKeys: ["judy hopps"],
+        personConnectionKeys: [9001],
         people: [],
       },
       {
@@ -2544,7 +2531,7 @@ test("zootopia-to-fred-willard regression keeps fred root navigation and bookmar
           fetchTimestamp: "2026-03-28T12:00:00.000Z",
           genres: [],
         },
-        personConnectionKeys: ["judy hopps", "fred willard"],
+        personConnectionKeys: [9001, 9002],
         people: [],
       },
     ],

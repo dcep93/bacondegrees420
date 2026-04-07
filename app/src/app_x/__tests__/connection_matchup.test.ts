@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  getLegacyMovieConnectionId,
+  getLegacyPersonConnectionId,
   makeFilmRecord,
   makePersonRecord,
 } from "../generators/cinenerdle2/__tests__/factories";
@@ -15,6 +17,7 @@ function normalizeName(value: string): string {
 const indexedDbMock = vi.hoisted(() => ({
   clearIndexedDb: vi.fn(),
   estimateIndexedDbUsageBytes: vi.fn(),
+  getFilmRecordById: vi.fn(),
   getFilmRecordByTitleAndYear: vi.fn(),
   getAllSearchableConnectionEntities: vi.fn(),
   getFilmRecordsByPersonConnectionKey: vi.fn(),
@@ -30,10 +33,97 @@ vi.mock("../generators/cinenerdle2/indexed_db", () => indexedDbMock);
 
 import { resolveConnectionMatchupPreview } from "../connection_matchup_preview";
 
+function normalizeMovieKey(value: string): string {
+  return normalizeWhitespace(value).toLowerCase();
+}
+
+function resolvePersonConnectionId(
+  personName: string,
+  films: Array<{
+    personConnectionKeys: Array<string | number>;
+    rawTmdbMovieCreditsResponse?: ReturnType<typeof makeFilmRecord>["rawTmdbMovieCreditsResponse"];
+  }>,
+  people: Array<ReturnType<typeof makePersonRecord>> = [],
+): number {
+  const normalizedPersonName = normalizeName(personName);
+  const matchingPerson = people.find((person) => normalizeName(person.name) === normalizedPersonName);
+  if (typeof matchingPerson?.tmdbId === "number") {
+    return matchingPerson.tmdbId;
+  }
+
+  for (const film of films) {
+    const matchingCredit = (film.rawTmdbMovieCreditsResponse?.cast ?? [])
+      .concat(film.rawTmdbMovieCreditsResponse?.crew ?? [])
+      .find((credit) => normalizeName(credit.name ?? "") === normalizedPersonName);
+    if (typeof matchingCredit?.id === "number") {
+      return matchingCredit.id;
+    }
+  }
+
+  return getLegacyPersonConnectionId(personName);
+}
+
+function filmMatchesPersonConnection(
+  film: {
+    personConnectionKeys: Array<string | number>;
+    rawTmdbMovieCreditsResponse?: ReturnType<typeof makeFilmRecord>["rawTmdbMovieCreditsResponse"];
+  },
+  personName: string,
+  people: Array<ReturnType<typeof makePersonRecord>> = [],
+): boolean {
+  const connectionId = resolvePersonConnectionId(personName, [film], people);
+  const legacyConnectionId = getLegacyPersonConnectionId(personName);
+  return (
+    film.personConnectionKeys.some(
+      (candidate) => typeof candidate === "string" && normalizeName(candidate) === normalizeName(personName),
+    ) ||
+    film.personConnectionKeys.includes(connectionId) ||
+    film.personConnectionKeys.includes(legacyConnectionId)
+  );
+}
+
+function resolveMovieConnectionId(
+  movieKey: string,
+  films: Array<{
+    titleYear: string;
+    tmdbId: number | null;
+  }>,
+): number {
+  const normalizedMovieKey = normalizeMovieKey(movieKey);
+  const matchingFilm = films.find((film) => normalizeMovieKey(film.titleYear) === normalizedMovieKey);
+  if (typeof matchingFilm?.tmdbId === "number") {
+    return matchingFilm.tmdbId;
+  }
+
+  return getLegacyMovieConnectionId(movieKey);
+}
+
+function personMatchesMovieConnection(
+  person: {
+    movieConnectionKeys: Array<string | number>;
+  },
+  movieKey: string,
+  films: Array<{
+    titleYear: string;
+    tmdbId: number | null;
+  }>,
+): boolean {
+  const connectionId = resolveMovieConnectionId(movieKey, films);
+  const legacyConnectionId = getLegacyMovieConnectionId(movieKey);
+  return (
+    person.movieConnectionKeys.some(
+      (candidate) => typeof candidate === "string" && normalizeMovieKey(candidate) === normalizeMovieKey(movieKey),
+    ) ||
+    person.movieConnectionKeys.includes(connectionId) ||
+    person.movieConnectionKeys.includes(legacyConnectionId)
+  );
+}
+
 describe("resolveConnectionMatchupPreview", () => {
   beforeEach(() => {
     Object.values(indexedDbMock).forEach((mock) => mock.mockReset());
 
+    indexedDbMock.getFilmRecordById.mockResolvedValue(null);
     indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(null);
     indexedDbMock.getFilmRecordsByPersonConnectionKey.mockResolvedValue([]);
     indexedDbMock.getMoviePopularityByLabels.mockResolvedValue(new Map());
@@ -82,10 +172,7 @@ describe("resolveConnectionMatchupPreview", () => {
     );
     indexedDbMock.getFilmRecordsByPersonConnectionKey.mockImplementation(async (personName: string) =>
       [theAmazingSpiderMan, theAmazingSpiderMan2].filter((film) =>
-        Array.isArray(film.personConnectionKeys) &&
-        film.personConnectionKeys.some(
-          (candidate) => typeof candidate === "string" && normalizeName(candidate) === normalizeName(personName),
-        ),
+        filmMatchesPersonConnection(film, personName),
       ),
     );
     indexedDbMock.getPersonPopularityByNames.mockResolvedValue(new Map([
@@ -181,15 +268,11 @@ describe("resolveConnectionMatchupPreview", () => {
 
       return null;
     });
-    indexedDbMock.getFilmRecordsByPersonConnectionKey.mockImplementation(async (personName: string) => {
-      const normalizedPersonName = normalizeName(personName);
-      return [projectHailMary, theMartian].filter((film) =>
-        Array.isArray(film.personConnectionKeys) &&
-        film.personConnectionKeys.some(
-          (candidate) => typeof candidate === "string" && normalizeName(candidate) === normalizedPersonName,
-        ),
-      );
-    });
+    indexedDbMock.getFilmRecordsByPersonConnectionKey.mockImplementation(async (personName: string) =>
+      [projectHailMary, theMartian].filter((film) =>
+        filmMatchesPersonConnection(film, personName),
+      ),
+    );
     indexedDbMock.getPersonPopularityByNames.mockResolvedValue(new Map([
       [normalizeName("Andy Weir"), 20],
       [normalizeName("Drew Goddard"), 10],
@@ -273,10 +356,7 @@ describe("resolveConnectionMatchupPreview", () => {
     );
     indexedDbMock.getFilmRecordsByPersonConnectionKey.mockImplementation(async (personName: string) =>
       [selectedMovie, lowerPopularityCounterpart, higherPopularityCounterpart].filter((film) =>
-        Array.isArray(film.personConnectionKeys) &&
-        film.personConnectionKeys.some(
-          (candidate) => typeof candidate === "string" && normalizeName(candidate) === normalizeName(personName),
-        ),
+        filmMatchesPersonConnection(film, personName),
       ),
     );
     indexedDbMock.getPersonPopularityByNames.mockResolvedValue(new Map([
@@ -352,10 +432,7 @@ describe("resolveConnectionMatchupPreview", () => {
     );
     indexedDbMock.getFilmRecordsByPersonConnectionKey.mockImplementation(async (personName: string) =>
       [selectedMovie, alphaCounterpart, betaCounterpart].filter((film) =>
-        Array.isArray(film.personConnectionKeys) &&
-        film.personConnectionKeys.some(
-          (candidate) => typeof candidate === "string" && normalizeName(candidate) === normalizeName(personName),
-        ),
+        filmMatchesPersonConnection(film, personName),
       ),
     );
     indexedDbMock.getPersonPopularityByNames.mockResolvedValue(new Map([
@@ -425,28 +502,28 @@ describe("resolveConnectionMatchupPreview", () => {
         id: 101,
         tmdbId: 101,
         name: "Low Exclusive",
-        movieConnectionKeys: ["selected movie (2000)"],
+        movieConnectionKeys: [2000],
         rawTmdbPerson: { id: 101, name: "Low Exclusive", popularity: 85 },
       }),
       makePersonRecord({
         id: 102,
         tmdbId: 102,
         name: "Shared Cast",
-        movieConnectionKeys: ["selected movie (2000)", "counterpart movie (2001)"],
+        movieConnectionKeys: [2000, 2001],
         rawTmdbPerson: { id: 102, name: "Shared Cast", popularity: 80 },
       }),
       makePersonRecord({
         id: 103,
         tmdbId: 103,
         name: "Shared Crew",
-        movieConnectionKeys: ["selected movie (2000)", "counterpart movie (2001)"],
+        movieConnectionKeys: [2000, 2001],
         rawTmdbPerson: { id: 103, name: "Shared Crew", popularity: 70 },
       }),
       makePersonRecord({
         id: 104,
         tmdbId: 104,
         name: "High Exclusive",
-        movieConnectionKeys: ["selected movie (2000)"],
+        movieConnectionKeys: [2000],
         rawTmdbPerson: { id: 104, name: "High Exclusive", popularity: 95 },
       }),
     ];
@@ -458,10 +535,7 @@ describe("resolveConnectionMatchupPreview", () => {
     );
     indexedDbMock.getFilmRecordsByPersonConnectionKey.mockImplementation(async (personName: string) =>
       [selectedMovie, counterpartMovie].filter((film) =>
-        Array.isArray(film.personConnectionKeys) &&
-        film.personConnectionKeys.some(
-          (candidate) => typeof candidate === "string" && normalizeName(candidate) === normalizeName(personName),
-        ),
+        filmMatchesPersonConnection(film, personName, people),
       ),
     );
     indexedDbMock.getPersonRecordById.mockImplementation(async (id: number) =>
@@ -541,14 +615,14 @@ describe("resolveConnectionMatchupPreview", () => {
         id: 3223,
         tmdbId: 3223,
         name: "Robert Downey Jr.",
-        movieConnectionKeys: ["avengers: endgame (2019)", "avengers: infinity war (2018)"],
+        movieConnectionKeys: [299534, 299536],
         rawTmdbPerson: { id: 3223, name: "Robert Downey Jr.", popularity: 90 },
       }),
       makePersonRecord({
         id: 16828,
         tmdbId: 16828,
         name: "Chris Evans",
-        movieConnectionKeys: ["avengers: endgame (2019)", "avengers: infinity war (2018)"],
+        movieConnectionKeys: [299534, 299536],
         rawTmdbPerson: { id: 16828, name: "Chris Evans", popularity: 85 },
       }),
     ];
@@ -560,10 +634,7 @@ describe("resolveConnectionMatchupPreview", () => {
     );
     indexedDbMock.getFilmRecordsByPersonConnectionKey.mockImplementation(async (personName: string) =>
       [avengersEndgame, avengersInfinityWar].filter((film) =>
-        Array.isArray(film.personConnectionKeys) &&
-        film.personConnectionKeys.some(
-          (candidate) => typeof candidate === "string" && normalizeName(candidate) === normalizeName(personName),
-        ),
+        filmMatchesPersonConnection(film, personName, people),
       ),
     );
     indexedDbMock.getPersonRecordById.mockImplementation(async (id: number) =>
@@ -613,7 +684,7 @@ describe("resolveConnectionMatchupPreview", () => {
       title: "Selected Movie",
       year: "2000",
       popularity: 40,
-      personConnectionKeys: ["shared omitted", "fallback exclusive"],
+      personConnectionKeys: [101, 103],
     });
     const counterpartMovie = makeFilmRecord({
       id: "counterpart-movie-2001",
@@ -621,7 +692,7 @@ describe("resolveConnectionMatchupPreview", () => {
       title: "Counterpart Movie",
       year: "2001",
       popularity: 35,
-      personConnectionKeys: ["shared omitted", "visible shared"],
+      personConnectionKeys: [101, 102],
       rawTmdbMovieCreditsResponse: {
         cast: [{ id: 102, name: "Visible Shared", order: 0, popularity: 50 }],
         crew: [],
@@ -632,21 +703,21 @@ describe("resolveConnectionMatchupPreview", () => {
         id: 101,
         tmdbId: 101,
         name: "Shared Omitted",
-        movieConnectionKeys: ["selected movie (2000)", "counterpart movie (2001)"],
+        movieConnectionKeys: [2000, 2001],
         rawTmdbPerson: { id: 101, name: "Shared Omitted", popularity: 95 },
       }),
       makePersonRecord({
         id: 103,
         tmdbId: 103,
         name: "Fallback Exclusive",
-        movieConnectionKeys: ["selected movie (2000)"],
+        movieConnectionKeys: [2000],
         rawTmdbPerson: { id: 103, name: "Fallback Exclusive", popularity: 80 },
       }),
       makePersonRecord({
         id: 102,
         tmdbId: 102,
         name: "Visible Shared",
-        movieConnectionKeys: ["counterpart movie (2001)"],
+        movieConnectionKeys: [2001],
         rawTmdbPerson: { id: 102, name: "Visible Shared", popularity: 50 },
       }),
     ];
@@ -658,10 +729,7 @@ describe("resolveConnectionMatchupPreview", () => {
     );
     indexedDbMock.getFilmRecordsByPersonConnectionKey.mockImplementation(async (personName: string) =>
       [selectedMovie, counterpartMovie].filter((film) =>
-        Array.isArray(film.personConnectionKeys) &&
-        film.personConnectionKeys.some(
-          (candidate) => typeof candidate === "string" && normalizeName(candidate) === normalizeName(personName),
-        ),
+        filmMatchesPersonConnection(film, personName, people),
       ),
     );
     indexedDbMock.getPersonRecordById.mockImplementation(async (id: number) =>
@@ -709,7 +777,7 @@ describe("resolveConnectionMatchupPreview", () => {
       title: "Selected Movie",
       year: "2000",
       popularity: 40,
-      personConnectionKeys: ["shared visible", "fallback exclusive"],
+      personConnectionKeys: [101, 102],
       rawTmdbMovieCreditsResponse: {
         cast: [{ id: 101, name: "Shared Visible", order: 0, popularity: 75 }],
         crew: [],
@@ -721,21 +789,21 @@ describe("resolveConnectionMatchupPreview", () => {
       title: "Counterpart Movie",
       year: "2001",
       popularity: 35,
-      personConnectionKeys: ["shared visible"],
+      personConnectionKeys: [101],
     });
     const people = [
       makePersonRecord({
         id: 101,
         tmdbId: 101,
         name: "Shared Visible",
-        movieConnectionKeys: ["selected movie (2000)", "counterpart movie (2001)"],
+        movieConnectionKeys: [2000, 2001],
         rawTmdbPerson: { id: 101, name: "Shared Visible", popularity: 75 },
       }),
       makePersonRecord({
         id: 102,
         tmdbId: 102,
         name: "Fallback Exclusive",
-        movieConnectionKeys: ["selected movie (2000)"],
+        movieConnectionKeys: [2000],
         rawTmdbPerson: { id: 102, name: "Fallback Exclusive", popularity: 90 },
       }),
     ];
@@ -747,10 +815,7 @@ describe("resolveConnectionMatchupPreview", () => {
     );
     indexedDbMock.getFilmRecordsByPersonConnectionKey.mockImplementation(async (personName: string) =>
       [selectedMovie, counterpartMovie].filter((film) =>
-        Array.isArray(film.personConnectionKeys) &&
-        film.personConnectionKeys.some(
-          (candidate) => typeof candidate === "string" && normalizeName(candidate) === normalizeName(personName),
-        ),
+        filmMatchesPersonConnection(film, personName, people),
       ),
     );
     indexedDbMock.getPersonRecordById.mockImplementation(async (id: number) =>
@@ -818,9 +883,9 @@ describe("resolveConnectionMatchupPreview", () => {
       tmdbId: 525,
       name: "Christopher Nolan",
       movieConnectionKeys: [
-        "memento (2000)",
-        "the dark knight (2008)",
-        "inception (2010)",
+        77,
+        155,
+        27205,
       ],
       rawTmdbPerson: { id: 525, name: "Christopher Nolan", popularity: 85 },
       rawTmdbMovieCreditsResponse: {
@@ -836,10 +901,7 @@ describe("resolveConnectionMatchupPreview", () => {
       id: 7897,
       tmdbId: 7897,
       name: "David S. Goyer",
-      movieConnectionKeys: [
-        "memento (2000)",
-        "the dark knight (2008)",
-      ],
+      movieConnectionKeys: [77, 155],
       rawTmdbPerson: { id: 7897, name: "David S. Goyer", popularity: 70 },
     });
 
@@ -861,25 +923,19 @@ describe("resolveConnectionMatchupPreview", () => {
 
       return null;
     });
-    indexedDbMock.getPersonRecordsByMovieKey.mockImplementation(async (movieKey: string) => {
-      if (
-        movieKey === "memento (2000)" ||
-        movieKey === "the dark knight (2008)"
-      ) {
-        return [christopherNolan, davidGoyer];
-      }
-
-      if (movieKey === "inception (2010)") {
-        return [christopherNolan];
-      }
-
-      return [];
-    });
+    indexedDbMock.getPersonRecordsByMovieKey.mockImplementation(async (movieKey: string) =>
+      [christopherNolan, davidGoyer].filter((person) =>
+        personMatchesMovieConnection(person, movieKey, [memento, theDarkKnight, inception]),
+      ),
+    );
     indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (title: string, year: string) => {
       return [memento, theDarkKnight, inception].find(
         (film) => film.title === title && film.year === year,
       ) ?? null;
     });
+    indexedDbMock.getFilmRecordById.mockImplementation(async (id: number) =>
+      [memento, theDarkKnight, inception].find((film) => film.tmdbId === id) ?? null,
+    );
     indexedDbMock.getMoviePopularityByLabels.mockResolvedValue(new Map([
       ["memento (2000)", 20],
       ["the dark knight (2008)", 90],
@@ -953,10 +1009,10 @@ describe("resolveConnectionMatchupPreview", () => {
       tmdbId: 401,
       name: "Selected Person",
       movieConnectionKeys: [
-        "low exclusive (2010)",
-        "shared cast (2011)",
-        "shared crew (2012)",
-        "high exclusive (2013)",
+        301,
+        302,
+        303,
+        304,
       ],
       rawTmdbPerson: { id: 401, name: "Selected Person", popularity: 50 },
       rawTmdbMovieCreditsResponse: {
@@ -974,7 +1030,7 @@ describe("resolveConnectionMatchupPreview", () => {
       id: 402,
       tmdbId: 402,
       name: "Counterpart Person",
-      movieConnectionKeys: ["shared cast (2011)", "shared crew (2012)"],
+      movieConnectionKeys: [302, 303],
       rawTmdbPerson: { id: 402, name: "Counterpart Person", popularity: 45 },
     });
 
@@ -1000,17 +1056,15 @@ describe("resolveConnectionMatchupPreview", () => {
 
       return null;
     });
-    indexedDbMock.getPersonRecordsByMovieKey.mockImplementation(async (movieKey: string) => {
-      if (movieKey === "shared cast (2011)" || movieKey === "shared crew (2012)") {
-        return [selectedPerson, counterpartPerson];
-      }
-
-      if (movieKey === "low exclusive (2010)" || movieKey === "high exclusive (2013)") {
-        return [selectedPerson];
-      }
-
-      return [];
-    });
+    indexedDbMock.getPersonRecordsByMovieKey.mockImplementation(async (movieKey: string) =>
+      [selectedPerson, counterpartPerson].filter((person) =>
+        personMatchesMovieConnection(
+          person,
+          movieKey,
+          [lowExclusiveMovie, sharedCastMovie, sharedCrewMovie, highExclusiveMovie],
+        ),
+      ),
+    );
     indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (title: string, year: string) => {
       return [
         lowExclusiveMovie,
@@ -1019,6 +1073,10 @@ describe("resolveConnectionMatchupPreview", () => {
         highExclusiveMovie,
       ].find((film) => film.title === title && film.year === year) ?? null;
     });
+    indexedDbMock.getFilmRecordById.mockImplementation(async (id: number) =>
+      [lowExclusiveMovie, sharedCastMovie, sharedCrewMovie, highExclusiveMovie]
+        .find((film) => film.tmdbId === id) ?? null,
+    );
     indexedDbMock.getMoviePopularityByLabels.mockResolvedValue(new Map([
       ["shared cast (2011)", 80],
       ["shared crew (2012)", 70],
@@ -1075,14 +1133,14 @@ describe("resolveConnectionMatchupPreview", () => {
       id: 401,
       tmdbId: 401,
       name: "Selected Person",
-      movieConnectionKeys: ["shared omitted (2010)", "fallback exclusive (2011)"],
+      movieConnectionKeys: [301, 302],
       rawTmdbPerson: { id: 401, name: "Selected Person", popularity: 50 },
     });
     const counterpartPerson = makePersonRecord({
       id: 402,
       tmdbId: 402,
       name: "Counterpart Person",
-      movieConnectionKeys: ["shared omitted (2010)", "visible shared (2012)"],
+      movieConnectionKeys: [301, 303],
       rawTmdbPerson: { id: 402, name: "Counterpart Person", popularity: 45 },
       rawTmdbMovieCreditsResponse: {
         cast: [{ id: 303, title: "Visible Shared", release_date: "2012-01-01", popularity: 40 }],
@@ -1112,21 +1170,15 @@ describe("resolveConnectionMatchupPreview", () => {
 
       return null;
     });
-    indexedDbMock.getPersonRecordsByMovieKey.mockImplementation(async (movieKey: string) => {
-      if (movieKey === "shared omitted (2010)") {
-        return [selectedPerson, counterpartPerson];
-      }
-
-      if (movieKey === "fallback exclusive (2011)") {
-        return [selectedPerson];
-      }
-
-      if (movieKey === "visible shared (2012)") {
-        return [counterpartPerson];
-      }
-
-      return [];
-    });
+    indexedDbMock.getPersonRecordsByMovieKey.mockImplementation(async (movieKey: string) =>
+      [selectedPerson, counterpartPerson].filter((person) =>
+        personMatchesMovieConnection(
+          person,
+          movieKey,
+          [sharedOmittedMovie, fallbackExclusiveMovie, visibleSharedMovie],
+        ),
+      ),
+    );
     indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (title: string, year: string) => {
       return [
         sharedOmittedMovie,
@@ -1136,6 +1188,10 @@ describe("resolveConnectionMatchupPreview", () => {
         normalizeName(film.title) === normalizeName(title) && film.year === year,
       ) ?? null;
     });
+    indexedDbMock.getFilmRecordById.mockImplementation(async (id: number) =>
+      [sharedOmittedMovie, fallbackExclusiveMovie, visibleSharedMovie]
+        .find((film) => film.tmdbId === id) ?? null,
+    );
     indexedDbMock.getMoviePopularityByLabels.mockResolvedValue(new Map([
       ["shared omitted (2010)", 95],
     ]));
@@ -1197,7 +1253,7 @@ describe("resolveConnectionMatchupPreview", () => {
       id: 101,
       tmdbId: 101,
       name: "Shared Person",
-      movieConnectionKeys: ["selected movie (2000)", "counterpart movie (2001)"],
+      movieConnectionKeys: [2000, 2001],
       rawTmdbPerson: { id: 101, name: "Shared Person", popularity: 80, profile_path: "/shared-cached.jpg" },
     });
 
@@ -1208,10 +1264,7 @@ describe("resolveConnectionMatchupPreview", () => {
     );
     indexedDbMock.getFilmRecordsByPersonConnectionKey.mockImplementation(async (personName: string) =>
       [selectedMovie, counterpartMovie].filter((film) =>
-        Array.isArray(film.personConnectionKeys) &&
-        film.personConnectionKeys.some(
-          (candidate) => typeof candidate === "string" && normalizeName(candidate) === normalizeName(personName),
-        ),
+        filmMatchesPersonConnection(film, personName, [sharedPerson]),
       ),
     );
     indexedDbMock.getPersonRecordById.mockImplementation(async (id: number) =>
