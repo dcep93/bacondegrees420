@@ -27,6 +27,7 @@ import {
   getMovieYearFromCredit,
   getPersonProfileImageUrl,
   getValidTmdbEntityId,
+  isZeroVoteFilmRecord,
   normalizeName,
   normalizeTitle,
 } from "./utils";
@@ -642,6 +643,7 @@ export async function findConnectionPathBidirectional(
   const neighborCache = new Map<string, Promise<string[]>>();
   const entityCache = new Map<string, Promise<ConnectionEntity>>();
   const popularityCache = new Map<string, Promise<number>>();
+  const zeroVoteMovieCache = new Map<string, Promise<boolean>>();
 
   if (excludedNodeKeys.has(startKey) || excludedNodeKeys.has(endKey)) {
     return {
@@ -709,6 +711,26 @@ export async function findConnectionPathBidirectional(
     return nextPopularityPromise;
   }
 
+  async function isZeroVoteMovie(entityKey: string): Promise<boolean> {
+    if (!entityKey.startsWith("movie:")) {
+      return false;
+    }
+
+    const cachedZeroVote = zeroVoteMovieCache.get(entityKey);
+    if (cachedZeroVote) {
+      return cachedZeroVote;
+    }
+
+    const nextZeroVotePromise = (async () => {
+      const parsedMovie = parseMovieConnectionEntityKey(entityKey);
+      const filmRecord = await getFilmRecordByTitleAndYear(parsedMovie.name, parsedMovie.year);
+      return isZeroVoteFilmRecord(filmRecord);
+    })();
+
+    zeroVoteMovieCache.set(entityKey, nextZeroVotePromise);
+    return nextZeroVotePromise;
+  }
+
   async function sortFrontierByPopularity(frontier: string[]): Promise<string[]> {
     const popularityByKey = new Map<string, number>(
       await Promise.all(
@@ -752,6 +774,14 @@ export async function findConnectionPathBidirectional(
         }
 
         if (excludedNodeKeys.has(neighborKey)) {
+          continue;
+        }
+
+        if (
+          neighborKey !== startKey &&
+          neighborKey !== endKey &&
+          await isZeroVoteMovie(neighborKey)
+        ) {
           continue;
         }
 

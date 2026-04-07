@@ -67,6 +67,8 @@ import {
   getAssociatedPersonCreditGroupsFromMovieCredits,
   getValidTmdbEntityId,
   isAllowedBfsTmdbMovieCredit,
+  isZeroVoteFilmRecord,
+  isZeroVoteTmdbMovieCredit,
   normalizeName,
   normalizeTitle,
 } from "./utils";
@@ -754,13 +756,19 @@ async function buildChildRowForPersonCard(
         if (fallbackFilms.length === 0) {
           return null;
         }
+        const visibleFallbackFilms = fallbackFilms.filter(
+          ({ movieRecord }) => !isZeroVoteFilmRecord(movieRecord),
+        );
+        if (visibleFallbackFilms.length === 0) {
+          return null;
+        }
         const popularityByPersonName = await getPersonPopularityByIds(
-          fallbackFilms.flatMap(({ movieRecord }) => movieRecord.personConnectionKeys),
+          visibleFallbackFilms.flatMap(({ movieRecord }) => movieRecord.personConnectionKeys),
         );
         const connectionCounts = await getPersonRecordCountsByMovieKeys(movieIds);
         const connectionParentLabel = card.name;
         const childCards = sortCardsByPopularity(
-          fallbackFilms.map(({ movieId, movieRecord }) => ({
+          visibleFallbackFilms.map(({ movieId, movieRecord }) => ({
             ...createMovieRootCard(movieRecord, movieRecord.title),
             connectionCount: Math.max(
               movieRecord.personConnectionKeys.length,
@@ -807,6 +815,12 @@ async function buildChildRowForPersonCard(
           return null;
         }
         const movieRecord = (credit.id ? filmRecordsById.get(credit.id) : null) ?? null;
+        if (
+          isZeroVoteFilmRecord(movieRecord) ||
+          creditGroup.some((groupCredit) => isZeroVoteTmdbMovieCredit(groupCredit))
+        ) {
+          return null;
+        }
         if (!isFilmRecordAllowedInConnectionGraph(movieRecord)) {
           return null;
         }

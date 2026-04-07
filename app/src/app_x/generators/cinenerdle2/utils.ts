@@ -151,6 +151,18 @@ export function getTmdbMovieCredits(personRecord: PersonRecord | null): TmdbMovi
   ];
 }
 
+export function isZeroVoteFilmRecord(
+  filmRecord: FilmRecord | null | undefined,
+): boolean {
+  return filmRecord?.rawTmdbMovie?.vote_count === 0;
+}
+
+export function isZeroVoteTmdbMovieCredit(
+  credit: TmdbMovieCredit | null | undefined,
+): boolean {
+  return credit?.vote_count === 0;
+}
+
 export function isAllowedBfsTmdbMovieCredit(credit: TmdbMovieCredit): boolean {
   if (
     credit.creditType === "cast" &&

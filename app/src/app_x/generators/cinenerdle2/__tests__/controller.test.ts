@@ -503,6 +503,156 @@ describe("buildChildRowForCard", () => {
     expect(childRow?.map((node) => node.data.name)).toEqual(["Spider-Man"]);
   });
 
+  it("filters zero-vote movies from TMDb-backed person child rows", async () => {
+    const zeroVoteRecord = makeFilmRecord({
+      id: 27008,
+      tmdbId: 27008,
+      title: "Hidden Feature",
+      year: "2004",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 27008,
+        title: "Hidden Feature",
+        original_title: "Hidden Feature",
+        release_date: "2004-01-02",
+        genres: [{ id: 18, name: "Drama" }],
+        vote_count: 0,
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+      tmdbSource: "direct-film-fetch",
+    });
+    const allowedRecord = makeFilmRecord({
+      id: 322,
+      tmdbId: 322,
+      title: "Scarface",
+      year: "1983",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 322,
+        title: "Scarface",
+        original_title: "Scarface",
+        release_date: "1983-12-09",
+        genres: [{ id: 80, name: "Crime" }],
+        vote_count: 9000,
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+      tmdbSource: "direct-film-fetch",
+    });
+    const pacinoRecord = makePersonRecord({
+      id: 60,
+      tmdbId: 60,
+      name: "Al Pacino",
+      movieConnectionKeys: ["hidden feature (2004)", "scarface (1983)"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({
+            id: 27008,
+            title: "Hidden Feature",
+            release_date: "2004-01-02",
+            order: 0,
+            vote_count: 0,
+          }),
+          makeMovieCredit({
+            id: 322,
+            title: "Scarface",
+            release_date: "1983-12-09",
+            order: 1,
+            vote_count: 9000,
+          }),
+        ],
+        crew: [],
+      },
+    });
+
+    indexedDbMock.getPersonRecordById.mockResolvedValue(pacinoRecord);
+    indexedDbMock.getPersonRecordByName.mockResolvedValue(pacinoRecord);
+    indexedDbMock.getFilmRecordsByIds.mockResolvedValue(new Map([
+      [27008, zeroVoteRecord],
+      [322, allowedRecord],
+    ]));
+    indexedDbMock.getPersonRecordCountsByMovieKeys.mockResolvedValue(
+      new Map([
+        ["hidden feature (2004)", 1],
+        ["scarface (1983)", 1],
+      ]),
+    );
+
+    const childRow = await buildChildRowForCard(makePersonCard({
+      key: "person:60",
+      name: "Al Pacino",
+      record: pacinoRecord,
+    }));
+
+    expect(childRow?.map((node) => node.data.name)).toEqual(["Scarface"]);
+  });
+
+  it("filters zero-vote movies from fallback person child rows", async () => {
+    const zeroVoteRecord = makeFilmRecord({
+      id: 27008,
+      tmdbId: 27008,
+      title: "Hidden Feature",
+      year: "2004",
+      personConnectionKeys: [60],
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 27008,
+        title: "Hidden Feature",
+        original_title: "Hidden Feature",
+        release_date: "2004-01-02",
+        genres: [{ id: 18, name: "Drama" }],
+        vote_count: 0,
+      }),
+      tmdbSource: "direct-film-fetch",
+    });
+    const allowedRecord = makeFilmRecord({
+      id: 321,
+      tmdbId: 321,
+      title: "Heat",
+      year: "1995",
+      personConnectionKeys: [60],
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 321,
+        title: "Heat",
+        original_title: "Heat",
+        release_date: "1995-12-15",
+        genres: [{ id: 80, name: "Crime" }],
+        vote_count: 6000,
+      }),
+      tmdbSource: "direct-film-fetch",
+    });
+    const pacinoRecord = makePersonRecord({
+      id: 60,
+      tmdbId: 60,
+      name: "Al Pacino",
+      movieConnectionKeys: [27008, 321],
+    });
+
+    indexedDbMock.getPersonRecordById.mockResolvedValue(pacinoRecord);
+    indexedDbMock.getPersonRecordByName.mockResolvedValue(pacinoRecord);
+    indexedDbMock.getFilmRecordsByIds.mockResolvedValue(new Map([
+      [27008, zeroVoteRecord],
+      [321, allowedRecord],
+    ]));
+    indexedDbMock.getPersonPopularityByIds.mockResolvedValue(new Map([[60, 88]]));
+    indexedDbMock.getPersonRecordCountsByMovieKeys.mockResolvedValue(
+      new Map([
+        [27008, 1],
+        [321, 1],
+      ]),
+    );
+
+    const childRow = await buildChildRowForCard(makePersonCard({
+      key: "person:60",
+      name: "Al Pacino",
+      record: pacinoRecord,
+    }));
+
+    expect(childRow?.map((node) => node.data.name)).toEqual(["Heat"]);
+  });
+
   it("reuses a primed movie parent record for later child-row builds", async () => {
     const heatRecord = makeFilmRecord({
       id: 321,

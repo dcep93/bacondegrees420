@@ -4,6 +4,7 @@ import {
   makeMovieCredit,
   makePersonCredit,
   makePersonRecord,
+  makeTmdbMovieSearchResult,
 } from "./factories";
 
 const indexedDbMock = vi.hoisted(() => ({
@@ -325,6 +326,230 @@ describe("findConnectionPathBidirectional", () => {
 
     expect(result.status).toBe("not_found");
     expect(result.path).toEqual([]);
+  });
+
+  it("does not traverse zero-vote movies as intermediate BFS hops", async () => {
+    const heat = makeFilmRecord({
+      id: 321,
+      tmdbId: 321,
+      title: "Heat",
+      year: "1995",
+      personConnectionKeys: [60],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({
+            id: 60,
+            name: "Al Pacino",
+            order: 0,
+            popularity: 88,
+          }),
+        ],
+        crew: [],
+      },
+    });
+    const hiddenFeature = makeFilmRecord({
+      id: 27008,
+      tmdbId: 27008,
+      title: "Hidden Feature",
+      year: "2004",
+      personConnectionKeys: [60, 70],
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 27008,
+        title: "Hidden Feature",
+        original_title: "Hidden Feature",
+        release_date: "2004-01-02",
+        vote_count: 0,
+        genres: [{ id: 18, name: "Drama" }],
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+      tmdbSource: "direct-film-fetch",
+    });
+    const collateral = makeFilmRecord({
+      id: 654,
+      tmdbId: 654,
+      title: "Collateral",
+      year: "2004",
+      personConnectionKeys: [70],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({
+            id: 70,
+            name: "Bridge Person",
+            order: 0,
+            popularity: 45,
+          }),
+        ],
+        crew: [],
+      },
+    });
+    const pacino = makePersonRecord({
+      id: 60,
+      tmdbId: 60,
+      name: "Al Pacino",
+      movieConnectionKeys: [321, 27008],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({
+            id: 321,
+            title: "Heat",
+            release_date: "1995-12-15",
+            vote_count: 6000,
+          }),
+          makeMovieCredit({
+            id: 27008,
+            title: "Hidden Feature",
+            release_date: "2004-01-02",
+            vote_count: 0,
+          }),
+        ],
+        crew: [],
+      },
+    });
+    const bridgePerson = makePersonRecord({
+      id: 70,
+      tmdbId: 70,
+      name: "Bridge Person",
+      movieConnectionKeys: [27008, 654],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({
+            id: 27008,
+            title: "Hidden Feature",
+            release_date: "2004-01-02",
+            vote_count: 0,
+          }),
+          makeMovieCredit({
+            id: 654,
+            title: "Collateral",
+            release_date: "2004-08-04",
+            vote_count: 4000,
+          }),
+        ],
+        crew: [],
+      },
+    });
+
+    indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (title: string, year: string) => {
+      if (title === "heat" && year === "1995") {
+        return heat;
+      }
+
+      if (title === "hidden feature" && year === "2004") {
+        return hiddenFeature;
+      }
+
+      if (title === "collateral" && year === "2004") {
+        return collateral;
+      }
+
+      return null;
+    });
+    indexedDbMock.getPersonRecordById.mockImplementation(async (personId: number) => {
+      if (personId === 60) {
+        return pacino;
+      }
+
+      if (personId === 70) {
+        return bridgePerson;
+      }
+
+      return null;
+    });
+    indexedDbMock.getFilmRecordsByPersonConnectionKey.mockImplementation(async (personName: string) => {
+      if (personName === "al pacino") {
+        return [heat, hiddenFeature];
+      }
+
+      if (personName === "bridge person") {
+        return [hiddenFeature, collateral];
+      }
+
+      return [];
+    });
+    indexedDbMock.getPersonRecordsByMovieKey.mockImplementation(async (movieKey: string) => {
+      if (movieKey === "heat (1995)") {
+        return [pacino];
+      }
+
+      if (movieKey === "hidden feature (2004)") {
+        return [pacino, bridgePerson];
+      }
+
+      if (movieKey === "collateral (2004)") {
+        return [bridgePerson];
+      }
+
+      return [];
+    });
+
+    const result = await findConnectionPathBidirectional(
+      createConnectionEntityFromMovieRecord(heat),
+      createConnectionEntityFromMovieRecord(collateral),
+    );
+
+    expect(result.status).toBe("not_found");
+    expect(result.path).toEqual([]);
+  });
+
+  it("allows a zero-vote movie to remain a valid BFS endpoint", async () => {
+    const hiddenFeature = makeFilmRecord({
+      id: 27008,
+      tmdbId: 27008,
+      title: "Hidden Feature",
+      year: "2004",
+      personConnectionKeys: [60],
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 27008,
+        title: "Hidden Feature",
+        original_title: "Hidden Feature",
+        release_date: "2004-01-02",
+        vote_count: 0,
+        genres: [{ id: 18, name: "Drama" }],
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+      tmdbSource: "direct-film-fetch",
+    });
+    const pacino = makePersonRecord({
+      id: 60,
+      tmdbId: 60,
+      name: "Al Pacino",
+      movieConnectionKeys: [27008],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({
+            id: 27008,
+            title: "Hidden Feature",
+            release_date: "2004-01-02",
+            vote_count: 0,
+          }),
+        ],
+        crew: [],
+      },
+    });
+
+    indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(
+      async (title: string, year: string) =>
+        title === "hidden feature" && year === "2004" ? hiddenFeature : null,
+    );
+    indexedDbMock.getPersonRecordById.mockResolvedValue(pacino);
+    indexedDbMock.getFilmRecordsByPersonConnectionKey.mockResolvedValue([hiddenFeature]);
+
+    const result = await findConnectionPathBidirectional(
+      createConnectionEntityFromPersonRecord(pacino),
+      createConnectionEntityFromMovieRecord(hiddenFeature),
+    );
+
+    expect(result.status).toBe("found");
+    expect(result.path.map((entity) => entity.key)).toEqual([
+      "person:60",
+      "movie:hidden feature:2004",
+    ]);
   });
 
   it("does not connect movies through different people who share the same name", async () => {
