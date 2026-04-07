@@ -1,3 +1,7 @@
+import {
+  createAssociatedEntityCard,
+  type ResolvedAssociatedEntity,
+} from "./associated_entity_cards";
 import type { ConnectionEntity } from "./generators/cinenerdle2/connection_graph";
 import type {
   FilmRecord,
@@ -52,6 +56,18 @@ export async function annotateDirectionalConnectionPathRanks(
     personRecordCache.set(entity.key, nextRecord);
     return nextRecord;
   };
+
+  const buildResolvedAssociatedEntity = async (
+    entity: ConnectionEntity,
+  ): Promise<ResolvedAssociatedEntity> => ({
+    kind: entity.kind,
+    name: entity.name,
+    year: entity.year,
+    tmdbId: entity.tmdbId,
+    connectionCount: Math.max(entity.connectionCount ?? 0, 1),
+    movieRecord: entity.kind === "movie" ? await getMovieRecord(entity) : null,
+    personRecord: entity.kind === "person" ? await getPersonRecord(entity) : null,
+  });
 
   const populateMoviePopularityForPerson = async (
     entity: ConnectionEntity,
@@ -147,8 +163,22 @@ export async function annotateDirectionalConnectionPathRanks(
 
   return Promise.all(
     populatedPath.map(async (entity, index) => {
+      const previousEntity = populatedPath[index - 1] ?? null;
       const nextEntity = populatedPath[index + 1] ?? null;
       const connectionParentLabel = nextEntity?.label ?? null;
+      const associatedCard = previousEntity
+        ? createAssociatedEntityCard(
+            await buildResolvedAssociatedEntity(previousEntity),
+            await buildResolvedAssociatedEntity(entity),
+          )
+        : null;
+      const associationDisplayFields = associatedCard
+        ? {
+            associationSubtitle: associatedCard.card.subtitle,
+            associationSubtitleDetail: associatedCard.card.subtitleDetail,
+            associationCreditLines: associatedCard.card.creditLines ?? null,
+          }
+        : {};
 
       if (entity.kind === "movie" && nextEntity?.kind === "person") {
         const movieRecord = await getMovieRecord(entity);
@@ -157,6 +187,7 @@ export async function annotateDirectionalConnectionPathRanks(
 
         return {
           ...entity,
+          ...associationDisplayFields,
           connectionParentLabel,
           popularity: entity.popularity,
           connectionRank: getParentPersonRankForMovie(
@@ -174,6 +205,7 @@ export async function annotateDirectionalConnectionPathRanks(
 
         return {
           ...entity,
+          ...associationDisplayFields,
           connectionParentLabel,
           popularity: entity.popularity,
           connectionRank: getParentMovieRankForPerson(
@@ -186,6 +218,7 @@ export async function annotateDirectionalConnectionPathRanks(
 
       return {
         ...entity,
+        ...associationDisplayFields,
         connectionParentLabel,
         popularity: entity.popularity,
         connectionRank: null,

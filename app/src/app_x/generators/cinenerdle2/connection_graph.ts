@@ -29,6 +29,7 @@ import {
   normalizeName,
   normalizeTitle,
 } from "./utils";
+import type { CardCreditLine } from "./view_types";
 
 export type ConnectionEntity = {
   key: string;
@@ -43,6 +44,9 @@ export type ConnectionEntity = {
   connectionParentLabel?: string | null;
   popularity?: number | null;
   connectionRank?: number | null;
+  associationSubtitle?: string;
+  associationSubtitleDetail?: string;
+  associationCreditLines?: CardCreditLine[] | null;
 };
 
 export type ConnectionSearchResult = {

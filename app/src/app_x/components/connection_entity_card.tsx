@@ -13,6 +13,10 @@ import { joinClassNames } from "./ui_utils";
 function createRenderableConnectionCard(
   entity: ConnectionEntity,
 ): RenderableCinenerdleEntityCard {
+  const creditLines =
+    entity.associationCreditLines && entity.associationCreditLines.length > 0
+      ? entity.associationCreditLines
+      : undefined;
   const sharedCardProps = {
     key: entity.key,
     name: entity.name,
@@ -23,6 +27,7 @@ function createRenderableConnectionCard(
     connectionRank: entity.connectionRank ?? null,
     connectionOrder: null,
     connectionParentLabel: entity.connectionParentLabel ?? null,
+    creditLines,
     sources: entity.kind === "cinenerdle"
       ? [{ iconUrl: CINENERDLE_ICON_URL, label: "Cinenerdle" }]
       : entity.hasCachedTmdbSource
@@ -50,8 +55,8 @@ function createRenderableConnectionCard(
     return {
       ...sharedCardProps,
       kind: "movie",
-      subtitle: entity.year || "Movie",
-      subtitleDetail: "",
+      subtitle: entity.associationSubtitle ?? (entity.year || "Movie"),
+      subtitleDetail: entity.associationSubtitleDetail ?? "",
       voteAverage: null,
       voteCount: null,
     };
@@ -61,8 +66,8 @@ function createRenderableConnectionCard(
     return {
       ...sharedCardProps,
       kind: "person",
-      subtitle: "Person",
-      subtitleDetail: "",
+      subtitle: entity.associationSubtitle ?? "Person",
+      subtitleDetail: entity.associationSubtitleDetail ?? "",
     };
   }
 

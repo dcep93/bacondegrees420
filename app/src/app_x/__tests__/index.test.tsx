@@ -24,6 +24,8 @@ import {
 import { annotateDirectionalConnectionPathRanks } from "../connection_path_ranks";
 import {
   makeFilmRecord,
+  makeMovieCredit,
+  makePersonCredit,
   makePersonRecord,
 } from "../generators/cinenerdle2/__tests__/factories";
 import type { CinenerdleIndexedDbBootstrapStatus } from "../generators/cinenerdle2/bootstrap";
@@ -765,6 +767,21 @@ describe("ConnectionEntityCard", () => {
     expect(html).toContain(">Heat<");
   });
 
+  it("prefers bookmark-style association subtitles and details when present", () => {
+    const html = renderToStaticMarkup(
+      <ConnectionEntityCard
+        entity={makeConnectionEntity({
+          associationSubtitle: "1995 • Cast as",
+          associationSubtitleDetail: "Neil McCauley",
+        })}
+      />,
+    );
+
+    expect(html).toContain("1995 • Cast as");
+    expect(html).toContain("Neil McCauley");
+    expect(html).not.toContain("<p class=\"cinenerdle-card-subtitle\">1995</p>");
+  });
+
   it("passes title clicks through the shared card title action without invoking the card action", () => {
     const onCardClick = vi.fn();
     const onNameClick = vi.fn();
@@ -1107,5 +1124,126 @@ describe("annotateDirectionalConnectionPathRanks", () => {
     expect(annotatedPath[0]?.connectionRank).toBe(12);
     expect(annotatedPath[0]?.popularity).toBe(13.31);
     expect(annotatedPath[1]?.connectionRank).toBeNull();
+  });
+
+  it("adds bookmark-style role text to connection items after the first without changing the first card fallback", async () => {
+    const heatRecord = makeFilmRecord({
+      id: 321,
+      tmdbId: 321,
+      title: "Heat",
+      year: "1995",
+      popularity: 66,
+      personConnectionKeys: ["al pacino"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({
+            id: 60,
+            name: "Al Pacino",
+            popularity: 88,
+            character: "Lt. Vincent Hanna",
+          }),
+        ],
+        crew: [
+          makePersonCredit({
+            id: 60,
+            name: "Al Pacino",
+            popularity: 88,
+            creditType: "crew",
+            character: undefined,
+            job: "Producer",
+          }),
+        ],
+      },
+    });
+    const pacinoRecord = makePersonRecord({
+      id: 60,
+      tmdbId: 60,
+      name: "Al Pacino",
+      movieConnectionKeys: ["heat (1995)"],
+      rawTmdbPerson: {
+        id: 60,
+        name: "Al Pacino",
+        profile_path: "/al-pacino.jpg",
+        popularity: 88,
+      },
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({
+            id: 321,
+            title: "Heat",
+            release_date: "1995-12-15",
+            popularity: 66,
+            character: "Lt. Vincent Hanna",
+          }),
+        ],
+        crew: [
+          makeMovieCredit({
+            id: 321,
+            title: "Heat",
+            release_date: "1995-12-15",
+            popularity: 66,
+            creditType: "crew",
+            character: undefined,
+            job: "Producer",
+          }),
+        ],
+      },
+    });
+    const annotatedPath = await annotateDirectionalConnectionPathRanks(
+      [
+        makeConnectionEntity({
+          key: "movie:heat:1995",
+          kind: "movie",
+          name: "Heat",
+          year: "1995",
+          tmdbId: 321,
+          label: "Heat (1995)",
+          connectionCount: 1,
+          popularity: 66,
+        }),
+        makeConnectionEntity({
+          key: "person:60",
+          kind: "person",
+          name: "Al Pacino",
+          year: "",
+          tmdbId: 60,
+          label: "Al Pacino",
+          connectionCount: 1,
+          popularity: 88,
+        }),
+      ],
+      {
+        getMovieRecord: async (entity) => (entity.name === "Heat" ? heatRecord : null),
+        getPersonRecord: async (entity) => (entity.name === "Al Pacino" ? pacinoRecord : null),
+        getConnectedPersonRecordsForMovie: async () => [pacinoRecord],
+      },
+    );
+
+    expect(annotatedPath[0]?.associationSubtitle).toBeUndefined();
+    expect(annotatedPath[1]?.associationSubtitle).toBe("Cast as");
+    expect(annotatedPath[1]?.associationSubtitleDetail).toBe("Lt. Vincent Hanna");
+    expect(annotatedPath[1]?.associationCreditLines).toEqual([
+      {
+        subtitle: "Cast as",
+        subtitleDetail: "Lt. Vincent Hanna",
+      },
+      {
+        subtitle: "Producer",
+        subtitleDetail: "",
+      },
+    ]);
+
+    const firstCardHtml = renderToStaticMarkup(
+      <ConnectionEntityCard entity={annotatedPath[0]!} />,
+    );
+    const secondCardHtml = renderToStaticMarkup(
+      <ConnectionEntityCard entity={annotatedPath[1]!} />,
+    );
+
+    expect(firstCardHtml).toContain("<p class=\"cinenerdle-card-subtitle\">1995</p>");
+    expect(firstCardHtml).not.toContain("Lt. Vincent Hanna");
+    expect(secondCardHtml).toContain("Cast as");
+    expect(secondCardHtml).toContain("Lt. Vincent Hanna");
+    expect(secondCardHtml).toContain("Producer");
   });
 });

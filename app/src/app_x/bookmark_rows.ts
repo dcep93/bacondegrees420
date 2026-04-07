@@ -1,10 +1,12 @@
 import { ESCAPE_LABEL, TMDB_ICON_URL } from "./generators/cinenerdle2/constants";
 import {
+  createAssociatedEntityCard,
+  type ResolvedAssociatedEntity,
+} from "./associated_entity_cards";
+import {
   createCinenerdleOnlyPersonCard,
   createCinenerdleRootCard,
-  createMovieAssociationCard,
   createMovieRootCard,
-  createPersonAssociationCard,
   createPersonRootCard,
 } from "./generators/cinenerdle2/cards";
 import {
@@ -19,17 +21,11 @@ import {
 import type {
   FilmRecord,
   PersonRecord,
-  TmdbMovieCredit,
-  TmdbPersonCredit,
 } from "./generators/cinenerdle2/types";
 import type { CinenerdleCard, CinenerdlePathNode } from "./generators/cinenerdle2/view_types";
 import {
   formatMoviePathLabel,
-  getAssociatedMovieCreditGroupsFromPersonCredits,
-  getAssociatedPersonCreditGroupsFromMovieCredits,
   getFilmKey,
-  getMovieKeyFromCredit,
-  getValidTmdbEntityId,
   normalizeName,
   normalizeTitle,
   parseMoviePathLabel,
@@ -79,6 +75,18 @@ type ResolvedBookmarkEntity = {
   movieRecord: FilmRecord | null;
   personRecord: PersonRecord | null;
 };
+
+function toResolvedAssociatedEntity(entity: ResolvedBookmarkEntity): ResolvedAssociatedEntity {
+  return {
+    kind: entity.pathNode.kind,
+    name: entity.pathNode.name,
+    year: entity.pathNode.year,
+    tmdbId: entity.pathNode.kind === "person" ? entity.pathNode.tmdbId : null,
+    connectionCount: getBookmarkConnectionCount(entity.card),
+    movieRecord: entity.movieRecord,
+    personRecord: entity.personRecord,
+  };
+}
 
 function createUncachedBookmarkMovieCard(
   name: string,
@@ -219,74 +227,6 @@ async function buildPopularityByPersonName(
   );
 }
 
-function findMovieCreditGroupForBookmark(
-  personRecord: PersonRecord | null,
-  entity: ResolvedBookmarkEntity,
-): { credits: TmdbMovieCredit[]; connectionOrder: number } | null {
-  if (!personRecord || entity.pathNode.kind !== "movie") {
-    return null;
-  }
-
-  const targetMovieTmdbId = getValidTmdbEntityId(entity.movieRecord?.tmdbId ?? entity.movieRecord?.id);
-  const targetMovieKey = getFilmKey(entity.pathNode.name, entity.pathNode.year);
-  const creditGroups = getAssociatedMovieCreditGroupsFromPersonCredits(personRecord);
-  const connectionIndex = creditGroups.findIndex((creditGroup) => {
-    const representativeCredit = creditGroup[0];
-    if (!representativeCredit) {
-      return false;
-    }
-
-    const creditTmdbId = getValidTmdbEntityId(representativeCredit.id);
-    if (targetMovieTmdbId !== null && creditTmdbId !== null) {
-      return targetMovieTmdbId === creditTmdbId;
-    }
-
-    return getMovieKeyFromCredit(representativeCredit) === targetMovieKey;
-  });
-
-  return connectionIndex >= 0
-    ? {
-        credits: creditGroups[connectionIndex] ?? [],
-        connectionOrder: connectionIndex + 1,
-      }
-    : null;
-}
-
-function findPersonCreditGroupForBookmark(
-  movieRecord: FilmRecord | null,
-  entity: ResolvedBookmarkEntity,
-): { credits: TmdbPersonCredit[]; connectionOrder: number } | null {
-  if (!movieRecord || entity.pathNode.kind !== "person") {
-    return null;
-  }
-
-  const targetPersonTmdbId = getValidTmdbEntityId(
-    entity.personRecord?.tmdbId ?? entity.personRecord?.id ?? entity.pathNode.tmdbId,
-  );
-  const targetPersonName = normalizeName(entity.pathNode.name);
-  const creditGroups = getAssociatedPersonCreditGroupsFromMovieCredits(movieRecord);
-  const connectionIndex = creditGroups.findIndex((creditGroup) => {
-    const representativeCredit = creditGroup[0];
-    if (!representativeCredit) {
-      return false;
-    }
-
-    const creditTmdbId = getValidTmdbEntityId(representativeCredit.id);
-    if (targetPersonTmdbId !== null && creditTmdbId !== null) {
-      return targetPersonTmdbId === creditTmdbId;
-    }
-
-    return normalizeName(representativeCredit.name ?? "") === targetPersonName;
-  });
-
-  return connectionIndex >= 0
-    ? {
-        credits: creditGroups[connectionIndex] ?? [],
-        connectionOrder: connectionIndex + 1,
-      }
-    : null;
-}
-
 async function createAssociatedBookmarkCard(
   previousEntity: ResolvedBookmarkEntity | null,
   entity: ResolvedBookmarkEntity,
@@ -296,21 +236,18 @@ async function createAssociatedBookmarkCard(
   }
 
   if (previousEntity.card.kind === "person" && entity.card.kind === "movie") {
-    const creditGroup = findMovieCreditGroupForBookmark(previousEntity.personRecord, entity);
-    if (!creditGroup) {
+    const associatedCard = createAssociatedEntityCard(
+      toResolvedAssociatedEntity(previousEntity),
+      toResolvedAssociatedEntity(entity),
+    );
+    if (!associatedCard || associatedCard.card.kind !== "movie") {
       return entity.card;
     }
 
     const popularityByPersonName = await buildPopularityByPersonName(entity.movieRecord);
     return {
-      ...(createMovieAssociationCard(
-        creditGroup.credits,
-        entity.movieRecord,
-        entity.movieRecord
-          ? Math.max(entity.movieRecord.personConnectionKeys.length, 1)
-          : getBookmarkConnectionCount(entity.card),
-      ) as Extract<CinenerdleCard, { kind: "movie" }>),
-      connectionOrder: creditGroup.connectionOrder,
+      ...associatedCard.card,
+      connectionOrder: associatedCard.connectionOrder,
       connectionParentLabel: previousEntity.card.name,
       connectionRank: getParentPersonRankForMovie(
         entity.movieRecord,
@@ -321,21 +258,18 @@ async function createAssociatedBookmarkCard(
   }
 
   if (previousEntity.card.kind === "movie" && entity.card.kind === "person") {
-    const creditGroup = findPersonCreditGroupForBookmark(previousEntity.movieRecord, entity);
-    if (!creditGroup) {
+    const associatedCard = createAssociatedEntityCard(
+      toResolvedAssociatedEntity(previousEntity),
+      toResolvedAssociatedEntity(entity),
+    );
+    if (!associatedCard || associatedCard.card.kind !== "person") {
       return entity.card;
     }
 
     const popularityByMovieKey = await buildPopularityByMovieKey(entity.personRecord);
     return {
-      ...(createPersonAssociationCard(
-        creditGroup.credits,
-        entity.personRecord
-          ? Math.max(entity.personRecord.movieConnectionKeys.length, 1)
-          : getBookmarkConnectionCount(entity.card),
-        entity.personRecord,
-      ) as Extract<CinenerdleCard, { kind: "person" }>),
-      connectionOrder: creditGroup.connectionOrder,
+      ...associatedCard.card,
+      connectionOrder: associatedCard.connectionOrder,
       connectionParentLabel: getBookmarkParentLabel(previousEntity),
       connectionRank: getParentMovieRankForPerson(
         previousEntity.movieRecord,
