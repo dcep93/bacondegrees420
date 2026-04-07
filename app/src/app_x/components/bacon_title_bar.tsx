@@ -7,6 +7,7 @@ export default function BaconTitleBar({
   clearDbBadgeText,
   copyStatus,
   copyStatusPlacement,
+  isGeneratorView,
   isBookmarksView,
   isSavingBookmark,
   matchupPreview,
@@ -24,6 +25,7 @@ export default function BaconTitleBar({
   clearDbBadgeText: string;
   copyStatus: string;
   copyStatusPlacement: "toast" | "title";
+  isGeneratorView: boolean;
   isBookmarksView: boolean;
   isSavingBookmark: boolean;
   matchupPreview?: ReactNode;
@@ -77,7 +79,7 @@ export default function BaconTitleBar({
             {matchupPreview}
           </div>
         ) : null}
-        {!isBookmarksView ? (
+        {isGeneratorView ? (
           <div className="bacon-title-action-slot bacon-title-action-slot-square">
             <Tooltip content="Save bookmark">
               <button

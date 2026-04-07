@@ -15,7 +15,7 @@ import type { BookmarkRowData } from "./bookmark_rows";
 
 export const BOOKMARKS_STORAGE_KEY = "bacondegrees420.bookmarks.v1";
 
-export type AppViewMode = "generator" | "bookmarks";
+export type AppViewMode = "generator" | "bookmarks" | "cover";
 
 export type BookmarkEntry = {
   hash: string;

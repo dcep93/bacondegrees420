@@ -493,6 +493,7 @@ describe("BaconTitleBar", () => {
         clearDbBadgeText="12 / 34"
         copyStatus=""
         copyStatusPlacement="toast"
+        isGeneratorView
         isBookmarksView={false}
         isSavingBookmark={false}
         onClearDatabase={() => { }}
@@ -525,6 +526,7 @@ describe("BaconTitleBar", () => {
         clearDbBadgeText="12 / 34"
         copyStatus=""
         copyStatusPlacement="toast"
+        isGeneratorView
         isBookmarksView={false}
         isSavingBookmark={false}
         onClearDatabase={() => { }}
@@ -610,6 +612,7 @@ describe("BaconTitleBar", () => {
         clearDbBadgeText="1 / 2"
         copyStatus=""
         copyStatusPlacement="toast"
+        isGeneratorView
         isBookmarksView={false}
         isSavingBookmark={false}
         onClearDatabase={() => { }}
@@ -632,6 +635,7 @@ describe("BaconTitleBar", () => {
         clearDbBadgeText="8 / 8"
         copyStatus="Bookmarks updated"
         copyStatusPlacement="toast"
+        isGeneratorView={false}
         isBookmarksView={true}
         isSavingBookmark={false}
         onClearDatabase={() => { }}

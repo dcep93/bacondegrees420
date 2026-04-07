@@ -1,10 +1,32 @@
-import { getPersonRecordsByMovieId } from "./generators/cinenerdle2/indexed_db";
-import { getValidTmdbEntityId } from "./generators/cinenerdle2/utils";
+import {
+  getFilmRecordByTitleAndYear,
+  getPersonRecordsByMovieId,
+} from "./generators/cinenerdle2/indexed_db";
+import {
+  hasMovieFullState,
+  prepareConnectionEntityForPreview,
+} from "./generators/cinenerdle2/tmdb";
+import type { FilmRecord } from "./generators/cinenerdle2/types";
+import {
+  formatMoviePathLabel,
+  getMovieCardKey,
+  getValidTmdbEntityId,
+  parseMoviePathLabel,
+} from "./generators/cinenerdle2/utils";
 
 export type PersonCoverCandidate = {
   tmdbId: number;
   popularity: number;
   movieConnectionKeys: number[];
+};
+
+export type ResolvedMovieCoverRecord = {
+  inputLabel: string;
+  movieRecord: FilmRecord & {
+    rawTmdbMovie: NonNullable<FilmRecord["rawTmdbMovie"]>;
+    rawTmdbMovieCreditsResponse: NonNullable<FilmRecord["rawTmdbMovieCreditsResponse"]>;
+  };
+  tmdbId: number;
 };
 
 type NormalizedCandidate = {
@@ -93,6 +115,64 @@ function normalizeRequestedMovieTmdbIds(movieTmdbIds: number[]): number[] {
   return Array.from(new Set(
     movieTmdbIds.map((movieTmdbId) => normalizePositiveTmdbId(movieTmdbId)!),
   )).sort((leftId, rightId) => leftId - rightId);
+}
+
+function normalizeMovieLabels(movieLabels: string[]): string[] {
+  return movieLabels
+    .map((movieLabel) => movieLabel.trim())
+    .filter(Boolean);
+}
+
+async function resolveMovieRecordForLabel(inputLabel: string): Promise<ResolvedMovieCoverRecord> {
+  const parsedMovie = parseMoviePathLabel(inputLabel);
+  const formattedMovieLabel = formatMoviePathLabel(parsedMovie.name, parsedMovie.year);
+  const localMovieRecord = await getFilmRecordByTitleAndYear(parsedMovie.name, parsedMovie.year);
+  const resolvedMovieRecord = hasMovieFullState(localMovieRecord)
+    ? localMovieRecord
+    : await prepareConnectionEntityForPreview({
+      key: getMovieCardKey(parsedMovie.name, parsedMovie.year),
+      kind: "movie",
+      name: formattedMovieLabel,
+      year: parsedMovie.year,
+    });
+  const validMovieRecord =
+    resolvedMovieRecord && "title" in resolvedMovieRecord && hasMovieFullState(resolvedMovieRecord)
+      ? resolvedMovieRecord
+      : null;
+  const tmdbId = getValidTmdbEntityId(validMovieRecord?.tmdbId ?? validMovieRecord?.id);
+
+  if (!validMovieRecord || tmdbId === null) {
+    throw new Error(`Unable to resolve movie: ${formattedMovieLabel}`);
+  }
+
+  return {
+    inputLabel: formattedMovieLabel,
+    movieRecord: validMovieRecord,
+    tmdbId,
+  };
+}
+
+export async function resolveMovieCoverRecordsForLabels(
+  movieLabels: string[],
+): Promise<ResolvedMovieCoverRecord[]> {
+  const normalizedMovieLabels = normalizeMovieLabels(movieLabels);
+  if (normalizedMovieLabels.length === 0) {
+    return [];
+  }
+
+  const resolvedMovies = await Promise.all(
+    normalizedMovieLabels.map((movieLabel) => resolveMovieRecordForLabel(movieLabel)),
+  );
+  const seenMovieTmdbIds = new Set<number>();
+
+  return resolvedMovies.filter((resolvedMovie) => {
+    if (seenMovieTmdbIds.has(resolvedMovie.tmdbId)) {
+      return false;
+    }
+
+    seenMovieTmdbIds.add(resolvedMovie.tmdbId);
+    return true;
+  });
 }
 
 function mergeCandidates(
@@ -364,5 +444,13 @@ export async function getBestPersonTmdbIdsForMovieIds(movieTmdbIds: number[]): P
         popularity: personRecord.rawTmdbPerson?.popularity ?? 0,
         movieConnectionKeys: personRecord.movieConnectionKeys,
       }))),
+  );
+}
+
+export async function getBestPersonTmdbIdsForMovieLabels(movieLabels: string[]): Promise<number[]> {
+  const resolvedMovies = await resolveMovieCoverRecordsForLabels(movieLabels);
+
+  return getBestPersonTmdbIdsForMovieIds(
+    resolvedMovies.map((resolvedMovie) => resolvedMovie.tmdbId),
   );
 }

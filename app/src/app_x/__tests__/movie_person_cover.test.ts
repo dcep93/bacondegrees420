@@ -1,22 +1,41 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { makePersonRecord } from "../generators/cinenerdle2/__tests__/factories";
+import {
+  makeFilmRecord,
+  makePersonRecord,
+  makeTmdbMovieSearchResult,
+} from "../generators/cinenerdle2/__tests__/factories";
 
 const indexedDbMock = vi.hoisted(() => ({
+  getFilmRecordByTitleAndYear: vi.fn(),
   getPersonRecordsByMovieId: vi.fn(),
+}));
+const tmdbMock = vi.hoisted(() => ({
+  hasMovieFullState: vi.fn(),
+  prepareConnectionEntityForPreview: vi.fn(),
 }));
 
 vi.mock("../generators/cinenerdle2/indexed_db", () => indexedDbMock);
+vi.mock("../generators/cinenerdle2/tmdb", () => tmdbMock);
 
 import {
   getBestPersonTmdbIdsForMovieIds,
+  getBestPersonTmdbIdsForMovieLabels,
+  resolveMovieCoverRecordsForLabels,
   selectBestPersonTmdbIdsForMovieIds,
   type PersonCoverCandidate,
 } from "../movie_person_cover";
 
 describe("movie_person_cover", () => {
   beforeEach(() => {
+    indexedDbMock.getFilmRecordByTitleAndYear.mockReset();
     indexedDbMock.getPersonRecordsByMovieId.mockReset();
+    tmdbMock.hasMovieFullState.mockReset();
+    tmdbMock.prepareConnectionEntityForPreview.mockReset();
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(null);
     indexedDbMock.getPersonRecordsByMovieId.mockResolvedValue([]);
+    tmdbMock.hasMovieFullState.mockImplementation((movieRecord: { rawTmdbMovie?: unknown; rawTmdbMovieCreditsResponse?: unknown } | null | undefined) =>
+      Boolean(movieRecord?.rawTmdbMovie && movieRecord?.rawTmdbMovieCreditsResponse));
+    tmdbMock.prepareConnectionEntityForPreview.mockResolvedValue(null);
   });
 
   it("returns a single person when one person covers every requested movie", () => {
@@ -252,5 +271,178 @@ describe("movie_person_cover", () => {
     await expect(getBestPersonTmdbIdsForMovieIds([2000, 2999])).rejects.toThrow(
       "Unable to cover movie TMDB ids: 2999",
     );
+  });
+
+  it("resolves a movie from indexeddb by exact title and year without tmdb search", async () => {
+    const cachedMovie = makeFilmRecord({
+      id: 321,
+      tmdbId: 321,
+      title: "Heat",
+      year: "1995",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 321,
+        title: "Heat",
+        release_date: "1995-12-15",
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+    });
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(cachedMovie);
+
+    await expect(resolveMovieCoverRecordsForLabels(["Heat (1995)"])).resolves.toEqual([{
+      inputLabel: "Heat (1995)",
+      movieRecord: cachedMovie,
+      tmdbId: 321,
+    }]);
+    expect(tmdbMock.prepareConnectionEntityForPreview).not.toHaveBeenCalled();
+  });
+
+  it("falls back to tmdb search and cache when a movie is not available locally", async () => {
+    const hydratedMovie = makeFilmRecord({
+      id: 654,
+      tmdbId: 654,
+      title: "Collateral",
+      year: "2004",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 654,
+        title: "Collateral",
+        release_date: "2004-08-06",
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+    });
+    tmdbMock.prepareConnectionEntityForPreview.mockResolvedValue(hydratedMovie);
+
+    await expect(resolveMovieCoverRecordsForLabels(["Collateral (2004)"])).resolves.toEqual([{
+      inputLabel: "Collateral (2004)",
+      movieRecord: hydratedMovie,
+      tmdbId: 654,
+    }]);
+    expect(tmdbMock.prepareConnectionEntityForPreview).toHaveBeenCalledWith({
+      key: "movie:collateral (2004)",
+      kind: "movie",
+      name: "Collateral (2004)",
+      year: "2004",
+    });
+  });
+
+  it("throws when a movie label cannot be resolved to a tmdb movie", async () => {
+    await expect(resolveMovieCoverRecordsForLabels(["Unknown Movie (1999)"])).rejects.toThrow(
+      "Unable to resolve movie: Unknown Movie (1999)",
+    );
+  });
+
+  it("returns the same winning ids for movie labels once labels resolve", async () => {
+    const firstMovie = makeFilmRecord({
+      id: 2000,
+      tmdbId: 2000,
+      title: "Movie One",
+      year: "2000",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 2000,
+        title: "Movie One",
+        release_date: "2000-01-01",
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+    });
+    const secondMovie = makeFilmRecord({
+      id: 2001,
+      tmdbId: 2001,
+      title: "Movie Two",
+      year: "2001",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 2001,
+        title: "Movie Two",
+        release_date: "2001-01-01",
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+    });
+    indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (title: string, year: string) => {
+      if (title === "Movie One" && year === "2000") {
+        return firstMovie;
+      }
+
+      if (title === "Movie Two" && year === "2001") {
+        return secondMovie;
+      }
+
+      return null;
+    });
+    indexedDbMock.getPersonRecordsByMovieId.mockImplementation(async (movieTmdbId: number) => {
+      if (movieTmdbId === 2000) {
+        return [
+          makePersonRecord({
+            id: 101,
+            tmdbId: 101,
+            name: "Shared Person",
+            movieConnectionKeys: [2000, 2001],
+            rawTmdbPerson: {
+              id: 101,
+              name: "Shared Person",
+              popularity: 50,
+            },
+          }),
+        ];
+      }
+
+      if (movieTmdbId === 2001) {
+        return [
+          makePersonRecord({
+            id: 101,
+            tmdbId: 101,
+            name: "Shared Person",
+            movieConnectionKeys: [2000, 2001],
+            rawTmdbPerson: {
+              id: 101,
+              name: "Shared Person",
+              popularity: 50,
+            },
+          }),
+        ];
+      }
+
+      return [];
+    });
+
+    await expect(
+      getBestPersonTmdbIdsForMovieLabels(["Movie One (2000)", "Movie Two (2001)"]),
+    ).resolves.toEqual([101]);
+  });
+
+  it("ignores blank lines and dedupes duplicate resolved movie ids", async () => {
+    const cachedMovie = makeFilmRecord({
+      id: 321,
+      tmdbId: 321,
+      title: "Heat",
+      year: "1995",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 321,
+        title: "Heat",
+        release_date: "1995-12-15",
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+    });
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(cachedMovie);
+
+    await expect(
+      resolveMovieCoverRecordsForLabels(["", "Heat (1995)", "  Heat (1995)  ", "   "]),
+    ).resolves.toEqual([{
+      inputLabel: "Heat (1995)",
+      movieRecord: cachedMovie,
+      tmdbId: 321,
+    }]);
   });
 });

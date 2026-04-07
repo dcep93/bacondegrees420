@@ -73,6 +73,7 @@ import { getWindowKeyDownAction } from "./window_keydown";
 import BaconTitleBar from "./components/bacon_title_bar";
 import BookmarksJsonlEditorModal from "./components/bookmarks_jsonl_editor";
 import BookmarksPage from "./components/bookmarks_page";
+import CoverPage from "./components/cover_page";
 import ConnectionBar from "./components/connection_bar";
 import ConnectionBoostPreview from "./components/connection_boost_preview";
 import ConnectionMatchupPreview from "./components/connection_matchup_preview";
@@ -95,6 +96,7 @@ export default function AppX() {
   const {
     handleHashWrite,
     hashValue,
+    isCoverView,
     isBookmarksView,
     loadBookmarkCardHash,
     loadBookmarkHash,
@@ -397,8 +399,12 @@ export default function AppX() {
   }, [copyStatus]);
 
   useEffect(() => {
-    document.title = isBookmarksView ? "Bookmarks | BaconDegrees420" : getDocumentTitle(hashValue);
-  }, [hashValue, isBookmarksView]);
+    document.title = isBookmarksView
+      ? "Bookmarks | BaconDegrees420"
+      : isCoverView
+        ? "Cover | BaconDegrees420"
+        : getDocumentTitle(hashValue);
+  }, [hashValue, isBookmarksView, isCoverView]);
 
   useEffect(() => {
     function handleWindowKeyDown(event: globalThis.KeyboardEvent) {
@@ -428,7 +434,7 @@ export default function AppX() {
   useEffect(() => {
     let cancelled = false;
     const shouldResolvePreview = shouldResolveConnectionMatchupPreview({
-      isBookmarksView,
+      isBookmarksView: isBookmarksView || isCoverView,
       isCinenerdleIndexedDbBootstrapLoading,
       youngestSelectedCard,
     });
@@ -462,6 +468,7 @@ export default function AppX() {
     };
   }, [
     connectionMatchupPreviewRefreshVersion,
+    isCoverView,
     isBookmarksView,
     isCinenerdleIndexedDbBootstrapLoading,
     youngestSelectedCard,
@@ -569,14 +576,15 @@ export default function AppX() {
 
       <div className="bacon-app-chrome">
         <BaconTitleBar
-          boostPreview={<ConnectionBoostPreview preview={connectionBoostPreview} />}
+          boostPreview={isCoverView ? undefined : <ConnectionBoostPreview preview={connectionBoostPreview} />}
           clearDbBadgeText={clearDbBadgeText}
           clearDbButtonRef={clearDbButtonRef}
           copyStatus={copyStatus}
           copyStatusPlacement={copyStatusPlacement}
+          isGeneratorView={!isBookmarksView && !isCoverView}
           isBookmarksView={isBookmarksView}
           isSavingBookmark={isSavingBookmark}
-          matchupPreview={<ConnectionMatchupPreview preview={connectionMatchupPreview} />}
+          matchupPreview={isCoverView ? undefined : <ConnectionMatchupPreview preview={connectionMatchupPreview} />}
           onClearDatabase={handleClearDatabase}
           onOpenBookmarksJsonlEditor={handleOpenBookmarksJsonlEditor}
           onReset={handleReset}
@@ -594,7 +602,7 @@ export default function AppX() {
           />
         ) : null}
 
-        {!isBookmarksView && !isCinenerdleIndexedDbBootstrapLoading ? (
+        {!isBookmarksView && !isCoverView && !isCinenerdleIndexedDbBootstrapLoading ? (
           <section className="bacon-connection-bar">
             <ConnectionBar
               connectionInputWrapRef={connectionInputWrapRef}
@@ -627,6 +635,8 @@ export default function AppX() {
               onOpenBookmarkCardAsRootInNewTab={openBookmarkCardAsRootInNewTab}
               onRemoveBookmark={handleRemoveBookmark}
             />
+          ) : isCoverView ? (
+            <CoverPage />
           ) : (
             <div className="bacon-app-main-stack">
               <ConnectionResults

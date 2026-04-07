@@ -1287,6 +1287,87 @@
   display: none;
 }
 
+.bacon-cover-page {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 18px 24px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.bacon-cover-panel {
+  padding: 18px;
+  border: 1px solid var(--bacon-border-strong);
+  border-radius: 24px;
+  background: rgba(17, 12, 10, 0.88);
+  box-shadow: var(--bacon-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.bacon-cover-panel-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bacon-cover-panel-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.bacon-cover-panel-copy {
+  margin: 0;
+  color: var(--bacon-text-muted);
+  line-height: 1.5;
+}
+
+.bacon-cover-textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 220px;
+  padding: 16px 18px;
+  border: 1px solid var(--bacon-border-strong);
+  border-radius: 22px;
+  background: rgba(10, 7, 6, 0.92);
+  color: var(--bacon-text);
+  font: inherit;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.bacon-cover-textarea:focus {
+  outline: 2px solid rgba(228, 193, 150, 0.45);
+  outline-offset: 2px;
+}
+
+.bacon-cover-status {
+  margin: 0;
+  font-size: 0.74rem;
+  line-height: 1.5;
+}
+
+.bacon-cover-status-muted {
+  color: var(--bacon-text-muted);
+}
+
+.bacon-cover-status-error {
+  color: #ffb8ab;
+}
+
+.bacon-cover-card-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.bacon-cover-card-shell {
+  width: min(100%, 180px);
+}
+
 @media (max-width: 720px) {
   :root {
     --bacon-title-control-size: 46px;
@@ -1408,10 +1489,27 @@
     gap: 14px;
   }
 
+  .bacon-cover-page {
+    padding: 14px 12px 20px;
+    gap: 14px;
+  }
+
   .bacon-bookmarks-empty-state,
   .bacon-bookmark-row-shell {
     padding: 14px;
     border-radius: 20px;
+  }
+
+  .bacon-cover-panel {
+    padding: 14px;
+    border-radius: 20px;
+  }
+
+  .bacon-cover-textarea {
+    min-height: 180px;
+    padding: 14px;
+    border-radius: 18px;
+    font-size: 0.72rem;
   }
 
   .bacon-bookmark-row-shell {
@@ -1437,5 +1535,9 @@
   .bacon-bookmark-card-row,
   .bacon-connection-row {
     gap: 10px;
+  }
+
+  .bacon-cover-card-grid {
+    justify-content: center;
   }
 }

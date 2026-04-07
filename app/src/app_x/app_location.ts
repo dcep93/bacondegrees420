@@ -20,9 +20,11 @@ export type AppLocationState = {
 
 type BookmarksHistoryState = {
   bookmarkReturnHash?: string;
+  bookmarkReturnPathname?: string;
 };
 
 const BOOKMARKS_PATH_SUFFIX = "/bookmarks";
+const COVER_PATH_SUFFIX = "/cover";
 
 export function normalizePathname(pathname: string): string {
   const trimmedPathname = pathname.trim() || "/";
@@ -38,10 +40,20 @@ export function getBookmarksPathname(basePathname: string): string {
     : `${normalizedBasePathname}${BOOKMARKS_PATH_SUFFIX}`;
 }
 
+export function getCoverPathname(basePathname: string): string {
+  const normalizedBasePathname = normalizePathname(basePathname);
+  return normalizedBasePathname === "/"
+    ? COVER_PATH_SUFFIX
+    : `${normalizedBasePathname}${COVER_PATH_SUFFIX}`;
+}
+
 export function getBasePathname(pathname: string): string {
   const normalizedPathname = normalizePathname(pathname);
 
-  if (normalizedPathname === BOOKMARKS_PATH_SUFFIX) {
+  if (
+    normalizedPathname === BOOKMARKS_PATH_SUFFIX ||
+    normalizedPathname === COVER_PATH_SUFFIX
+  ) {
     return "/";
   }
 
@@ -51,15 +63,24 @@ export function getBasePathname(pathname: string): string {
     );
   }
 
+  if (normalizedPathname.endsWith(COVER_PATH_SUFFIX)) {
+    return normalizePathname(
+      normalizedPathname.slice(0, normalizedPathname.length - COVER_PATH_SUFFIX.length),
+    );
+  }
+
   return normalizedPathname;
 }
 
 export function readAppLocationState(): AppLocationState {
   const pathname = normalizePathname(window.location.pathname);
   const basePathname = getBasePathname(pathname);
-  const viewMode: AppViewMode = pathname === getBookmarksPathname(basePathname)
-    ? "bookmarks"
-    : "generator";
+  const viewMode: AppViewMode =
+    pathname === getBookmarksPathname(basePathname)
+      ? "bookmarks"
+      : pathname === getCoverPathname(basePathname)
+        ? "cover"
+        : "generator";
 
   return {
     viewMode,
@@ -95,6 +116,11 @@ export function useAppLocationState() {
   const pendingHashWriteRef = useRef<PendingHashWrite | null>(null);
   const lastSyncedHashRef = useRef(normalizeHashValue(initialLocationState.hash));
   const bookmarksReturnHashRef = useRef(normalizeHashValue(initialLocationState.hash));
+  const bookmarksReturnPathnameRef = useRef(
+    initialLocationState.viewMode === "bookmarks"
+      ? initialLocationState.basePathname
+      : initialLocationState.pathname,
+  );
 
   const syncLocationFromWindow = useCallback((options?: {
     incrementNavigationVersion?: boolean;
@@ -208,22 +234,35 @@ export function useAppLocationState() {
         ((window.history.state as BookmarksHistoryState | null)?.bookmarkReturnHash) ??
         bookmarksReturnHashRef.current,
       );
+      const restorePathname = normalizePathname(
+        ((window.history.state as BookmarksHistoryState | null)?.bookmarkReturnPathname) ??
+        bookmarksReturnPathnameRef.current,
+      );
       window.history.replaceState(
         null,
         "",
-        buildLocationHref(currentLocation.basePathname, restoreHash),
+        buildLocationHref(
+          restorePathname,
+          restorePathname === getCoverPathname(currentLocation.basePathname) ? "" : restoreHash,
+        ),
       );
       syncLocationFromWindow({
         incrementNavigationVersion: true,
-        nextHashOverride: restoreHash,
+        nextHashOverride: restorePathname === getCoverPathname(currentLocation.basePathname)
+          ? ""
+          : restoreHash,
       });
       return;
     }
 
     const restoreHash = getBookmarksReturnHashValue(hashValue, lastSyncedHashRef.current);
     bookmarksReturnHashRef.current = restoreHash;
+    bookmarksReturnPathnameRef.current = currentLocation.pathname;
     window.history.pushState(
-      { bookmarkReturnHash: restoreHash } satisfies BookmarksHistoryState,
+      {
+        bookmarkReturnHash: restoreHash,
+        bookmarkReturnPathname: currentLocation.pathname,
+      } satisfies BookmarksHistoryState,
       "",
       buildLocationHref(getBookmarksPathname(currentLocation.basePathname), ""),
     );
@@ -296,6 +335,7 @@ export function useAppLocationState() {
     bookmarksReturnHashRef,
     handleHashWrite,
     hashValue,
+    isCoverView: appLocation.viewMode === "cover",
     isBookmarksView: appLocation.viewMode === "bookmarks",
     loadBookmarkCardHash,
     loadBookmarkHash,
