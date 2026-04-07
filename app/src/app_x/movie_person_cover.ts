@@ -86,6 +86,12 @@ function compareSortedIdArrays(leftIds: number[], rightIds: number[]): number {
   return 0;
 }
 
+function insertSortedId(ids: number[], nextId: number): number[] {
+  const nextIds = [...ids, nextId];
+  nextIds.sort((leftId, rightId) => leftId - rightId);
+  return nextIds;
+}
+
 function isBetterSolution(
   nextIds: number[],
   nextTotalPopularity: number,
@@ -156,10 +162,11 @@ async function ensureMovieHasPersonRecords(
       forceRefresh: true,
     },
   );
+  const refreshedPersonRecords = await getPersonRecordsByMovieId(tmdbId);
   if (
     refreshedMovieRecord &&
     hasMovieFullState(refreshedMovieRecord) &&
-    (await getPersonRecordsByMovieId(tmdbId)).length > 0
+    refreshedPersonRecords.length > 0
   ) {
     return refreshedMovieRecord;
   }
@@ -167,7 +174,9 @@ async function ensureMovieHasPersonRecords(
   throw new Error(`Unable to derive connected people for movie: ${formattedMovieLabel}`);
 }
 
-async function resolveMovieRecordForLabel(inputLabel: string): Promise<ResolvedMovieCoverRecord> {
+async function resolveMovieRecordForLabel(
+  inputLabel: string,
+): Promise<ResolvedMovieCoverRecord> {
   const parsedMovie = parseMoviePathLabel(inputLabel);
   const formattedMovieLabel = formatMoviePathLabel(parsedMovie.name, parsedMovie.year);
   const localMovieRecord = await getFilmRecordByTitleAndYear(parsedMovie.name, parsedMovie.year);
@@ -215,8 +224,7 @@ export async function resolveMovieCoverRecordsForLabels(
     normalizedMovieLabels.map((movieLabel) => resolveMovieRecordForLabel(movieLabel)),
   );
   const seenMovieTmdbIds = new Set<number>();
-
-  return resolvedMovies.filter((resolvedMovie) => {
+  const dedupedMovies = resolvedMovies.filter((resolvedMovie) => {
     if (seenMovieTmdbIds.has(resolvedMovie.tmdbId)) {
       return false;
     }
@@ -224,6 +232,7 @@ export async function resolveMovieCoverRecordsForLabels(
     seenMovieTmdbIds.add(resolvedMovie.tmdbId);
     return true;
   });
+  return dedupedMovies;
 }
 
 function mergeCandidates(
@@ -348,126 +357,42 @@ export function selectBestPersonTmdbIdsForMovieIds(
   }
 
   const fullCoverageMask = (1n << BigInt(requestedMovieIds.length)) - 1n;
-  let bestSolution: BestSolution | null = null;
+  const bestSolutionByCoverageMask = new Map<bigint, BestSolution>();
+  bestSolutionByCoverageMask.set(0n, {
+    ids: [],
+    totalPopularity: 0,
+  });
 
-  function getBranchCandidateIndexes(
-    uncoveredMask: bigint,
-    startIndex: number,
-  ): number[] | null {
-    let bestCandidateIndexes: number[] | null = null;
+  preparedCandidates.forEach((candidate) => {
+    const currentSolutions = Array.from(bestSolutionByCoverageMask.entries());
 
-    for (let movieIndex = 0; movieIndex < requestedMovieIds.length; movieIndex += 1) {
-      const movieMask = 1n << BigInt(movieIndex);
-      if ((uncoveredMask & movieMask) === 0n) {
-        continue;
-      }
-
-      const candidateIndexes: number[] = [];
-      for (let candidateIndex = startIndex; candidateIndex < preparedCandidates.length; candidateIndex += 1) {
-        if ((preparedCandidates[candidateIndex].coverageMask & movieMask) !== 0n) {
-          candidateIndexes.push(candidateIndex);
-        }
-      }
-
-      if (candidateIndexes.length === 0) {
-        return null;
-      }
-
-      if (!bestCandidateIndexes || candidateIndexes.length < bestCandidateIndexes.length) {
-        bestCandidateIndexes = candidateIndexes;
-      }
-    }
-
-    return bestCandidateIndexes;
-  }
-
-  function getLowerBoundAdditionalCandidates(
-    uncoveredMask: bigint,
-    startIndex: number,
-  ): number {
-    let maxNewCoverageCount = 0;
-
-    for (let candidateIndex = startIndex; candidateIndex < preparedCandidates.length; candidateIndex += 1) {
-      const newCoverageCount = countSetBits(
-        preparedCandidates[candidateIndex].coverageMask & uncoveredMask,
-      );
-      if (newCoverageCount > maxNewCoverageCount) {
-        maxNewCoverageCount = newCoverageCount;
-      }
-    }
-
-    if (maxNewCoverageCount === 0) {
-      return Number.POSITIVE_INFINITY;
-    }
-
-    return Math.ceil(countSetBits(uncoveredMask) / maxNewCoverageCount);
-  }
-
-  function search(
-    coveredMask: bigint,
-    startIndex: number,
-    chosenTmdbIds: number[],
-    totalPopularity: number,
-  ) {
-    if (coveredMask === fullCoverageMask) {
-      const sortedTmdbIds = [...chosenTmdbIds].sort((leftId, rightId) => leftId - rightId);
-      if (isBetterSolution(sortedTmdbIds, totalPopularity, bestSolution)) {
-        bestSolution = {
-          ids: sortedTmdbIds,
-          totalPopularity,
-        };
-      }
-      return;
-    }
-
-    const uncoveredMask = fullCoverageMask & ~coveredMask;
-    const additionalCandidateLowerBound = getLowerBoundAdditionalCandidates(uncoveredMask, startIndex);
-    if (!Number.isFinite(additionalCandidateLowerBound)) {
-      return;
-    }
-
-    if (
-      bestSolution &&
-      chosenTmdbIds.length + additionalCandidateLowerBound > bestSolution.ids.length
-    ) {
-      return;
-    }
-
-    const branchCandidateIndexes = getBranchCandidateIndexes(uncoveredMask, startIndex);
-    if (!branchCandidateIndexes) {
-      return;
-    }
-
-    for (const candidateIndex of branchCandidateIndexes) {
-      const candidate = preparedCandidates[candidateIndex];
+    currentSolutions.forEach(([coveredMask, solution]) => {
       const nextCoveredMask = coveredMask | candidate.coverageMask;
       if (nextCoveredMask === coveredMask) {
-        continue;
-      }
-
-      if (
-        bestSolution &&
-        chosenTmdbIds.length + 1 > bestSolution.ids.length
-      ) {
         return;
       }
 
-      search(
-        nextCoveredMask,
-        candidateIndex + 1,
-        [...chosenTmdbIds, candidate.tmdbId],
-        totalPopularity + candidate.popularity,
-      );
-    }
-  }
+      const nextSolution = {
+        ids: insertSortedId(solution.ids, candidate.tmdbId),
+        totalPopularity: solution.totalPopularity + candidate.popularity,
+      };
+      const existingBestSolution = bestSolutionByCoverageMask.get(nextCoveredMask) ?? null;
+      if (isBetterSolution(
+        nextSolution.ids,
+        nextSolution.totalPopularity,
+        existingBestSolution,
+      )) {
+        bestSolutionByCoverageMask.set(nextCoveredMask, nextSolution);
+      }
+    });
+  });
 
-  search(0n, 0, [], 0);
-
+  const bestSolution = bestSolutionByCoverageMask.get(fullCoverageMask) ?? null;
   if (!bestSolution) {
     throw new Error(`Unable to cover movie TMDB ids: ${requestedMovieIds.join(", ")}`);
   }
 
-  return (bestSolution as BestSolution).ids;
+  return bestSolution.ids;
 }
 
 export async function getBestPersonTmdbIdsForMovieIds(movieTmdbIds: number[]): Promise<number[]> {
@@ -487,14 +412,30 @@ export async function getBestPersonTmdbIdsForMovieIds(movieTmdbIds: number[]): P
     throw new Error(`Unable to cover movie TMDB ids: ${uncoveredMovieIds.join(", ")}`);
   }
 
+  const candidateCoverageByPersonTmdbId = new Map<number, PersonCoverCandidate>();
+  personRecordsByMovieId.forEach(([movieTmdbId, personRecords]) => {
+    personRecords.forEach((personRecord) => {
+      const personTmdbId =
+        normalizePositiveTmdbId(personRecord.tmdbId ?? personRecord.id) ?? personRecord.id;
+      const existingCandidate = candidateCoverageByPersonTmdbId.get(personTmdbId) ?? {
+        tmdbId: personTmdbId,
+        popularity: 0,
+        movieConnectionKeys: [],
+      };
+      existingCandidate.popularity = Math.max(
+        existingCandidate.popularity,
+        personRecord.rawTmdbPerson?.popularity ?? 0,
+      );
+      if (!existingCandidate.movieConnectionKeys.includes(movieTmdbId)) {
+        existingCandidate.movieConnectionKeys.push(movieTmdbId);
+      }
+      candidateCoverageByPersonTmdbId.set(personTmdbId, existingCandidate);
+    });
+  });
+  const candidates = Array.from(candidateCoverageByPersonTmdbId.values());
   return selectBestPersonTmdbIdsForMovieIds(
     requestedMovieIds,
-    personRecordsByMovieId.flatMap(([, personRecords]) =>
-      personRecords.map((personRecord) => ({
-        tmdbId: normalizePositiveTmdbId(personRecord.tmdbId ?? personRecord.id) ?? personRecord.id,
-        popularity: personRecord.rawTmdbPerson?.popularity ?? 0,
-        movieConnectionKeys: personRecord.movieConnectionKeys,
-      }))),
+    candidates,
   );
 }
 

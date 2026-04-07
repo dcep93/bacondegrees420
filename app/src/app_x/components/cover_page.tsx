@@ -104,7 +104,7 @@ export function createCoverPersonCardViewModel(
       }];
     });
 
-  return createCardViewModel(
+  const cardViewModel = createCardViewModel(
     {
       ...basePersonCard,
       creditLines,
@@ -115,6 +115,11 @@ export function createCoverPersonCardViewModel(
       isSelected: false,
     },
   ) as RenderableCinenerdleEntityCard;
+
+  return {
+    ...cardViewModel,
+    hasCachedTmdbSource: true,
+  };
 }
 
 export async function resolveCoverPageLookupResult(

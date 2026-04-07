@@ -529,6 +529,46 @@ describe("movie_person_cover", () => {
     ).resolves.toEqual([101]);
   });
 
+  it("derives cover candidate coverage from per-movie matches instead of stored movieConnectionKeys", async () => {
+    indexedDbMock.getPersonRecordsByMovieId.mockImplementation(async (movieTmdbId: number) => {
+      if (movieTmdbId === 2000) {
+        return [
+          makePersonRecord({
+            id: 101,
+            tmdbId: 101,
+            name: "Shared Person",
+            movieConnectionKeys: [999999],
+            rawTmdbPerson: {
+              id: 101,
+              name: "Shared Person",
+              popularity: 40,
+            },
+          }),
+        ];
+      }
+
+      if (movieTmdbId === 2001) {
+        return [
+          makePersonRecord({
+            id: 101,
+            tmdbId: 101,
+            name: "Shared Person",
+            movieConnectionKeys: [888888],
+            rawTmdbPerson: {
+              id: 101,
+              name: "Shared Person",
+              popularity: 60,
+            },
+          }),
+        ];
+      }
+
+      return [];
+    });
+
+    await expect(getBestPersonTmdbIdsForMovieIds([2000, 2001])).resolves.toEqual([101]);
+  });
+
   it("ignores blank lines and dedupes duplicate resolved movie ids", async () => {
     const cachedMovie = makeFilmRecord({
       id: 321,
@@ -563,4 +603,5 @@ describe("movie_person_cover", () => {
       tmdbId: 321,
     }]);
   });
+
 });

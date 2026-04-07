@@ -116,6 +116,57 @@ describe("cover_page helpers", () => {
       ],
     }));
   });
+
+  it("keeps the tmdb connection badge visible for cover cards", () => {
+    const personRecord = makePersonRecord({
+      id: 10,
+      tmdbId: 10,
+      name: "John Example",
+      movieConnectionKeys: Array.from({ length: 12 }, (_value, index) => index + 1),
+      rawTmdbPerson: undefined,
+      tmdbSource: "connection-derived",
+    });
+    const firstMovie = makeFilmRecord({
+      id: 101,
+      tmdbId: 101,
+      title: "First Movie",
+      year: "2001",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 101,
+        title: "First Movie",
+        release_date: "2001-01-01",
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [{
+          id: 10,
+          name: "John Example",
+          order: 0,
+          creditType: "cast",
+          character: "Hero",
+        }],
+        crew: [],
+      },
+    });
+
+    const html = renderToStaticMarkup(
+      <CoverPageView
+        cards={[
+          createCoverPersonCardViewModel(
+            personRecord,
+            [makeResolvedMovie(firstMovie, "First Movie (2001)", 101)],
+          ),
+        ]}
+        inputValue={"First Movie (2001)"}
+        isLoading={false}
+        message="Found 1 people covering 1 movies."
+        messageTone="muted"
+        onInputChange={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain("cinenerdle-card-count-icon");
+    expect(html).toContain("John Example has 12 connections");
+  });
 });
 
 describe("CoverPageView", () => {
