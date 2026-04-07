@@ -1,8 +1,40 @@
+import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import BookmarksPage from "../components/bookmarks_page";
 import type { BookmarkRowData } from "../bookmark_rows";
-import type { RenderableCinenerdleEntityCard } from "../generators/cinenerdle2";
+import {
+  CINENERDLE_ITEM_ATTRS_STORAGE_KEY,
+  readCinenerdleItemAttrs,
+} from "../generators/cinenerdle2/item_attrs";
+import {
+  CinenerdleEntityCard,
+  type RenderableCinenerdleEntityCard,
+} from "../generators/cinenerdle2";
+
+function findCinenerdleEntityCardElement(node: ReactNode): ReactElement | null {
+  if (!isValidElement(node)) {
+    return null;
+  }
+
+  if (node.type === CinenerdleEntityCard) {
+    return node;
+  }
+
+  const children = (node as ReactElement<{ children?: ReactNode }>).props.children;
+  if (Array.isArray(children)) {
+    for (const child of children) {
+      const foundChild = findCinenerdleEntityCardElement(child);
+      if (foundChild) {
+        return foundChild;
+      }
+    }
+
+    return null;
+  }
+
+  return findCinenerdleEntityCardElement(children);
+}
 
 function makeRenderableBookmarkMovieCard(
   overrides: Partial<RenderableCinenerdleEntityCard> = {},
@@ -45,6 +77,25 @@ function makeRenderableBookmarkMovieCard(
 }
 
 describe("BookmarksPage", () => {
+  beforeEach(() => {
+    const storage = new Map<string, string>();
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      value: {
+        clear: () => {
+          storage.clear();
+        },
+        getItem: (key: string) => storage.get(key) ?? null,
+        removeItem: (key: string) => {
+          storage.delete(key);
+        },
+        setItem: (key: string, value: string) => {
+          storage.set(key, value);
+        },
+      },
+    });
+  });
+
   it("renders bookmark cards with the shared cinenerdle footer tooltip overlay", () => {
     const bookmarkRows: BookmarkRowData[] = [{
       hash: "movie:heat:1995",
@@ -120,5 +171,46 @@ describe("BookmarksPage", () => {
 
     expect(html).not.toContain("cinenerdle-card-footer-tooltip-anchor");
     expect(html).not.toContain("cinenerdle-card-footer-tooltip-panel");
+  });
+
+  it("wires bookmark card attr add/remove actions to shared item attr storage", () => {
+    const bookmarkRows: BookmarkRowData[] = [{
+      hash: "movie:heat:1995",
+      cards: [{
+        kind: "card",
+        key: "bookmark:0:movie:heat:1995",
+        card: makeRenderableBookmarkMovieCard(),
+      }],
+    }];
+    const tree = BookmarksPage({
+      bookmarks: [{ hash: "movie:heat:1995" }],
+      bookmarkRows,
+      onLoadBookmark: vi.fn(),
+      onLoadBookmarkCard: vi.fn(),
+      onMoveBookmark: vi.fn(),
+      onOpenBookmarkCardAsRootInNewTab: vi.fn(),
+      onRemoveBookmark: vi.fn(),
+    });
+    const cardElement = findCinenerdleEntityCardElement(tree);
+
+    expect(cardElement).not.toBeNull();
+    const cardProps = cardElement?.props as {
+      onAddItemAttr?: (itemAttr: string) => void;
+      onRemoveItemAttr?: (itemAttr: string) => void;
+    } | undefined;
+
+    cardProps?.onAddItemAttr?.("🔥");
+    expect(readCinenerdleItemAttrs()).toEqual({
+      film: {
+        "heat:1995": ["🔥"],
+      },
+      person: {},
+    });
+
+    cardProps?.onRemoveItemAttr?.("🔥");
+    expect(globalThis.localStorage.getItem(CINENERDLE_ITEM_ATTRS_STORAGE_KEY)).toBe(JSON.stringify({
+      film: {},
+      person: {},
+    }));
   });
 });

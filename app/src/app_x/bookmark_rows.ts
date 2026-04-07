@@ -4,11 +4,18 @@ import {
   type ResolvedAssociatedEntity,
 } from "./associated_entity_cards";
 import {
+  enrichCinenerdleCardWithItemAttrs,
+} from "./generators/cinenerdle2/card_item_attrs";
+import {
   createCinenerdleOnlyPersonCard,
   createCinenerdleRootCard,
   createMovieRootCard,
   createPersonRootCard,
 } from "./generators/cinenerdle2/cards";
+import {
+  readCinenerdleItemAttrs,
+  type CinenerdleItemAttrs,
+} from "./generators/cinenerdle2/item_attrs";
 import {
   getFilmRecordById,
   getFilmRecordByTitleAndYear,
@@ -302,7 +309,10 @@ function createRenderableBookmarkCard(
   };
 }
 
-export async function buildBookmarkRowData(hashValue: string): Promise<BookmarkRowData> {
+export async function buildBookmarkRowData(
+  hashValue: string,
+  itemAttrsSnapshot: CinenerdleItemAttrs = readCinenerdleItemAttrs(),
+): Promise<BookmarkRowData> {
   const bookmarkPathNodes = buildPathNodesFromSegments(parseHashSegments(hashValue)).filter(
     (pathNode): pathNode is Extract<
       CinenerdlePathNode,
@@ -331,7 +341,10 @@ export async function buildBookmarkRowData(hashValue: string): Promise<BookmarkR
     }
 
     const resolvedEntity = await resolveBookmarkPathCard(pathNode);
-    const nextCard = await createAssociatedBookmarkCard(previousEntity, resolvedEntity);
+    const nextCard = enrichCinenerdleCardWithItemAttrs(
+      await createAssociatedBookmarkCard(previousEntity, resolvedEntity),
+      itemAttrsSnapshot,
+    ) as BookmarkRenderableEntityCard;
     cards.push({
       kind: "card",
       key: `${hashValue}:${index}:${nextCard.key}`,

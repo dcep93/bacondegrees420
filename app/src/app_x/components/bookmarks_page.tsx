@@ -3,6 +3,11 @@ import {
   CinenerdleEntityCard,
 } from "../generators/cinenerdle2";
 import { getCinenerdleFooterTooltipContent } from "../generators/cinenerdle2/entity_card/footer_tooltip";
+import {
+  addItemAttrToTarget,
+  getCinenerdleItemAttrTargetFromCard,
+  removeItemAttrFromTarget,
+} from "../generators/cinenerdle2/item_attrs";
 import { didRequestNewTabNavigation } from "../index_helpers";
 import { formatBookmarkIndexTooltip, formatBookmarkLabel, type BookmarkRowData } from "../bookmark_rows";
 import Tooltip from "./tooltip";
@@ -117,6 +122,14 @@ export default function BookmarksPage({
                   const footerTooltip = getCinenerdleFooterTooltipContent(card.card, {
                     includeActionHint: false,
                   });
+                  let itemAttrTarget: ReturnType<typeof getCinenerdleItemAttrTargetFromCard> = null;
+                  if (card.card.kind === "movie" || card.card.kind === "person") {
+                    itemAttrTarget = getCinenerdleItemAttrTargetFromCard({
+                      key: card.card.key,
+                      kind: card.card.kind,
+                      name: card.card.name,
+                    });
+                  }
                   return (
                     <button
                       className="generator-card-button"
@@ -127,6 +140,16 @@ export default function BookmarksPage({
                       <CinenerdleEntityCard
                         card={card.card}
                         footerTooltip={footerTooltip}
+                        onAddItemAttr={itemAttrTarget
+                          ? (nextChar) => {
+                              addItemAttrToTarget(itemAttrTarget, nextChar);
+                            }
+                          : undefined}
+                        onRemoveItemAttr={itemAttrTarget
+                          ? (itemAttr) => {
+                              removeItemAttrFromTarget(itemAttrTarget, itemAttr);
+                            }
+                          : undefined}
                         onTitleClick={(event) => {
                           if (didRequestNewTabNavigation(event)) {
                             onOpenBookmarkCardAsRootInNewTab(bookmarkRow.hash, cardIndex);

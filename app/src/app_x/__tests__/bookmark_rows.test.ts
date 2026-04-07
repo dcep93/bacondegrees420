@@ -127,6 +127,98 @@ describe("buildBookmarkRowData", () => {
     });
   });
 
+  it("enriches bookmark cards with direct and inherited item attrs", async () => {
+    const heatRecord = makeFilmRecord({
+      id: 321,
+      tmdbId: 321,
+      title: "Heat",
+      year: "1995",
+      popularity: 66,
+      personConnectionKeys: [60],
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 321,
+        title: "Heat",
+        release_date: "1995-12-15",
+        popularity: 66,
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({
+            id: 60,
+            name: "Al Pacino",
+            popularity: 88,
+            character: "Lt. Vincent Hanna",
+          }),
+        ],
+        crew: [],
+      },
+    });
+    const pacinoRecord = makePersonRecord({
+      id: 60,
+      tmdbId: 60,
+      name: "Al Pacino",
+      movieConnectionKeys: [321],
+      rawTmdbPerson: makeTmdbPersonSearchResult({
+        id: 60,
+        name: "Al Pacino",
+        popularity: 88,
+      }),
+    });
+
+    indexedDbMock.getPersonRecordById.mockImplementation(async (tmdbId: number | string) =>
+      Number(tmdbId) === 60 ? pacinoRecord : null,
+    );
+    indexedDbMock.getPersonRecordByName.mockImplementation(async (personName: string) =>
+      personName === "al pacino" ? pacinoRecord : null,
+    );
+    indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (title: string, year: string) =>
+      title === "Heat" && year === "1995" ? heatRecord : null,
+    );
+    indexedDbMock.getFilmRecordById.mockImplementation(async (tmdbId: number | string) =>
+      Number(tmdbId) === 321 ? heatRecord : null,
+    );
+
+    const bookmarkRow = await buildBookmarkRowData(
+      serializePathNodes([
+        createPathNode("movie", "Heat", "1995"),
+        createPathNode("person", "Al Pacino", "", 60),
+      ]),
+      {
+        film: {
+          "321": ["🔥"],
+        },
+        person: {
+          "60": ["⭐"],
+        },
+      },
+    );
+    const cards = bookmarkRow.cards
+      .filter((card): card is Extract<typeof card, { kind: "card" }> => card.kind === "card")
+      .map((card) => card.card);
+
+    expect(cards).toHaveLength(2);
+    expect(cards[0]).toMatchObject({
+      kind: "movie",
+      itemAttrs: ["🔥"],
+      inheritedItemAttrs: ["⭐"],
+      connectedItemAttrs: ["⭐"],
+      itemAttrCounts: {
+        activeCount: 1,
+        passiveCount: 1,
+      },
+    });
+    expect(cards[1]).toMatchObject({
+      kind: "person",
+      itemAttrs: ["⭐"],
+      inheritedItemAttrs: ["🔥"],
+      connectedItemAttrs: ["🔥"],
+      itemAttrCounts: {
+        activeCount: 1,
+        passiveCount: 1,
+      },
+    });
+  });
+
   it("rebuilds movie-to-person bookmarks as association cards with role text and rank", async () => {
     const heatRecord = makeFilmRecord({
       id: 321,

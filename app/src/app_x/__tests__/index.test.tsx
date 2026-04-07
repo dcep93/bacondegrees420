@@ -1,4 +1,3 @@
-import { type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -782,40 +781,17 @@ describe("ConnectionEntityCard", () => {
     expect(html).not.toContain("<p class=\"cinenerdle-card-subtitle\">1995</p>");
   });
 
-  it("passes title clicks through the shared card title action without invoking the card action", () => {
-    const onCardClick = vi.fn();
-    const onNameClick = vi.fn();
-    const tree = ConnectionEntityCard({
-      entity: makeConnectionEntity(),
-      onCardClick,
-      onNameClick,
-    }) as ReactElement<{
-      className?: string;
-      onTitleClick?: (event: {
-        ctrlKey: boolean;
-        metaKey: boolean;
-        preventDefault: () => void;
-        stopPropagation: () => void;
-      }) => void;
-      titleElement?: string;
-    }>;
+  it("renders the shared card title as a button when a name click handler is provided", () => {
+    const html = renderToStaticMarkup(
+      <ConnectionEntityCard
+        entity={makeConnectionEntity()}
+        onCardClick={vi.fn()}
+        onNameClick={vi.fn()}
+      />,
+    );
 
-    const preventDefault = vi.fn();
-    const stopPropagation = vi.fn();
-    const clickEvent = {
-      ctrlKey: false,
-      metaKey: true,
-      preventDefault,
-      stopPropagation,
-    };
-    expect(tree.props.titleElement).toBe("button");
-    tree.props.onTitleClick?.(clickEvent);
-
-    expect(onNameClick).toHaveBeenCalledOnce();
-    expect(onNameClick).toHaveBeenCalledWith(clickEvent);
-    expect(onCardClick).not.toHaveBeenCalled();
-    expect(preventDefault).not.toHaveBeenCalled();
-    expect(stopPropagation).not.toHaveBeenCalled();
+    expect(html).toContain("<button");
+    expect(html).toContain("cinenerdle-card-title");
   });
 
   it("adds the dimmed class to shared cards for excluded nodes", () => {

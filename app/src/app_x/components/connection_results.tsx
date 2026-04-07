@@ -151,6 +151,7 @@ export default function ConnectionResults({
 
                           appendConnectionPathToTree(row.path, entity);
                         }}
+                    previousEntity={row.path[index - 1] ?? null}
                   />
                   {nextEntity ? (
                     <button

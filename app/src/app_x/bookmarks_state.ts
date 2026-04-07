@@ -16,6 +16,7 @@ import {
 } from "./generators/cinenerdle2/indexed_db";
 import {
   CINENERDLE_ITEM_ATTRS_UPDATED_EVENT,
+  type CinenerdleItemAttrs,
   writeCinenerdleItemAttrs,
 } from "./generators/cinenerdle2/item_attrs";
 import { hydrateHashPath } from "./generators/cinenerdle2/tmdb";
@@ -111,14 +112,21 @@ export function useBookmarksState({
     bookmarksJsonlDraft,
   );
 
-  const refreshBookmarkRows = useCallback(async (nextBookmarks: BookmarkEntry[]) => {
+  const refreshBookmarkRows = useCallback(async (
+    nextBookmarks: BookmarkEntry[],
+    options?: {
+      itemAttrsSnapshot?: CinenerdleItemAttrs;
+    },
+  ) => {
     if (nextBookmarks.length === 0) {
       setBookmarkRows([]);
       return;
     }
 
     try {
-      setBookmarkRows(await Promise.all(nextBookmarks.map((bookmark) => buildBookmarkRowData(bookmark.hash))));
+      setBookmarkRows(await Promise.all(nextBookmarks.map((bookmark) =>
+        buildBookmarkRowData(bookmark.hash, options?.itemAttrsSnapshot),
+      )));
     } catch {
       setBookmarkRows([]);
     }
@@ -207,15 +215,19 @@ export function useBookmarksState({
   }, [refreshBookmarkRows]);
 
   useEffect(() => {
-    function handleCinenerdleItemAttrsUpdated() {
+    function handleCinenerdleItemAttrsUpdated(event: Event) {
+      const itemAttrsSnapshot =
+        (event as CustomEvent<{ nextItemAttrsSnapshot?: CinenerdleItemAttrs }>).detail
+          ?.nextItemAttrsSnapshot;
       setItemAttrsVersion((version) => version + 1);
+      void refreshBookmarkRows(bookmarksRef.current, { itemAttrsSnapshot });
     }
 
     window.addEventListener(CINENERDLE_ITEM_ATTRS_UPDATED_EVENT, handleCinenerdleItemAttrsUpdated);
     return () => {
       window.removeEventListener(CINENERDLE_ITEM_ATTRS_UPDATED_EVENT, handleCinenerdleItemAttrsUpdated);
     };
-  }, []);
+  }, [refreshBookmarkRows]);
 
   useEffect(() => {
     const previousSerializedBookmarksJsonl = serializedBookmarksJsonlRef.current;
