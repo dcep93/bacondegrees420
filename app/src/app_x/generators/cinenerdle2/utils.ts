@@ -395,8 +395,6 @@ function isAllowedConnectionCrewJob(job: string | undefined): boolean {
     normalizedJob === "director" ||
     normalizedJob === "writer" ||
     normalizedJob === "screenplay" ||
-    normalizedJob === "story" ||
-    normalizedJob === "original story" ||
     normalizedJob === "adaptation" ||
     normalizedJob === "teleplay" ||
     normalizedJob.includes("director of photography") ||
