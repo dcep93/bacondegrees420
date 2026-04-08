@@ -173,7 +173,6 @@ export function CinenerdleEntityCard({
           </div>
         )}
       </div>
-
       {isCinenerdleRootCard ? null : (
         <div className="cinenerdle-card-copy">
           <CardTitle

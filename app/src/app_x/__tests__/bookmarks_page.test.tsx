@@ -96,7 +96,7 @@ describe("BookmarksPage", () => {
     });
   });
 
-  it("renders bookmark cards with the shared cinenerdle footer tooltip overlay", () => {
+  it("renders bookmark cards with the shared cinenerdle footer tooltip anchored over the image", () => {
     const bookmarkRows: BookmarkRowData[] = [{
       hash: "movie:heat:1995",
       cards: [{

@@ -337,16 +337,18 @@
 }
 
 .cinenerdle-card-footer-tooltip {
-  inset: 0;
+  inset: 0 auto auto 0;
   z-index: 4;
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
   max-width: none;
-  height: 100%;
+  height: auto;
+  min-height: 0;
+  aspect-ratio: 1.6;
   padding: 0;
   border: 1px solid rgba(148, 163, 184, 0.24);
-  border-radius: 14px;
+  border-radius: 10px;
   background:
     linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(17, 24, 39, 0.97));
   box-shadow:
@@ -371,10 +373,6 @@
   justify-content: center;
   gap: 0;
   padding: 10px 12px;
-}
-
-.cinenerdle-card-footer-tooltip-section + .cinenerdle-card-footer-tooltip-section {
-  border-top: 1px solid rgba(148, 163, 184, 0.12);
 }
 
 .cinenerdle-card-footer-tooltip-section-body {

@@ -285,6 +285,10 @@ export function FooterChips({
     return (
       <Tooltip
         anchorClassName="cinenerdle-card-footer-tooltip-anchor"
+        anchorProps={{
+          "aria-label": footerTooltip.ariaLabel,
+          tabIndex: 0,
+        }}
         content={footerTooltip.content}
         placement="right"
         tooltipClassName="cinenerdle-card-footer-tooltip"

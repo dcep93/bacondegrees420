@@ -228,6 +228,30 @@ describe("CinenerdleEntityCard", () => {
     expect(html).not.toContain("Click to refetch.");
   });
 
+  it("wraps the footer in the shared read-only tooltip anchor while positioning the tooltip over the image", () => {
+    const footerTooltip = getCinenerdleFooterTooltipContent(
+      makeRenderableMovieCard({
+        tmdbTooltipText: "TMDb data fetched 3/29/2026, 4:03:24 PM.\nClick to refetch.",
+      }),
+      {
+        includeActionHint: false,
+      },
+    );
+    const html = renderToStaticMarkup(
+      <CinenerdleEntityCard
+        card={makeRenderableMovieCard()}
+        footerTooltip={footerTooltip}
+      />,
+    );
+
+    expect(html).toContain("cinenerdle-card-chip-tooltip-anchor cinenerdle-card-footer-tooltip-anchor");
+    expect(html).toContain("<div class=\"cinenerdle-card-image-shell\">");
+    expect(html.indexOf("cinenerdle-card-footer-tooltip-anchor"))
+      .toBeGreaterThan(html.indexOf("<div class=\"cinenerdle-card-image-shell\">"));
+    expect(html.indexOf("cinenerdle-card-footer-tooltip-anchor"))
+      .toBeGreaterThan(html.indexOf("cinenerdle-card-copy"));
+  });
+
   it("wraps the entire footer in the refreshable tooltip anchor when a tmdb row click handler is present", () => {
     const html = renderToStaticMarkup(
       <CinenerdleEntityCard

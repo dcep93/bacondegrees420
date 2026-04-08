@@ -14,19 +14,16 @@ function getTooltipLines(text: string | null | undefined): string[] {
     .filter(Boolean);
 }
 
-function renderFooterTooltipSection(
-  label: string,
-  lines: string[],
-) {
+function renderFooterTooltipLines(lines: string[]) {
   if (lines.length === 0) {
     return null;
   }
 
   return (
-    <span className="cinenerdle-card-footer-tooltip-section" key={label}>
+    <span className="cinenerdle-card-footer-tooltip-section">
       <span className="cinenerdle-card-footer-tooltip-section-body">
         {lines.map((line, index) => (
-          <span className="cinenerdle-card-footer-tooltip-line" key={`${label}:${index}:${line}`}>
+          <span className="cinenerdle-card-footer-tooltip-line" key={`${index}:${line}`}>
             {line}
           </span>
         ))}
@@ -86,8 +83,10 @@ export function getCinenerdleFooterTooltipContent(
     ariaLabel,
     content: (
       <span className="cinenerdle-card-footer-tooltip-panel">
-        {renderFooterTooltipSection("Connections", connectionLines)}
-        {renderFooterTooltipSection("TMDb", visibleTmdbLines)}
+        {renderFooterTooltipLines([
+          ...connectionLines,
+          ...visibleTmdbLines,
+        ])}
       </span>
     ),
   };
