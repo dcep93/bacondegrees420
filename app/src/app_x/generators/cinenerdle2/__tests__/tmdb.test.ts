@@ -1355,6 +1355,67 @@ describe("tmdb forced refresh helpers", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("fetches uncached selected movies when a tmdb id is already known", async () => {
+    const storedMovieRecord = makeFilmRecord({
+      id: 321,
+      tmdbId: 321,
+      title: "La Snob",
+      year: "2024",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 321,
+        title: "La Snob",
+        release_date: "2024-01-05",
+        popularity: 12,
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+    });
+    const fetchMock = vi.fn(async (input: string) => {
+      const url = String(input);
+      if (url.includes("/movie/321/credits")) {
+        return createJsonResponse({ cast: [], crew: [] });
+      }
+
+      if (url.includes("/movie/321?")) {
+        return createJsonResponse(
+          makeTmdbMovieSearchResult({
+            id: 321,
+            title: "La Snob",
+            release_date: "2024-01-05",
+            popularity: 12,
+          }),
+        );
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    indexedDbMock.getFilmRecordById
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(storedMovieRecord);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(null);
+    indexedDbMock.saveFilmRecord.mockImplementation(async () => { });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await prepareSelectedMovie("La Snob", "2024", 321);
+
+    expect(result).toEqual(expect.objectContaining({
+      id: 321,
+      tmdbId: 321,
+      title: "La Snob",
+      year: "2024",
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+    }));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0]?.[0]).toContain("/movie/321?");
+    expect(fetchMock.mock.calls[1]?.[0]).toContain("/movie/321/credits?");
+  });
+
   it("does not fan out into global popular prefetches after a selected fetch", async () => {
     const searchRecords = [
       {
@@ -2413,6 +2474,7 @@ describe("tmdb forced refresh helpers", () => {
     expect(target).toEqual({
       kind: "movie",
       name: "Heat",
+      tmdbId: 321,
       year: "1995",
     });
     expect(indexedDbMock.getFilmRecordByTitleAndYear).toHaveBeenCalledWith("Heat", "1995");
@@ -2459,6 +2521,7 @@ describe("tmdb forced refresh helpers", () => {
     expect(target).toEqual({
       kind: "movie",
       name: "Heat",
+      tmdbId: 321,
       year: "1995",
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);

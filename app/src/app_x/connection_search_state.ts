@@ -757,7 +757,10 @@ export function useConnectionSearchState({
         return;
       }
 
-      await openConnectionRowsForEntity(createFallbackConnectionEntity(target));
+      const resolvedTargetEntity = await hydrateConnectionEntityPresentation(
+        createFallbackConnectionEntity(target),
+      );
+      await openConnectionRowsForEntity(resolvedTargetEntity);
       setConnectionQuery("");
     } catch {
       // Ignore resolution failures and leave the current connection search state intact.

@@ -95,6 +95,7 @@ export type ConnectionTarget =
   | {
     kind: "movie";
     name: string;
+    tmdbId: number | null;
     year: string;
   };
 
@@ -2005,6 +2006,15 @@ export async function prepareSelectedMovie(
         return hydratedMovieRecord;
       }
 
+      const validMovieId = getValidTmdbEntityId(movieId);
+      if (validMovieId) {
+        return fetchAndCacheMovieById(validMovieId, {
+          movieName,
+          movieYear,
+          reason: "fetch",
+        });
+      }
+
       return null;
     },
     {
@@ -2213,6 +2223,7 @@ type ConnectionMovieCandidate = {
   kind: "movie";
   name: string;
   popularity: number;
+  tmdbId: number | null;
   year: string;
 };
 
@@ -2247,6 +2258,7 @@ function createMovieCandidate(params: {
   movieName: string;
   movieYear: string;
   popularity: number | null | undefined;
+  tmdbId?: number | string | null;
   queryMovieName: string;
   queryMovieYear: string;
 }): ConnectionMovieCandidate | null {
@@ -2263,6 +2275,7 @@ function createMovieCandidate(params: {
     kind: "movie",
     name: normalizedName,
     popularity: params.popularity ?? 0,
+    tmdbId: getValidTmdbEntityId(params.tmdbId),
     year: normalizedYear,
   };
 }
@@ -2305,6 +2318,7 @@ function pickBestConnectionTargetFromCandidates(params: {
     return {
       kind: "movie",
       name: movieCandidate.name,
+      tmdbId: movieCandidate.tmdbId,
       year: movieCandidate.year,
     };
   }
@@ -2319,6 +2333,7 @@ function pickBestConnectionTargetFromCandidates(params: {
       : {
         kind: "movie",
         name: movieCandidate.name,
+        tmdbId: movieCandidate.tmdbId,
         year: movieCandidate.year,
       };
   }
@@ -2327,6 +2342,7 @@ function pickBestConnectionTargetFromCandidates(params: {
     return {
       kind: "movie",
       name: movieCandidate.name,
+      tmdbId: movieCandidate.tmdbId,
       year: movieCandidate.year,
     };
   }
@@ -2349,6 +2365,7 @@ function pickBestConnectionTargetFromCandidates(params: {
       : {
         kind: "movie",
         name: movieCandidate.name,
+        tmdbId: movieCandidate.tmdbId,
         year: movieCandidate.year,
       };
   }
@@ -2357,6 +2374,7 @@ function pickBestConnectionTargetFromCandidates(params: {
     return {
       kind: "movie",
       name: movieCandidate.name,
+      tmdbId: movieCandidate.tmdbId,
       year: movieCandidate.year,
     };
   }
@@ -2463,6 +2481,7 @@ export async function resolveConnectionQuery(
               movieName: exactMovieRecord.title,
               movieYear: exactMovieRecord.year,
               popularity: exactMovieRecord.popularity,
+              tmdbId: exactMovieRecord.tmdbId ?? exactMovieRecord.id,
               queryMovieName: parsedMovie.name,
               queryMovieYear: parsedMovie.year,
             })
@@ -2472,6 +2491,7 @@ export async function resolveConnectionQuery(
               movieName: movieEntity.name,
               movieYear: movieEntity.year,
               popularity: movieEntity.popularity,
+              tmdbId: movieEntity.tmdbId,
               queryMovieName: parsedMovie.name,
               queryMovieYear: parsedMovie.year,
             })
@@ -2480,6 +2500,7 @@ export async function resolveConnectionQuery(
             movieName: bestMovieSearchResult?.title ?? "",
             movieYear: getTmdbMovieSearchResultYear(bestMovieSearchResult),
             popularity: bestMovieSearchResult?.popularity,
+            tmdbId: bestMovieSearchResult?.id,
             queryMovieName: parsedMovie.name,
             queryMovieYear: parsedMovie.year,
           }),

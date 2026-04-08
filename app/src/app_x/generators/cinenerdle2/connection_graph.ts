@@ -162,7 +162,7 @@ export function createFallbackConnectionEntity(
       kind: "movie",
       name: item.name,
       year: item.year ?? "",
-      tmdbId: null,
+      tmdbId: getValidTmdbEntityId(item.tmdbId),
       label: formatMoviePathLabel(item.name, item.year ?? ""),
       connectionCount: 0,
       hasCachedTmdbSource: false,
