@@ -18,7 +18,8 @@ import type { PersonRecord, TmdbPersonCredit } from "../generators/cinenerdle2/t
 import { formatMoviePathLabel, getValidTmdbEntityId } from "../generators/cinenerdle2/utils";
 import { createCardViewModel } from "../generators/cinenerdle2/view_model";
 import {
-  getBestPersonTmdbIdsForMovieIds,
+  getBestPersonCoverForMovieIds,
+  type PersonCoverSelectionStrategy,
   resolveMovieCoverRecordsForLabels,
   type ResolvedMovieCoverRecord,
 } from "../movie_person_cover";
@@ -29,6 +30,7 @@ export type CoverPageLookupResult = {
   cards: RenderableCinenerdleEntityCard[];
   personTmdbIds: number[];
   resolvedMovies: ResolvedMovieCoverRecord[];
+  selectionStrategy: PersonCoverSelectionStrategy;
 };
 
 type CoverPageViewProps = {
@@ -126,9 +128,10 @@ export async function resolveCoverPageLookupResult(
   movieLabels: string[],
 ): Promise<CoverPageLookupResult> {
   const resolvedMovies = await resolveMovieCoverRecordsForLabels(movieLabels);
-  const personTmdbIds = await getBestPersonTmdbIdsForMovieIds(
+  const selectionResult = await getBestPersonCoverForMovieIds(
     resolvedMovies.map((resolvedMovie) => resolvedMovie.tmdbId),
   );
+  const { personTmdbIds, strategy: selectionStrategy } = selectionResult;
   const personRecords = await Promise.all(
     personTmdbIds.map((personTmdbId) => getPersonRecordById(personTmdbId)),
   );
@@ -144,6 +147,7 @@ export async function resolveCoverPageLookupResult(
       createCoverPersonCardViewModel(personRecord!, resolvedMovies)),
     personTmdbIds,
     resolvedMovies,
+    selectionStrategy,
   };
 }
 
@@ -220,7 +224,7 @@ export default function CoverPage() {
       setCards(lookupResult.cards);
       setMessage(
         lookupResult.cards.length > 0
-          ? `Found ${lookupResult.cards.length} people covering ${lookupResult.resolvedMovies.length} movies.`
+          ? `Found ${lookupResult.cards.length} people covering ${lookupResult.resolvedMovies.length} movies${lookupResult.selectionStrategy === "approximate" ? " using fast approximate search." : "."}`
           : "No people found.",
       );
       setMessageTone("muted");

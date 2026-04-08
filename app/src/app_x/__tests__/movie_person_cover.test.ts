@@ -22,6 +22,7 @@ vi.mock("../generators/cinenerdle2/tmdb", () => tmdbMock);
 import {
   getBestPersonTmdbIdsForMovieIds,
   getBestPersonTmdbIdsForMovieLabels,
+  selectBestPersonCoverForMovieIds,
   resolveMovieCoverRecordsForLabels,
   selectBestPersonTmdbIdsForMovieIds,
   type PersonCoverCandidate,
@@ -189,6 +190,42 @@ describe("movie_person_cover", () => {
     ];
 
     expect(selectBestPersonTmdbIdsForMovieIds([1, 2, 3, 4, 5, 6], candidates)).toEqual([604, 605]);
+  });
+
+  it("switches to the approximate cover strategy for large movie lists", () => {
+    const movieIds = Array.from({ length: 30 }, (_value, index) => index + 1);
+    const candidates: PersonCoverCandidate[] = [
+      {
+        tmdbId: 701,
+        popularity: 60,
+        movieConnectionKeys: movieIds.slice(0, 15),
+      },
+      {
+        tmdbId: 702,
+        popularity: 50,
+        movieConnectionKeys: movieIds.slice(15),
+      },
+      {
+        tmdbId: 703,
+        popularity: 100,
+        movieConnectionKeys: movieIds.slice(0, 10),
+      },
+      {
+        tmdbId: 704,
+        popularity: 100,
+        movieConnectionKeys: movieIds.slice(10, 20),
+      },
+      {
+        tmdbId: 705,
+        popularity: 100,
+        movieConnectionKeys: movieIds.slice(20),
+      },
+    ];
+
+    expect(selectBestPersonCoverForMovieIds(movieIds, candidates)).toEqual({
+      personTmdbIds: [701, 702],
+      strategy: "approximate",
+    });
   });
 
   it("gathers async candidates across movies and merges duplicate people by tmdb id", async () => {

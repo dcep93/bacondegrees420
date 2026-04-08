@@ -22,6 +22,13 @@ export type PersonCoverCandidate = {
   movieConnectionKeys: number[];
 };
 
+export type PersonCoverSelectionStrategy = "approximate" | "exact";
+
+export type PersonCoverSelectionResult = {
+  personTmdbIds: number[];
+  strategy: PersonCoverSelectionStrategy;
+};
+
 export type ResolvedMovieCoverRecord = {
   inputLabel: string;
   movieRecord: FilmRecord & {
@@ -42,6 +49,10 @@ type BestSolution = {
   ids: number[];
   totalPopularity: number;
 };
+
+const EXACT_COVER_MOVIE_LIMIT = 24;
+const MOVIE_RESOLUTION_CONCURRENCY = 6;
+const PERSON_RECORD_LOOKUP_CONCURRENCY = 12;
 
 function normalizePositiveTmdbId(candidateId: number | string | null | undefined): number | null {
   const validTmdbId = getValidTmdbEntityId(candidateId);
@@ -129,6 +140,32 @@ function normalizeMovieLabels(movieLabels: string[]): string[] {
   return movieLabels
     .map((movieLabel) => movieLabel.trim())
     .filter(Boolean);
+}
+
+async function mapWithConcurrencyLimit<TInput, TOutput>(
+  values: TInput[],
+  concurrencyLimit: number,
+  mapper: (value: TInput, index: number) => Promise<TOutput>,
+): Promise<TOutput[]> {
+  if (values.length === 0) {
+    return [];
+  }
+
+  const results = new Array<TOutput>(values.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(Math.max(concurrencyLimit, 1), values.length);
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (nextIndex < values.length) {
+        const currentIndex = nextIndex;
+        nextIndex += 1;
+        results[currentIndex] = await mapper(values[currentIndex], currentIndex);
+      }
+    }),
+  );
+
+  return results;
 }
 
 async function ensureMovieHasPersonRecords(
@@ -220,8 +257,10 @@ export async function resolveMovieCoverRecordsForLabels(
     return [];
   }
 
-  const resolvedMovies = await Promise.all(
-    normalizedMovieLabels.map((movieLabel) => resolveMovieRecordForLabel(movieLabel)),
+  const resolvedMovies = await mapWithConcurrencyLimit(
+    normalizedMovieLabels,
+    MOVIE_RESOLUTION_CONCURRENCY,
+    async (movieLabel) => resolveMovieRecordForLabel(movieLabel),
   );
   const seenMovieTmdbIds = new Set<number>();
   const dedupedMovies = resolvedMovies.filter((resolvedMovie) => {
@@ -329,15 +368,10 @@ function getUncoveredMovieIds(
     (coveredMask & (1n << BigInt(index))) === 0n);
 }
 
-export function selectBestPersonTmdbIdsForMovieIds(
-  movieTmdbIds: number[],
+function prepareCandidatesForMovieIds(
+  requestedMovieIds: number[],
   candidates: ReadonlyArray<PersonCoverCandidate>,
-): number[] {
-  const requestedMovieIds = normalizeRequestedMovieTmdbIds(movieTmdbIds);
-  if (requestedMovieIds.length === 0) {
-    return [];
-  }
-
+): NormalizedCandidate[] {
   const preparedCandidates = pruneDominatedCandidates(
     mergeCandidates(requestedMovieIds, candidates),
   ).sort((leftCandidate, rightCandidate) => {
@@ -356,6 +390,13 @@ export function selectBestPersonTmdbIdsForMovieIds(
     throw new Error(`Unable to cover movie TMDB ids: ${uncoveredMovieIds.join(", ")}`);
   }
 
+  return preparedCandidates;
+}
+
+function selectExactBestPersonTmdbIdsForMovieIds(
+  requestedMovieIds: number[],
+  preparedCandidates: NormalizedCandidate[],
+): number[] {
   const fullCoverageMask = (1n << BigInt(requestedMovieIds.length)) - 1n;
   const bestSolutionByCoverageMask = new Map<bigint, BestSolution>();
   bestSolutionByCoverageMask.set(0n, {
@@ -395,14 +436,117 @@ export function selectBestPersonTmdbIdsForMovieIds(
   return bestSolution.ids;
 }
 
-export async function getBestPersonTmdbIdsForMovieIds(movieTmdbIds: number[]): Promise<number[]> {
-  const requestedMovieIds = normalizeRequestedMovieTmdbIds(movieTmdbIds);
-  if (requestedMovieIds.length === 0) {
-    return [];
+function pruneRedundantSelectedCandidates(selectedCandidates: NormalizedCandidate[]): NormalizedCandidate[] {
+  return selectedCandidates.filter((candidate, candidateIndex) => {
+    let coveredMaskWithoutCandidate = 0n;
+
+    selectedCandidates.forEach((otherCandidate, otherCandidateIndex) => {
+      if (candidateIndex !== otherCandidateIndex) {
+        coveredMaskWithoutCandidate |= otherCandidate.coverageMask;
+      }
+    });
+
+    return (coveredMaskWithoutCandidate & candidate.coverageMask) !== candidate.coverageMask;
+  });
+}
+
+function selectApproximateBestPersonTmdbIdsForMovieIds(
+  requestedMovieIds: number[],
+  preparedCandidates: NormalizedCandidate[],
+): number[] {
+  let uncoveredMask = (1n << BigInt(requestedMovieIds.length)) - 1n;
+  const selectedCandidates: NormalizedCandidate[] = [];
+  const remainingCandidates = [...preparedCandidates];
+
+  while (uncoveredMask !== 0n) {
+    let bestCandidateIndex = -1;
+    let bestNewCoverageCount = 0;
+
+    remainingCandidates.forEach((candidate, candidateIndex) => {
+      const uncoveredCoverageMask = candidate.coverageMask & uncoveredMask;
+      if (uncoveredCoverageMask === 0n) {
+        return;
+      }
+
+      const newCoverageCount = countSetBits(uncoveredCoverageMask);
+      const currentBestCandidate =
+        bestCandidateIndex >= 0 ? remainingCandidates[bestCandidateIndex] : null;
+      const shouldReplaceBestCandidate =
+        newCoverageCount > bestNewCoverageCount ||
+        (newCoverageCount === bestNewCoverageCount &&
+          (currentBestCandidate === null ||
+            candidate.popularity > currentBestCandidate.popularity ||
+            (candidate.popularity === currentBestCandidate.popularity &&
+              candidate.tmdbId < currentBestCandidate.tmdbId)));
+
+      if (!shouldReplaceBestCandidate) {
+        return;
+      }
+
+      bestCandidateIndex = candidateIndex;
+      bestNewCoverageCount = newCoverageCount;
+    });
+
+    if (bestCandidateIndex < 0) {
+      throw new Error(`Unable to cover movie TMDB ids: ${requestedMovieIds.join(", ")}`);
+    }
+
+    const [nextCandidate] = remainingCandidates.splice(bestCandidateIndex, 1);
+    selectedCandidates.push(nextCandidate);
+    uncoveredMask &= ~nextCandidate.coverageMask;
   }
 
-  const personRecordsByMovieId = await Promise.all(
-    requestedMovieIds.map(async (movieTmdbId) => [movieTmdbId, await getPersonRecordsByMovieId(movieTmdbId)] as const),
+  return pruneRedundantSelectedCandidates(selectedCandidates)
+    .map((candidate) => candidate.tmdbId)
+    .sort((leftId, rightId) => leftId - rightId);
+}
+
+export function selectBestPersonCoverForMovieIds(
+  movieTmdbIds: number[],
+  candidates: ReadonlyArray<PersonCoverCandidate>,
+): PersonCoverSelectionResult {
+  const requestedMovieIds = normalizeRequestedMovieTmdbIds(movieTmdbIds);
+  if (requestedMovieIds.length === 0) {
+    return {
+      personTmdbIds: [],
+      strategy: "exact",
+    };
+  }
+
+  const preparedCandidates = prepareCandidatesForMovieIds(requestedMovieIds, candidates);
+  const strategy: PersonCoverSelectionStrategy =
+    requestedMovieIds.length > EXACT_COVER_MOVIE_LIMIT ? "approximate" : "exact";
+
+  return {
+    personTmdbIds: strategy === "exact"
+      ? selectExactBestPersonTmdbIdsForMovieIds(requestedMovieIds, preparedCandidates)
+      : selectApproximateBestPersonTmdbIdsForMovieIds(requestedMovieIds, preparedCandidates),
+    strategy,
+  };
+}
+
+export function selectBestPersonTmdbIdsForMovieIds(
+  movieTmdbIds: number[],
+  candidates: ReadonlyArray<PersonCoverCandidate>,
+): number[] {
+  return selectBestPersonCoverForMovieIds(movieTmdbIds, candidates).personTmdbIds;
+}
+
+export async function getBestPersonCoverForMovieIds(
+  movieTmdbIds: number[],
+): Promise<PersonCoverSelectionResult> {
+  const requestedMovieIds = normalizeRequestedMovieTmdbIds(movieTmdbIds);
+  if (requestedMovieIds.length === 0) {
+    return {
+      personTmdbIds: [],
+      strategy: "exact",
+    };
+  }
+
+  const personRecordsByMovieId = await mapWithConcurrencyLimit(
+    requestedMovieIds,
+    PERSON_RECORD_LOOKUP_CONCURRENCY,
+    async (movieTmdbId) => [movieTmdbId, await getPersonRecordsByMovieId(movieTmdbId)] as const,
   );
   const uncoveredMovieIds = personRecordsByMovieId
     .filter(([, personRecords]) => personRecords.length === 0)
@@ -433,10 +577,11 @@ export async function getBestPersonTmdbIdsForMovieIds(movieTmdbIds: number[]): P
     });
   });
   const candidates = Array.from(candidateCoverageByPersonTmdbId.values());
-  return selectBestPersonTmdbIdsForMovieIds(
-    requestedMovieIds,
-    candidates,
-  );
+  return selectBestPersonCoverForMovieIds(requestedMovieIds, candidates);
+}
+
+export async function getBestPersonTmdbIdsForMovieIds(movieTmdbIds: number[]): Promise<number[]> {
+  return (await getBestPersonCoverForMovieIds(movieTmdbIds)).personTmdbIds;
 }
 
 export async function getBestPersonTmdbIdsForMovieLabels(movieLabels: string[]): Promise<number[]> {
