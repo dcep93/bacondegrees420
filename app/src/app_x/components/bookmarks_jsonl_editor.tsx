@@ -22,7 +22,6 @@ export default function BookmarksJsonlEditorModal({
   isBookmarksJsonlDraftDirty,
   onApply,
   onChange,
-  onClose,
   onReset,
   textareaRef,
 }: {
@@ -30,7 +29,6 @@ export default function BookmarksJsonlEditorModal({
   isBookmarksJsonlDraftDirty: boolean;
   onApply: () => void;
   onChange: (nextDraft: string) => void;
-  onClose: () => void;
   onReset: () => void;
   textareaRef?: Ref<HTMLTextAreaElement>;
 }) {
@@ -42,14 +40,6 @@ export default function BookmarksJsonlEditorModal({
       onClick={(event) => event.stopPropagation()}
       role="dialog"
     >
-      <button
-        aria-label="Close text editor"
-        className="bacon-title-action-icon-button bacon-bookmarks-jsonl-modal-close"
-        onClick={onClose}
-        type="button"
-      >
-        ✕
-      </button>
       <textarea
         className="bacon-bookmarks-jsonl-textarea"
         id="bacon-bookmarks-jsonl-textarea"

@@ -407,7 +407,6 @@ describe("Bookmarks JSONL editor", () => {
         isBookmarksJsonlDraftDirty={false}
         onApply={() => { }}
         onChange={() => { }}
-        onClose={() => { }}
         onReset={() => { }}
       />,
     );
@@ -429,7 +428,6 @@ describe("Bookmarks JSONL editor", () => {
         )}
         onApply={() => { }}
         onChange={() => { }}
-        onClose={() => { }}
         onReset={() => { }}
       />,
     );
@@ -453,7 +451,6 @@ describe("Bookmarks JSONL editor", () => {
         )}
         onApply={() => { }}
         onChange={() => { }}
-        onClose={() => { }}
         onReset={() => { }}
       />,
     );
@@ -474,7 +471,6 @@ describe("Bookmarks JSONL editor", () => {
         )}
         onApply={() => { }}
         onChange={() => { }}
-        onClose={() => { }}
         onReset={() => { }}
       />,
     );

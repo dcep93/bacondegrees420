@@ -445,10 +445,6 @@
   overflow: auto;
 }
 
-.bacon-bookmarks-jsonl-modal-close {
-  align-self: flex-end;
-}
-
 .bacon-bookmarks-jsonl-textarea {
   box-sizing: border-box;
   width: 100%;

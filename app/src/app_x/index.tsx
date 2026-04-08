@@ -567,7 +567,6 @@ export default function AppX() {
             isBookmarksJsonlDraftDirty={isBookmarksJsonlDraftDirty}
             onApply={handleApplyBookmarksJsonl}
             onChange={setBookmarksJsonlDraft}
-            onClose={handleCloseBookmarksJsonlEditor}
             onReset={handleResetBookmarksJsonlDraft}
             textareaRef={bookmarksJsonlTextareaRef}
           />
