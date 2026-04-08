@@ -85,6 +85,9 @@ function serializeHashSegment(segment: string): string {
   ).replace(
     /%3A/gi,
     ":",
+  ).replace(
+    /%2C/gi,
+    ",",
   );
 }
 

@@ -198,6 +198,17 @@ describe("serializePathNodes", () => {
     );
   });
 
+  it("keeps commas readable in canonical movie labels", () => {
+    expect(
+      serializePathNodes([
+        createPathNode(
+          "movie",
+          "The Adventures of Priscilla, Queen of the Desert",
+          "1994",
+        ),
+      ]),
+    ).toBe("#film|The+Adventures+of+Priscilla,+Queen+of+the+Desert+(1994)");
+  });
 });
 
 describe("normalizeHashValue", () => {
@@ -229,6 +240,14 @@ describe("normalizeHashValue", () => {
     ).toBe(
       "#cinenerdle|Interstellar+(2014)|Jessica+Chastain|Molly's+Game+(2017)|Idris+Elba|Avengers:+Infinity+War+(2018)",
     );
+  });
+
+  it("canonicalizes encoded commas back to readable commas", () => {
+    expect(
+      normalizeHashValue(
+        "#film|The+Adventures+of+Priscilla%2C+Queen+of+the+Desert+(1994)",
+      ),
+    ).toBe("#film|The+Adventures+of+Priscilla,+Queen+of+the+Desert+(1994)");
   });
 
   it("rewrites known skewed Star Wars movie titles to the TMDb title in cinenerdle hashes", () => {
