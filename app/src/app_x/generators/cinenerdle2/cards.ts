@@ -1,4 +1,5 @@
 import { CINENERDLE_ICON_URL, TMDB_ICON_URL } from "./constants";
+import { addCinenerdleDebugLog } from "./debug_log";
 import type {
   CinenerdleDailyStarter,
   FilmRecord,
@@ -21,6 +22,8 @@ import {
   normalizeName,
   normalizeTitle,
 } from "./utils";
+
+const LEONARDO_DICAPRIO_NORMALIZED_NAME = normalizeName("Leonardo DiCaprio");
 
 function getMovieCardIdentityId(
   movieRecord: FilmRecord | null | undefined,
@@ -365,6 +368,9 @@ export function createPersonAssociationCard(
     throw new Error("Person association cards require at least one credit.");
   }
   const personName = personRecord?.name ?? credit.name ?? "";
+  const isLeonardoDiCaprio =
+    normalizeName(personName) === LEONARDO_DICAPRIO_NORMALIZED_NAME ||
+    credits.some((candidate) => normalizeName(candidate.name ?? "") === LEONARDO_DICAPRIO_NORMALIZED_NAME);
   const creditLines = getPersonAssociationCreditLines(credits);
   const primaryCreditLine = creditLines[0] ?? { subtitle: "", subtitleDetail: "" };
   const popularitySource = personRecord?.rawTmdbPerson
@@ -372,6 +378,30 @@ export function createPersonAssociationCard(
     : credit.popularity !== null && credit.popularity !== undefined
       ? "TMDb person popularity from this movie credit."
       : "Popularity is unavailable, so this card falls back to 0.";
+
+  if (isLeonardoDiCaprio) {
+    addCinenerdleDebugLog("tree:leonardo-dicaprio-association-card", {
+      personName,
+      personTmdbId: getValidTmdbEntityId(personRecord?.tmdbId ?? personRecord?.id ?? credit.id),
+      primaryCredit: {
+        creditType: credit.creditType ?? null,
+        character: credit.character ?? null,
+        job: credit.job ?? null,
+        department: credit.department ?? null,
+        order: typeof credit.order === "number" ? credit.order : null,
+      },
+      credits: credits.map((candidate) => ({
+        id: candidate.id ?? null,
+        name: candidate.name ?? null,
+        creditType: candidate.creditType ?? null,
+        character: candidate.character ?? null,
+        job: candidate.job ?? null,
+        department: candidate.department ?? null,
+        order: typeof candidate.order === "number" ? candidate.order : null,
+      })),
+      creditLines,
+    });
+  }
 
   return {
     key: getPersonCardKey(personName, credit.id),

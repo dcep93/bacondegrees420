@@ -15,7 +15,8 @@ import { createPersonRootCard } from "../generators/cinenerdle2/cards";
 import { getCinenerdleFooterTooltipContent } from "../generators/cinenerdle2/entity_card/footer_tooltip";
 import { getPersonRecordById } from "../generators/cinenerdle2/indexed_db";
 import type { PersonRecord, TmdbPersonCredit } from "../generators/cinenerdle2/types";
-import { formatMoviePathLabel, getValidTmdbEntityId } from "../generators/cinenerdle2/utils";
+import { addCinenerdleDebugLog } from "../generators/cinenerdle2/debug_log";
+import { formatMoviePathLabel, getValidTmdbEntityId, normalizeName } from "../generators/cinenerdle2/utils";
 import { createCardViewModel } from "../generators/cinenerdle2/view_model";
 import {
   getBestPersonCoverForMovieIds,
@@ -41,6 +42,8 @@ type CoverPageViewProps = {
   messageTone: "error" | "muted";
   onInputChange: (event: ChangeEvent<HTMLTextAreaElement>) => void;
 };
+
+const LEONARDO_DICAPRIO_NORMALIZED_NAME = normalizeName("Leonardo DiCaprio");
 
 function getMatchedCreditsForPerson(
   personTmdbId: number,
@@ -88,6 +91,7 @@ export function createCoverPersonCardViewModel(
   resolvedMovies: ResolvedMovieCoverRecord[],
 ): RenderableCinenerdleEntityCard {
   const personTmdbId = getValidTmdbEntityId(personRecord.tmdbId ?? personRecord.id);
+  const isLeonardoDiCaprio = normalizeName(personRecord.name) === LEONARDO_DICAPRIO_NORMALIZED_NAME;
   const basePersonCard = createPersonRootCard(personRecord, personRecord.name);
   const creditLines = personTmdbId === null
     ? []
@@ -97,14 +101,40 @@ export function createCoverPersonCardViewModel(
         return [];
       }
 
-      return [{
+      const nextCreditLine = {
         subtitle: formatMoviePathLabel(
           resolvedMovie.movieRecord.title,
           resolvedMovie.movieRecord.year,
         ),
         subtitleDetail: formatCoverCreditDetail(matchedCredits),
-      }];
+      };
+
+      if (isLeonardoDiCaprio) {
+        addCinenerdleDebugLog("cover:leonardo-dicaprio-credit-line", {
+          movie: nextCreditLine.subtitle,
+          subtitleDetail: nextCreditLine.subtitleDetail,
+          matchedCredits: matchedCredits.map((credit) => ({
+            id: credit.id ?? null,
+            name: credit.name ?? null,
+            creditType: credit.creditType ?? null,
+            character: credit.character ?? null,
+            job: credit.job ?? null,
+            department: credit.department ?? null,
+            order: typeof credit.order === "number" ? credit.order : null,
+          })),
+        });
+      }
+
+      return [nextCreditLine];
     });
+
+  if (isLeonardoDiCaprio) {
+    addCinenerdleDebugLog("cover:leonardo-dicaprio-card-view-model", {
+      personTmdbId,
+      personName: personRecord.name,
+      creditLines,
+    });
+  }
 
   const cardViewModel = createCardViewModel(
     {

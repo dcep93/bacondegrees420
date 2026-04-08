@@ -1160,7 +1160,7 @@ export async function fetchAndCachePerson(
       const fetchTimestamp = new Date().toISOString();
       const personRecord = buildPersonRecord(
         person,
-        creditsPayload,
+        createTimestampedPersonMovieCreditsResponse(creditsPayload, fetchTimestamp),
         undefined,
         fetchTimestamp,
       );
@@ -1262,8 +1262,34 @@ function createTimestampedMovieCreditsResponse(
   fetchTimestamp: string,
 ): TmdbMovieCreditsResponse {
   return {
-    cast: creditsPayload.cast?.map((credit) => ({ ...credit, fetchTimestamp })) ?? [],
-    crew: creditsPayload.crew?.map((credit) => ({ ...credit, fetchTimestamp })) ?? [],
+    cast: creditsPayload.cast?.map((credit) => ({
+      ...credit,
+      creditType: "cast",
+      fetchTimestamp,
+    })) ?? [],
+    crew: creditsPayload.crew?.map((credit) => ({
+      ...credit,
+      creditType: "crew",
+      fetchTimestamp,
+    })) ?? [],
+  };
+}
+
+function createTimestampedPersonMovieCreditsResponse(
+  creditsPayload: TmdbPersonMovieCreditsResponse,
+  fetchTimestamp: string,
+): TmdbPersonMovieCreditsResponse {
+  return {
+    cast: creditsPayload.cast?.map((credit) => ({
+      ...credit,
+      creditType: "cast",
+      fetchTimestamp,
+    })) ?? [],
+    crew: creditsPayload.crew?.map((credit) => ({
+      ...credit,
+      creditType: "crew",
+      fetchTimestamp,
+    })) ?? [],
   };
 }
 

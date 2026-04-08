@@ -479,6 +479,66 @@ describe("tmdb forced refresh helpers", () => {
     expect(fetchMock.mock.calls[0]?.[0]).toContain("/movie/321/credits?");
   });
 
+  it("stamps creditType on direct movie credits when hydrating a movie", async () => {
+    const directMovieWithoutCredits = makeFilmRecord({
+      id: 321,
+      tmdbId: 321,
+      title: "Once Upon a Time... in Hollywood",
+      year: "2019",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 321,
+        title: "Once Upon a Time... in Hollywood",
+        release_date: "2019-07-26",
+        popularity: 99,
+        genres: [{ id: 35, name: "Comedy" }],
+      }),
+      rawTmdbMovieCreditsResponse: undefined,
+    });
+    const fetchMock = vi.fn(async (input: string) => {
+      const url = String(input);
+      if (url.includes("/movie/321/credits")) {
+        return createJsonResponse({
+          cast: [{
+            id: 6193,
+            name: "Leonardo DiCaprio",
+            character: "Rick Dalton",
+            order: 0,
+          }],
+          crew: [{
+            id: 138,
+            name: "Quentin Tarantino",
+            job: "Director",
+            department: "Directing",
+            order: 0,
+          }],
+        });
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    indexedDbMock.getFilmRecordById.mockResolvedValue(directMovieWithoutCredits);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(directMovieWithoutCredits);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await prepareSelectedMovie("Once Upon a Time... in Hollywood", "2019", 321);
+
+    expect(result).toEqual(expect.objectContaining({
+      rawTmdbMovieCreditsResponse: {
+        cast: [expect.objectContaining({
+          id: 6193,
+          creditType: "cast",
+          character: "Rick Dalton",
+        })],
+        crew: [expect.objectContaining({
+          id: 138,
+          creditType: "crew",
+          job: "Director",
+        })],
+      },
+    }));
+  });
+
   it("does not refetch direct movies solely because genreIds are empty", async () => {
     const sparseMovieRecord = makeFilmRecord({
       id: 321,
@@ -742,6 +802,66 @@ describe("tmdb forced refresh helpers", () => {
     expect(indexedDbMock.savePersonRecord).toHaveBeenCalledTimes(1);
     expect(indexedDbMock.saveFilmRecords).toHaveBeenCalledTimes(1);
     expect(indexedDbMock.batchCinenerdleRecordsUpdatedEvents).toHaveBeenCalledTimes(1);
+  });
+
+  it("stamps creditType on direct person movie credits when hydrating a person", async () => {
+    const fetchMock = vi.fn(async (input: string) => {
+      const url = String(input);
+      if (url.includes("/person/60/movie_credits")) {
+        return createJsonResponse({
+          cast: [{
+            id: 466420,
+            title: "Killers of the Flower Moon",
+            release_date: "2023-10-18",
+            character: "Ernest Burkhart",
+            order: 0,
+          }],
+          crew: [{
+            id: 59967,
+            title: "Don's Plum",
+            release_date: "2001-02-10",
+            job: "Producer",
+            department: "Production",
+            order: 0,
+          }],
+        });
+      }
+
+      if (url.includes("/person/60?")) {
+        return createJsonResponse(
+          makeTmdbPersonSearchResult({
+            id: 60,
+            name: "Al Pacino",
+            popularity: 88,
+          }),
+        );
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    indexedDbMock.getPersonRecordById.mockResolvedValue(null);
+    indexedDbMock.getPersonRecordByName.mockResolvedValue(null);
+    vi.stubGlobal("fetch", fetchMock);
+
+    await prepareSelectedPerson("Al Pacino", 60, {
+      forceRefresh: true,
+    });
+
+    expect(indexedDbMock.savePersonRecord).toHaveBeenCalledWith(expect.objectContaining({
+      rawTmdbMovieCreditsResponse: {
+        cast: [expect.objectContaining({
+          id: 466420,
+          creditType: "cast",
+          character: "Ernest Burkhart",
+        })],
+        crew: [expect.objectContaining({
+          id: 59967,
+          creditType: "crew",
+          job: "Producer",
+        })],
+      },
+    }));
   });
 
   it("starts person details and credits in parallel and saves only after both payloads resolve", async () => {
