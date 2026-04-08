@@ -137,7 +137,9 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   const pendingInitialTreeBottomSnapRef = useRef(true);
   const initialTreeBottomSnapRequestIdRef = useRef(0);
   const initialTreeVisibilityTimeoutRef = useRef<number | null>(null);
+  const hasCompletedInitialTreeLoadRef = useRef(false);
   const [isInitialTreeVisible, setIsInitialTreeVisible] = useState(false);
+  const [shouldShowInitialTreeLoadingSpinner, setShouldShowInitialTreeLoadingSpinner] = useState(false);
   const [recordsRefreshVersion, setRecordsRefreshVersion] = useState(0);
   const [activeTreeRefreshRequest, setActiveTreeRefreshRequest] = useState<TreeRefreshRequestState | null>(null);
   const pendingTreeRefreshRequestsRef = useRef<TreeRefreshRequestState[]>([]);
@@ -168,6 +170,11 @@ const Cinenerdle2 = memo(function Cinenerdle2({
     }
 
     shellElement.style.opacity = visible ? "1" : "0";
+  }, []);
+
+  const finishInitialTreeLoad = useCallback(() => {
+    hasCompletedInitialTreeLoadRef.current = true;
+    setShouldShowInitialTreeLoadingSpinner(false);
   }, []);
 
   useEffect(() => {
@@ -298,7 +305,16 @@ const Cinenerdle2 = memo(function Cinenerdle2({
     requestItemAttrTreeRefresh(itemAttrsSnapshotRef.current);
   }, [requestItemAttrTreeRefresh]);
 
+  const handleInitialDailyStartersPrefetchBlocked = useCallback(() => {
+    if (hasCompletedInitialTreeLoadRef.current) {
+      return;
+    }
+
+    setShouldShowInitialTreeLoadingSpinner(true);
+  }, []);
+
   const controller = useCinenerdleController({
+    onInitialDailyStartersPrefetchBlocked: handleInitialDailyStartersPrefetchBlocked,
     onItemAttrMutationRequested: handleItemAttrMutationRequested,
     onItemAttrsSnapshotChange: (nextItemAttrsSnapshot) => {
       itemAttrsSnapshotRef.current = nextItemAttrsSnapshot;
@@ -425,8 +441,13 @@ const Cinenerdle2 = memo(function Cinenerdle2({
     if (typeof window !== "undefined" && typeof window.setTimeout === "function") {
       initialTreeVisibilityTimeoutRef.current = window.setTimeout(() => {
         initialTreeVisibilityTimeoutRef.current = null;
+        if (treeRef.current.length === 0 || pendingInitialTreeBottomSnapRef.current) {
+          return;
+        }
+
         setInitialTreeShellVisibility(true);
         setIsInitialTreeVisible(true);
+        finishInitialTreeLoad();
       }, 2500);
     }
 
@@ -440,7 +461,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
         initialTreeVisibilityTimeoutRef.current = null;
       }
     };
-  }, [generatorResetKey, setInitialTreeShellVisibility]);
+  }, [finishInitialTreeLoad, generatorResetKey, setInitialTreeShellVisibility]);
 
   useEffect(() => {
     if (!highlightedConnectedSuggestion) {
@@ -527,82 +548,102 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   }, [connectedSuggestionSelectionRequest, writeHash]);
 
   return (
-    <div
-      className={[
-        "cinenerdle-initial-tree-shell",
-        isInitialTreeVisible ? "cinenerdle-initial-tree-shell-visible" : "",
-      ].filter(Boolean).join(" ")}
-      ref={initialTreeShellRef}
-    >
-      <AbstractGenerator
-        createInitialState={controller.createInitialState}
-        generatorHandleRef={generatorHandleRef}
-        getRowPresentation={getRowPresentation}
-        key={generatorResetKey}
-        onInitialTreePainted={(tree) => {
-          if (!pendingInitialTreeBottomSnapRef.current || tree.length === 0) {
-            return;
-          }
-
-          pendingInitialTreeBottomSnapRef.current = false;
-          const requestId = initialTreeBottomSnapRequestIdRef.current;
-          markInitialViewportSettled();
-          if (initialTreeBottomSnapRequestIdRef.current === requestId) {
-            scrollPageToBottom();
-          }
-          setInitialTreeShellVisibility(true);
-          if (
-            typeof window !== "undefined" &&
-            typeof window.requestAnimationFrame === "function"
-          ) {
-            window.requestAnimationFrame(() => {
-              setIsInitialTreeVisible(true);
-            });
-          } else {
-            setIsInitialTreeVisible(true);
-          }
-        }}
-        onTreeChange={(tree) => {
-          treeRef.current = tree;
-          if (!pendingInitialTreeBottomSnapRef.current && tree.length > 0 && !isInitialTreeVisible) {
-            setInitialTreeShellVisibility(true);
-            setIsInitialTreeVisible(true);
-          }
-          const pendingConnectionPathAppendReveal = pendingConnectionPathAppendRevealRef.current;
-          if (pendingConnectionPathAppendReveal) {
-            const revealGenerationIndex = getConnectionPathAppendRevealGenerationIndex(
-              tree,
-              pendingConnectionPathAppendReveal.targetEntity,
-            );
-
-            if (revealGenerationIndex !== null) {
-              pendingConnectionPathAppendRevealRef.current = null;
-              void revealConnectionPathAppendTarget(
-                generatorHandleRef.current,
-                revealGenerationIndex,
-              ).catch(() => { });
+    <>
+      {shouldShowInitialTreeLoadingSpinner ? (
+        <div className="cinenerdle-initial-tree-loading">
+          <div
+            aria-busy="true"
+            aria-label="Loading daily starters"
+            className="cinenerdle-initial-tree-loading-status"
+            role="status"
+          >
+            <span aria-hidden="true" className="bacon-connection-matchup-spinner" />
+            <span className="bacon-connection-matchup-loading-label">
+              Loading daily starters
+            </span>
+          </div>
+        </div>
+      ) : null}
+      <div
+        className={[
+          "cinenerdle-initial-tree-shell",
+          isInitialTreeVisible ? "cinenerdle-initial-tree-shell-visible" : "",
+        ].filter(Boolean).join(" ")}
+        ref={initialTreeShellRef}
+      >
+        <AbstractGenerator
+          createInitialState={controller.createInitialState}
+          generatorHandleRef={generatorHandleRef}
+          getRowPresentation={getRowPresentation}
+          key={generatorResetKey}
+          onInitialTreePainted={(tree) => {
+            if (!pendingInitialTreeBottomSnapRef.current || tree.length === 0) {
+              return;
             }
-          }
-          const youngestSelectedGenerationIndex = getYoungestSelectedGenerationIndex(tree);
-          const nextYoungestSelectedCard = getYoungestSelectedCard(tree);
-          setTmdbLogGeneration(youngestSelectedGenerationIndex);
-          if (areYoungestSelectedCardsEqual(
-            lastYoungestSelectedCardRef.current,
-            nextYoungestSelectedCard,
-          )) {
-            return;
-          }
 
-          lastYoungestSelectedCardRef.current = nextYoungestSelectedCard;
-          onYoungestSelectedCardChange?.(nextYoungestSelectedCard);
-        }}
-        reduce={controller.reduce}
-        renderCard={controller.renderCard}
-        runEffect={controller.runEffect}
-        shouldAutoScrollMountedGeneration={shouldAutoScrollMountedGeneration}
-        treeRefreshRequest={treeRefreshRequest}
-      />
-    </div>
+            pendingInitialTreeBottomSnapRef.current = false;
+            const requestId = initialTreeBottomSnapRequestIdRef.current;
+            markInitialViewportSettled();
+            if (initialTreeBottomSnapRequestIdRef.current === requestId) {
+              scrollPageToBottom();
+            }
+            setInitialTreeShellVisibility(true);
+            if (
+              typeof window !== "undefined" &&
+              typeof window.requestAnimationFrame === "function"
+            ) {
+              window.requestAnimationFrame(() => {
+                setIsInitialTreeVisible(true);
+                finishInitialTreeLoad();
+              });
+            } else {
+              setIsInitialTreeVisible(true);
+              finishInitialTreeLoad();
+            }
+          }}
+          onTreeChange={(tree) => {
+            treeRef.current = tree;
+            if (!pendingInitialTreeBottomSnapRef.current && tree.length > 0 && !isInitialTreeVisible) {
+              setInitialTreeShellVisibility(true);
+              setIsInitialTreeVisible(true);
+              finishInitialTreeLoad();
+            }
+            const pendingConnectionPathAppendReveal = pendingConnectionPathAppendRevealRef.current;
+            if (pendingConnectionPathAppendReveal) {
+              const revealGenerationIndex = getConnectionPathAppendRevealGenerationIndex(
+                tree,
+                pendingConnectionPathAppendReveal.targetEntity,
+              );
+
+              if (revealGenerationIndex !== null) {
+                pendingConnectionPathAppendRevealRef.current = null;
+                void revealConnectionPathAppendTarget(
+                  generatorHandleRef.current,
+                  revealGenerationIndex,
+                ).catch(() => { });
+              }
+            }
+            const youngestSelectedGenerationIndex = getYoungestSelectedGenerationIndex(tree);
+            const nextYoungestSelectedCard = getYoungestSelectedCard(tree);
+            setTmdbLogGeneration(youngestSelectedGenerationIndex);
+            if (areYoungestSelectedCardsEqual(
+              lastYoungestSelectedCardRef.current,
+              nextYoungestSelectedCard,
+            )) {
+              return;
+            }
+
+            lastYoungestSelectedCardRef.current = nextYoungestSelectedCard;
+            onYoungestSelectedCardChange?.(nextYoungestSelectedCard);
+          }}
+          reduce={controller.reduce}
+          renderCard={controller.renderCard}
+          runEffect={controller.runEffect}
+          shouldAutoScrollMountedGeneration={shouldAutoScrollMountedGeneration}
+          treeRefreshRequest={treeRefreshRequest}
+        />
+      </div>
+    </>
   );
 });
 

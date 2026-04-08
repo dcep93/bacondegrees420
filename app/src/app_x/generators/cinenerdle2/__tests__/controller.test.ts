@@ -1166,14 +1166,18 @@ describe("getCardTmdbRowTooltipText", () => {
 });
 
 describe("useCinenerdleController", () => {
-  it("renders cached starters first and hydrates matching fetched starters in the background", async () => {
+  it("waits for daily starter hydration before rendering the root tree", async () => {
     const starterRecord = makeFilmRecord({
       id: 321,
       tmdbId: 321,
       title: "Heat",
       year: "1995",
     });
-    const controller = renderController();
+    const blockedPrefetchMock = vi.fn();
+    const starterFetchDeferred = createDeferred<Array<typeof starterRecord>>();
+    const controller = renderController({
+      onInitialDailyStartersPrefetchBlocked: blockedPrefetchMock,
+    });
     const applyUpdate = vi.fn();
 
     window.localStorage.setItem(
@@ -1181,9 +1185,9 @@ describe("useCinenerdleController", () => {
       JSON.stringify(["Heat (1995)"]),
     );
     indexedDbMock.getCinenerdleStarterFilmRecords.mockResolvedValue([starterRecord]);
-    tmdbMock.fetchCinenerdleDailyStarterMovies.mockResolvedValue([starterRecord]);
+    tmdbMock.fetchCinenerdleDailyStarterMovies.mockReturnValue(starterFetchDeferred.promise);
 
-    await controller.runEffect(
+    const loadInitialTreePromise = controller.runEffect(
       { type: "load-initial-tree" },
       {
         applyUpdate,
@@ -1194,6 +1198,14 @@ describe("useCinenerdleController", () => {
         scrollGenerationLikeBubble: vi.fn(),
       },
     );
+
+    await flushAsyncWork();
+
+    expect(blockedPrefetchMock).toHaveBeenCalledTimes(1);
+    expect(applyUpdate).not.toHaveBeenCalled();
+
+    starterFetchDeferred.resolve([starterRecord]);
+    await loadInitialTreePromise;
 
     expect(applyUpdate).toHaveBeenCalledTimes(1);
     expect(applyUpdate).toHaveBeenNthCalledWith(1, expect.objectContaining({

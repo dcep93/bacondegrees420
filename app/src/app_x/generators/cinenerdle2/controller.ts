@@ -192,6 +192,7 @@ function createUncachedMovieCard(name: string, year: string): Extract<Cinenerdle
 }
 
 type CinenerdleControllerOptions = {
+  onInitialDailyStartersPrefetchBlocked?: () => void;
   onItemAttrMutationRequested?: (
     request: {
       action: "add" | "remove";
@@ -315,10 +316,6 @@ function getTreeBuildCacheKey(hashValue: string): string {
   return hashValue;
 }
 
-function getSelectedCard(tree: GeneratorTree<CinenerdleCard>, rowIndex: number) {
-  return tree[rowIndex]?.find((node) => node.selected)?.data ?? null;
-}
-
 function getSelectedPathNodes(tree: GeneratorTree<CinenerdleCard>): CinenerdlePathNode[] {
   return tree
     .map((row) => row.find((node) => node.selected)?.data ?? null)
@@ -332,6 +329,13 @@ function shouldHydrateHashPathOnInit(hashValue: string): boolean {
   ).length;
 
   return entityNodeCount === 1 || entityNodeCount >= 3;
+}
+
+function shouldBlockInitialTreeForDailyStarters(hashValue: string): boolean {
+  const pathNodes = buildPathNodesFromSegments(parseHashSegments(hashValue));
+  const rootNode = pathNodes[0] ?? null;
+
+  return pathNodes.length === 0 || rootNode?.kind === "cinenerdle" || rootNode?.kind === "break";
 }
 
 function getPersonTmdbIdFromCard(
@@ -547,10 +551,6 @@ async function createDailyStarterRow() {
 
   const cards = sortCardsByPopularity(visibleStarterFilms.map(createDailyStarterMovieCard));
   return createRow(cards);
-}
-
-function isCinenerdleRootTree(tree: GeneratorTree<CinenerdleCard>) {
-  return getSelectedCard(tree, 0)?.kind === "cinenerdle";
 }
 
 function getSelectedPathTree(
@@ -1591,6 +1591,7 @@ export async function getConnectedItemAttrChildSourceCards(
 }
 
 export function useCinenerdleController({
+  onInitialDailyStartersPrefetchBlocked,
   onItemAttrMutationRequested,
   onItemAttrsSnapshotChange,
   onExplicitTmdbRowClick,
@@ -1649,6 +1650,12 @@ export function useCinenerdleController({
             "controller.initTree",
             async () => {
               const itemAttrsSnapshot = readCinenerdleItemAttrs();
+              const shouldBlockForDailyStarters = shouldBlockInitialTreeForDailyStarters(initialHash);
+
+              if (shouldBlockForDailyStarters) {
+                onInitialDailyStartersPrefetchBlocked?.();
+                await syncDailyStartersWithCache().catch(() => { });
+              }
 
               try {
                 const treeSession = await buildTreeSessionFromHash(initialHash, {
@@ -1666,9 +1673,6 @@ export function useCinenerdleController({
                 if (shouldHydrateHashPathOnInit(initialHash)) {
                   void hydrateHashPath(initialHash).catch(() => { });
                 }
-                if (isCinenerdleRootTree(treeSession.tree)) {
-                  void syncDailyStartersWithCache().catch(() => { });
-                }
               } catch {
                 const fallbackTree = await prepareTreeForRender(
                   await createCinenerdleRootTree(),
@@ -1684,9 +1688,6 @@ export function useCinenerdleController({
                 setTmdbLogGeneration(Math.max(0, fallbackTree.length - 1));
                 if (shouldHydrateHashPathOnInit(initialHash)) {
                   void hydrateHashPath(initialHash).catch(() => { });
-                }
-                if (isCinenerdleRootTree(fallbackTree)) {
-                  void syncDailyStartersWithCache().catch(() => { });
                 }
               }
             },
@@ -1943,6 +1944,7 @@ export function useCinenerdleController({
       },
     }),
     [
+      onInitialDailyStartersPrefetchBlocked,
       onExplicitTmdbRowClick,
       onItemAttrMutationRequested,
       readHash,
