@@ -1346,10 +1346,6 @@
 }
 
 @media (max-width: 720px) {
-  .bacon-app-shell {
-    --cinenerdle-card-width: 160px;
-    font-size: 12px;
-  }
 
   .bacon-title {
     font-size: 32px;
