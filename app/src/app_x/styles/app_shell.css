@@ -25,6 +25,7 @@
 }
 
 .bacon-app-shell {
+  --cinenerdle-card-width: 184px;
   font-size: 80%;
   position: relative;
   isolation: isolate;
@@ -66,7 +67,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 18px;
   border: 1px solid var(--bacon-border);
   backdrop-filter: blur(18px);
@@ -162,35 +163,15 @@
   display: flex;
   align-items: stretch;
   justify-content: flex-end;
-  flex: 0 0 auto;
-  flex-wrap: nowrap;
-  height: var(--bacon-title-control-size);
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  width: auto;
+  height: auto;
   min-height: var(--bacon-title-control-size);
   gap: 10px;
   min-width: 0;
   max-width: 100%;
   overflow: visible;
-}
-
-@media (max-width: 1120px) {
-  .bacon-title-bar {
-    flex-wrap: wrap;
-    align-items: flex-start;
-  }
-
-  .bacon-title-actions {
-    width: 100%;
-    margin-left: 0;
-    justify-content: flex-start;
-    flex-wrap: wrap;
-    height: auto;
-    min-height: var(--bacon-title-control-size);
-    row-gap: 8px;
-  }
-
-  .bacon-title-action-slot {
-    height: var(--bacon-title-control-size);
-  }
 }
 
 .bacon-title-action-slot {
@@ -1365,175 +1346,12 @@
 }
 
 @media (max-width: 720px) {
-  :root {
-    --bacon-title-control-size: 46px;
+  .bacon-app-shell {
+    --cinenerdle-card-width: 160px;
+    font-size: 12px;
   }
 
-  .bacon-title-bar {
-    padding: 16px 16px 14px;
-    gap: 14px;
-    flex-wrap: wrap;
-  }
-
-  .bacon-title-icon-button {
-    border-radius: 16px;
-  }
-
-  .bacon-title-brand {
-    gap: 14px;
-  }
-
-  .bacon-title-actions {
-    width: 100%;
-    margin-left: 0;
-    justify-content: flex-start;
-    flex-wrap: wrap;
-    height: auto;
-    gap: 8px;
-  }
-
-  .bacon-title-action-slot {
-    height: var(--bacon-title-control-size);
-  }
-
-  .bacon-title-action-icon-button {
-    border-radius: 14px;
-    font-size: 0.8rem;
-  }
-
-  .bacon-title-action-button {
-    padding: 8px 12px;
-    font-size: 0.58rem;
-  }
-
-  .bacon-modal-backdrop {
-    padding: 14px;
-  }
-
-  .bacon-modal {
-    max-height: calc(100svh - 28px);
-    padding: 16px;
-    border-radius: 24px;
-  }
-
-  .bacon-bookmarks-jsonl-textarea {
-    min-height: 260px;
-    padding: 14px;
-    border-radius: 20px;
-    font-size: 0.67rem;
-  }
-
-  .bacon-connection-bar {
-    padding: 12px 12px 8px;
-  }
-
-  .bacon-app-main-stack > .bacon-connection-results {
-    margin-inline: 12px;
-  }
-
-  .bacon-connection-input {
-    min-height: 44px;
-    font-size: 0.74rem;
-  }
-
-  .bacon-connection-form {
-    gap: 10px;
-  }
-
-  .bacon-connection-pill {
-    flex-basis: auto;
-    width: auto;
-    min-width: 150px;
-    max-width: 300px;
-    min-height: 44px;
-    padding: 9px 7px;
-    font-size: 0.74rem;
-  }
-
-  .bacon-connection-option {
-    font-size: 0.72rem;
-  }
-
-  .bacon-connection-node {
-    width: 118px;
-    min-width: 118px;
-  }
-
-  .bacon-connection-node-thumbnail-shell {
-    aspect-ratio: 2 / 3;
-  }
-
-  .bacon-connection-node-thumbnail {
-    width: 100%;
-    height: 100%;
-  }
-
-  .bacon-connection-node-name {
-    font-size: 0.62rem;
-  }
-
-  .bacon-connection-node-meta {
-    font-size: 0.51rem;
-  }
-
-  .bacon-connection-node-popularity {
-    font-size: 0.48rem;
-  }
-
-  .bacon-bookmarks-page {
-    padding: 14px 12px 20px;
-    gap: 14px;
-  }
-
-  .bacon-cover-page {
-    padding: 14px 12px 20px;
-    gap: 14px;
-  }
-
-  .bacon-bookmarks-empty-state,
-  .bacon-bookmark-row-shell {
-    padding: 14px;
-    border-radius: 20px;
-  }
-
-  .bacon-cover-panel {
-    padding: 14px;
-    border-radius: 20px;
-  }
-
-  .bacon-cover-textarea {
-    min-height: 180px;
-    padding: 14px;
-    border-radius: 18px;
-    font-size: 0.72rem;
-  }
-
-  .bacon-bookmark-row-shell {
-    padding: 0;
-    border-radius: 0;
-  }
-
-  .bacon-bookmark-row-actions {
-    justify-content: flex-end;
-  }
-
-  .bacon-bookmark-row-layout {
-    flex-direction: column;
-  }
-
-  .bacon-bookmark-row-actions-left {
-    width: 100%;
-    flex-direction: row;
-    justify-content: flex-start;
-    align-self: stretch;
-  }
-
-  .bacon-bookmark-card-row,
-  .bacon-connection-row {
-    gap: 10px;
-  }
-
-  .bacon-cover-card-grid {
-    justify-content: center;
+  .bacon-title {
+    font-size: 32px;
   }
 }

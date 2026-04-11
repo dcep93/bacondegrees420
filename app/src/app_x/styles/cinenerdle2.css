@@ -3,10 +3,10 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  flex: 0 0 184px;
-  width: 184px;
-  min-width: 184px;
-  max-width: 184px;
+  flex: 0 0 var(--cinenerdle-card-width, 184px);
+  width: var(--cinenerdle-card-width, 184px);
+  min-width: var(--cinenerdle-card-width, 184px);
+  max-width: var(--cinenerdle-card-width, 184px);
   height: 100%;
   padding: 0;
   border: 1px solid #243041;

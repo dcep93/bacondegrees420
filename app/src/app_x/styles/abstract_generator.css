@@ -112,28 +112,3 @@
   outline: 2px solid var(--bacon-accent);
   outline-offset: 3px;
 }
-
-@media (max-width: 720px) {
-  .abstract-generator {
-    padding: 14px 12px 20px;
-    gap: 10px;
-  }
-
-  .generator-row {
-    gap: 10px;
-  }
-
-  .generator-row-break {
-    min-height: 52px;
-  }
-
-  .generator-row-bubble {
-    min-width: 40px;
-    padding: 5px 6px;
-    font-size: 0.37rem;
-  }
-
-  .generator-row-track {
-    gap: 9.5px;
-  }
-}
