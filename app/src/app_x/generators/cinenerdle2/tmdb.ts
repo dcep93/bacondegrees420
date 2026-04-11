@@ -1968,6 +1968,17 @@ export async function prepareSelectedMovie(
           }
 
           if (localMovieRecord) {
+            if (!hasDirectTmdbMovieSource(localMovieRecord)) {
+              return fetchAndCacheMovieFromSearch(
+                localMovieRecord.title || movieName,
+                localMovieRecord.year || movieYear,
+                "fetch",
+                {
+                  skipFollowOnPrefetch: true,
+                },
+              );
+            }
+
             return fetchAndCacheMovieCredits(
               localMovieRecord,
               "fetch",
@@ -1997,6 +2008,14 @@ export async function prepareSelectedMovie(
             localMovieTmdbId,
           );
           return fetchedMovieRecord;
+        }
+
+        if (!localMovieTmdbId && !hasDirectTmdbMovieSource(localMovieRecord)) {
+          return fetchAndCacheMovieFromSearch(
+            localMovieRecord.title || movieName,
+            localMovieRecord.year || movieYear,
+            "fetch",
+          );
         }
 
         const hydratedMovieRecord = await fetchAndCacheMovieCredits(
@@ -2186,7 +2205,7 @@ export async function hydrateHashPath(
             localPersonRecord,
             name: pathNode.name,
             tmdbId: pathNode.tmdbId,
-          },
+        },
     );
   }
 

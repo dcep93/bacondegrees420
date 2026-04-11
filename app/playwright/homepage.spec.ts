@@ -148,6 +148,50 @@ function delay(ms: number) {
   });
 }
 
+const PLAYWRIGHT_APP_ORIGIN = "http://127.0.0.1:4173";
+
+async function installStrictExternalNetworkBlock(page: Page) {
+  await page.route("**/*", async (route) => {
+    const requestUrl = route.request().url();
+
+    if (
+      requestUrl.startsWith("data:") ||
+      requestUrl.startsWith("blob:") ||
+      requestUrl.startsWith("about:")
+    ) {
+      await route.fallback();
+      return;
+    }
+
+    const parsedUrl = new URL(requestUrl);
+    if (parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:") {
+      if (parsedUrl.origin === PLAYWRIGHT_APP_ORIGIN) {
+        await route.fallback();
+        return;
+      }
+
+      if (
+        parsedUrl.origin === "https://www.themoviedb.org" &&
+        parsedUrl.pathname.startsWith("/assets/")
+      ) {
+        await route.fulfill({
+          status: 204,
+          body: "",
+        });
+        return;
+      }
+
+      throw new Error(`Unexpected external network request: ${requestUrl}`);
+    }
+
+    await route.fallback();
+  });
+}
+
+test.beforeEach(async ({ page }) => {
+  await installStrictExternalNetworkBlock(page);
+});
+
 async function installClipboardCapture(page: Page) {
   await page.addInitScript(() => {
     const copiedTexts: string[] = [];
@@ -244,8 +288,29 @@ async function primeCinenerdlePage(page: Page) {
             headers: { "content-type": "application/json" },
           });
         }
+      }
 
-        return new Response(JSON.stringify({ results: [] }), {
+      if (parsedUrl.origin === "https://api.themoviedb.org" && parsedUrl.pathname === "/3/movie/269149") {
+        return new Response(JSON.stringify({
+          id: 269149,
+          title: "Zootopia",
+          original_title: "Zootopia",
+          poster_path: "/zootopia.jpg",
+          release_date: "2016-03-04",
+          popularity: 88,
+          vote_average: 7.7,
+          vote_count: 16000,
+        }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+
+      if (parsedUrl.origin === "https://api.themoviedb.org" && parsedUrl.pathname === "/3/movie/269149/credits") {
+        return new Response(JSON.stringify({
+          cast: [],
+          crew: [],
+        }), {
           status: 200,
           headers: { "content-type": "application/json" },
         });
@@ -256,7 +321,9 @@ async function primeCinenerdlePage(page: Page) {
   });
 
   await page.route("https://www.cinenerdle2.app/api/battle-data/daily-starters?*", async (route) => {
-    await route.fulfill(createJsonResponse({ data: [] }));
+    await route.fulfill(createJsonResponse({
+      data: [{ id: "starter-zootopia", title: "Zootopia (2016)" }],
+    }));
   });
 
   await page.route("https://image.tmdb.org/**", async (route) => {
@@ -533,9 +600,11 @@ test("bare movie-title suggestions still work with Enter and click selection", a
 
   await connectionInput.fill("Heat");
   await expect(heatSuggestion).toBeVisible();
+  await expect(heatSuggestion).toHaveClass(/bacon-connection-option-selected/);
 
   await connectionInput.press("Enter");
   await expect(connectionInput).toHaveValue("");
+  await expect(getCinenerdleCardByTitle(page, "Heat")).toBeVisible();
 
   await connectionInput.fill("Heat");
   await expect(heatSuggestion).toBeVisible();
@@ -1434,6 +1503,18 @@ test("deep links render full hash paths, hydrate unique entities once, and revis
 
     if (url.pathname === "/3/search/person") {
       const query = url.searchParams.get("query");
+      if (query === "Matthew McConaughey") {
+        await route.fulfill(createJsonResponse({
+          results: [{
+            id: 10297,
+            name: "Matthew McConaughey",
+            popularity: 18.4,
+            profile_path: "/matthew.jpg",
+          }],
+        }));
+        return;
+      }
+
       if (query === "Sandra Bullock") {
         await route.fulfill(createJsonResponse({
           results: [{
@@ -1463,23 +1544,55 @@ test("deep links render full hash paths, hydrate unique entities once, and revis
 
     if (url.pathname === "/3/search/movie") {
       const query = url.searchParams.get("query");
-      if (query !== "Snakes on a Plane") {
-        throw new Error(`Unexpected mixed-scenario movie search query: ${query}`);
+      if (query === "Fool's Gold") {
+        await route.fulfill(createJsonResponse({
+          results: [{
+            id: 8619,
+            title: "Fool's Gold",
+            original_title: "Fool's Gold",
+            poster_path: "/fools-gold.jpg",
+            release_date: "2008-02-08",
+            popularity: 14.1,
+            vote_average: 5.7,
+            vote_count: 987,
+          }],
+        }));
+        return;
       }
 
-      await route.fulfill(createJsonResponse({
-        results: [{
-          id: 326,
-          title: "Snakes on a Plane",
-          original_title: "Snakes on a Plane",
-          poster_path: "/snakes-on-a-plane.jpg",
-          release_date: "2006-08-17",
-          popularity: 16.6,
-          vote_average: 5.5,
-          vote_count: 1802,
-        }],
-      }));
-      return;
+      if (query === "A Time to Kill") {
+        await route.fulfill(createJsonResponse({
+          results: [{
+            id: 3133,
+            title: "A Time to Kill",
+            original_title: "A Time to Kill",
+            poster_path: "/a-time-to-kill.jpg",
+            release_date: "1996-07-24",
+            popularity: 17.8,
+            vote_average: 7.4,
+            vote_count: 1644,
+          }],
+        }));
+        return;
+      }
+
+      if (query === "Snakes on a Plane") {
+        await route.fulfill(createJsonResponse({
+          results: [{
+            id: 326,
+            title: "Snakes on a Plane",
+            original_title: "Snakes on a Plane",
+            poster_path: "/snakes-on-a-plane.jpg",
+            release_date: "2006-08-17",
+            popularity: 16.6,
+            vote_average: 5.5,
+            vote_count: 1802,
+          }],
+        }));
+        return;
+      }
+
+      throw new Error(`Unexpected mixed-scenario movie search query: ${query}`);
     }
 
     if (url.pathname === "/3/movie/8619") {
@@ -1548,6 +1661,34 @@ test("deep links render full hash paths, hydrate unique entities once, and revis
             order: 1,
           },
         ],
+        crew: [],
+      }));
+      return;
+    }
+
+    if (url.pathname === "/3/person/10297") {
+      await route.fulfill(createJsonResponse({
+        id: 10297,
+        name: "Matthew McConaughey",
+        popularity: 18.4,
+        profile_path: "/matthew.jpg",
+      }));
+      return;
+    }
+
+    if (url.pathname === "/3/person/10297/movie_credits") {
+      await route.fulfill(createJsonResponse({
+        cast: [{
+          id: 3133,
+          title: "A Time to Kill",
+          original_title: "A Time to Kill",
+          poster_path: "/a-time-to-kill.jpg",
+          release_date: "1996-07-24",
+          popularity: 17.8,
+          vote_average: 7.4,
+          vote_count: 1644,
+          character: "Jake Brigance",
+        }],
         crew: [],
       }));
       return;
@@ -1662,7 +1803,7 @@ test("deep links render full hash paths, hydrate unique entities once, and revis
   await expect(getGenerationCardByTitle(page2, 1, "Matthew McConaughey")).toBeVisible();
   await expect(getGenerationCardByTitle(page2, 1, "Matthew McConaughey").locator(".cinenerdle-card-count")).toHaveCount(1);
   await expect(getGenerationCardByTitle(page2, 2, "A Time to Kill")).toBeVisible();
-  await expect(getGenerationCardByTitle(page2, 2, "A Time to Kill").locator(".cinenerdle-card-count")).toHaveCount(0);
+  await expect(getGenerationCardByTitle(page2, 2, "A Time to Kill").locator(".cinenerdle-card-count")).toHaveCount(1);
   await expect(getGenerationRow(page2, 3).locator(".cinenerdle-card")).toHaveCount(2);
   await expect(getGenerationCardByTitle(page2, 3, "Sandra Bullock")).toBeVisible();
   await expect(getGenerationCardByTitle(page2, 4, "A Time to Kill")).toBeVisible();
@@ -1673,13 +1814,17 @@ test("deep links render full hash paths, hydrate unique entities once, and revis
     getGenerationCardByTitle(page2, 6, "Snakes on a Plane").locator(".cinenerdle-card-detail", {
       hasText: "Not cached yet",
     }),
-  ).toHaveCount(1);
+  ).toHaveCount(0);
 
   await expect
     .poll(() => ({
       foolsGoldDetailsCount: countRecordedRequests(
         activeMixedRequests,
         "https://api.themoviedb.org/3/movie/8619",
+      ),
+      foolsGoldSearchCount: countRecordedRequests(
+        activeMixedRequests,
+        "https://api.themoviedb.org/3/search/movie?query=Fool's Gold",
       ),
       foolsGoldCreditsCount: countRecordedRequests(
         activeMixedRequests,
@@ -1689,9 +1834,25 @@ test("deep links render full hash paths, hydrate unique entities once, and revis
         activeMixedRequests,
         "https://api.themoviedb.org/3/movie/3133",
       ),
+      aTimeToKillSearchCount: countRecordedRequests(
+        activeMixedRequests,
+        "https://api.themoviedb.org/3/search/movie?query=A Time to Kill",
+      ),
       aTimeToKillCreditsCount: countRecordedRequests(
         activeMixedRequests,
         "https://api.themoviedb.org/3/movie/3133/credits",
+      ),
+      matthewDetailsCount: countRecordedRequests(
+        activeMixedRequests,
+        "https://api.themoviedb.org/3/person/10297",
+      ),
+      matthewMovieCreditsCount: countRecordedRequests(
+        activeMixedRequests,
+        "https://api.themoviedb.org/3/person/10297/movie_credits",
+      ),
+      matthewSearchCount: countRecordedRequests(
+        activeMixedRequests,
+        "https://api.themoviedb.org/3/search/person?query=Matthew McConaughey",
       ),
       sandraSearchCount: countRecordedRequests(
         activeMixedRequests,
@@ -1707,10 +1868,15 @@ test("deep links render full hash paths, hydrate unique entities once, and revis
       ),
     }))
     .toEqual({
+      foolsGoldSearchCount: 1,
       foolsGoldDetailsCount: 1,
       foolsGoldCreditsCount: 1,
       aTimeToKillDetailsCount: 1,
+      aTimeToKillSearchCount: 1,
       aTimeToKillCreditsCount: 1,
+      matthewDetailsCount: 1,
+      matthewMovieCreditsCount: 1,
+      matthewSearchCount: 1,
       sandraSearchCount: 1,
       samuelSearchCount: 1,
       snakesSearchCount: 1,

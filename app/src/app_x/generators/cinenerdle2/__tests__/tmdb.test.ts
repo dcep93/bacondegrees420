@@ -479,6 +479,73 @@ describe("tmdb forced refresh helpers", () => {
     expect(fetchMock.mock.calls[0]?.[0]).toContain("/movie/321/credits?");
   });
 
+  it("searches TMDb when a local movie placeholder has no tmdb id", async () => {
+    const placeholderMovieRecord = makeFilmRecord({
+      id: "the-big-lebowski-1998",
+      tmdbId: null,
+      title: "The Big Lebowski",
+      year: "1998",
+    });
+    const fetchMock = vi.fn(async (input: string) => {
+      const url = String(input);
+      if (url.includes("/search/movie?") && url.includes("query=The+Big+Lebowski")) {
+        return createJsonResponse({
+          results: [
+            makeTmdbMovieSearchResult({
+              id: 115,
+              title: "The Big Lebowski",
+              release_date: "1998-03-06",
+              popularity: 18.46,
+              vote_average: 7.84,
+              vote_count: 9132,
+            }),
+          ],
+        });
+      }
+
+      if (url.includes("/movie/115/credits")) {
+        return createJsonResponse({ cast: [], crew: [] });
+      }
+
+      if (url.includes("/movie/115?")) {
+        return createJsonResponse(
+          makeTmdbMovieSearchResult({
+            id: 115,
+            title: "The Big Lebowski",
+            release_date: "1998-03-06",
+            popularity: 18.46,
+            vote_average: 7.84,
+            vote_count: 9132,
+          }),
+        );
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    indexedDbMock.getFilmRecordById.mockResolvedValue(null);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(placeholderMovieRecord);
+    indexedDbMock.saveFilmRecord.mockImplementation(async () => { });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await prepareSelectedMovie("The Big Lebowski", "1998");
+
+    expect(result).toEqual(expect.objectContaining({
+      id: 115,
+      tmdbId: 115,
+      title: "The Big Lebowski",
+      year: "1998",
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+    }));
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls[0]?.[0]).toContain("/search/movie?");
+    expect(fetchMock.mock.calls[1]?.[0]).toContain("/movie/115?");
+    expect(fetchMock.mock.calls[2]?.[0]).toContain("/movie/115/credits?");
+  });
+
   it("stamps creditType on direct movie credits when hydrating a movie", async () => {
     const directMovieWithoutCredits = makeFilmRecord({
       id: 321,
@@ -1547,6 +1614,63 @@ describe("tmdb forced refresh helpers", () => {
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
       expect.stringContaining("/movie/321?"),
       expect.stringContaining("/movie/321/credits?"),
+    ]);
+  });
+
+  it("hydrates a movie-only bookmark by searching when no local movie exists", async () => {
+    const bookmarkHash = serializePathNodes([
+      createPathNode("movie", "The Big Lebowski", "1998"),
+    ]);
+    const fetchMock = vi.fn(async (input: string) => {
+      const url = String(input);
+      if (url.includes("/search/movie?") && url.includes("query=The+Big+Lebowski")) {
+        return createJsonResponse({
+          results: [
+            makeTmdbMovieSearchResult({
+              id: 115,
+              title: "The Big Lebowski",
+              release_date: "1998-03-06",
+              popularity: 18.46,
+              vote_average: 7.84,
+              vote_count: 9132,
+            }),
+          ],
+        });
+      }
+
+      if (url.includes("/movie/115?")) {
+        return createJsonResponse(
+          makeTmdbMovieSearchResult({
+            id: 115,
+            title: "The Big Lebowski",
+            release_date: "1998-03-06",
+            popularity: 18.46,
+            vote_average: 7.84,
+            vote_count: 9132,
+          }),
+        );
+      }
+
+      if (url.includes("/movie/115/credits")) {
+        return createJsonResponse({ cast: [], crew: [] });
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    indexedDbMock.getAllSearchableConnectionEntities.mockResolvedValue([]);
+    indexedDbMock.getFilmRecordById.mockResolvedValue(null);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(null);
+    vi.stubGlobal("fetch", fetchMock);
+
+    await hydrateHashPath(bookmarkHash, {
+      prefetchConnections: false,
+    });
+
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      expect.stringContaining("/search/movie?"),
+      expect.stringContaining("/movie/115?"),
+      expect.stringContaining("/movie/115/credits?"),
     ]);
   });
 

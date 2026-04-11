@@ -41,6 +41,7 @@ const indexedDbMock = vi.hoisted(() => ({
 
 const tmdbMock = vi.hoisted(() => ({
   fetchCinenerdleDailyStarterMovies: vi.fn(),
+  hydrateHashPath: vi.fn(),
   hydrateCinenerdleDailyStarterMovies: vi.fn(),
   prefetchTopPopularUnhydratedConnections: vi.fn(),
   prepareSelectedMovie: vi.fn(),
@@ -231,6 +232,7 @@ beforeEach(() => {
   indexedDbMock.getPersonPopularityByNames.mockResolvedValue(new Map());
 
   tmdbMock.fetchCinenerdleDailyStarterMovies.mockResolvedValue([]);
+  tmdbMock.hydrateHashPath.mockResolvedValue(undefined);
   tmdbMock.hydrateCinenerdleDailyStarterMovies.mockResolvedValue(undefined);
   tmdbMock.prefetchTopPopularUnhydratedConnections.mockResolvedValue(undefined);
   tmdbMock.prepareSelectedMovie.mockResolvedValue(null);
@@ -1280,6 +1282,29 @@ describe("useCinenerdleController", () => {
 
     expect(reloadMock).toHaveBeenCalledTimes(1);
     expect(tmdbMock.hydrateCinenerdleDailyStarterMovies).not.toHaveBeenCalled();
+  });
+
+  it("hydrates movie hash paths on initial load", async () => {
+    const controller = renderController({
+      readHash: () => "#film|The+Big+Lebowski+(1998)",
+    });
+
+    await controller.runEffect(
+      { type: "load-initial-tree" },
+      {
+        applyUpdate: vi.fn(),
+        getState: () => createControllerState(),
+        lifecycleId: 1,
+        selectionId: 0,
+        scrollGenerationIntoVerticalView: vi.fn(),
+        scrollGenerationLikeBubble: vi.fn(),
+      },
+    );
+
+    await flushAsyncWork();
+
+    expect(tmdbMock.hydrateHashPath).toHaveBeenCalledTimes(1);
+    expect(tmdbMock.hydrateHashPath).toHaveBeenCalledWith("#film|The+Big+Lebowski+(1998)");
   });
 
   it("filters excluded documentary daily starters from the cinenerdle root row", async () => {

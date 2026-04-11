@@ -745,7 +745,7 @@ export function useConnectionSearchState({
       return;
     }
 
-    if (!query || isResolvingConnection) {
+    if (!query || isResolvingConnection || isConnectionDropdownDismissed) {
       return;
     }
 
@@ -771,6 +771,7 @@ export function useConnectionSearchState({
     connectionQuery,
     connectionSuggestions,
     handleConnectionSuggestionSelection,
+    isConnectionDropdownDismissed,
     isResolvingConnection,
     isSearchablePersistencePending,
     openConnectionRowsForEntity,
