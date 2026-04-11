@@ -1,22 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const indexedDbMocks = vi.hoisted(() => {
-  const persistedHashes: string[] = [];
-
-  return {
-    getPersistedBookmarkHashes: vi.fn(async () => [...persistedHashes]),
-    persistedHashes,
-    replacePersistedBookmarkHashes: vi.fn(async (hashes: string[]) => {
-      persistedHashes.splice(0, persistedHashes.length, ...hashes);
-      return [...persistedHashes];
-    }),
-  };
-});
-
-vi.mock("../generators/cinenerdle2/indexed_db", () => ({
-  getPersistedBookmarkHashes: indexedDbMocks.getPersistedBookmarkHashes,
-  replacePersistedBookmarkHashes: indexedDbMocks.replacePersistedBookmarkHashes,
-}));
+import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   BOOKMARKS_STORAGE_KEY,
@@ -63,10 +45,6 @@ function createBookmarkRow(hash: string, cards: Array<{
 
 describe("bookmarks", () => {
   beforeEach(() => {
-    indexedDbMocks.persistedHashes.splice(0, indexedDbMocks.persistedHashes.length);
-    indexedDbMocks.getPersistedBookmarkHashes.mockClear();
-    indexedDbMocks.replacePersistedBookmarkHashes.mockClear();
-
     const storage = new Map<string, string>();
     Object.defineProperty(globalThis, "localStorage", {
       configurable: true,
@@ -85,17 +63,19 @@ describe("bookmarks", () => {
     });
   });
 
-  it("loads bookmarks from indexeddb when persisted hashes are present", async () => {
-    indexedDbMocks.persistedHashes.push(MATRIX_HASH, KEANU_HASH);
+  it("loads bookmarks from localStorage when persisted hashes are present", async () => {
+    localStorage.setItem(BOOKMARKS_STORAGE_KEY, JSON.stringify([
+      createBookmark(MATRIX_HASH),
+      createBookmark(KEANU_HASH),
+    ]));
 
     await expect(loadBookmarks()).resolves.toEqual([
       createBookmark(MATRIX_HASH),
       createBookmark(KEANU_HASH),
     ]);
-    expect(indexedDbMocks.replacePersistedBookmarkHashes).not.toHaveBeenCalled();
   });
 
-  it("migrates legacy localStorage bookmarks into indexeddb hashes", async () => {
+  it("normalizes legacy localStorage bookmark shapes when loading", async () => {
     localStorage.setItem(BOOKMARKS_STORAGE_KEY, JSON.stringify([
       {
         hash: "film|The Matrix (1999)",
@@ -113,11 +93,6 @@ describe("bookmarks", () => {
       createBookmark(MATRIX_HASH),
       createBookmark(KEANU_HASH),
     ]);
-    expect(indexedDbMocks.replacePersistedBookmarkHashes).toHaveBeenCalledWith([
-      MATRIX_HASH,
-      KEANU_HASH,
-    ]);
-    expect(localStorage.getItem(BOOKMARKS_STORAGE_KEY)).toBeNull();
   });
 
   it("merges only missing bookmarks by normalized hash", () => {
@@ -143,9 +118,9 @@ describe("bookmarks", () => {
       createBookmark(KEANU_HASH),
     ]);
 
-    expect(indexedDbMocks.persistedHashes).toEqual([
-      MATRIX_HASH,
-      KEANU_HASH,
+    expect(JSON.parse(localStorage.getItem(BOOKMARKS_STORAGE_KEY) ?? "[]")).toEqual([
+      createBookmark(MATRIX_HASH),
+      createBookmark(KEANU_HASH),
     ]);
   });
 
@@ -434,9 +409,9 @@ describe("bookmarks", () => {
       createBookmark(KEANU_HASH),
     ]);
 
-    expect(indexedDbMocks.persistedHashes).toEqual([
-      MATRIX_HASH,
-      KEANU_HASH,
+    expect(JSON.parse(localStorage.getItem(BOOKMARKS_STORAGE_KEY) ?? "[]")).toEqual([
+      createBookmark(MATRIX_HASH),
+      createBookmark(KEANU_HASH),
     ]);
   });
 });

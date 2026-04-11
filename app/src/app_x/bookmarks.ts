@@ -1,7 +1,3 @@
-import {
-  getPersistedBookmarkHashes,
-  replacePersistedBookmarkHashes,
-} from "./generators/cinenerdle2/indexed_db";
 import { normalizeHashValue } from "./generators/cinenerdle2/hash";
 import {
   getCinenerdleItemAttrTargetFromCard,
@@ -78,6 +74,10 @@ export function normalizeBookmarkEntries(value: unknown): BookmarkEntry[] {
 }
 
 function readLegacyBookmarksFromLocalStorage(): BookmarkEntry[] {
+  if (typeof localStorage === "undefined") {
+    return [];
+  }
+
   try {
     const rawBookmarks = localStorage.getItem(BOOKMARKS_STORAGE_KEY);
     if (!rawBookmarks) {
@@ -90,41 +90,16 @@ function readLegacyBookmarksFromLocalStorage(): BookmarkEntry[] {
   }
 }
 
-async function migrateLegacyBookmarksToIndexedDb(): Promise<BookmarkEntry[]> {
-  const legacyBookmarks = readLegacyBookmarksFromLocalStorage();
-  if (legacyBookmarks.length === 0) {
-    return [];
-  }
-
-  const migratedHashes = await replacePersistedBookmarkHashes(
-    legacyBookmarks.map((bookmark) => bookmark.hash),
-  );
-
-  try {
-    localStorage.removeItem(BOOKMARKS_STORAGE_KEY);
-  } catch {
-    // Ignore localStorage cleanup failures after a successful migration write.
-  }
-
-  return migratedHashes.map((hash) => ({ hash }));
-}
-
 export async function loadBookmarks(): Promise<BookmarkEntry[]> {
-  const persistedHashes = await getPersistedBookmarkHashes();
-  if (persistedHashes.length > 0) {
-    return persistedHashes.map((hash) => ({ hash }));
-  }
-
-  return migrateLegacyBookmarksToIndexedDb();
+  return readLegacyBookmarksFromLocalStorage();
 }
 
 export async function saveBookmarks(bookmarks: BookmarkEntry[]): Promise<BookmarkEntry[]> {
   const normalizedBookmarks = normalizeBookmarkEntries(bookmarks);
-  const persistedHashes = await replacePersistedBookmarkHashes(
-    normalizedBookmarks.map((bookmark) => bookmark.hash),
-  );
-
-  return persistedHashes.map((hash) => ({ hash }));
+  if (typeof localStorage !== "undefined") {
+    localStorage.setItem(BOOKMARKS_STORAGE_KEY, JSON.stringify(normalizedBookmarks));
+  }
+  return normalizedBookmarks;
 }
 
 function createEmptyParsedItemAttrs(): CinenerdleItemAttrs {

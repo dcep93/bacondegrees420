@@ -7,7 +7,6 @@ import {
   SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME,
 } from "./constants";
 import { createDailyStarterFilmRecord } from "./cards";
-import { normalizeHashValue } from "./hash";
 import {
   buildPersonRecordFromFilmCredit,
   chooseNewestFetchTimestamp,
@@ -65,7 +64,6 @@ export const CINENERDLE_INDEXED_DB_FETCH_COUNT_UPDATED_EVENT =
   "cinenerdle:indexed-db-fetch-count-updated";
 const INDEXED_DB_SNAPSHOT_VERSION = 13 as const;
 const INDEXED_DB_FETCH_COUNT_KEY = "tmdbFetchCount";
-const INDEXED_DB_BOOKMARK_HASHES_KEY = "bookmarkHashes";
 
 type StoredPersonRecord = IndexedDbSnapshotPerson;
 type StoredFilmRecord = IndexedDbSnapshotFilm;
@@ -297,31 +295,6 @@ function normalizeIndexedDbFetchCount(value: unknown): number {
   }
 
   return Math.max(0, Math.trunc(value));
-}
-
-function normalizePersistedBookmarkHashes(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  const seenHashes = new Set<string>();
-  const normalizedHashes: string[] = [];
-
-  value.forEach((candidateHash) => {
-    if (typeof candidateHash !== "string") {
-      return;
-    }
-
-    const normalizedHash = normalizeHashValue(candidateHash);
-    if (!normalizedHash || seenHashes.has(normalizedHash)) {
-      return;
-    }
-
-    seenHashes.add(normalizedHash);
-    normalizedHashes.push(normalizedHash);
-  });
-
-  return normalizedHashes;
 }
 
 function dispatchIndexedDbFetchCountUpdated(): void {
@@ -1094,36 +1067,6 @@ export async function getCinenerdleIndexedDbFetchCount(): Promise<number> {
 
   indexedDbFetchCountCache = count;
   return count;
-}
-
-export async function getPersistedBookmarkHashes(): Promise<string[]> {
-  return withStore(
-    INDEXED_DB_METADATA_STORE_NAME,
-    "readonly",
-    async (store) => {
-      const record = await indexedDbRequestToPromise<IndexedDbMetadataRecord | undefined>(
-        store.get(INDEXED_DB_BOOKMARK_HASHES_KEY),
-      );
-      return normalizePersistedBookmarkHashes(record?.value);
-    },
-  );
-}
-
-export async function replacePersistedBookmarkHashes(hashes: string[]): Promise<string[]> {
-  const normalizedHashes = normalizePersistedBookmarkHashes(hashes);
-
-  await withStore(
-    INDEXED_DB_METADATA_STORE_NAME,
-    "readwrite",
-    async (store) => {
-      await indexedDbRequestToPromise(store.put({
-        key: INDEXED_DB_BOOKMARK_HASHES_KEY,
-        value: normalizedHashes,
-      }));
-    },
-  );
-
-  return normalizedHashes;
 }
 
 export async function incrementCinenerdleIndexedDbFetchCount(): Promise<number> {
@@ -2675,6 +2618,13 @@ function inflateIndexedDbSnapshotCore(
   };
 }
 
+function countSnapshotHydratedFetchRows(snapshot: IndexedDbSnapshot): number {
+  return (
+    snapshot.people.filter((personSnapshot) => personSnapshot.fromTmdb !== null).length +
+    snapshot.films.filter((filmSnapshot) => filmSnapshot.fromTmdb !== null).length
+  );
+}
+
 export function inflateIndexedDbSnapshot(
   snapshot: IndexedDbSnapshot,
 ): LiveIndexedDbSnapshot {
@@ -2776,9 +2726,11 @@ export async function importIndexedDbSnapshot(
       const inflatedCoreSnapshot = inflateIndexedDbSnapshotCore(snapshot);
       const storedPeople = snapshot.people;
       const storedFilms = snapshot.films;
+      const hydratedFetchRowCount = countSnapshotHydratedFetchRows(snapshot);
       options?.onProgress?.("normalize-records", {
         elapsedMs: roundIndexedDbElapsedMs(getIndexedDbPerfNow() - normalizeStartedAt),
         filmCount: storedFilms.length,
+        hydratedFetchRowCount,
         peopleCount: storedPeople.length,
         peopleWithTmdbIdCount: snapshot.people.filter((personSnapshot) =>
           getValidTmdbEntityId(personSnapshot.tmdbId) !== null).length,
@@ -2842,6 +2794,13 @@ export async function importIndexedDbSnapshot(
             filmCount: storedFilms.length,
             mode: "queued-batch",
           });
+
+          await indexedDbRequestToPromise(
+            stores.get(INDEXED_DB_METADATA_STORE_NAME)!.put({
+              key: INDEXED_DB_FETCH_COUNT_KEY,
+              value: hydratedFetchRowCount,
+            }),
+          );
         },
       );
       const coreWriteTransactionElapsedMs =
@@ -2861,7 +2820,7 @@ export async function importIndexedDbSnapshot(
 
       const cacheRefreshStartedAt = getIndexedDbPerfNow();
       replaceCachedCoreRecords(inflatedCoreSnapshot);
-      setIndexedDbFetchCountCache(0);
+      setIndexedDbFetchCountCache(hydratedFetchRowCount);
       dispatchCinenerdleRecordsUpdated();
       options?.onProgress?.("refresh-caches", {
         elapsedMs: roundIndexedDbElapsedMs(getIndexedDbPerfNow() - cacheRefreshStartedAt),
@@ -2887,6 +2846,7 @@ export async function importIndexedDbSnapshot(
       options?.onProgress?.("complete", {
         elapsedMs: roundIndexedDbElapsedMs(getIndexedDbPerfNow() - importStartedAt),
         filmCount: storedFilms.length,
+        hydratedFetchRowCount,
         peopleCount: storedPeople.length,
         searchableConnectionEntityCount: searchableConnectionEntities.length,
       });
