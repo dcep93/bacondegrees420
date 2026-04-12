@@ -266,4 +266,62 @@ describe("startIdleFetch", () => {
 
     handle.stop();
   });
+
+  it("upgrades existing connection-derived movies through the full TMDb movie fetch path", async () => {
+    const searchRecords = [
+      {
+        key: "movie:heat:1995",
+        type: "movie" as const,
+        nameLower: "heat (1995)",
+        popularity: 9,
+      },
+    ];
+    const existingMovieRecord = {
+      id: 321,
+      tmdbId: 321,
+      title: "Heat",
+      year: "1995",
+      tmdbSource: "connection-derived" as const,
+      rawTmdbMovie: {
+        id: 321,
+        title: "Heat",
+      },
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+    };
+
+    indexedDbMock.getIndexedDbSnapshot.mockResolvedValue({});
+    indexedDbMock.inflateIndexedDbSnapshot.mockReturnValue({
+      people: [],
+      films: [],
+      searchableConnectionEntities: searchRecords,
+    });
+    indexedDbMock.getAllSearchableConnectionEntities.mockResolvedValue(searchRecords);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(existingMovieRecord);
+    connectionGraphMock.hydrateConnectionEntityFromSearchRecord.mockResolvedValue({
+      key: "movie:heat:1995",
+      kind: "movie",
+      name: "Heat",
+      year: "1995",
+      tmdbId: null,
+    });
+
+    const handle = startIdleFetch();
+    await flushPromises();
+
+    await vi.advanceTimersByTimeAsync(1000);
+    await flushPromises();
+
+    expect(tmdbMock.fetchAndCacheMovie).toHaveBeenCalledWith(
+      "Heat",
+      "1995",
+      "prefetch",
+      321,
+    );
+    expect(tmdbMock.fetchAndCacheMovieCredits).not.toHaveBeenCalled();
+
+    handle.stop();
+  });
 });

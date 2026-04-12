@@ -301,7 +301,21 @@ async function fetchIdleFetchSearchRecord(
     return false;
   }
 
+  const resolvedMovieTmdbId = getValidTmdbEntityId(
+    entity.tmdbId ?? existingMovieRecord?.tmdbId ?? existingMovieRecord?.id,
+  );
+
   if (existingMovieRecord) {
+    if (!hasDirectTmdbMovieSource(existingMovieRecord) && resolvedMovieTmdbId) {
+      const fetchedMovieRecord = await fetchAndCacheMovie(
+        existingMovieRecord.title,
+        existingMovieRecord.year,
+        "prefetch",
+        resolvedMovieTmdbId,
+      );
+      return Boolean(fetchedMovieRecord);
+    }
+
     const fetchedMovieRecord = await fetchAndCacheMovieCredits(
       existingMovieRecord,
       "prefetch",
