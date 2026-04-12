@@ -656,6 +656,44 @@ describe("mergePersonRecords", () => {
     expect(getCinenerdleDebugEntries()).toEqual([]);
   });
 
+  it("prefers a later direct tmdb person name over an earlier legacy-shaped record with the same tmdb id", () => {
+    const mergedPersonRecord = mergePersonRecords(
+      makePersonRecord({
+        id: 6384,
+        tmdbId: 6384,
+        name: "Keanu Charles Reeves",
+        tmdbSource: undefined,
+        rawTmdbPerson: makeTmdbPersonSearchResult({
+          id: 6384,
+          name: "Keanu Charles Reeves",
+          profile_path: null,
+        }),
+        rawTmdbMovieCreditsResponse: {
+          cast: [],
+          crew: [],
+        },
+      }),
+      makePersonRecord({
+        id: 6384,
+        tmdbId: 6384,
+        name: "Keanu Reeves",
+        tmdbSource: "direct-person-fetch",
+        rawTmdbPerson: makeTmdbPersonSearchResult({
+          id: 6384,
+          name: "Keanu Reeves",
+          profile_path: "/keanu.jpg",
+        }),
+      }),
+    );
+
+    expect(mergedPersonRecord.name).toBe("Keanu Reeves");
+    expect(mergedPersonRecord.nameLower).toBe("keanu reeves");
+    expect(mergedPersonRecord.rawTmdbPerson).toEqual(expect.objectContaining({
+      name: "Keanu Reeves",
+      profile_path: "/keanu.jpg",
+    }));
+  });
+
   it("keeps the first name when conflicting records have the same source priority", () => {
     const mergedPersonRecord = mergePersonRecords(
       makePersonRecord({

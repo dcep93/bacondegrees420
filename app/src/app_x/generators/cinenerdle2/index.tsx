@@ -16,6 +16,8 @@ import {
 import { enrichCinenerdleTreeWithItemAttrs } from "./card_item_attrs";
 import {
   CINENERDLE_ENTITY_REFRESH_REQUESTED_EVENT,
+  getEntityRefreshIdentityKey,
+  isEntityRefreshRequestVisibleInTree,
   type EntityRefreshRequest,
 } from "./entity_refresh";
 import {
@@ -222,14 +224,19 @@ const Cinenerdle2 = memo(function Cinenerdle2({
         return;
       }
 
-      // Background prefetch should warm caches without forcing a full tree rebuild.
-      if (request.reason === "prefetch") {
+      if (
+        request.reason === "prefetch" &&
+        !isEntityRefreshRequestVisibleInTree(treeRef.current, request)
+      ) {
         return;
       }
 
+      const requestIdentityKey = getEntityRefreshIdentityKey(request);
       pendingTreeRefreshRequestsRef.current = [
         ...pendingTreeRefreshRequestsRef.current.filter((pendingRequest) =>
-          pendingRequest.requestKey !== request.requestKey,
+          "reason" in pendingRequest
+            ? getEntityRefreshIdentityKey(pendingRequest) !== requestIdentityKey
+            : pendingRequest.requestKey !== request.requestKey,
         ),
         request,
       ];

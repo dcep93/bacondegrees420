@@ -1,4 +1,6 @@
+import type { GeneratorNode } from "../../types/generator";
 import type { FilmRecord, PersonRecord } from "./types";
+import type { CinenerdleCard } from "./view_types";
 import {
   getValidTmdbEntityId,
   normalizeName,
@@ -129,4 +131,45 @@ export function createPersonEntityRefreshRequestFromRecord(
     reason,
     tmdbId: getValidTmdbEntityId(personRecord.tmdbId ?? personRecord.id),
   };
+}
+
+function doesEntityRefreshRequestMatchCard(
+  request: EntityRefreshRequest,
+  card: CinenerdleCard,
+): boolean {
+  if (
+    (request.kind !== "movie" && request.kind !== "person") ||
+    request.kind !== card.kind
+  ) {
+    return false;
+  }
+
+  if (request.kind === "movie" && card.kind === "movie") {
+    const requestTmdbId = getValidTmdbEntityId(request.tmdbId);
+    const cardTmdbId = getValidTmdbEntityId(card.record?.tmdbId ?? card.record?.id);
+    if (requestTmdbId !== null && cardTmdbId !== null) {
+      return requestTmdbId === cardTmdbId;
+    }
+
+    return (
+      normalizeTitle(card.name) === normalizeTitle(request.name) &&
+      card.year === request.year
+    );
+  }
+
+  const requestTmdbId = getValidTmdbEntityId(request.tmdbId);
+  const cardTmdbId = getValidTmdbEntityId(card.record?.tmdbId ?? card.record?.id);
+  if (requestTmdbId !== null && cardTmdbId !== null) {
+    return requestTmdbId === cardTmdbId;
+  }
+
+  return normalizeName(card.name) === normalizeName(request.name);
+}
+
+export function isEntityRefreshRequestVisibleInTree(
+  tree: GeneratorNode<CinenerdleCard>[][],
+  request: EntityRefreshRequest,
+): boolean {
+  return tree.some((row) =>
+    row.some((node) => doesEntityRefreshRequestMatchCard(request, node.data)));
 }

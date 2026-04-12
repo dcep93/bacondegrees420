@@ -628,9 +628,9 @@ function chooseMergedPersonName(
     return existingPersonRecord.name;
   }
 
-  const existingSource = getPersonTmdbSource(existingPersonRecord);
-  const nextSource = getPersonTmdbSource(nextPersonRecord);
-  if (existingSource !== "direct-person-fetch" && nextSource === "direct-person-fetch") {
+  const existingHasDirectTmdbPriority = existingPersonRecord?.tmdbSource === "direct-person-fetch";
+  const nextHasDirectTmdbPriority = nextPersonRecord.tmdbSource === "direct-person-fetch";
+  if (!existingHasDirectTmdbPriority && nextHasDirectTmdbPriority) {
     return nextPersonRecord.name;
   }
 
