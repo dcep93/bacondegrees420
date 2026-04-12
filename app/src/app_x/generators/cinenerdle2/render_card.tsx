@@ -1,34 +1,12 @@
 import type { MouseEvent } from "react";
-import { copyCinenerdleTextToClipboard } from "./debug";
 import { CinenerdleBreakBar, CinenerdleEntityCard } from "./entity_card";
 import type { CinenerdleCardViewModel } from "./view_types";
 
 export function renderDbInfoCard(
   viewModel: Extract<CinenerdleCardViewModel, { kind: "dbinfo" }>,
 ) {
-  function handleCopy(event: MouseEvent<HTMLElement>) {
-    event.preventDefault();
-    event.stopPropagation();
-
-    if (!import.meta.env.DEV) {
-      return;
-    }
-
-    void copyCinenerdleTextToClipboard(
-      viewModel.body,
-      {
-        event: "clipboard:cinenerdle-dbinfo-copy",
-        details: {
-          name: viewModel.name,
-          recordKind: viewModel.recordKind,
-          subtitle: viewModel.subtitle,
-        },
-      },
-    ).catch(() => { });
-  }
-
   return (
-    <article className="cinenerdle-card cinenerdle-db-card" onClick={handleCopy}>
+    <article className="cinenerdle-card cinenerdle-db-card">
       <div className="cinenerdle-card-image-shell cinenerdle-db-card-image-shell">
         <div className="cinenerdle-db-card-kicker">
           {viewModel.recordKind === "movie" ? "Movie DB" : "Person DB"}
@@ -51,7 +29,7 @@ export function renderDbInfoCard(
             </div>
           ))}
         </div>
-        <p className="cinenerdle-db-card-hint">Click card to copy JSON summary</p>
+        <p className="cinenerdle-db-card-hint">Clipboard copy is available from the title debug action.</p>
       </div>
     </article>
   );

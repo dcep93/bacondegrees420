@@ -32,12 +32,8 @@ import {
 } from "./generators/cinenerdle2/bootstrap";
 import type { ConnectedSuggestionMatchTarget } from "./generators/cinenerdle2/connected_suggestion_match";
 import {
-  copyCinenerdleBootstrapDebugLogToClipboard,
   copyCinenerdleDebugLogToClipboard,
   copyCinenerdleIndexedDbSnapshotToClipboard,
-  copyCinenerdlePerfDebugLogToClipboard,
-  copyCinenerdleRecoveryDebugLogToClipboard,
-  copyCinenerdleSearchablePersistenceDebugLogToClipboard,
 } from "./generators/cinenerdle2/debug";
 import {
   CINENERDLE_DEBUG_LOG_UPDATED_EVENT,
@@ -82,12 +78,6 @@ import IndexedDbBootstrapLoadingIndicator from "./components/indexed_db_bootstra
 
 declare global {
   interface Window {
-    copyCinenerdleBootstrapDebugLog?: () => Promise<number>;
-    copyCinenerdleDebugLog?: () => Promise<number>;
-    copyCinenerdlePerfDebugLog?: () => Promise<number>;
-    copyCinenerdleRecoveryDebugLog?: () => Promise<number>;
-    copyCinenerdleSearchablePersistenceDebugLog?: () => Promise<number>;
-    copyCinenerdleSnapshot?: typeof copyCinenerdleIndexedDbSnapshotToClipboard;
     idleFetch: () => IdleFetchHandle;
   }
 }
@@ -354,32 +344,6 @@ export default function AppX() {
         CINENERDLE_INDEXED_DB_FETCH_COUNT_UPDATED_EVENT,
         syncClearDbTotalFetchCount,
       );
-    };
-  }, []);
-
-  useEffect(() => {
-    window.copyCinenerdleRecoveryDebugLog = () => copyCinenerdleRecoveryDebugLogToClipboard();
-
-    if (!import.meta.env.DEV) {
-      return () => {
-        Reflect.deleteProperty(window, "copyCinenerdleRecoveryDebugLog");
-      };
-    }
-
-    window.copyCinenerdleBootstrapDebugLog = () => copyCinenerdleBootstrapDebugLogToClipboard();
-    window.copyCinenerdleDebugLog = () => copyCinenerdleDebugLogToClipboard();
-    window.copyCinenerdlePerfDebugLog = () => copyCinenerdlePerfDebugLogToClipboard();
-    window.copyCinenerdleSearchablePersistenceDebugLog =
-      () => copyCinenerdleSearchablePersistenceDebugLogToClipboard();
-    window.copyCinenerdleSnapshot = () => copyCinenerdleIndexedDbSnapshotToClipboard();
-
-    return () => {
-      Reflect.deleteProperty(window, "copyCinenerdleBootstrapDebugLog");
-      Reflect.deleteProperty(window, "copyCinenerdleDebugLog");
-      Reflect.deleteProperty(window, "copyCinenerdlePerfDebugLog");
-      Reflect.deleteProperty(window, "copyCinenerdleRecoveryDebugLog");
-      Reflect.deleteProperty(window, "copyCinenerdleSearchablePersistenceDebugLog");
-      Reflect.deleteProperty(window, "copyCinenerdleSnapshot");
     };
   }, []);
 

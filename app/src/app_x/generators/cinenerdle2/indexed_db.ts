@@ -339,6 +339,22 @@ function cachePersonRecord(personRecord: PersonRecord | null | undefined): void 
   const recordId = getValidTmdbEntityId(personRecord.id);
   const recordTmdbId = getValidTmdbEntityId(personRecord.tmdbId);
   const normalizedName = normalizeName(personRecord.name);
+  const canonicalTmdbId = recordTmdbId ?? recordId;
+
+  if (canonicalTmdbId) {
+    Array.from(personRecordByNameCache.entries()).forEach(([cachedName, cachedPersonRecord]) => {
+      if (cachedName === normalizedName) {
+        return;
+      }
+
+      const cachedTmdbId = getValidTmdbEntityId(
+        cachedPersonRecord.tmdbId ?? cachedPersonRecord.id,
+      );
+      if (cachedTmdbId === canonicalTmdbId) {
+        personRecordByNameCache.delete(cachedName);
+      }
+    });
+  }
 
   if (recordId) {
     personRecordByIdCache.set(recordId, personRecord);

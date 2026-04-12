@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { clearCinenerdleDebugLog, getCinenerdleDebugEntries } from "../debug_log";
 import {
   buildPersonRecordFromFilmCredit,
   buildFilmRecord,
@@ -23,6 +24,7 @@ import {
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  clearCinenerdleDebugLog();
 });
 
 describe("withDerivedPersonFields", () => {
@@ -382,13 +384,7 @@ describe("buildFilmRecord", () => {
 
   it("alerts when the same tmdb film id disagrees on normalized title or year", () => {
     const alertMock = vi.fn();
-    const writeTextMock = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal("window", { alert: alertMock });
-    vi.stubGlobal("navigator", {
-      clipboard: {
-        writeText: writeTextMock,
-      },
-    });
 
     expect(() =>
       buildFilmRecord(
@@ -406,8 +402,15 @@ describe("buildFilmRecord", () => {
       ),
     ).toThrow("conflicting title/year");
     expect(alertMock).toHaveBeenCalledTimes(1);
-    expect(writeTextMock).toHaveBeenCalledTimes(1);
-    expect(writeTextMock.mock.calls[0]?.[0]).toContain("\"reason\": \"conflicting-film-data\"");
+    expect(getCinenerdleDebugEntries()).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        event: "validation:error",
+        details: expect.objectContaining({
+          reason: "conflicting-film-data",
+          tmdbId: 999,
+        }),
+      }),
+    ]));
   });
 });
 
@@ -615,38 +618,78 @@ describe("mergePersonRecords", () => {
     expect(pickBestPersonRecord(mergedPersonRecord)?.tmdbSource).toBe("direct-person-fetch");
   });
 
-  it("alerts when the same tmdb person id disagrees on normalized name", () => {
-    const alertMock = vi.fn();
-    const writeTextMock = vi.fn().mockResolvedValue(undefined);
-    vi.stubGlobal("window", { alert: alertMock });
-    vi.stubGlobal("navigator", {
-      clipboard: {
-        writeText: writeTextMock,
-      },
-    });
-
-    expect(() =>
-      mergePersonRecords(
-        makePersonRecord({
+  it("prefers a later direct tmdb person name over an earlier connection-derived one", () => {
+    const mergedPersonRecord = mergePersonRecords(
+      makePersonRecord({
+        id: 934,
+        tmdbId: 934,
+        name: "Russell Ira Crowe",
+        fetchTimestamp: "2026-03-27T00:00:00.000Z",
+        tmdbSource: "connection-derived",
+        rawTmdbPerson: makeTmdbPersonSearchResult({
           id: 934,
-          tmdbId: 934,
+          name: "Russell Ira Crowe",
+          profile_path: "/russell-old.jpg",
+        }),
+      }),
+      makePersonRecord({
+        id: 934,
+        tmdbId: 934,
+        name: "Russell Crowe",
+        fetchTimestamp: "2026-03-28T00:00:00.000Z",
+        tmdbSource: "direct-person-fetch",
+        movieConnectionKeys: [50],
+        rawTmdbPerson: makeTmdbPersonSearchResult({
+          id: 934,
           name: "Russell Crowe",
-          rawTmdbPerson: makeTmdbPersonSearchResult({
-            id: 934,
-            name: "Russell Crowe",
-          }),
+          profile_path: "/russell-new.jpg",
         }),
-        makePersonRecord({
+      }),
+    );
+
+    expect(mergedPersonRecord.name).toBe("Russell Crowe");
+    expect(mergedPersonRecord.nameLower).toBe("russell crowe");
+    expect(mergedPersonRecord.rawTmdbPerson).toEqual(expect.objectContaining({
+      name: "Russell Crowe",
+      profile_path: "/russell-new.jpg",
+    }));
+    expect(getCinenerdleDebugEntries()).toEqual([]);
+  });
+
+  it("keeps the first name when conflicting records have the same source priority", () => {
+    const mergedPersonRecord = mergePersonRecords(
+      makePersonRecord({
+        id: 934,
+        tmdbId: 934,
+        name: "Russell Crowe",
+        fetchTimestamp: "2026-03-27T00:00:00.000Z",
+        tmdbSource: "direct-person-fetch",
+        rawTmdbPerson: makeTmdbPersonSearchResult({
           id: 934,
-          tmdbId: 934,
-          name: "Someone Else",
-          tmdbSource: "connection-derived",
+          name: "Russell Crowe",
+          profile_path: "/russell-old.jpg",
         }),
-      ),
-    ).toThrow("conflicting names");
-    expect(alertMock).toHaveBeenCalledTimes(1);
-    expect(writeTextMock).toHaveBeenCalledTimes(1);
-    expect(writeTextMock.mock.calls[0]?.[0]).toContain("\"reason\": \"conflicting-person-data\"");
+      }),
+      makePersonRecord({
+        id: 934,
+        tmdbId: 934,
+        name: "Russell Ira Crowe",
+        fetchTimestamp: "2026-03-28T00:00:00.000Z",
+        tmdbSource: "direct-person-fetch",
+        rawTmdbPerson: makeTmdbPersonSearchResult({
+          id: 934,
+          name: "Russell Ira Crowe",
+          profile_path: "/russell-new.jpg",
+        }),
+      }),
+    );
+
+    expect(mergedPersonRecord.name).toBe("Russell Crowe");
+    expect(mergedPersonRecord.rawTmdbPerson).toEqual(expect.objectContaining({
+      name: "Russell Crowe",
+      profile_path: "/russell-new.jpg",
+    }));
+    expect(getCinenerdleDebugEntries()).toEqual([]);
   });
 });
 

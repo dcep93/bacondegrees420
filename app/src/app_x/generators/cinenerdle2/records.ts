@@ -21,38 +21,6 @@ import {
   throwCinenerdleValidationError,
 } from "./validation";
 
-function assertPersonRecordsAgree(
-  existingPersonRecord: PersonRecord | null | undefined,
-  nextPersonRecord: PersonRecord,
-): void {
-  if (!existingPersonRecord) {
-    return;
-  }
-
-  const existingTmdbId = getValidTmdbEntityId(
-    existingPersonRecord.tmdbId ?? existingPersonRecord.id,
-  );
-  const nextTmdbId = getValidTmdbEntityId(nextPersonRecord.tmdbId ?? nextPersonRecord.id);
-  if (existingTmdbId === null || nextTmdbId === null || existingTmdbId !== nextTmdbId) {
-    return;
-  }
-
-  if (normalizeName(existingPersonRecord.name) === normalizeName(nextPersonRecord.name)) {
-    return;
-  }
-
-  resetCinenerdleValidationAlertState();
-  throwCinenerdleValidationError(
-    `Cannot merge person records: conflicting names for TMDb person ${nextTmdbId}.`,
-    {
-      reason: "conflicting-person-data",
-      tmdbId: nextTmdbId,
-      existingPersonRecord,
-      nextPersonRecord,
-    },
-  );
-}
-
 function assertFilmRecordMatchesTmdbFilm(
   existingFilmRecord: FilmRecord | null,
   tmdbFilm: TmdbMovieSearchResult,
@@ -636,19 +604,60 @@ export function pickBestPersonRecord(
     })[0] ?? null;
 }
 
+function chooseMergedPersonName(
+  existingPersonRecord: PersonRecord | null | undefined,
+  nextPersonRecord: PersonRecord,
+): string {
+  if (!existingPersonRecord?.name) {
+    return nextPersonRecord.name;
+  }
+
+  const existingTmdbId = getValidTmdbEntityId(
+    existingPersonRecord.tmdbId ?? existingPersonRecord.id,
+  );
+  const nextTmdbId = getValidTmdbEntityId(nextPersonRecord.tmdbId ?? nextPersonRecord.id);
+  const existingNormalizedName = normalizeName(existingPersonRecord.name);
+  const nextNormalizedName = normalizeName(nextPersonRecord.name);
+  const hasNameConflict =
+    existingTmdbId !== null &&
+    nextTmdbId !== null &&
+    existingTmdbId === nextTmdbId &&
+    existingNormalizedName !== nextNormalizedName;
+
+  if (!hasNameConflict) {
+    return existingPersonRecord.name;
+  }
+
+  const existingSource = getPersonTmdbSource(existingPersonRecord);
+  const nextSource = getPersonTmdbSource(nextPersonRecord);
+  if (existingSource !== "direct-person-fetch" && nextSource === "direct-person-fetch") {
+    return nextPersonRecord.name;
+  }
+
+  return existingPersonRecord.name;
+}
+
 export function mergePersonRecords(
   existingPersonRecord: PersonRecord | null | undefined,
   nextPersonRecord: PersonRecord,
 ): PersonRecord {
-  assertPersonRecordsAgree(existingPersonRecord, nextPersonRecord);
-
   const existingFetchTimestamp = existingPersonRecord?.fetchTimestamp;
   const nextFetchTimestamp = nextPersonRecord.fetchTimestamp;
+  const mergedName = chooseMergedPersonName(existingPersonRecord, nextPersonRecord);
   const mergedTmdbSource =
     getPersonTmdbSource(existingPersonRecord) === "direct-person-fetch" ||
       getPersonTmdbSource(nextPersonRecord) === "direct-person-fetch"
       ? "direct-person-fetch"
       : "connection-derived";
+  const mergedRawTmdbPerson =
+    existingPersonRecord?.rawTmdbPerson && nextPersonRecord.rawTmdbPerson
+      ? mergeFetchedTmdbPerson(
+          existingPersonRecord.rawTmdbPerson,
+          nextPersonRecord.rawTmdbPerson,
+          existingFetchTimestamp,
+          nextFetchTimestamp,
+        )
+      : nextPersonRecord.rawTmdbPerson ?? existingPersonRecord?.rawTmdbPerson;
 
   return withDerivedPersonFields({
     ...existingPersonRecord,
@@ -656,35 +665,20 @@ export function mergePersonRecords(
     id: nextPersonRecord.id,
     tmdbId: nextPersonRecord.tmdbId ?? existingPersonRecord?.tmdbId ?? null,
     lookupKey: existingPersonRecord?.lookupKey ?? nextPersonRecord.lookupKey,
-    name:
-      mergeFetchedFieldValue(
-        existingPersonRecord?.name,
-        nextPersonRecord.name,
-        existingFetchTimestamp,
-        nextFetchTimestamp,
-      ) ?? nextPersonRecord.name,
-    nameLower:
-      mergeFetchedFieldValue(
-        existingPersonRecord?.nameLower,
-        nextPersonRecord.nameLower,
-        existingFetchTimestamp,
-        nextFetchTimestamp,
-      ) ?? nextPersonRecord.nameLower,
+    name: mergedName,
+    nameLower: normalizeName(mergedName),
     movieConnectionKeys: Array.from(
       new Set<number>([
         ...(existingPersonRecord?.movieConnectionKeys ?? []),
         ...nextPersonRecord.movieConnectionKeys,
       ]),
     ),
-    rawTmdbPerson:
-      existingPersonRecord?.rawTmdbPerson && nextPersonRecord.rawTmdbPerson
-        ? mergeFetchedTmdbPerson(
-            existingPersonRecord.rawTmdbPerson,
-            nextPersonRecord.rawTmdbPerson,
-            existingFetchTimestamp,
-            nextFetchTimestamp,
-          )
-        : nextPersonRecord.rawTmdbPerson ?? existingPersonRecord?.rawTmdbPerson,
+    rawTmdbPerson: mergedRawTmdbPerson
+      ? {
+          ...mergedRawTmdbPerson,
+          name: mergedName,
+        }
+      : undefined,
     rawTmdbPersonSearchResponse: mergeFetchedFieldValue(
       existingPersonRecord?.rawTmdbPersonSearchResponse,
       nextPersonRecord.rawTmdbPersonSearchResponse,
