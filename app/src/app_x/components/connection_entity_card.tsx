@@ -19,6 +19,7 @@ import {
   CinenerdleEntityCard,
   type RenderableCinenerdleEntityCard,
 } from "../generators/cinenerdle2/entity_card";
+import { getCinenerdleFooterTooltipContent } from "../generators/cinenerdle2/entity_card/footer_tooltip";
 import type { ConnectionEntity } from "../generators/cinenerdle2/connection_graph";
 import {
   getFilmRecordById,
@@ -483,6 +484,9 @@ export default function ConnectionEntityCard({
       name: renderableCard.name,
     });
   }
+  const footerTooltip = getCinenerdleFooterTooltipContent(renderableCard, {
+    includeActionHint: false,
+  });
 
   return (
     <CinenerdleEntityCard
@@ -491,6 +495,7 @@ export default function ConnectionEntityCard({
         onCardClick && "bacon-connection-node-clickable",
         dimmed && "bacon-connection-node-dimmed",
       )}
+      footerTooltip={footerTooltip}
       onAddItemAttr={itemAttrTarget
         ? (nextChar) => {
             addItemAttrToTarget(itemAttrTarget, nextChar);

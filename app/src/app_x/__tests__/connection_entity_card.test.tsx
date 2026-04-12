@@ -94,6 +94,17 @@ describe("ConnectionEntityCard", () => {
     expect(html).toContain("Remove 🔥 from Heat");
   });
 
+  it("uses the shared read-only footer tooltip overlay for connection cards", () => {
+    const html = renderToStaticMarkup(
+      <ConnectionEntityCard entity={makeConnectionEntity()} />,
+    );
+
+    expect(html).toContain("cinenerdle-card-chip-tooltip-anchor cinenerdle-card-footer-tooltip-anchor");
+    expect(html).toContain("cinenerdle-card-footer-tooltip-panel");
+    expect(html).not.toContain("TMDb movie popularity from the cached movie record.");
+    expect(html.match(/role="tooltip"/g)).toHaveLength(1);
+  });
+
   it("builds record-backed association cards with inherited attrs", async () => {
     const heatRecord = makeFilmRecord({
       id: 321,

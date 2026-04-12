@@ -514,12 +514,7 @@ export default function AppX() {
 
       return clearIndexedDb()
         .then(() => {
-          if (cinenerdleIndexedDbBootstrapStatus.resetRequiredMessage) {
-            window.location.reload();
-            return;
-          }
-
-          handleReset();
+          window.location.reload();
         })
         .catch((error: unknown) => {
           sayToast(
