@@ -68,68 +68,70 @@ export default function BaconTitleBar({
           ) : null}
         </div>
       </div>
-      <div className="bacon-title-actions">
-        {boostPreview ? (
-          <div className="bacon-title-action-slot bacon-title-action-slot-matchup">
-            {boostPreview}
-          </div>
-        ) : null}
-        {matchupPreview ? (
-          <div className="bacon-title-action-slot bacon-title-action-slot-matchup">
-            {matchupPreview}
-          </div>
-        ) : null}
-        {isGeneratorView ? (
+      <div className="bacon-title-actions-shell">
+        <div className="bacon-title-actions">
+          {boostPreview ? (
+            <div className="bacon-title-action-slot bacon-title-action-slot-matchup">
+              {boostPreview}
+            </div>
+          ) : null}
+          {matchupPreview ? (
+            <div className="bacon-title-action-slot bacon-title-action-slot-matchup">
+              {matchupPreview}
+            </div>
+          ) : null}
+          {isGeneratorView ? (
+            <div className="bacon-title-action-slot bacon-title-action-slot-square">
+              <Tooltip content="Save bookmark">
+                <button
+                  aria-label="Save bookmark"
+                  className="bacon-title-action-icon-button"
+                  disabled={isSavingBookmark}
+                  onClick={onSaveBookmark}
+                  type="button"
+                >
+                  💾
+                </button>
+              </Tooltip>
+            </div>
+          ) : null}
+          {isBookmarksView ? (
+            <div className="bacon-title-action-slot bacon-title-action-slot-text">
+              <BookmarksJsonlEditButton onClick={onOpenBookmarksJsonlEditor} />
+            </div>
+          ) : null}
           <div className="bacon-title-action-slot bacon-title-action-slot-square">
-            <Tooltip content="Save bookmark">
+            <Tooltip content={isBookmarksView ? "Close bookmarks" : "Open bookmarks"}>
               <button
-                aria-label="Save bookmark"
+                aria-label={isBookmarksView ? "Close bookmarks" : "Open bookmarks"}
                 className="bacon-title-action-icon-button"
-                disabled={isSavingBookmark}
-                onClick={onSaveBookmark}
+                onClick={onToggleBookmarks}
                 type="button"
               >
-                💾
+                {isBookmarksView ? "🎬" : "📚"}
               </button>
             </Tooltip>
           </div>
-        ) : null}
-        {isBookmarksView ? (
           <div className="bacon-title-action-slot bacon-title-action-slot-text">
-            <BookmarksJsonlEditButton onClick={onOpenBookmarksJsonlEditor} />
-          </div>
-        ) : null}
-        <div className="bacon-title-action-slot bacon-title-action-slot-square">
-          <Tooltip content={isBookmarksView ? "Close bookmarks" : "Open bookmarks"}>
-            <button
-              aria-label={isBookmarksView ? "Close bookmarks" : "Open bookmarks"}
-              className="bacon-title-action-icon-button"
-              onClick={onToggleBookmarks}
-              type="button"
-            >
-              {isBookmarksView ? "🎬" : "📚"}
-            </button>
-          </Tooltip>
-        </div>
-        <div className="bacon-title-action-slot bacon-title-action-slot-text">
-          <div className="bacon-title-overlay-anchor">
-            {toastOverlayMessage ? (
-              <span
-                className="bacon-copy-status bacon-copy-status-overlay bacon-copy-status-overlay-toast"
-                ref={toastStatusRef}
+            <div className="bacon-title-overlay-anchor">
+              {toastOverlayMessage ? (
+                <span
+                  className="bacon-copy-status bacon-copy-status-overlay bacon-copy-status-overlay-toast"
+                  ref={toastStatusRef}
+                >
+                  {toastOverlayMessage}
+                </span>
+              ) : null}
+              <button
+                aria-label={`Clear database (${clearDbBadgeText})`}
+                className="bacon-title-action-button bacon-clear-db-button"
+                onClick={onClearDatabase}
+                ref={clearDbButtonRef}
+                type="button"
               >
-                {toastOverlayMessage}
-              </span>
-            ) : null}
-            <button
-              aria-label={`Clear database (${clearDbBadgeText})`}
-              className="bacon-title-action-button bacon-clear-db-button"
-              onClick={onClearDatabase}
-              ref={clearDbButtonRef}
-              type="button"
-            >
-              {`Clear DB (${clearDbBadgeText})`}
-            </button>
+                {`Clear DB (${clearDbBadgeText})`}
+              </button>
+            </div>
           </div>
         </div>
       </div>

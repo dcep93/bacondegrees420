@@ -67,7 +67,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
+  flex-wrap: wrap-reverse;
   gap: 18px;
   border: 1px solid var(--bacon-border);
   backdrop-filter: blur(18px);
@@ -158,20 +158,31 @@
   padding-inline-end: 6px;
 }
 
-.bacon-title-actions {
+.bacon-title-actions-shell {
   margin-left: auto;
   display: flex;
-  align-items: stretch;
   justify-content: flex-end;
   flex: 1 1 auto;
-  flex-wrap: wrap;
-  width: auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.bacon-title-actions {
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-start;
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+  width: max-content;
   height: auto;
   min-height: var(--bacon-title-control-size);
   gap: 10px;
   min-width: 0;
   max-width: 100%;
-  overflow: visible;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
 }
 
 .bacon-title-action-slot {
