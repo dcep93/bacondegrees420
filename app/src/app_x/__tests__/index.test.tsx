@@ -720,7 +720,7 @@ describe("ConnectionEntityCard", () => {
 
     expect(html).toContain("alt=\"TMDb\"");
     expect(html).toContain("cinenerdle-card-chip-tooltip-anchor");
-    expect(html).toContain("cinenerdle-card-inline-tooltip-left");
+    expect(html).toContain("cinenerdle-card-inline-tooltip-right");
     expect(html).toContain("Heat has 12 connections");
     expect(html).toContain("Freddie Highmore is the #3 connection");
   });
