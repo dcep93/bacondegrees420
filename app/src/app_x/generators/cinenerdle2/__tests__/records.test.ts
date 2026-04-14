@@ -112,6 +112,30 @@ describe("withDerivedPersonFields", () => {
 
     expect(personRecord.movieConnectionKeys).toEqual([]);
   });
+
+  it("drops archive-footage-only movie connections when tmdb movie credits are available", () => {
+    const personRecord = withDerivedPersonFields(
+      makePersonRecord({
+        id: 444,
+        tmdbId: 444,
+        name: "Archive Person",
+        movieConnectionKeys: ["heat (1995)"],
+        rawTmdbMovieCreditsResponse: {
+          cast: [
+            makeMovieCredit({
+              id: 3,
+              title: "Heat",
+              release_date: "1995-12-15",
+              character: "Self (archive footage)",
+            }),
+          ],
+          crew: [],
+        },
+      }),
+    );
+
+    expect(personRecord.movieConnectionKeys).toEqual([]);
+  });
 });
 
 describe("withDerivedFilmFields", () => {

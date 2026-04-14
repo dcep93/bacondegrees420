@@ -166,8 +166,7 @@ export function isZeroVoteTmdbMovieCredit(
 export function isAllowedBfsTmdbMovieCredit(credit: TmdbMovieCredit): boolean {
   if (
     credit.creditType === "cast" &&
-    typeof credit.character === "string" &&
-    credit.character.toLowerCase().includes("(uncredited)")
+    isExcludedConnectionCastRole(credit.character)
   ) {
     return false;
   }
@@ -403,8 +402,17 @@ function isAllowedConnectionCrewJob(job: string | undefined): boolean {
   );
 }
 
+function isExcludedConnectionCastRole(character: string | undefined): boolean {
+  const normalizedCharacter = normalizeName(character ?? "");
+
+  return (
+    normalizedCharacter.includes("(uncredited)") ||
+    normalizedCharacter.includes("(archive footage)")
+  );
+}
+
 function isAllowedMovieCastCredit(credit: TmdbPersonCredit): boolean {
-  return !normalizeName(credit.character ?? "").includes("(uncredited)");
+  return !isExcludedConnectionCastRole(credit.character);
 }
 
 function isAllowedMovieCrewCredit(credit: TmdbPersonCredit): boolean {

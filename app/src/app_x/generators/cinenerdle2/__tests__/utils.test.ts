@@ -170,12 +170,20 @@ describe("tmdb credit aggregation", () => {
     expect(getUniqueSortedTmdbMovieCredits(makePersonRecord())).toEqual([]);
   });
 
-  it("filters BFS movie credits by uncredited cast and allowed crew jobs", () => {
+  it("filters BFS movie credits by excluded cast markers and allowed crew jobs", () => {
     expect(
       isAllowedBfsTmdbMovieCredit(
         makeMovieCredit({
           creditType: "cast",
           character: "Bank Clerk (uncredited)",
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      isAllowedBfsTmdbMovieCredit(
+        makeMovieCredit({
+          creditType: "cast",
+          character: "Self (archive footage)",
         }),
       ),
     ).toBe(false);
@@ -383,6 +391,83 @@ describe("tmdb credit aggregation", () => {
         id: 19292,
         creditType: "crew",
         job: "Producer",
+      }),
+    ]);
+  });
+
+  it("ignores archive-footage cast roles when associating movie people", () => {
+    const movieRecord = makeFilmRecord({
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({
+            id: 1,
+            name: "Archive Actor",
+            character: "Self (archive footage)",
+            popularity: 90,
+          }),
+          makePersonCredit({
+            id: 2,
+            name: "Al Pacino",
+            character: "Vincent Hanna",
+            popularity: 50,
+          }),
+        ],
+        crew: [],
+      },
+    });
+
+    expect(getAssociatedPeopleFromMovieCredits(movieRecord).map((credit) => credit.name)).toEqual([
+      "Al Pacino",
+    ]);
+  });
+
+  it("keeps mixed cast and crew groups valid when only the cast role is archive footage", () => {
+    const movieRecord = makeFilmRecord({
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({
+            id: 19292,
+            name: "Adam Sandler",
+            popularity: 7.408,
+            character: "Self (archive footage)",
+          }),
+        ],
+        crew: [
+          makePersonCredit({
+            id: 19292,
+            name: "Adam Sandler",
+            popularity: 7.408,
+            creditType: undefined,
+            character: undefined,
+            job: "Director",
+            department: "Directing",
+            order: undefined,
+          }),
+        ],
+      },
+    });
+
+    expect(getAssociatedPersonCreditGroupsFromMovieCredits(movieRecord)).toEqual([
+      [
+        expect.objectContaining({
+          id: 19292,
+          creditType: "crew",
+          job: "Director",
+        }),
+      ],
+    ]);
+    expect(getAssociatedPeopleFromMovieCredits(movieRecord)).toEqual([
+      expect.objectContaining({
+        id: 19292,
+        creditType: "crew",
+        job: "Director",
+      }),
+    ]);
+    expect(getAssociatedPeopleFromMovieCreditsForSnapshot(movieRecord)).toEqual([
+      expect.objectContaining({
+        id: 19292,
+        creditType: "crew",
+        job: "Director",
       }),
     ]);
   });
