@@ -1,6 +1,12 @@
 import { normalizeHashValue } from "./generators/cinenerdle2/hash";
 import { addCinenerdleDebugLog } from "./generators/cinenerdle2/debug_log";
 import {
+  getAllFilmRecords,
+  getAllPersonRecords,
+  getFilmRecordById,
+  getPersonRecordById,
+} from "./generators/cinenerdle2/indexed_db";
+import {
   getCinenerdleItemAttrTargetFromCard,
   normalizeItemAttrChars,
   readCinenerdleItemAttrs,
@@ -8,6 +14,11 @@ import {
   type CinenerdleItemAttrTarget,
   type CinenerdleItemAttrs,
 } from "./generators/cinenerdle2/item_attrs";
+import {
+  getAssociatedMoviesFromPersonCredits,
+  getAssociatedPeopleFromMovieCredits,
+  getValidTmdbEntityId,
+} from "./generators/cinenerdle2/utils";
 import type { BookmarkRowData } from "./bookmark_rows";
 
 export const BOOKMARKS_STORAGE_KEY = "bacondegrees420.bookmarks.v1";
@@ -156,15 +167,21 @@ export function getBookmarkRowItemAttrTargets(bookmarkRow: BookmarkRowData): Cin
   return targets;
 }
 
-function serializeBookmarkItemAttrRows(
+type BookmarkItemAttrSerializationContext = {
+  itemAttrs: CinenerdleItemAttrs;
+  prioritizedFingerprints: string[];
+  seenTargets: Set<string>;
+  targetNamesByFingerprint: Map<string, string>;
+};
+
+function createBookmarkItemAttrSerializationContext(
   bookmarkRowsByHash: Map<string, BookmarkRowData>,
   bookmarks: BookmarkEntry[],
-): string[] {
+): BookmarkItemAttrSerializationContext {
   const itemAttrs = readCinenerdleItemAttrs();
   const targetNamesByFingerprint = new Map<string, string>();
   const prioritizedFingerprints: string[] = [];
   const seenTargets = new Set<string>();
-  const serializedAttrRows: string[] = [];
 
   normalizeBookmarkEntries(bookmarks).forEach((bookmark) => {
     const bookmarkRow = bookmarkRowsByHash.get(bookmark.hash);
@@ -186,6 +203,19 @@ function serializeBookmarkItemAttrRows(
     });
   });
 
+  return {
+    itemAttrs,
+    prioritizedFingerprints,
+    seenTargets,
+    targetNamesByFingerprint,
+  };
+}
+
+function serializeBookmarkItemAttrRowsFromContext(
+  context: BookmarkItemAttrSerializationContext,
+): string[] {
+  const serializedAttrRows: string[] = [];
+
   function pushSerializedAttrRow(
     bucket: CinenerdleItemAttrBucket,
     id: string,
@@ -196,43 +226,158 @@ function serializeBookmarkItemAttrRows(
     }
 
     const fingerprint = `${bucket}:${id}`;
-    const name = targetNamesByFingerprint.get(fingerprint) ?? id;
+    const name = context.targetNamesByFingerprint.get(fingerprint) ?? id;
     if (name === id) {
       addCinenerdleDebugLog("bookmarks:jsonl-attr-row-name-fallback", {
         bucket,
         id,
         chars,
         fingerprint,
-        hasReferencedName: targetNamesByFingerprint.has(fingerprint),
-        isPrioritizedTarget: prioritizedFingerprints.includes(fingerprint),
+        hasReferencedName: context.targetNamesByFingerprint.has(fingerprint),
+        isPrioritizedTarget: context.prioritizedFingerprints.includes(fingerprint),
       });
     }
     serializedAttrRows.push(`${id}:${bucket}:${name} ${chars.join("")}`);
   }
 
-  prioritizedFingerprints.forEach((fingerprint) => {
+  context.prioritizedFingerprints.forEach((fingerprint) => {
     const [bucket, ...idParts] = fingerprint.split(":");
     const id = idParts.join(":");
     pushSerializedAttrRow(
       bucket as CinenerdleItemAttrBucket,
       id,
-      itemAttrs[bucket as CinenerdleItemAttrBucket][id] ?? [],
+      context.itemAttrs[bucket as CinenerdleItemAttrBucket][id] ?? [],
     );
   });
 
   (["film", "person"] as const).forEach((bucket) => {
-    Object.entries(itemAttrs[bucket]).forEach(([id, chars]) => {
+    Object.entries(context.itemAttrs[bucket]).forEach(([id, chars]) => {
       const fingerprint = `${bucket}:${id}`;
-      if (seenTargets.has(fingerprint)) {
+      if (context.seenTargets.has(fingerprint)) {
         return;
       }
 
-      seenTargets.add(fingerprint);
+      context.seenTargets.add(fingerprint);
       pushSerializedAttrRow(bucket, id, chars);
     });
   });
 
   return serializedAttrRows;
+}
+
+function serializeBookmarkItemAttrRows(
+  bookmarkRowsByHash: Map<string, BookmarkRowData>,
+  bookmarks: BookmarkEntry[],
+): string[] {
+  return serializeBookmarkItemAttrRowsFromContext(
+    createBookmarkItemAttrSerializationContext(bookmarkRowsByHash, bookmarks),
+  );
+}
+
+async function resolveStoredItemAttrNames(
+  context: BookmarkItemAttrSerializationContext,
+): Promise<void> {
+  const unresolvedTargets: Array<Promise<void>> = [];
+
+  (["film", "person"] as const).forEach((bucket) => {
+    Object.keys(context.itemAttrs[bucket]).forEach((id) => {
+      const fingerprint = `${bucket}:${id}`;
+      if (context.targetNamesByFingerprint.has(fingerprint)) {
+        return;
+      }
+
+      unresolvedTargets.push((async () => {
+        try {
+          const directRecordName = bucket === "film"
+            ? (await getFilmRecordById(id))?.title?.trim() ?? ""
+            : (await getPersonRecordById(id))?.name?.trim() ?? "";
+
+          if (directRecordName) {
+            context.targetNamesByFingerprint.set(fingerprint, directRecordName);
+            addCinenerdleDebugLog("bookmarks:jsonl-attr-row-name-resolved", {
+              bucket,
+              id,
+              fingerprint,
+              resolvedName: directRecordName,
+              source: "direct-record",
+            });
+            return;
+          }
+
+          const creditResolvedName = bucket === "film"
+            ? await resolveFilmNameFromCachedPersonCredits(id)
+            : await resolvePersonNameFromCachedFilmCredits(id);
+          if (creditResolvedName) {
+            context.targetNamesByFingerprint.set(fingerprint, creditResolvedName);
+            addCinenerdleDebugLog("bookmarks:jsonl-attr-row-name-resolved", {
+              bucket,
+              id,
+              fingerprint,
+              resolvedName: creditResolvedName,
+              source: "cached-credit",
+            });
+            return;
+          }
+        } catch (error: unknown) {
+          addCinenerdleDebugLog("bookmarks:jsonl-attr-row-name-resolve-error", {
+            bucket,
+            id,
+            fingerprint,
+            message: error instanceof Error ? error.message : String(error),
+          });
+          return;
+        }
+
+        addCinenerdleDebugLog("bookmarks:jsonl-attr-row-name-resolve-miss", {
+          bucket,
+          id,
+          fingerprint,
+        });
+      })());
+    });
+  });
+
+  await Promise.all(unresolvedTargets);
+}
+
+async function resolveFilmNameFromCachedPersonCredits(id: string): Promise<string> {
+  const validTmdbId = getValidTmdbEntityId(id);
+  if (validTmdbId === null) {
+    return "";
+  }
+
+  const personRecords = await getAllPersonRecords();
+  for (const personRecord of personRecords) {
+    const matchedCredit = getAssociatedMoviesFromPersonCredits(personRecord).find((credit) => {
+      return getValidTmdbEntityId(credit.id) === validTmdbId;
+    });
+    const title = matchedCredit?.title?.trim() ?? matchedCredit?.original_title?.trim() ?? "";
+    if (title) {
+      return title;
+    }
+  }
+
+  return "";
+}
+
+async function resolvePersonNameFromCachedFilmCredits(id: string): Promise<string> {
+  const validTmdbId = getValidTmdbEntityId(id);
+  if (validTmdbId === null) {
+    return "";
+  }
+
+  const filmRecords = await getAllFilmRecords();
+  for (const filmRecord of filmRecords) {
+    const matchedCredit = getAssociatedPeopleFromMovieCredits(filmRecord).find((credit) => {
+      return getValidTmdbEntityId(credit.id) === validTmdbId;
+    });
+    const name = matchedCredit?.name?.trim() ?? "";
+    if (name) {
+      return name;
+    }
+  }
+
+  return "";
 }
 
 export function serializeBookmarksAsJsonl(
@@ -246,6 +391,26 @@ export function serializeBookmarksAsJsonl(
   const normalizedBookmarks = normalizeBookmarkEntries(bookmarks);
   const serializedBookmarkRows = normalizedBookmarks.map((bookmark) => bookmark.hash);
   const serializedAttrRows = serializeBookmarkItemAttrRows(bookmarkRowsByHash, normalizedBookmarks);
+
+  return [...serializedBookmarkRows, ...serializedAttrRows].join("\n");
+}
+
+export async function serializeBookmarksAsJsonlWithResolvedNames(
+  bookmarks: BookmarkEntry[],
+  bookmarkRows: BookmarkRowData[] = [],
+): Promise<string> {
+  const bookmarkRowsByHash = new Map(
+    bookmarkRows.map((bookmarkRow) => [normalizeBookmarkHash(bookmarkRow.hash), bookmarkRow]),
+  );
+
+  const normalizedBookmarks = normalizeBookmarkEntries(bookmarks);
+  const serializedBookmarkRows = normalizedBookmarks.map((bookmark) => bookmark.hash);
+  const serializationContext = createBookmarkItemAttrSerializationContext(
+    bookmarkRowsByHash,
+    normalizedBookmarks,
+  );
+  await resolveStoredItemAttrNames(serializationContext);
+  const serializedAttrRows = serializeBookmarkItemAttrRowsFromContext(serializationContext);
 
   return [...serializedBookmarkRows, ...serializedAttrRows].join("\n");
 }

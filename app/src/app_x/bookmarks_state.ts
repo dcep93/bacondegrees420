@@ -6,6 +6,7 @@ import {
   removeBookmarkEntry,
   saveBookmarks,
   serializeBookmarksAsJsonl,
+  serializeBookmarksAsJsonlWithResolvedNames,
   upsertBookmarkEntry,
   type BookmarkEntry,
 } from "./bookmarks";
@@ -93,20 +94,13 @@ export function useBookmarksState({
   const [bookmarksJsonlDraft, setBookmarksJsonlDraft] = useState("");
   const [isSavingBookmark, setIsSavingBookmark] = useState(false);
   const [itemAttrsVersion, setItemAttrsVersion] = useState(0);
+  const [serializedBookmarksJsonl, setSerializedBookmarksJsonl] = useState("");
   const bookmarksRef = useRef<BookmarkEntry[]>([]);
   const bookmarksHydrationRunIdRef = useRef(0);
   const bookmarksHydrationInFlightRef = useRef<Promise<void> | null>(null);
   const bookmarksPersistenceRequestIdRef = useRef(0);
   const serializedBookmarksJsonlRef = useRef("");
   const bookmarksJsonlTextareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const serializedBookmarksJsonl = useMemo(
-    () => {
-      void itemAttrsVersion;
-      return serializeBookmarksAsJsonl(bookmarks, bookmarkRows);
-    },
-    [bookmarkRows, bookmarks, itemAttrsVersion],
-  );
-
   const isBookmarksJsonlDraftDirty = isBookmarksJsonlDraftChanged(
     serializedBookmarksJsonl,
     bookmarksJsonlDraft,
@@ -230,6 +224,27 @@ export function useBookmarksState({
   }, [refreshBookmarkRows]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    void itemAttrsVersion;
+    void serializeBookmarksAsJsonlWithResolvedNames(bookmarks, bookmarkRows)
+      .then((nextSerializedBookmarksJsonl) => {
+        if (!cancelled) {
+          setSerializedBookmarksJsonl(nextSerializedBookmarksJsonl);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSerializedBookmarksJsonl(serializeBookmarksAsJsonl(bookmarks, bookmarkRows));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [bookmarkRows, bookmarks, itemAttrsVersion]);
+
+  useEffect(() => {
     const previousSerializedBookmarksJsonl = serializedBookmarksJsonlRef.current;
     serializedBookmarksJsonlRef.current = serializedBookmarksJsonl;
     setBookmarksJsonlDraft((currentDraft) =>
@@ -285,7 +300,9 @@ export function useBookmarksState({
       );
       writeCinenerdleItemAttrs(parsedJsonl.itemAttrs);
       setBookmarkRows(nextBookmarkRows);
-      setBookmarksJsonlDraft(serializeBookmarksAsJsonl(persistedBookmarks, nextBookmarkRows));
+      setBookmarksJsonlDraft(
+        await serializeBookmarksAsJsonlWithResolvedNames(persistedBookmarks, nextBookmarkRows),
+      );
       setIsBookmarksJsonlEditorOpen(false);
       onToast("Bookmarks updated");
     } catch (error: unknown) {
@@ -334,10 +351,18 @@ export function useBookmarksState({
     handleMoveBookmark: (bookmarkHash: string, direction: "up" | "down") =>
       void persistBookmarks(moveBookmarkEntry(bookmarksRef.current, bookmarkHash, direction)),
     handleOpenBookmarksJsonlEditor: () => {
-      void refreshBookmarkRows(bookmarksRef.current)
-        .finally(() => {
-          setIsBookmarksJsonlEditorOpen(true);
-        });
+      void (async () => {
+        const nextBookmarkRows = bookmarksRef.current.length === 0
+          ? []
+          : await Promise.all(bookmarksRef.current.map((bookmark) => buildBookmarkRowData(bookmark.hash)));
+        setBookmarkRows(nextBookmarkRows);
+        setBookmarksJsonlDraft(
+          await serializeBookmarksAsJsonlWithResolvedNames(bookmarksRef.current, nextBookmarkRows),
+        );
+        setIsBookmarksJsonlEditorOpen(true);
+      })().catch(() => {
+        setIsBookmarksJsonlEditorOpen(true);
+      });
     },
     handleCloseBookmarksJsonlEditor: () => setIsBookmarksJsonlEditorOpen(false),
     handleRemoveBookmark: (bookmarkHash: string) =>
