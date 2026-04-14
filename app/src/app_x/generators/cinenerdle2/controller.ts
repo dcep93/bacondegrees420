@@ -20,7 +20,7 @@ import {
   createPersonAssociationCard,
   createPersonRootCard,
 } from "./cards";
-import { TMDB_ICON_URL } from "./constants";
+import { ESCAPE_LABEL, TMDB_ICON_URL } from "./constants";
 import {
   buildPathNodesFromSegments,
   createPathNode,
@@ -187,6 +187,23 @@ function createUncachedMovieCard(name: string, year: string): Extract<Cinenerdle
     status: null,
     voteAverage: null,
     voteCount: null,
+    record: null,
+  };
+}
+
+function createEscapeBreakCard(): Extract<CinenerdleCard, { kind: "break" }> {
+  return {
+    key: "break:escape",
+    kind: "break",
+    name: ESCAPE_LABEL,
+    popularity: 0,
+    popularitySource: null,
+    imageUrl: null,
+    subtitle: "",
+    subtitleDetail: "",
+    connectionCount: null,
+    sources: [],
+    status: null,
     record: null,
   };
 }
@@ -369,6 +386,20 @@ function getPathNodeFromCard(card: CinenerdleCard): CinenerdlePathNode {
     "",
     getPersonTmdbIdFromCard(card),
   );
+}
+
+function getDisplaySelectedAncestorCards(
+  selectedAncestorCards: CinenerdleCard[],
+): CinenerdleCard[] {
+  let lastBreakIndex = -1;
+  selectedAncestorCards.forEach((card, index) => {
+    if (card.kind === "break") {
+      lastBreakIndex = index;
+    }
+  });
+  return lastBreakIndex >= 0
+    ? selectedAncestorCards.slice(lastBreakIndex + 1)
+    : selectedAncestorCards;
 }
 
 async function getLocalPersonRecord(
@@ -1165,8 +1196,10 @@ async function appendStandaloneSelectedPathNode(
   if (
     childRow &&
     childRow.length > 0 &&
-    nextPathNode &&
-    findCardIndex(childRow, nextPathNode) >= 0
+    (
+      !nextPathNode ||
+      findCardIndex(childRow, nextPathNode) >= 0
+    )
   ) {
     nextTree.push(childRow);
   }
@@ -1246,6 +1279,7 @@ async function buildTreeFromHashBase(
   for (let index = 0; index < continuationPathNodes.length; index += 1) {
     const pathNode = continuationPathNodes[index];
     if (pathNode.kind === "break") {
+      tree = [...tree, [createNode(createEscapeBreakCard(), true)]];
       continue;
     }
 
@@ -1421,10 +1455,12 @@ function renderCinenerdleCard(
   onExplicitTmdbRowClick?: () => void,
 ) {
   const card = node.data;
+  const displaySelectedAncestorCards = getDisplaySelectedAncestorCards(selectedAncestorCards);
+  const immediateSelectedAncestor = selectedAncestorCards[selectedAncestorCards.length - 1] ?? null;
   const viewModel = createCardViewModel(card, {
     isSelected: node.selected,
     isLocked: false,
-    isAncestorSelected: selectedAncestorCards.some((ancestorCard) =>
+    isAncestorSelected: displaySelectedAncestorCards.some((ancestorCard) =>
       cardsMatch(card, ancestorCard),
     ),
   });
@@ -1479,7 +1515,7 @@ function renderCinenerdleCard(
     onTmdbRowClick: tmdbRowClickHandler,
     tmdbTooltipText:
       card.kind === "movie" || card.kind === "person"
-        ? getCardTmdbRowTooltipText(card, selectedAncestorCards)
+        ? getCardTmdbRowTooltipText(card, displaySelectedAncestorCards)
         : null,
   };
 
@@ -1508,7 +1544,8 @@ function renderCinenerdleCard(
           }
         : null,
     onUnselectClick: node.selected
-      && selectedAncestorCards.length > 0
+      && immediateSelectedAncestor !== null
+      && immediateSelectedAncestor.kind !== "break"
       ? () => {
           onCardDeselect?.();
           writeHash(unselectHash, "selection");

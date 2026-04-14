@@ -127,6 +127,26 @@ function makeCinenerdleRootCard(): Extract<CinenerdleCard, { kind: "cinenerdle" 
   };
 }
 
+function makeBreakCard(
+  overrides: Partial<Extract<CinenerdleCard, { kind: "break" }>> = {},
+): Extract<CinenerdleCard, { kind: "break" }> {
+  return {
+    key: "break:escape",
+    kind: "break",
+    name: "ESCAPE",
+    popularity: 0,
+    popularitySource: null,
+    imageUrl: null,
+    subtitle: "",
+    subtitleDetail: "",
+    connectionCount: null,
+    sources: [],
+    status: null,
+    record: null,
+    ...overrides,
+  };
+}
+
 function renderController(
   overrides: Partial<Parameters<typeof useCinenerdleController>[0]> = {},
 ) {
@@ -772,6 +792,214 @@ describe("buildTreeFromHash", () => {
         subtitle: "Crew",
       }),
     );
+  });
+
+  it("preserves escape rows and keeps the post-escape selected movie children visible", async () => {
+    const oppenheimerRecord = makeFilmRecord({
+      id: 1,
+      tmdbId: 1,
+      title: "Oppenheimer",
+      year: "2023",
+      personConnectionKeys: [101],
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 1,
+        title: "Oppenheimer",
+        release_date: "2023-07-21",
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({ id: 101, name: "James Remar", order: 0, popularity: 10 }),
+        ],
+        crew: [],
+      },
+    });
+    const jamesRemarRecord = makePersonRecord({
+      id: 101,
+      tmdbId: 101,
+      name: "James Remar",
+      movieConnectionKeys: [1, 2],
+      rawTmdbPerson: makeTmdbPersonSearchResult({
+        id: 101,
+        name: "James Remar",
+        popularity: 10,
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({ id: 1, title: "Oppenheimer", release_date: "2023-07-21" }),
+          makeMovieCredit({ id: 2, title: "They Will Kill You", release_date: "2026-01-16" }),
+        ],
+        crew: [],
+      },
+    });
+    const theyWillKillYouRecord = makeFilmRecord({
+      id: 2,
+      tmdbId: 2,
+      title: "They Will Kill You",
+      year: "2026",
+      personConnectionKeys: [101],
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 2,
+        title: "They Will Kill You",
+        release_date: "2026-01-16",
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({ id: 101, name: "James Remar", order: 0, popularity: 10 }),
+        ],
+        crew: [],
+      },
+    });
+    const ratatouilleRecord = makeFilmRecord({
+      id: 3,
+      tmdbId: 3,
+      title: "Ratatouille",
+      year: "2007",
+      personConnectionKeys: [201],
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 3,
+        title: "Ratatouille",
+        release_date: "2007-06-29",
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({ id: 201, name: "Patton Oswalt", order: 0, popularity: 12 }),
+        ],
+        crew: [],
+      },
+    });
+    const pattonOswaltRecord = makePersonRecord({
+      id: 201,
+      tmdbId: 201,
+      name: "Patton Oswalt",
+      movieConnectionKeys: [3],
+      rawTmdbPerson: makeTmdbPersonSearchResult({
+        id: 201,
+        name: "Patton Oswalt",
+        popularity: 12,
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({ id: 3, title: "Ratatouille", release_date: "2007-06-29" }),
+        ],
+        crew: [],
+      },
+    });
+    const filmRecordsById = new Map([
+      [1, oppenheimerRecord],
+      [2, theyWillKillYouRecord],
+      [3, ratatouilleRecord],
+    ]);
+    const personRecordsById = new Map([
+      [101, jamesRemarRecord],
+      [201, pattonOswaltRecord],
+    ]);
+
+    indexedDbMock.getFilmRecordById.mockImplementation(async (tmdbId: number | string) =>
+      filmRecordsById.get(Number(tmdbId)) ?? null,
+    );
+    indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (title: string, year: string) => {
+      const normalizedTitle = title.toLowerCase();
+      if (normalizedTitle === "oppenheimer" && year === "2023") {
+        return oppenheimerRecord;
+      }
+      if (normalizedTitle === "they will kill you" && year === "2026") {
+        return theyWillKillYouRecord;
+      }
+      if (normalizedTitle === "ratatouille" && year === "2007") {
+        return ratatouilleRecord;
+      }
+      return null;
+    });
+    indexedDbMock.getPersonRecordById.mockImplementation(async (tmdbId: number | string) =>
+      personRecordsById.get(Number(tmdbId)) ?? null,
+    );
+    indexedDbMock.getPersonRecordByName.mockImplementation(async (personName: string) => {
+      if (personName === "James Remar") {
+        return jamesRemarRecord;
+      }
+      if (personName === "Patton Oswalt") {
+        return pattonOswaltRecord;
+      }
+      return null;
+    });
+    indexedDbMock.getFilmRecordCountsByPersonConnectionKeys.mockResolvedValue(
+      new Map([[101, 2], [201, 1]]),
+    );
+    indexedDbMock.getPersonRecordCountsByMovieKeys.mockResolvedValue(
+      new Map([[1, 1], [2, 1], [3, 1]]),
+    );
+    indexedDbMock.getFilmRecordsByIds.mockImplementation(async (movieIds: number[]) =>
+      new Map(movieIds.flatMap((movieId) => {
+        const movieRecord = filmRecordsById.get(movieId);
+        return movieRecord ? [[movieId, movieRecord] as const] : [];
+      })),
+    );
+    indexedDbMock.getMoviePopularityByIds.mockResolvedValue(new Map([[1, 12], [2, 12], [3, 12]]));
+
+    const tree = await buildTreeFromHash(
+      "#film|Oppenheimer+(2023)|James+Remar|They+Will+Kill+You+(2026)||Ratatouille+(2007)",
+    );
+
+    expect(tree[4]?.find((node) => node.selected)?.data).toEqual(
+      expect.objectContaining({
+        kind: "break",
+        name: "ESCAPE",
+      }),
+    );
+    expect(tree[5]?.find((node) => node.selected)?.data).toEqual(
+      expect.objectContaining({
+        kind: "movie",
+        name: "Ratatouille",
+        year: "2007",
+      }),
+    );
+    expect(tree[6]?.map((node) => node.data.name)).toEqual(["Patton Oswalt"]);
+    expect(tree[6]?.some((node) => node.selected)).toBe(false);
+  });
+});
+
+describe("renderCard", () => {
+  it("does not render an unselect bubble for a selected card immediately after an escape", () => {
+    const controller = renderController();
+    const html = renderToStaticMarkup(
+      controller.renderCard({
+        row: 5,
+        col: 0,
+        isViewportPriorityRow: false,
+        node: {
+          data: makeMovieCard({
+            key: "movie:ratatouille:2007",
+            name: "Ratatouille",
+            year: "2007",
+          }),
+          selected: true,
+        },
+        onCardDeselect: vi.fn(),
+        selectedAncestorData: [
+          makeMovieCard({
+            key: "movie:oppenheimer:2023",
+            name: "Oppenheimer",
+            year: "2023",
+          }),
+          makePersonCard({
+            key: "person:101",
+            name: "James Remar",
+          }),
+          makeMovieCard({
+            key: "movie:they-will-kill-you:2026",
+            name: "They Will Kill You",
+            year: "2026",
+          }),
+          makeBreakCard(),
+        ],
+        selectedChildData: null,
+        selectedDescendantData: [],
+        selectedParentData: makeBreakCard(),
+      }),
+    );
+
+    expect(html).not.toContain("cinenerdle-card-unselect-bubble");
+    expect(html).not.toContain("aria-label=\"Unselect Ratatouille\"");
   });
 });
 
@@ -2075,6 +2303,52 @@ describe("useCinenerdleController", () => {
 
     expect(scrollGenerationLikeBubble).toHaveBeenCalledTimes(1);
     expect(scrollGenerationLikeBubble).toHaveBeenCalledWith(2);
+  });
+
+  it("keeps escape segments in the hash and scrolls the child row when reselecting a post-escape movie", async () => {
+    const writeHash = vi.fn();
+    const controller = renderController({ writeHash });
+    const applyUpdate = vi.fn();
+    const scrollGenerationIntoVerticalView = vi.fn();
+    const scrollGenerationLikeBubble = vi.fn();
+
+    await controller.runEffect(
+      {
+        type: "load-selected-card",
+        isReselection: true,
+        removedDescendantRows: false,
+        row: 5,
+        col: 0,
+        tree: [
+          [{ data: makeMovieCard({ key: "movie:oppenheimer:2023", name: "Oppenheimer", year: "2023" }), selected: true }],
+          [{ data: makePersonCard({ key: "person:101", name: "James Remar" }), selected: true }],
+          [{ data: makeMovieCard({ key: "movie:they-will-kill-you:2026", name: "They Will Kill You", year: "2026" }), selected: true }],
+          [{ data: makePersonCard({ key: "person:999", name: "Sibling Person" }), selected: false }],
+          [{ data: makeBreakCard(), selected: true }],
+          [{ data: makeMovieCard({ key: "movie:ratatouille:2007", name: "Ratatouille", year: "2007" }), selected: true }],
+          [{ data: makePersonCard({ key: "person:201", name: "Patton Oswalt" }), selected: false }],
+        ],
+      },
+      {
+        applyUpdate,
+        getState: () => createControllerState(),
+        lifecycleId: 1,
+        selectionId: 1,
+        scrollGenerationIntoVerticalView,
+        scrollGenerationLikeBubble,
+      },
+    );
+
+    await flushAsyncWork();
+
+    expect(writeHash).toHaveBeenCalledWith(
+      "#film|Oppenheimer+(2023)|James+Remar|They+Will+Kill+You+(2026)||Ratatouille+(2007)",
+      "selection",
+    );
+    expect(scrollGenerationIntoVerticalView).toHaveBeenCalledWith(6, {
+      alignRowHorizontally: false,
+    });
+    expect(scrollGenerationLikeBubble).toHaveBeenCalledWith(6);
   });
 
   it("renders a DB-backed person subtree before force hydrating a connection-derived selection", async () => {
