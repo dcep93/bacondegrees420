@@ -2655,10 +2655,33 @@ export function inflateIndexedDbSnapshot(
   };
 }
 
+function normalizeSnapshotValueForStringify(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    if (value.every((item) => typeof item === "number" && Number.isFinite(item))) {
+      return [...value].sort((left, right) => left - right);
+    }
+
+    return value.map((item) => normalizeSnapshotValueForStringify(item));
+  }
+
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, nestedValue]) => [
+      key,
+      normalizeSnapshotValueForStringify(nestedValue),
+    ]),
+  );
+}
+
 export function stringifyIndexedDbSnapshot(
   snapshot: IndexedDbSnapshot,
 ): string {
-  return escapeAmbiguousUnicodeCharacters(JSON.stringify(snapshot, null, 2));
+  return escapeAmbiguousUnicodeCharacters(
+    JSON.stringify(normalizeSnapshotValueForStringify(snapshot), null, 2),
+  );
 }
 
 export async function getIndexedDbSnapshot(): Promise<IndexedDbSnapshot> {

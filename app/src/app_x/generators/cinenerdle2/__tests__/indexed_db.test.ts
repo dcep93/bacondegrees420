@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isExcludedFilmRecord } from "../exclusion";
-import type { IndexedDbSnapshotConnection, IndexedDbSnapshotPerson } from "../indexed_db";
+import type {
+  IndexedDbSnapshot,
+  IndexedDbSnapshotConnection,
+  IndexedDbSnapshotPerson,
+} from "../indexed_db";
 import { makeFilmRecord, makeTmdbMovieSearchResult } from "./factories";
 
 const originalIndexedDbDescriptor = Object.getOwnPropertyDescriptor(globalThis, "indexedDB");
@@ -142,6 +146,65 @@ describe("deleteCinenerdleIndexedDbDatabase", () => {
 });
 
 describe("IndexedDB snapshot film genre preservation", () => {
+  it("sorts numeric arrays when stringifying snapshots", async () => {
+    const { stringifyIndexedDbSnapshot } = await import("../indexed_db");
+    const snapshot: IndexedDbSnapshot = {
+      format: "cinenerdle-indexed-db-snapshot",
+      version: 13,
+      people: [{
+        tmdbId: 18,
+        name: "John Doe",
+        movieConnectionKeys: [122, 5, 38, 38, 12],
+        popularity: 1,
+        fromTmdb: null,
+      }],
+      films: [{
+        tmdbId: 7,
+        title: "Se7en",
+        year: "1995",
+        posterPath: null,
+        popularity: 1,
+        genreIds: [80, 18, 9648],
+        voteAverage: null,
+        voteCount: null,
+        releaseDate: "1995-09-22",
+        fromTmdb: null,
+        personConnectionKeys: [5293, 18, 95, 18],
+        people: [
+          {
+            fetchTimestamp: "2026-04-01T16:00:00.000Z",
+            personTmdbId: 5293,
+            profilePath: null,
+            roleType: "cast",
+            role: "Detective Lt. William Somerset",
+            order: 1,
+          },
+          {
+            fetchTimestamp: "2026-04-01T16:00:00.000Z",
+            personTmdbId: 95,
+            profilePath: null,
+            roleType: "cast",
+            role: "Detective David Mills",
+            order: 0,
+          },
+        ],
+      }],
+    };
+
+    const stringifiedSnapshot = stringifyIndexedDbSnapshot(snapshot);
+    const parsedSnapshot = JSON.parse(stringifiedSnapshot) as IndexedDbSnapshot;
+
+    expect(parsedSnapshot.people[0]?.movieConnectionKeys).toEqual([5, 12, 38, 38, 122]);
+    expect(parsedSnapshot.films[0]?.genreIds).toEqual([18, 80, 9648]);
+    expect(parsedSnapshot.films[0]?.personConnectionKeys).toEqual([18, 18, 95, 5293]);
+    expect(parsedSnapshot.films[0]?.people.map((connection) => connection.personTmdbId)).toEqual([
+      5293,
+      95,
+    ]);
+    expect(snapshot.people[0]?.movieConnectionKeys).toEqual([122, 5, 38, 38, 12]);
+    expect(snapshot.films[0]?.personConnectionKeys).toEqual([5293, 18, 95, 18]);
+  });
+
   it("stores direct-film genres in snapshots and preserves exclusion after inflation", async () => {
     const { createStoredFilmRecord, inflateIndexedDbSnapshot } = await import("../indexed_db");
     const filmRecord = makeFilmRecord({
