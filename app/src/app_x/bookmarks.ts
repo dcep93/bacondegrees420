@@ -288,9 +288,12 @@ async function resolveStoredItemAttrNames(
 
       unresolvedTargets.push((async () => {
         try {
+          const validTmdbId = getValidTmdbEntityId(id);
           const directRecordName = bucket === "film"
             ? (await getFilmRecordById(id))?.title?.trim() ?? ""
-            : (await getPersonRecordById(id))?.name?.trim() ?? "";
+            : validTmdbId === null
+              ? ""
+              : (await getPersonRecordById(validTmdbId))?.name?.trim() ?? "";
 
           if (directRecordName) {
             context.targetNamesByFingerprint.set(fingerprint, directRecordName);
