@@ -45,6 +45,7 @@ export function renderLoggedCinenerdleCard({
   onAddItemAttr,
   onCardClick,
   onRemoveItemAttr,
+  onUnselectClick,
   onTitleClick,
   viewModel,
 }: {
@@ -53,6 +54,7 @@ export function renderLoggedCinenerdleCard({
   onAddItemAttr?: ((nextChar: string) => void) | null;
   onCardClick?: (event: MouseEvent<HTMLElement>) => void;
   onRemoveItemAttr?: ((itemAttr: string) => void) | null;
+  onUnselectClick?: (() => void) | null;
   onTitleClick: (event: MouseEvent<HTMLElement>) => void;
   viewModel: Extract<CinenerdleCardViewModel, { kind: "cinenerdle" | "movie" | "person" }>;
 }) {
@@ -64,6 +66,7 @@ export function renderLoggedCinenerdleCard({
       onAddItemAttr={onAddItemAttr}
       onCardClick={onCardClick}
       onRemoveItemAttr={onRemoveItemAttr}
+      onUnselectClick={onUnselectClick}
       onTitleClick={onTitleClick}
     />
   );

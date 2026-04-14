@@ -32,6 +32,11 @@ export type GeneratorLifecycleEvent =
       type: "select";
       row: number;
       col: number;
+    }
+  | {
+      type: "deselect";
+      row: number;
+      col: number;
     };
 
 export type GeneratorLifecycleEffect<T> =
@@ -84,6 +89,7 @@ export type GeneratorCardRenderContext<T> = {
   col: number;
   isViewportPriorityRow: boolean;
   node: GeneratorNode<T>;
+  onCardDeselect?: (() => void) | null;
   selectedAncestorData: T[];
   selectedChildData: T | null;
   selectedDescendantData: T[];

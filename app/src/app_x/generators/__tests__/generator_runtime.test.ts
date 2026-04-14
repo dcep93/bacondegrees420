@@ -94,6 +94,30 @@ describe("generator_runtime", () => {
     }]);
   });
 
+  it("deselects the chosen row and descendants without loading a new subtree", () => {
+    const state = createGeneratorState(
+      { name: "test" },
+      [
+        [createNode("root-a", true), createNode("root-b")],
+        [createNode("child-a", true), createNode("child-b")],
+        [createNode("grandchild-a", true)],
+      ],
+    );
+
+    const transition = reduceGeneratorLifecycleEvent(state, {
+      type: "deselect",
+      row: 1,
+      col: 0,
+    });
+
+    expect(transition.state.tree).toEqual([
+      [createNode("root-a", true), createNode("root-b")],
+      [createNode("child-a"), createNode("child-b")],
+      [createNode("grandchild-a")],
+    ]);
+    expect(transition.effects).toEqual([]);
+  });
+
   it("resolves the rendered tree from state", () => {
     const state = {
       ...createGeneratorState<{ key: string }, undefined>(undefined),

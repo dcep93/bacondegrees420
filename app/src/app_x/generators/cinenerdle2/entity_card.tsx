@@ -77,6 +77,7 @@ export function CinenerdleEntityCard({
   onCardClick,
   footerTooltip = null,
   onRemoveItemAttr,
+  onUnselectClick,
   onTitleClick,
   titleElement = "p",
 }: {
@@ -88,6 +89,7 @@ export function CinenerdleEntityCard({
   onCardClick?: (event: MouseEvent<HTMLElement>) => void;
   footerTooltip?: CinenerdleFooterTooltip | null;
   onRemoveItemAttr?: ((itemAttr: string) => void) | null;
+  onUnselectClick?: (() => void) | null;
   onTitleClick?: (event: MouseEvent<HTMLElement>) => void;
   titleElement?: "button" | "p";
 }) {
@@ -157,6 +159,18 @@ export function CinenerdleEntityCard({
       )}
       onClick={onCardClick}
     >
+      {card.isSelected && onUnselectClick ? (
+        <button
+          aria-label={`Unselect ${card.name}`}
+          className="cinenerdle-card-unselect-bubble"
+          onClick={(event) => {
+            handleIsolatedClick(event, onUnselectClick);
+          }}
+          type="button"
+        >
+          x
+        </button>
+      ) : null}
       <div className="cinenerdle-card-image-shell">
         {card.imageUrl ? (
           <img

@@ -255,6 +255,7 @@ type GeneratorRowViewProps<T> = {
   cardButtonClassName: string;
   generationIndex: number;
   handleBubbleClickRef: MutableRefObject<((generationIndex: number) => void) | null>;
+  handleCardDeselect: (row: number, col: number) => void;
   handleCardSelect: (row: number, col: number) => void;
   hideBubble: boolean;
   immediateSelectedOriginalCol: number | null;
@@ -316,6 +317,7 @@ function GeneratorRowViewInner<T>({
   cardButtonClassName,
   generationIndex,
   handleBubbleClickRef,
+  handleCardDeselect,
   handleCardSelect,
   hideBubble,
   immediateSelectedOriginalCol,
@@ -514,6 +516,11 @@ function GeneratorRowViewInner<T>({
           col: originalCol,
           isViewportPriorityRow,
           node: renderNode,
+          onCardDeselect: node.selected
+            ? () => {
+                handleCardDeselect(generationIndex, originalCol);
+              }
+            : null,
           selectedAncestorData,
           selectedChildData,
           selectedDescendantData,
@@ -618,6 +625,7 @@ const MemoizedGeneratorRowView = memo(
     prevProps.cardButtonClassName === nextProps.cardButtonClassName &&
     prevProps.generationIndex === nextProps.generationIndex &&
     prevProps.handleBubbleClickRef === nextProps.handleBubbleClickRef &&
+    prevProps.handleCardDeselect === nextProps.handleCardDeselect &&
     prevProps.handleCardSelect === nextProps.handleCardSelect &&
     prevProps.hideBubble === nextProps.hideBubble &&
     prevProps.immediateSelectedOriginalCol === nextProps.immediateSelectedOriginalCol &&
@@ -1841,6 +1849,63 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     });
   }, [reduce, runEffects, scrollCardElementIntoViewInTree, scrollToCardIndexInTree]);
 
+  const handleCardDeselect = useCallback((row: number, col: number) => {
+    const currentTree = stateRef.current.tree ?? [];
+    const selectedRow = currentTree[row];
+    const selectedNode = selectedRow?.[col] ?? null;
+
+    if (!selectedRow || !selectedNode || isDisabledNode(selectedNode) || !selectedNode.selected) {
+      return;
+    }
+
+    const nextSelectionId = activeSelectionRef.current + 1;
+    activeSelectionRef.current = nextSelectionId;
+    pendingSelectionPerfRef.current = null;
+    const deselectedState = reduce(stateRef.current, {
+      type: "deselect",
+      row,
+      col,
+    }).state;
+    const prunedTree = (deselectedState.tree ?? []).slice(0, row + 1);
+
+    stateRef.current = deselectedState;
+    flushSync(() => {
+      setImmediateSelection(null);
+      setState(deselectedState);
+    });
+
+    if (currentTree.length <= row + 1) {
+      return;
+    }
+
+    schedulePostSelectionWork(() => {
+      if (
+        !mountedRef.current ||
+        activeSelectionRef.current !== nextSelectionId
+      ) {
+        return;
+      }
+
+      flushSync(() => {
+        setState((prevState) => {
+          if (
+            !mountedRef.current ||
+            activeSelectionRef.current !== nextSelectionId
+          ) {
+            return prevState;
+          }
+
+          const nextState = {
+            ...prevState,
+            tree: prunedTree,
+          };
+          stateRef.current = nextState;
+          return nextState;
+        });
+      });
+    });
+  }, [reduce]);
+
   useLayoutEffect(() => {
     if (!generatorHandleRef) {
       return;
@@ -1864,6 +1929,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
   }, [
     generatorHandleRef,
     handleCardSelect,
+    handleCardDeselect,
     scrollGenerationIntoVerticalView,
     scrollGenerationLikeBubble,
     scrollToCardIndex,
@@ -1900,6 +1966,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
             key={generationIndex}
             generationIndex={generationIndex}
             handleBubbleClickRef={handleBubbleClickRef}
+            handleCardDeselect={handleCardDeselect}
             handleCardSelect={handleCardSelect}
             hideBubble={rowPresentation.hideBubble === true}
             immediateSelectedOriginalCol={

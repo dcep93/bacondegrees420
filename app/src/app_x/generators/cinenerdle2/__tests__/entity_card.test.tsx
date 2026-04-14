@@ -326,6 +326,32 @@ describe("CinenerdleEntityCard", () => {
     expect(cinenerdleHtml).not.toContain("Toggle attrs for");
   });
 
+  it("renders a floating unselect bubble for selected cards when a dismiss handler is available", () => {
+    const html = renderToStaticMarkup(
+      <CinenerdleEntityCard
+        card={makeRenderableMovieCard({
+          isSelected: true,
+        })}
+        onUnselectClick={() => {}}
+      />,
+    );
+
+    expect(html).toContain("cinenerdle-card-unselect-bubble");
+    expect(html).toContain("aria-label=\"Unselect Heat\"");
+  });
+
+  it("does not render the unselect bubble for unselected cards", () => {
+    const html = renderToStaticMarkup(
+      <CinenerdleEntityCard
+        card={makeRenderableMovieCard()}
+        onUnselectClick={() => {}}
+      />,
+    );
+
+    expect(html).not.toContain("cinenerdle-card-unselect-bubble");
+    expect(html).not.toContain("aria-label=\"Unselect Heat\"");
+  });
+
   it("renders attr buttons instead of placeholder copy when attrs are present", () => {
     const html = renderToStaticMarkup(
       <CinenerdleEntityCard

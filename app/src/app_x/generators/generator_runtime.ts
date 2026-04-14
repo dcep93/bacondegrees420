@@ -86,6 +86,44 @@ export function reduceGeneratorLifecycleEvent<T, TMeta = undefined>(
     };
   }
 
+  if (event.type === "deselect") {
+    if (!selectedNode.selected) {
+      return {
+        state,
+        effects: [],
+      };
+    }
+
+    const nextTree = tree.map((generation, generationIndex) => {
+      if (generationIndex < event.row) {
+        return generation;
+      }
+
+      let didRowChange = false;
+      const nextGeneration = generation.map((node) => {
+        if (!node.selected) {
+          return node;
+        }
+
+        didRowChange = true;
+        return {
+          ...node,
+          selected: false,
+        };
+      });
+
+      return didRowChange ? nextGeneration : generation;
+    });
+
+    return {
+      state: {
+        ...state,
+        tree: nextTree,
+      },
+      effects: [],
+    };
+  }
+
   const removedDescendantRows = tree.length > event.row + 1;
   const normalizedTree = tree.map((generation, generationIndex) => {
     if (generationIndex < event.row) {

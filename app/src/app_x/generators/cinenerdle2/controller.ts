@@ -1414,6 +1414,7 @@ async function buildTreeSessionFromHash(
 function renderCinenerdleCard(
   node: GeneratorNode<CinenerdleCard>,
   isViewportPriorityRow: boolean,
+  onCardDeselect: (() => void) | null | undefined,
   selectedAncestorCards: CinenerdleCard[],
   onItemAttrMutationRequested: CinenerdleControllerOptions["onItemAttrMutationRequested"],
   writeHash: (nextHash: string, mode?: "selection" | "navigation") => void,
@@ -1437,6 +1438,7 @@ function renderCinenerdleCard(
   }
 
   const rootHash = serializePathNodes([getPathNodeFromCard(card)]);
+  const unselectHash = serializePathNodes(selectedAncestorCards.map(getPathNodeFromCard));
   const isCinenerdleLaunchCard = card.kind === "cinenerdle";
   const rootHref = `${window.location.pathname}${window.location.search}${rootHash}`;
   const imageLoading =
@@ -1505,6 +1507,12 @@ function renderCinenerdleCard(
             });
           }
         : null,
+    onUnselectClick: node.selected
+      ? () => {
+          onCardDeselect?.();
+          writeHash(unselectHash, "selection");
+        }
+      : null,
     onTitleClick: (event) => {
       if (isCinenerdleLaunchCard) {
         window.open("https://www.cinenerdle2.app/battle", "_blank", "noopener,noreferrer");
@@ -1931,11 +1939,13 @@ export function useCinenerdleController({
       renderCard({
         node,
         isViewportPriorityRow,
+        onCardDeselect,
         selectedAncestorData,
       }) {
         return renderCinenerdleCard(
           node,
           isViewportPriorityRow,
+          onCardDeselect,
           selectedAncestorData,
           onItemAttrMutationRequested,
           writeHash,
