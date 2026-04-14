@@ -1,5 +1,6 @@
 import type { CardCreditLine, CardSource, CardStatus } from "../view_types";
 import type { GeneratorCardRowOrderMetadata } from "../../../types/generator";
+import type { CinenerdleItemAttrTarget } from "../item_attrs";
 
 type BaseRenderableCinenerdleEntityCard = {
   key: string;
@@ -30,6 +31,7 @@ type BaseRenderableCinenerdleEntityCard = {
   connectedItemAttrs?: string[];
   inheritedItemAttrs?: string[];
   itemAttrCounts?: GeneratorCardRowOrderMetadata;
+  referencedItemAttrTargets?: CinenerdleItemAttrTarget[];
 };
 
 type RenderableMovieCard = BaseRenderableCinenerdleEntityCard & {

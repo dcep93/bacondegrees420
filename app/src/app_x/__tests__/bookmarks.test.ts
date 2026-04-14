@@ -246,6 +246,52 @@ describe("bookmarks", () => {
     ].join("\n"));
   });
 
+  it("serializes connected attr rows using referenced target names from bookmark rows", () => {
+    localStorage.setItem(
+      CINENERDLE_ITEM_ATTRS_STORAGE_KEY,
+      JSON.stringify({
+        film: {
+          "603": ["🔥"],
+        },
+        person: {
+          "1158": ["🎭"],
+        },
+      }),
+    );
+
+    expect(serializeBookmarksAsJsonl(
+      [createBookmark(MATRIX_HASH)],
+      [{
+        hash: MATRIX_HASH,
+        cards: [{
+          kind: "card",
+          key: `${MATRIX_HASH}:movie:603`,
+          card: {
+            key: "movie:603",
+            kind: "movie",
+            name: "The Matrix",
+            referencedItemAttrTargets: [
+              {
+                bucket: "film",
+                id: "603",
+                name: "The Matrix",
+              },
+              {
+                bucket: "person",
+                id: "1158",
+                name: "Keanu Reeves",
+              },
+            ],
+          },
+        }],
+      }] as unknown as BookmarkRowData[],
+    )).toBe([
+      MATRIX_HASH,
+      "603:film:The Matrix 🔥",
+      "1158:person:Keanu Reeves 🎭",
+    ].join("\n"));
+  });
+
   it("parses valid bookmark hashes and ignores blank lines", () => {
     expect(parseBookmarksJsonl(`\n${MATRIX_HASH}\n\n${KEANU_HASH}\n`)).toEqual([
       createBookmark(MATRIX_HASH),

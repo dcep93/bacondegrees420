@@ -130,22 +130,26 @@ export function getBookmarkRowItemAttrTargets(bookmarkRow: BookmarkRowData): Cin
       return;
     }
 
-    const target = getCinenerdleItemAttrTargetFromCard({
-      key: rowCard.card.key,
-      kind: rowCard.card.kind,
-      name: rowCard.card.name,
+    const referencedTargets = rowCard.card.referencedItemAttrTargets?.length
+      ? rowCard.card.referencedItemAttrTargets
+      : (() => {
+          const target = getCinenerdleItemAttrTargetFromCard({
+            key: rowCard.card.key,
+            kind: rowCard.card.kind,
+            name: rowCard.card.name,
+          });
+          return target ? [target] : [];
+        })();
+
+    referencedTargets.forEach((target) => {
+      const fingerprint = `${target.bucket}:${target.id}`;
+      if (seenTargets.has(fingerprint)) {
+        return;
+      }
+
+      seenTargets.add(fingerprint);
+      targets.push(target);
     });
-    if (!target) {
-      return;
-    }
-
-    const fingerprint = `${target.bucket}:${target.id}`;
-    if (seenTargets.has(fingerprint)) {
-      return;
-    }
-
-    seenTargets.add(fingerprint);
-    targets.push(target);
   });
 
   return targets;

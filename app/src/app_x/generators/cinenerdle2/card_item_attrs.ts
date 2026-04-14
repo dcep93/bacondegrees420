@@ -134,6 +134,37 @@ function getEntityCardItemAttrTarget(
   return getCinenerdleItemAttrTargetFromCard(card);
 }
 
+export function getCinenerdleCardReferencedItemAttrTargets(
+  card: CinenerdleCard,
+): CinenerdleItemAttrTarget[] {
+  if (card.kind !== "movie" && card.kind !== "person") {
+    return [];
+  }
+
+  const entityTarget = getEntityCardItemAttrTarget(card);
+  return dedupeItemAttrTargets([
+    ...(entityTarget ? [entityTarget] : []),
+    ...getConnectedItemAttrTargets(card),
+  ]);
+}
+
+function dedupeItemAttrTargets(targets: CinenerdleItemAttrTarget[]): CinenerdleItemAttrTarget[] {
+  const seenTargets = new Set<string>();
+  const dedupedTargets: CinenerdleItemAttrTarget[] = [];
+
+  targets.forEach((target) => {
+    const fingerprint = `${target.bucket}:${target.id}`;
+    if (seenTargets.has(fingerprint)) {
+      return;
+    }
+
+    seenTargets.add(fingerprint);
+    dedupedTargets.push(target);
+  });
+
+  return dedupedTargets;
+}
+
 export function enrichCinenerdleCardWithItemAttrs(
   card: CinenerdleCard,
   itemAttrsSnapshot: CinenerdleItemAttrs,

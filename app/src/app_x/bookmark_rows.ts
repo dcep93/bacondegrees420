@@ -5,6 +5,7 @@ import {
 } from "./associated_entity_cards";
 import {
   enrichCinenerdleCardWithItemAttrs,
+  getCinenerdleCardReferencedItemAttrTargets,
 } from "./generators/cinenerdle2/card_item_attrs";
 import {
   createCinenerdleOnlyPersonCard,
@@ -303,6 +304,7 @@ function createRenderableBookmarkCard(
     ...viewModel,
     onExplicitTmdbRowClick: null,
     onTmdbRowClick: null,
+    referencedItemAttrTargets: getCinenerdleCardReferencedItemAttrTargets(card),
     tmdbTooltipText: card.kind === "movie" || card.kind === "person"
       ? getCardTmdbRowTooltipText(card, selectedAncestorCards)
       : null,
