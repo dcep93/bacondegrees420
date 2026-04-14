@@ -1,5 +1,9 @@
 import type { MouseEvent } from "react";
-import { CinenerdleBreakBar, CinenerdleEntityCard } from "./entity_card";
+import {
+  CinenerdleBreakBar,
+  CinenerdleEntityCard,
+  type CinenerdleCardCornerAction,
+} from "./entity_card";
 import type { CinenerdleCardViewModel } from "./view_types";
 
 export function renderDbInfoCard(
@@ -40,33 +44,33 @@ export function renderBreakCard(label: string) {
 }
 
 export function renderLoggedCinenerdleCard({
+  cornerAction,
   imageFetchPriority,
   imageLoading,
   onAddItemAttr,
   onCardClick,
   onRemoveItemAttr,
-  onUnselectClick,
   onTitleClick,
   viewModel,
 }: {
+  cornerAction?: CinenerdleCardCornerAction | null;
   imageFetchPriority?: "auto" | "high";
   imageLoading?: "eager" | "lazy";
   onAddItemAttr?: ((nextChar: string) => void) | null;
   onCardClick?: (event: MouseEvent<HTMLElement>) => void;
   onRemoveItemAttr?: ((itemAttr: string) => void) | null;
-  onUnselectClick?: (() => void) | null;
   onTitleClick: (event: MouseEvent<HTMLElement>) => void;
   viewModel: Extract<CinenerdleCardViewModel, { kind: "cinenerdle" | "movie" | "person" }>;
 }) {
   return (
     <CinenerdleEntityCard
       card={viewModel}
+      cornerAction={cornerAction}
       imageFetchPriority={imageFetchPriority}
       imageLoading={imageLoading}
       onAddItemAttr={onAddItemAttr}
       onCardClick={onCardClick}
       onRemoveItemAttr={onRemoveItemAttr}
-      onUnselectClick={onUnselectClick}
       onTitleClick={onTitleClick}
     />
   );

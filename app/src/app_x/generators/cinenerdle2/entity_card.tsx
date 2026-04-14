@@ -14,6 +14,12 @@ import { formatRemovedItemAttrMessage, getAcceptedItemAttrInput } from "./entity
 
 export type { RenderableCinenerdleEntityCard } from "./entity_card/types";
 
+export type CinenerdleCardCornerAction = {
+  ariaLabel: string;
+  label: string;
+  onClick: () => void;
+};
+
 export function CinenerdleBreakBar({
   className,
   label = "ESCAPE",
@@ -71,25 +77,25 @@ function CinenerdleExtraChip({
 export function CinenerdleEntityCard({
   card,
   className,
+  cornerAction = null,
   imageFetchPriority = "auto",
   imageLoading = "lazy",
   onAddItemAttr,
   onCardClick,
   footerTooltip = null,
   onRemoveItemAttr,
-  onUnselectClick,
   onTitleClick,
   titleElement = "p",
 }: {
   card: RenderableCinenerdleEntityCard;
   className?: string;
+  cornerAction?: CinenerdleCardCornerAction | null;
   imageFetchPriority?: "auto" | "high";
   imageLoading?: "eager" | "lazy";
   onAddItemAttr?: ((nextChar: string) => void) | null;
   onCardClick?: (event: MouseEvent<HTMLElement>) => void;
   footerTooltip?: CinenerdleFooterTooltip | null;
   onRemoveItemAttr?: ((itemAttr: string) => void) | null;
-  onUnselectClick?: (() => void) | null;
   onTitleClick?: (event: MouseEvent<HTMLElement>) => void;
   titleElement?: "button" | "p";
 }) {
@@ -159,16 +165,16 @@ export function CinenerdleEntityCard({
       )}
       onClick={onCardClick}
     >
-      {card.isSelected && onUnselectClick ? (
+      {cornerAction ? (
         <button
-          aria-label={`Unselect ${card.name}`}
+          aria-label={cornerAction.ariaLabel}
           className="cinenerdle-card-unselect-bubble"
           onClick={(event) => {
-            handleIsolatedClick(event, onUnselectClick);
+            handleIsolatedClick(event, cornerAction.onClick);
           }}
           type="button"
         >
-          x
+          {cornerAction.label}
         </button>
       ) : null}
       <div className="cinenerdle-card-image-shell">

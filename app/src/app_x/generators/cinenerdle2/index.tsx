@@ -38,6 +38,7 @@ import {
   getYoungestSelectedCard,
   getYoungestSelectedGenerationIndex,
 } from "./navigation";
+import { appendEscapedConnectionEntityToHash } from "../../connection_hash";
 import {
   CINENERDLE_RECORDS_UPDATED_EVENT,
 } from "./indexed_db";
@@ -148,6 +149,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   const recordsRefreshScheduledRef = useRef(false);
   const activeTreeRefreshRequestRef = useRef<TreeRefreshRequestState | null>(null);
   const itemAttrTreeRefreshRequestSequenceRef = useRef(0);
+  const escapeAppendRequestIdRef = useRef(0);
   const pendingConnectionPathAppendRevealRef = useRef<{
     requestKey: string;
     targetEntity: ConnectionPathAppendRevealTarget;
@@ -271,6 +273,43 @@ const Cinenerdle2 = memo(function Cinenerdle2({
     },
     [onHashWrite],
   );
+  const queueConnectionPathAppendRequest = useCallback((request: {
+    sourceHash: string;
+    nextHash: string;
+    requestKey: string;
+    targetEntity: ConnectionPathAppendRevealTarget;
+  }) => {
+    pendingTreeRefreshRequestsRef.current = [
+      ...pendingTreeRefreshRequestsRef.current.filter((pendingRequest) =>
+        pendingRequest.requestKey !== request.requestKey),
+      {
+        kind: "connection-path-append",
+        sourceHash: request.sourceHash,
+        nextHash: request.nextHash,
+        requestKey: request.requestKey,
+        targetEntity: request.targetEntity,
+      },
+    ];
+
+    setActiveTreeRefreshRequest((currentRequest) =>
+      currentRequest ?? pendingTreeRefreshRequestsRef.current.shift() ?? null);
+  }, []);
+  const handleEscapeAppendRequested = useCallback((targetEntity: ConnectionPathAppendRevealTarget) => {
+    const sourceHash = readHash();
+    const nextHash = appendEscapedConnectionEntityToHash(sourceHash, targetEntity);
+
+    if (normalizeHashValue(nextHash) === normalizeHashValue(sourceHash)) {
+      return;
+    }
+
+    escapeAppendRequestIdRef.current += 1;
+    queueConnectionPathAppendRequest({
+      sourceHash,
+      nextHash,
+      requestKey: `escape-append-${escapeAppendRequestIdRef.current}`,
+      targetEntity,
+    });
+  }, [queueConnectionPathAppendRequest, readHash]);
 
   const requestItemAttrTreeRefresh = useCallback((nextItemAttrsSnapshot: CinenerdleItemAttrs) => {
     itemAttrTreeRefreshRequestSequenceRef.current += 1;
@@ -321,6 +360,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   }, []);
 
   const controller = useCinenerdleController({
+    onEscapeAppendRequested: handleEscapeAppendRequested,
     onInitialDailyStartersPrefetchBlocked: handleInitialDailyStartersPrefetchBlocked,
     onItemAttrMutationRequested: handleItemAttrMutationRequested,
     onItemAttrsSnapshotChange: (nextItemAttrsSnapshot) => {
@@ -506,20 +546,8 @@ const Cinenerdle2 = memo(function Cinenerdle2({
 
     lastHandledConnectionPathAppendRequestKeyRef.current =
       connectionPathAppendRequest.requestKey;
-    pendingTreeRefreshRequestsRef.current = [
-      ...pendingTreeRefreshRequestsRef.current.filter((request) =>
-        request.requestKey !== connectionPathAppendRequest.requestKey),
-      {
-        kind: "connection-path-append",
-        sourceHash: connectionPathAppendRequest.sourceHash,
-        nextHash: connectionPathAppendRequest.nextHash,
-        requestKey: connectionPathAppendRequest.requestKey,
-        targetEntity: connectionPathAppendRequest.targetEntity,
-      },
-    ];
-    setActiveTreeRefreshRequest((currentRequest) =>
-      currentRequest ?? pendingTreeRefreshRequestsRef.current.shift() ?? null);
-  }, [connectionPathAppendRequest]);
+    queueConnectionPathAppendRequest(connectionPathAppendRequest);
+  }, [connectionPathAppendRequest, queueConnectionPathAppendRequest]);
 
   useEffect(() => {
     if (

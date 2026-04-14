@@ -273,6 +273,7 @@ type GeneratorRowViewProps<T> = {
   row: GeneratorNode<T>[];
   rowClassName: string;
   selectedAncestorData: T[];
+  selectedRowData: T | null;
   selectedChildData: T | null;
   selectedDescendantData: T[];
   selectedParentData: T | null;
@@ -328,6 +329,7 @@ function GeneratorRowViewInner<T>({
   row,
   rowClassName,
   selectedAncestorData,
+  selectedRowData,
   selectedChildData,
   selectedDescendantData,
   selectedParentData,
@@ -522,6 +524,7 @@ function GeneratorRowViewInner<T>({
               }
             : null,
           selectedAncestorData,
+          selectedRowData,
           selectedChildData,
           selectedDescendantData,
           selectedParentData,
@@ -1054,6 +1057,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       generationIndex: number;
       row: GeneratorNode<T>[];
       selectedAncestorData: T[];
+      selectedRowData: T | null;
       selectedChildData: T | null;
       selectedDescendantData: T[];
       selectedParentData: T | null;
@@ -1074,6 +1078,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
 
     resolvedTree.forEach((row, generationIndex) => {
       nextTotalCardCount += row.length;
+      const selectedRowData = row.find((node) => node.selected)?.data ?? null;
       const selectedParentData =
         generationIndex > 0
           ? resolvedTree[generationIndex - 1]?.find((node) => node.selected)?.data ?? null
@@ -1084,6 +1089,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
         generationIndex,
         row,
         selectedAncestorData: [...selectedAncestorData],
+        selectedRowData,
         selectedChildData,
         selectedDescendantData: selectedDescendantDataByGeneration[generationIndex] ?? [],
         selectedParentData,
@@ -1945,6 +1951,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
         generationIndex,
         row,
         selectedAncestorData,
+        selectedRowData,
         selectedChildData,
         selectedDescendantData,
         selectedParentData,
@@ -1982,6 +1989,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
             row={row}
             rowClassName={rowClassName}
             selectedAncestorData={selectedAncestorData}
+            selectedRowData={selectedRowData}
             selectedChildData={selectedChildData}
             selectedDescendantData={selectedDescendantData}
             selectedParentData={selectedParentData}

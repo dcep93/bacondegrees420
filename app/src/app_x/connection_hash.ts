@@ -7,7 +7,9 @@ import {
 import type { ConnectionEntity } from "./generators/cinenerdle2/connection_graph";
 import type { CinenerdlePathNode } from "./generators/cinenerdle2/view_types";
 
-export function createPathNodeFromConnectionEntity(entity: ConnectionEntity) {
+type ConnectionHashEntity = Pick<ConnectionEntity, "kind" | "name" | "year" | "tmdbId">;
+
+export function createPathNodeFromConnectionEntity(entity: ConnectionHashEntity) {
   if (entity.kind === "cinenerdle") {
     return createPathNode("cinenerdle", "cinenerdle");
   }
@@ -29,12 +31,25 @@ export function serializeConnectionPathHash(path: ConnectionEntity[]): string {
 
 export function appendConnectionEntityToHash(
   hashValue: string,
-  entity: ConnectionEntity,
+  entity: ConnectionHashEntity,
 ): string {
   const currentPathNodes = buildPathNodesFromSegments(parseHashSegments(hashValue));
 
   return serializePathNodes([
     ...currentPathNodes,
+    createPathNodeFromConnectionEntity(entity),
+  ]);
+}
+
+export function appendEscapedConnectionEntityToHash(
+  hashValue: string,
+  entity: ConnectionHashEntity,
+): string {
+  const currentPathNodes = buildPathNodesFromSegments(parseHashSegments(hashValue));
+
+  return serializePathNodes([
+    ...currentPathNodes,
+    createPathNode("break", ""),
     createPathNodeFromConnectionEntity(entity),
   ]);
 }

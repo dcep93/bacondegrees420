@@ -332,7 +332,11 @@ describe("CinenerdleEntityCard", () => {
         card={makeRenderableMovieCard({
           isSelected: true,
         })}
-        onUnselectClick={() => {}}
+        cornerAction={{
+          ariaLabel: "Unselect Heat",
+          label: "x",
+          onClick: () => {},
+        }}
       />,
     );
 
@@ -340,16 +344,22 @@ describe("CinenerdleEntityCard", () => {
     expect(html).toContain("aria-label=\"Unselect Heat\"");
   });
 
-  it("does not render the unselect bubble for unselected cards", () => {
+  it("renders the same corner bubble for unselected cards when an action is provided", () => {
     const html = renderToStaticMarkup(
       <CinenerdleEntityCard
         card={makeRenderableMovieCard()}
-        onUnselectClick={() => {}}
+        cornerAction={{
+          ariaLabel: "Escape to Heat",
+          label: "^",
+          onClick: () => {},
+        }}
       />,
     );
 
-    expect(html).not.toContain("cinenerdle-card-unselect-bubble");
-    expect(html).not.toContain("aria-label=\"Unselect Heat\"");
+    expect(html).toContain("cinenerdle-card-unselect-bubble");
+    expect(html).toContain("aria-label=\"Escape to Heat\"");
+    expect(html).toContain(">^<");
+    expect(html).toContain("Toggle attrs for Heat");
   });
 
   it("does not render the unselect bubble for a selected card when no dismiss handler is provided", () => {

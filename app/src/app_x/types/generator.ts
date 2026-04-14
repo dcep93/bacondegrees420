@@ -91,6 +91,7 @@ export type GeneratorCardRenderContext<T> = {
   node: GeneratorNode<T>;
   onCardDeselect?: (() => void) | null;
   selectedAncestorData: T[];
+  selectedRowData: T | null;
   selectedChildData: T | null;
   selectedDescendantData: T[];
   selectedParentData: T | null;

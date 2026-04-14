@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   appendConnectionEntityToHash,
+  appendEscapedConnectionEntityToHash,
   appendConnectionPathToHash,
   serializeConnectionEntityHash,
   serializeConnectionPathHash,
@@ -57,6 +58,19 @@ describe("connection hash helpers", () => {
         label: "Al Pacino",
       }),
     )).toBe("#cinenerdle|Heat+(1995)|Al+Pacino");
+  });
+
+  it("appends an escape break before an entity", () => {
+    expect(appendEscapedConnectionEntityToHash(
+      "#person|James+Remar|Oppenheimer+(2023)",
+      makeConnectionEntity({
+        key: "movie:they-will-kill-you:2026",
+        label: "They Will Kill You (2026)",
+        name: "They Will Kill You",
+        tmdbId: 2,
+        year: "2026",
+      }),
+    )).toBe("#person|James+Remar|Oppenheimer+(2023)||They+Will+Kill+You+(2026)");
   });
 
   it("appends a found bfs subpath onto the current tree hash", () => {
