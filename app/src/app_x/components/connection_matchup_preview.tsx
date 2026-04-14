@@ -180,6 +180,7 @@ export default function ConnectionMatchupPreview({
         debugLogLabel="matchup-preview"
         placement="top-center"
         tooltipClassName="bacon-connection-matchup-tooltip"
+        useFixedPosition
         wrapperTag="div"
       >
         <span className="bacon-connection-matchup-content">

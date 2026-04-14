@@ -14,6 +14,8 @@ import {
 import type { BookmarkRowData } from "../bookmark_rows";
 import { createPathNode, serializePathNodes } from "../generators/cinenerdle2/hash";
 import { CINENERDLE_ITEM_ATTRS_STORAGE_KEY } from "../generators/cinenerdle2/item_attrs";
+import { clearCinenerdleDebugLog } from "../generators/cinenerdle2/debug";
+import { getCinenerdleDebugEntries } from "../generators/cinenerdle2/debug_log";
 
 const MATRIX_HASH = serializePathNodes([
   createPathNode("movie", "The Matrix", "1999"),
@@ -45,6 +47,7 @@ function createBookmarkRow(hash: string, cards: Array<{
 
 describe("bookmarks", () => {
   beforeEach(() => {
+    clearCinenerdleDebugLog();
     const storage = new Map<string, string>();
     Object.defineProperty(globalThis, "localStorage", {
       configurable: true,
@@ -199,6 +202,17 @@ describe("bookmarks", () => {
       "603:film:The Matrix 🔥",
       "orphan_person_id:person:orphan_person_id 🧠",
     ].join("\n"));
+    expect(getCinenerdleDebugEntries()).toEqual([
+      expect.objectContaining({
+        event: "bookmarks:jsonl-attr-row-name-fallback",
+        details: expect.objectContaining({
+          bucket: "person",
+          id: "orphan_person_id",
+          hasReferencedName: false,
+          isPrioritizedTarget: false,
+        }),
+      }),
+    ]);
   });
 
   it("serializes unique attr rows in first-seen order and keeps colons in ids, names, and chars", () => {

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 const BIG_LEBOWSKI_HASH = "/#film|The+Big+Lebowski+(1998)";
 const BIG_LEBOWSKI_SEARCH_URL =
@@ -133,6 +133,35 @@ async function expectCardVisibilityWithinRow(
   visible: boolean,
 ) {
   await expect.poll(async () => isCardVisibleWithinRow(card, rowTrack)).toBe(visible);
+}
+
+async function expectTooltipPaintedOnHover(
+  page: Page,
+  anchor: Locator,
+  expectedTooltipText: string,
+) {
+  const tooltip = page.getByRole("tooltip").filter({ hasText: expectedTooltipText });
+
+  await anchor.hover();
+  await expect(tooltip).toHaveCSS("visibility", "visible");
+  await expect
+    .poll(() => tooltip.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const probeX = rect.left + (rect.width / 2);
+      const probeY = rect.top + Math.min(16, rect.height - 1);
+      const hoveredElement = document.elementFromPoint(probeX, probeY);
+
+      return {
+        hitRole: hoveredElement?.closest("[role='tooltip']")?.getAttribute("role") ?? null,
+        opacity: getComputedStyle(element).opacity,
+        visibility: getComputedStyle(element).visibility,
+      };
+    }))
+    .toMatchObject({
+      hitRole: "tooltip",
+      opacity: "1",
+      visibility: "visible",
+    });
 }
 
 function createJsonResponse(body: unknown) {
@@ -2646,6 +2675,318 @@ test("deep descendant selection renders cached DB children before the delayed TM
   await expect(getGenerationCardByTitle(page, 2, "India Movie A")).toBeVisible();
   await expect(getGenerationCardByTitle(page, 2, "India Movie B")).toBeVisible();
   await expect(getGenerationCardByTitle(page, 2, "Alpha Movie A")).toHaveCount(0);
+});
+
+test("preview bubbles paint their tooltips when hovered", async ({ page }) => {
+  const starterMovie = {
+    id: 9001,
+    title: "Mock Starter Movie",
+    original_title: "Mock Starter Movie",
+    poster_path: "/mock-starter-movie.jpg",
+    release_date: "2001-06-15",
+    popularity: 95.5,
+    vote_average: 7.4,
+    vote_count: 8100,
+  };
+  const alphaPerson = {
+    id: 1001,
+    name: "Alpha One",
+    popularity: 500,
+    profile_path: "/1001.jpg",
+  };
+  const indiaPerson = {
+    id: 1009,
+    name: "India Nine",
+    popularity: 40,
+    profile_path: "/1009.jpg",
+  };
+  const alphaMovieA = {
+    id: 2101,
+    title: "Alpha Movie A",
+    original_title: "Alpha Movie A",
+    poster_path: "/alpha-a.jpg",
+    release_date: "2003-02-14",
+    popularity: 90,
+    vote_average: 7.1,
+    vote_count: 4100,
+  };
+  const alphaMovieB = {
+    id: 2102,
+    title: "Alpha Movie B",
+    original_title: "Alpha Movie B",
+    poster_path: "/alpha-b.jpg",
+    release_date: "2004-03-19",
+    popularity: 88,
+    vote_average: 7.2,
+    vote_count: 3900,
+  };
+  const indiaMovieA = {
+    id: 2201,
+    title: "India Movie A",
+    original_title: "India Movie A",
+    poster_path: "/india-a.jpg",
+    release_date: "2011-01-21",
+    popularity: 72,
+    vote_average: 6.8,
+    vote_count: 2800,
+  };
+  const indiaMovieB = {
+    id: 2202,
+    title: "India Movie B",
+    original_title: "India Movie B",
+    poster_path: "/india-b.jpg",
+    release_date: "2012-02-17",
+    popularity: 70,
+    vote_average: 6.9,
+    vote_count: 2600,
+  };
+
+  await page.setViewportSize({
+    width: 1600,
+    height: 900,
+  });
+
+  await seedCinenerdleStorage(page, {
+    dailyStarterTitles: ["Mock Starter Movie (2001)"],
+  });
+
+  await page.route("https://www.cinenerdle2.app/api/battle-data/daily-starters?*", async (route) => {
+    await route.fulfill(createJsonResponse({
+      data: [{ id: "mock-starter", title: "Mock Starter Movie (2001)" }],
+    }));
+  });
+
+  await page.route("https://image.tmdb.org/**", async (route) => {
+    await route.fulfill({
+      status: 204,
+      body: "",
+    });
+  });
+
+  await page.route("https://www.cinenerdle2.app/icon.png", async (route) => {
+    await route.fulfill({
+      status: 204,
+      body: "",
+    });
+  });
+
+  await page.route("**/dump.json", async (route) => {
+    await route.fulfill(createJsonResponse({
+      format: "cinenerdle-indexed-db-snapshot",
+      version: 13,
+      people: [
+        {
+          tmdbId: alphaPerson.id,
+          name: alphaPerson.name,
+          movieConnectionKeys: [starterMovie.id, alphaMovieA.id, alphaMovieB.id],
+          popularity: alphaPerson.popularity,
+          fromTmdb: {
+            fetchTimestamp: "2026-03-28T12:00:00.000Z",
+            profilePath: alphaPerson.profile_path,
+          },
+        },
+        {
+          tmdbId: indiaPerson.id,
+          name: indiaPerson.name,
+          movieConnectionKeys: [starterMovie.id, indiaMovieA.id, indiaMovieB.id],
+          popularity: indiaPerson.popularity,
+          fromTmdb: {
+            fetchTimestamp: "2026-03-28T12:00:00.000Z",
+            profilePath: indiaPerson.profile_path,
+          },
+        },
+      ],
+      films: [
+        {
+          tmdbId: starterMovie.id,
+          title: starterMovie.title,
+          year: "2001",
+          posterPath: starterMovie.poster_path,
+          popularity: starterMovie.popularity,
+          voteAverage: starterMovie.vote_average,
+          voteCount: starterMovie.vote_count,
+          releaseDate: starterMovie.release_date,
+          fromTmdb: {
+            fetchTimestamp: "2026-03-28T12:00:00.000Z",
+            genres: [],
+            runtime: null,
+          },
+          personConnectionKeys: [alphaPerson.id, indiaPerson.id],
+          people: [],
+        },
+        {
+          tmdbId: alphaMovieA.id,
+          title: alphaMovieA.title,
+          year: "2003",
+          posterPath: alphaMovieA.poster_path,
+          popularity: alphaMovieA.popularity,
+          voteAverage: alphaMovieA.vote_average,
+          voteCount: alphaMovieA.vote_count,
+          releaseDate: alphaMovieA.release_date,
+          fromTmdb: {
+            fetchTimestamp: "2026-03-28T12:00:00.000Z",
+            genres: [],
+            runtime: null,
+          },
+          personConnectionKeys: [alphaPerson.id],
+          people: [],
+        },
+        {
+          tmdbId: alphaMovieB.id,
+          title: alphaMovieB.title,
+          year: "2004",
+          posterPath: alphaMovieB.poster_path,
+          popularity: alphaMovieB.popularity,
+          voteAverage: alphaMovieB.vote_average,
+          voteCount: alphaMovieB.vote_count,
+          releaseDate: alphaMovieB.release_date,
+          fromTmdb: {
+            fetchTimestamp: "2026-03-28T12:00:00.000Z",
+            genres: [],
+            runtime: null,
+          },
+          personConnectionKeys: [alphaPerson.id],
+          people: [],
+        },
+        {
+          tmdbId: indiaMovieA.id,
+          title: indiaMovieA.title,
+          year: "2011",
+          posterPath: indiaMovieA.poster_path,
+          popularity: indiaMovieA.popularity,
+          voteAverage: indiaMovieA.vote_average,
+          voteCount: indiaMovieA.vote_count,
+          releaseDate: indiaMovieA.release_date,
+          fromTmdb: {
+            fetchTimestamp: "2026-03-28T12:00:00.000Z",
+            genres: [],
+            runtime: null,
+          },
+          personConnectionKeys: [indiaPerson.id],
+          people: [],
+        },
+        {
+          tmdbId: indiaMovieB.id,
+          title: indiaMovieB.title,
+          year: "2012",
+          posterPath: indiaMovieB.poster_path,
+          popularity: indiaMovieB.popularity,
+          voteAverage: indiaMovieB.vote_average,
+          voteCount: indiaMovieB.vote_count,
+          releaseDate: indiaMovieB.release_date,
+          fromTmdb: {
+            fetchTimestamp: "2026-03-28T12:00:00.000Z",
+            genres: [],
+            runtime: null,
+          },
+          personConnectionKeys: [indiaPerson.id],
+          people: [],
+        },
+      ],
+    }));
+  });
+
+  await page.route("https://api.themoviedb.org/**", async (route) => {
+    const url = new URL(route.request().url());
+    const personId = Number(url.pathname.match(/^\/3\/person\/(\d+)$/)?.[1] ?? NaN);
+    const personCreditsId = Number(
+      url.pathname.match(/^\/3\/person\/(\d+)\/movie_credits$/)?.[1] ?? NaN,
+    );
+    const movieId = Number(url.pathname.match(/^\/3\/movie\/(\d+)$/)?.[1] ?? NaN);
+    const movieCreditsId = Number(url.pathname.match(/^\/3\/movie\/(\d+)\/credits$/)?.[1] ?? NaN);
+
+    if (personId === alphaPerson.id || personId === indiaPerson.id) {
+      const person = personId === alphaPerson.id ? alphaPerson : indiaPerson;
+      await route.fulfill(createJsonResponse({
+        id: person.id,
+        name: person.name,
+        popularity: person.popularity,
+        profile_path: person.profile_path,
+      }));
+      return;
+    }
+
+    if (personCreditsId === alphaPerson.id || personCreditsId === indiaPerson.id) {
+      const credits = personCreditsId === alphaPerson.id
+        ? [starterMovie, alphaMovieA, alphaMovieB]
+        : [starterMovie, indiaMovieA, indiaMovieB];
+
+      await route.fulfill(createJsonResponse({
+        cast: credits.map((movie, index) => ({
+          ...movie,
+          character: `${personCreditsId === alphaPerson.id ? "Alpha" : "India"} Role ${index + 1}`,
+        })),
+        crew: [],
+      }));
+      return;
+    }
+
+    const movieById = new Map([
+      [starterMovie.id, starterMovie],
+      [alphaMovieA.id, alphaMovieA],
+      [alphaMovieB.id, alphaMovieB],
+      [indiaMovieA.id, indiaMovieA],
+      [indiaMovieB.id, indiaMovieB],
+    ]).get(movieId);
+
+    if (movieById) {
+      await route.fulfill(createJsonResponse(movieById));
+      return;
+    }
+
+    if (movieCreditsId === starterMovie.id) {
+      await route.fulfill(createJsonResponse({
+        cast: [
+          {
+            id: alphaPerson.id,
+            name: alphaPerson.name,
+            popularity: alphaPerson.popularity,
+            profile_path: alphaPerson.profile_path,
+            character: "Alpha One Character",
+            known_for_department: "Acting",
+            order: 0,
+          },
+          {
+            id: indiaPerson.id,
+            name: indiaPerson.name,
+            popularity: indiaPerson.popularity,
+            profile_path: indiaPerson.profile_path,
+            character: "India Nine Character",
+            known_for_department: "Acting",
+            order: 1,
+          },
+        ],
+        crew: [],
+      }));
+      return;
+    }
+
+    if (
+      movieCreditsId === alphaMovieA.id ||
+      movieCreditsId === alphaMovieB.id ||
+      movieCreditsId === indiaMovieA.id ||
+      movieCreditsId === indiaMovieB.id
+    ) {
+      await route.fulfill(createJsonResponse({
+        cast: [],
+        crew: [],
+      }));
+      return;
+    }
+
+    throw new Error(`Unexpected TMDb request: ${url.pathname}`);
+  });
+
+  await page.goto("/#film|Mock+Starter+Movie+(2001)|Alpha+One");
+
+  const boostBubble = page.getByLabel("Suggested boost: India Nine + Mock Starter Movie (2001)");
+  const matchupBubble = page.getByLabel("Suggested matchup: India Nine vs Alpha Movie A (2003)");
+
+  await expect(boostBubble).toBeVisible();
+  await expect(matchupBubble).toBeVisible();
+
+  await expectTooltipPaintedOnHover(page, boostBubble, "--> connects to");
+  await expectTooltipPaintedOnHover(page, matchupBubble, "Alpha Movie A (2003)");
 });
 
 test("zootopia-to-fred-willard regression keeps fred root navigation and bookmark toggle stable", async ({ page }) => {

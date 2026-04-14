@@ -104,14 +104,23 @@ async function copyFilteredCinenerdleDebugEntriesToClipboard(
 
 export async function copyCinenerdleTextToClipboard(
   text: string,
-  _options?: {
+  options?: {
     event?: string;
     details?: Record<string, unknown>;
     includeCopiedTextInDebugLog?: boolean;
   },
 ): Promise<void> {
-  void _options;
   await writeTextToClipboard(text);
+
+  if (!options?.event) {
+    return;
+  }
+
+  addCinenerdleDebugLog(options.event, {
+    ...(options.details ?? {}),
+    copiedText: options.includeCopiedTextInDebugLog === false ? undefined : text,
+    copiedTextLength: text.length,
+  });
 }
 
 export async function copyCinenerdleDebugLogToClipboard(): Promise<number> {

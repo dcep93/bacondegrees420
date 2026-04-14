@@ -170,7 +170,7 @@ describe("tmdb credit aggregation", () => {
     expect(getUniqueSortedTmdbMovieCredits(makePersonRecord())).toEqual([]);
   });
 
-  it("filters BFS movie credits by excluded cast markers and allowed crew jobs", () => {
+  it("filters BFS movie credits by archive-footage markers and allowed crew jobs", () => {
     expect(
       isAllowedBfsTmdbMovieCredit(
         makeMovieCredit({
@@ -178,7 +178,7 @@ describe("tmdb credit aggregation", () => {
           character: "Bank Clerk (uncredited)",
         }),
       ),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       isAllowedBfsTmdbMovieCredit(
         makeMovieCredit({
@@ -421,6 +421,33 @@ describe("tmdb credit aggregation", () => {
     ]);
   });
 
+  it("keeps uncredited cast roles when associating movie people", () => {
+    const movieRecord = makeFilmRecord({
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({
+            id: 1,
+            name: "Bit Part",
+            character: "Clerk (uncredited)",
+            popularity: 90,
+          }),
+          makePersonCredit({
+            id: 2,
+            name: "Al Pacino",
+            character: "Vincent Hanna",
+            popularity: 50,
+          }),
+        ],
+        crew: [],
+      },
+    });
+
+    expect(getAssociatedPeopleFromMovieCredits(movieRecord).map((credit) => credit.name)).toEqual([
+      "Bit Part",
+      "Al Pacino",
+    ]);
+  });
+
   it("keeps mixed cast and crew groups valid when only the cast role is archive footage", () => {
     const movieRecord = makeFilmRecord({
       rawTmdbMovieCreditsResponse: {
@@ -601,7 +628,7 @@ describe("tmdb credit aggregation", () => {
     ]);
   });
 
-  it("alternates ordered turns with global popularity turns for movie credits while preserving filtering", () => {
+  it("alternates ordered turns with global popularity turns for movie credits while preserving archive-footage filtering", () => {
     const filmRecord = makeFilmRecord({
       rawTmdbMovieCreditsResponse: {
         cast: [
@@ -653,6 +680,7 @@ describe("tmdb credit aggregation", () => {
     });
 
     expect(getAssociatedPeopleFromMovieCredits(filmRecord).map((credit) => credit.name)).toEqual([
+      "Bit Part",
       "Michael Mann",
       "Robert De Niro",
       "Aaron Sorkin",

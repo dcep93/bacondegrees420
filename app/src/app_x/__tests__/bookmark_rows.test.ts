@@ -16,6 +16,7 @@ vi.mock("../generators/cinenerdle2/indexed_db", async () => {
 });
 
 import { buildBookmarkRowData } from "../bookmark_rows";
+import { serializeBookmarksAsJsonl, type BookmarkEntry } from "../bookmarks";
 import { createPathNode, serializePathNodes } from "../generators/cinenerdle2/hash";
 import {
   makeFilmRecord,
@@ -28,6 +29,23 @@ import {
 
 describe("buildBookmarkRowData", () => {
   beforeEach(() => {
+    const storage = new Map<string, string>();
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      value: {
+        clear: () => {
+          storage.clear();
+        },
+        getItem: (key: string) => storage.get(key) ?? null,
+        removeItem: (key: string) => {
+          storage.delete(key);
+        },
+        setItem: (key: string, value: string) => {
+          storage.set(key, value);
+        },
+      },
+    });
+
     indexedDbMock.getFilmRecordById.mockReset();
     indexedDbMock.getFilmRecordByTitleAndYear.mockReset();
     indexedDbMock.getPersonRecordById.mockReset();
@@ -426,5 +444,120 @@ describe("buildBookmarkRowData", () => {
         tmdbTooltipText: "Not fetched from TMDb yet.\nClick to fetch.",
       }),
     });
+  });
+
+  it("uses connected movie titles instead of ids in bookmark text attr rows for person bookmarks", async () => {
+    const jamesRemarRecord = makePersonRecord({
+      id: 555,
+      tmdbId: 555,
+      name: "James Remar",
+      movieConnectionKeys: [584, 10189],
+      rawTmdbPerson: makeTmdbPersonSearchResult({
+        id: 555,
+        name: "James Remar",
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({
+            id: 584,
+            title: "2 Fast 2 Furious",
+            release_date: "2003-06-05",
+          }),
+          makeMovieCredit({
+            id: 10189,
+            title: "The Great Raid",
+            release_date: "2005-08-12",
+          }),
+        ],
+        crew: [],
+      },
+    });
+
+    indexedDbMock.getPersonRecordById.mockImplementation(async (tmdbId: number | string) =>
+      Number(tmdbId) === 555 ? jamesRemarRecord : null,
+    );
+    indexedDbMock.getPersonRecordByName.mockImplementation(async (personName: string) =>
+      personName === "james remar" ? jamesRemarRecord : null,
+    );
+
+    const hash = serializePathNodes([
+      createPathNode("person", "James Remar", "", 555),
+    ]);
+    const bookmarkRow = await buildBookmarkRowData(hash);
+
+    localStorage.setItem("bacondegrees420.cinenerdle-item-attrs.v1", JSON.stringify({
+      film: {
+        "584": ["🐷"],
+        "10189": ["🐷"],
+      },
+      person: {},
+    }));
+
+    expect(serializeBookmarksAsJsonl(
+      [{ hash }] satisfies BookmarkEntry[],
+      [bookmarkRow],
+    )).toBe([
+      hash,
+      "584:film:2 Fast 2 Furious 🐷",
+      "10189:film:The Great Raid 🐷",
+    ].join("\n"));
+  });
+
+  it("uses connected person names instead of ids in bookmark text attr rows for movie bookmarks", async () => {
+    const warriorsRecord = makeFilmRecord({
+      id: 999,
+      tmdbId: 999,
+      title: "The Warriors",
+      year: "1979",
+      personConnectionKeys: [4724, 6008],
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 999,
+        title: "The Warriors",
+        release_date: "1979-02-09",
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makePersonCredit({
+            id: 4724,
+            name: "James Remar",
+            character: "Ajax",
+            order: 0,
+          }),
+          makePersonCredit({
+            id: 6008,
+            name: "David Patrick Kelly",
+            character: "Luther",
+            order: 1,
+          }),
+        ],
+        crew: [],
+      },
+    });
+
+    indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (title: string, year: string) =>
+      title === "The Warriors" && year === "1979" ? warriorsRecord : null,
+    );
+
+    const hash = serializePathNodes([
+      createPathNode("movie", "The Warriors", "1979"),
+    ]);
+    const bookmarkRow = await buildBookmarkRowData(hash);
+
+    localStorage.setItem("bacondegrees420.cinenerdle-item-attrs.v1", JSON.stringify({
+      film: {},
+      person: {
+        "4724": ["🥓"],
+        "6008": ["🟡"],
+      },
+    }));
+
+    expect(serializeBookmarksAsJsonl(
+      [{ hash }] satisfies BookmarkEntry[],
+      [bookmarkRow],
+    )).toBe([
+      hash,
+      "4724:person:James Remar 🥓",
+      "6008:person:David Patrick Kelly 🟡",
+    ].join("\n"));
   });
 });

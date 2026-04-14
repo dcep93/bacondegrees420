@@ -405,10 +405,7 @@ function isAllowedConnectionCrewJob(job: string | undefined): boolean {
 function isExcludedConnectionCastRole(character: string | undefined): boolean {
   const normalizedCharacter = normalizeName(character ?? "");
 
-  return (
-    normalizedCharacter.includes("(uncredited)") ||
-    normalizedCharacter.includes("(archive footage)")
-  );
+  return normalizedCharacter.includes("(archive footage)");
 }
 
 function isAllowedMovieCastCredit(credit: TmdbPersonCredit): boolean {

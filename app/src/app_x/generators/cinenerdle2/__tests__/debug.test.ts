@@ -312,7 +312,7 @@ describe("addCinenerdleDebugLog", () => {
     expect(getCinenerdleDebugEntryCount()).toBe(0);
   });
 
-  it("accepts clipboard logging options without recording a debug entry", async () => {
+  it("records clipboard logging options when provided", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
 
     Object.defineProperty(globalThis, "navigator", {
@@ -337,7 +337,18 @@ describe("addCinenerdleDebugLog", () => {
     );
 
     expect(writeText).toHaveBeenCalledWith("{\"kind\":\"movie\"}");
-    expect(getCinenerdleDebugEntryCount()).toBe(0);
+    expect(getCinenerdleDebugEntryCount()).toBe(1);
+    expect(getCinenerdleDebugEntries()).toEqual([
+      expect.objectContaining({
+        event: "clipboard:test-copy",
+        details: {
+          recordKind: "movie",
+          name: "Heat",
+          copiedText: undefined,
+          copiedTextLength: 16,
+        },
+      }),
+    ]);
   });
 
   it("copies only bootstrap debug entries to the clipboard", async () => {

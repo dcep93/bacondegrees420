@@ -6,9 +6,11 @@ import {
   getCinenerdleItemAttrTargetFromCard,
   getItemAttrsForTargetFromSnapshot,
 } from "./item_attrs";
+import { addCinenerdleDebugLog } from "./debug_log";
 import { getResolvedPersonMovieConnectionKeys } from "./records";
 import type { CinenerdleCard } from "./view_types";
 import {
+  getAssociatedMoviesFromPersonCredits,
   getAssociatedPeopleFromMovieCredits,
   getValidTmdbEntityId,
 } from "./utils";
@@ -54,6 +56,7 @@ function getMovieConnectionTargets(
 ): CinenerdleItemAttrTarget[] {
   const targets: CinenerdleItemAttrTarget[] = [];
   const seenTargets = new Set<string>();
+  const personNamesById = new Map<string, string>();
 
   getAssociatedPeopleFromMovieCredits(card.record).forEach((credit) => {
     const name = credit.name?.trim() ?? "";
@@ -63,6 +66,7 @@ function getMovieConnectionTargets(
     }
 
     const targetId = String(id);
+    personNamesById.set(targetId, name);
     if (seenTargets.has(targetId)) {
       return;
     }
@@ -87,10 +91,23 @@ function getMovieConnectionTargets(
     }
 
     seenTargets.add(normalizedName);
+    const resolvedName = personNamesById.get(normalizedName) ?? String(personId);
+    if (resolvedName === String(personId)) {
+      addCinenerdleDebugLog("bookmarks:connected-target-name-fallback", {
+        bucket: "person",
+        id: normalizedName,
+        fallbackName: resolvedName,
+        sourceCardKind: card.kind,
+        sourceCardKey: card.key,
+        sourceCardName: card.name,
+        sourceRecordId: card.record?.id ?? null,
+        sourceRecordTmdbId: card.record?.tmdbId ?? null,
+      });
+    }
     targets.push({
       bucket: "person",
       id: normalizedName,
-      name: String(personId),
+      name: resolvedName,
     });
   });
 
@@ -102,6 +119,17 @@ function getPersonConnectionTargets(
 ): CinenerdleItemAttrTarget[] {
   const targets: CinenerdleItemAttrTarget[] = [];
   const seenTargets = new Set<string>();
+  const movieNamesById = new Map<string, string>();
+
+  getAssociatedMoviesFromPersonCredits(card.record).forEach((credit) => {
+    const id = getValidTmdbEntityId(credit.id);
+    const title = credit.title?.trim() ?? credit.original_title?.trim() ?? "";
+    if (id === null || !title) {
+      return;
+    }
+
+    movieNamesById.set(String(id), title);
+  });
 
   getResolvedPersonMovieConnectionKeys(card.record).forEach((movieKey) => {
     const targetId = String(movieKey);
@@ -110,10 +138,23 @@ function getPersonConnectionTargets(
     }
 
     seenTargets.add(targetId);
+    const resolvedName = movieNamesById.get(targetId) ?? String(movieKey);
+    if (resolvedName === String(movieKey)) {
+      addCinenerdleDebugLog("bookmarks:connected-target-name-fallback", {
+        bucket: "film",
+        id: targetId,
+        fallbackName: resolvedName,
+        sourceCardKind: card.kind,
+        sourceCardKey: card.key,
+        sourceCardName: card.name,
+        sourceRecordId: card.record?.id ?? null,
+        sourceRecordTmdbId: card.record?.tmdbId ?? null,
+      });
+    }
     targets.push({
       bucket: "film",
       id: targetId,
-      name: String(movieKey),
+      name: resolvedName,
     });
   });
 

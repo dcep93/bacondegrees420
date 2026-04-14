@@ -1,4 +1,5 @@
 import { normalizeHashValue } from "./generators/cinenerdle2/hash";
+import { addCinenerdleDebugLog } from "./generators/cinenerdle2/debug_log";
 import {
   getCinenerdleItemAttrTargetFromCard,
   normalizeItemAttrChars,
@@ -196,6 +197,16 @@ function serializeBookmarkItemAttrRows(
 
     const fingerprint = `${bucket}:${id}`;
     const name = targetNamesByFingerprint.get(fingerprint) ?? id;
+    if (name === id) {
+      addCinenerdleDebugLog("bookmarks:jsonl-attr-row-name-fallback", {
+        bucket,
+        id,
+        chars,
+        fingerprint,
+        hasReferencedName: targetNamesByFingerprint.has(fingerprint),
+        isPrioritizedTarget: prioritizedFingerprints.includes(fingerprint),
+      });
+    }
     serializedAttrRows.push(`${id}:${bucket}:${name} ${chars.join("")}`);
   }
 
