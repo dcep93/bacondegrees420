@@ -1508,6 +1508,7 @@ function renderCinenerdleCard(
           }
         : null,
     onUnselectClick: node.selected
+      && selectedAncestorCards.length > 0
       ? () => {
           onCardDeselect?.();
           writeHash(unselectHash, "selection");

@@ -352,6 +352,17 @@ describe("CinenerdleEntityCard", () => {
     expect(html).not.toContain("aria-label=\"Unselect Heat\"");
   });
 
+  it("does not render the unselect bubble for a selected card when no dismiss handler is provided", () => {
+    const html = renderToStaticMarkup(
+      <CinenerdleEntityCard
+        card={makeRenderableCinenerdleCard()}
+      />,
+    );
+
+    expect(html).not.toContain("cinenerdle-card-unselect-bubble");
+    expect(html).not.toContain("aria-label=\"Unselect cinenerdle\"");
+  });
+
   it("renders attr buttons instead of placeholder copy when attrs are present", () => {
     const html = renderToStaticMarkup(
       <CinenerdleEntityCard
