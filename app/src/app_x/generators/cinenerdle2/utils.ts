@@ -1,4 +1,5 @@
 import { TMDB_POSTER_BASE_URL } from "./constants";
+import { isExcludedMovieGenreIds } from "./exclusion";
 import type {
   FilmRecord,
   PersonRecord,
@@ -164,6 +165,10 @@ export function isZeroVoteTmdbMovieCredit(
 }
 
 export function isAllowedBfsTmdbMovieCredit(credit: TmdbMovieCredit): boolean {
+  if (isExcludedMovieGenreIds(credit.genre_ids)) {
+    return false;
+  }
+
   if (
     credit.creditType === "cast" &&
     isExcludedConnectionCastRole(credit.character)
@@ -322,7 +327,9 @@ function getMergedMovieCreditsWithTypes(personRecord: PersonRecord | null): Tmdb
   })));
   const candidates = mergeAlternatingDualQueues(castQueue, crewQueue);
 
-  return candidates.filter((credit) => Boolean(getMovieCreditIdentityKey(credit)));
+  return candidates.filter((credit) =>
+    !isExcludedMovieGenreIds(credit.genre_ids) &&
+    Boolean(getMovieCreditIdentityKey(credit)));
 }
 
 function getMergedPersonCreditsWithTypes(movieRecord: FilmRecord | null): TmdbPersonCredit[] {

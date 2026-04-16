@@ -16,6 +16,7 @@ import {
   getMoviePosterUrl,
   getMovieTitleFromCredit,
   getMovieYearFromCredit,
+  getAllowedConnectedTmdbMovieCredits,
   getPersonCardKey,
   getPersonProfileImageUrl,
   getPosterUrl,
@@ -198,6 +199,15 @@ describe("tmdb credit aggregation", () => {
     expect(
       isAllowedBfsTmdbMovieCredit(
         makeMovieCredit({
+          creditType: "cast",
+          genre_ids: [10402],
+          character: "Sonny Bell",
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      isAllowedBfsTmdbMovieCredit(
+        makeMovieCredit({
           creditType: "crew",
           job: "Director of Photography",
           character: undefined,
@@ -228,6 +238,32 @@ describe("tmdb credit aggregation", () => {
     });
 
     expect(getUniqueSortedTmdbMovieCredits(personRecord).map((credit) => credit.id)).toEqual([6, 5]);
+  });
+
+  it("omits music-only movie credits from allowed connected movie credits", () => {
+    const personRecord = makePersonRecord({
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({
+            id: 838773,
+            title: "Hate to See You Go",
+            genre_ids: [10402],
+            character: "Sonny Bell",
+          }),
+          makeMovieCredit({
+            id: 3563,
+            title: "I Now Pronounce You Chuck & Larry",
+            genre_ids: [10402, 35],
+            character: "Charles 'Chuck' Levine",
+          }),
+        ],
+        crew: [],
+      },
+    });
+
+    expect(getAllowedConnectedTmdbMovieCredits(personRecord).map((credit) => credit.title)).toEqual([
+      "I Now Pronounce You Chuck & Larry",
+    ]);
   });
 
   it("preserves cast queue order when dual-merging person movie credits", () => {
@@ -625,6 +661,45 @@ describe("tmdb credit aggregation", () => {
     expect(getAssociatedMoviesFromPersonCredits(personRecord).map((credit) => credit.title)).toEqual([
       "Keep Cast",
       "Keep Crew",
+    ]);
+  });
+
+  it("omits music-only movie credits from associated person movie lists while keeping mixed-genre music movies", () => {
+    const personRecord = makePersonRecord({
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          makeMovieCredit({
+            id: 838773,
+            title: "Hate to See You Go",
+            genre_ids: [10402],
+            popularity: 95,
+            character: "Sonny Bell",
+          }),
+          makeMovieCredit({
+            id: 3563,
+            title: "I Now Pronounce You Chuck & Larry",
+            genre_ids: [10402, 35],
+            popularity: 40,
+            character: "Charles 'Chuck' Levine",
+          }),
+        ],
+        crew: [
+          makeMovieCredit({
+            id: 12,
+            title: "Finding Nemo",
+            genre_ids: [16],
+            popularity: 80,
+            creditType: undefined,
+            character: undefined,
+            job: "Writer",
+          }),
+        ],
+      },
+    });
+
+    expect(getAssociatedMoviesFromPersonCredits(personRecord).map((credit) => credit.title)).toEqual([
+      "Finding Nemo",
+      "I Now Pronounce You Chuck & Larry",
     ]);
   });
 

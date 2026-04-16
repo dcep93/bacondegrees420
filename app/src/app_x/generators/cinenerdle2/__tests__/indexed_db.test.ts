@@ -523,4 +523,90 @@ describe("IndexedDB snapshot film genre preservation", () => {
       }),
     ]);
   });
+
+  it("keeps music-only connection-derived movies out of searchable connection entities when they come from person credits", async () => {
+    const { createStoredFilmRecord, inflateIndexedDbSnapshot } = await import("../indexed_db");
+    const excludedMusicFilm = makeFilmRecord({
+      id: 838773,
+      tmdbId: 838773,
+      title: "Hate to See You Go",
+      year: "",
+      genreIds: [10402],
+      personConnectionKeys: [192],
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 838773,
+        title: "Hate to See You Go",
+        original_title: "Hate to See You Go",
+        release_date: "",
+      }),
+      tmdbSource: "connection-derived",
+    });
+    const allowedFilm = makeFilmRecord({
+      id: 12,
+      tmdbId: 12,
+      title: "Finding Nemo",
+      year: "2003",
+      fetchTimestamp: "2026-04-01T16:00:00.000Z",
+      genreIds: [16],
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 12,
+        title: "Finding Nemo",
+        original_title: "Finding Nemo",
+        release_date: "2003-05-30",
+        genres: [{ id: 16, name: "Animation" }],
+      }),
+      tmdbSource: "direct-film-fetch",
+    });
+    const personSnapshot: IndexedDbSnapshotPerson = {
+      tmdbId: 192,
+      name: "Morgan Freeman",
+      movieConnectionKeys: [838773],
+      popularity: 10,
+      fromTmdb: null,
+    };
+    const storedMusicFilm = {
+      ...createStoredFilmRecord(excludedMusicFilm),
+      people: [
+        {
+          fetchTimestamp: "2026-04-01T16:00:00.000Z",
+          personTmdbId: 192,
+          profilePath: null,
+          roleType: "cast",
+          role: "Sonny Bell",
+          order: 0,
+        },
+      ] as IndexedDbSnapshotConnection[],
+    };
+
+    const inflatedSnapshot = inflateIndexedDbSnapshot({
+      format: "cinenerdle-indexed-db-snapshot",
+      version: 13,
+      people: [personSnapshot],
+      films: [
+        storedMusicFilm,
+        createStoredFilmRecord(allowedFilm),
+      ],
+    });
+
+    expect(inflatedSnapshot.searchableConnectionEntities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "person:192",
+          type: "person",
+        }),
+        expect.objectContaining({
+          key: "movie:finding nemo:2003",
+          type: "movie",
+        }),
+      ]),
+    );
+    expect(inflatedSnapshot.searchableConnectionEntities).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "movie:hate to see you go:",
+          type: "movie",
+        }),
+      ]),
+    );
+  });
 });

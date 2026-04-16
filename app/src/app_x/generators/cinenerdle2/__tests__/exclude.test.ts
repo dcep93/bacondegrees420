@@ -51,6 +51,56 @@ describe("film exclusion fixture", () => {
     expect(isExcludedFilmRecord(filmRecord)).toBe(true);
   });
 
+  it("excludes movies whose only genre is music", () => {
+    const filmRecord = makeFilmRecord({
+      id: 838773,
+      tmdbId: 838773,
+      title: "Hate to See You Go",
+      year: "",
+      genreIds: [10402],
+      tmdbSource: "connection-derived",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 838773,
+        title: "Hate to See You Go",
+        original_title: "Hate to See You Go",
+        release_date: "",
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+    });
+
+    expect(isExcludedFilmRecord(filmRecord)).toBe(true);
+  });
+
+  it("does not exclude movies when music is not the only genre", () => {
+    const filmRecord = makeFilmRecord({
+      id: 3563,
+      tmdbId: 3563,
+      title: "I Now Pronounce You Chuck & Larry",
+      year: "2007",
+      genreIds: [10402, 35],
+      tmdbSource: "direct-film-fetch",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 3563,
+        title: "I Now Pronounce You Chuck & Larry",
+        original_title: "I Now Pronounce You Chuck & Larry",
+        release_date: "2007-07-20",
+        genres: [
+          { id: 10402, name: "Music" },
+          { id: 35, name: "Comedy" },
+        ],
+      }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [],
+        crew: [],
+      },
+    });
+
+    expect(isExcludedFilmRecord(filmRecord)).toBe(false);
+  });
+
   it("does not exclude movies with empty genreIds", () => {
     const filmRecord = makeFilmRecord({
       id: 27007,
