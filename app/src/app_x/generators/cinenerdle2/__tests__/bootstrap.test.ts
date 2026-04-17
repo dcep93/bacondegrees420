@@ -58,8 +58,10 @@ function createBootstrapSnapshotResponse(): Response {
 }
 
 describe("startCinenerdleIndexedDbBootstrap", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetModules();
+    const { clearCinenerdleDebugLog } = await import("../debug_log");
+    clearCinenerdleDebugLog();
     indexedDbMock.getSearchableConnectionEntityPersistenceStatus.mockReset();
     indexedDbMock.deleteCinenerdleIndexedDbDatabase.mockReset();
     indexedDbMock.hasCinenerdleIndexedDbRecords.mockReset();

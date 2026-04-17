@@ -7,7 +7,7 @@ describe("perf clipboard logging", () => {
     clearCinenerdleDebugLog();
   });
 
-  it("does not add measured async work to the cinenerdle debug log after a reset", async () => {
+  it("does not mirror unrelated async work into the cinenerdle debug log", async () => {
     const result = await measureAsync(
       "unit-test.async",
       async () => "done",
@@ -26,7 +26,7 @@ describe("perf clipboard logging", () => {
     expect(getCinenerdleDebugEntries()).toEqual([]);
   });
 
-  it("does not add measured sync failures to the cinenerdle debug log after a reset", () => {
+  it("does not mirror unrelated sync failures into the cinenerdle debug log", () => {
     expect(() =>
       measureSync(
         "unit-test.sync-error",
@@ -38,9 +38,27 @@ describe("perf clipboard logging", () => {
     expect(getCinenerdleDebugEntries()).toEqual([]);
   });
 
-  it("does not add elapsed-time mark entries to the cinenerdle debug log after a reset", () => {
+  it("does not mirror tracked startup perf into the cinenerdle debug log by default", async () => {
+    await measureAsync(
+      "idb.openIndexedDb",
+      async () => "done",
+      {
+        always: true,
+        details: {
+          databaseName: "cinenerdle2",
+        },
+        summarizeResult: (value) => ({
+          value,
+        }),
+      },
+    );
+
+    expect(getCinenerdleDebugEntries()).toEqual([]);
+  });
+
+  it("does not mirror tracked elapsed-time mark entries to the cinenerdle debug log by default", () => {
     markPerf("unit-test-mark");
-    logPerfSinceMark("unit-test.since-mark", "unit-test-mark", {
+    logPerfSinceMark("controller.initTree", "unit-test-mark", {
       scope: "mark",
     });
 

@@ -48,7 +48,7 @@ import {
   parseMoviePathLabel,
   normalizeTitle,
 } from "./utils";
-import { measureAsync } from "../../perf";
+import { measureAsync, measureSync } from "../../perf";
 import { isExcludedFilmRecord } from "./exclusion";
 import { throwCinenerdleValidationError } from "./validation";
 
@@ -74,6 +74,7 @@ type IndexedDbMetadataRecord = {
 
 const personRecordByIdCache = new Map<number, PersonRecord>();
 const personRecordByNameCache = new Map<string, PersonRecord>();
+const canonicalPersonNameByTmdbIdCache = new Map<number, string>();
 const missingPersonRecordIdsCache = new Set<number>();
 const missingPersonRecordNamesCache = new Set<string>();
 const filmRecordByIdCache = new Map<string, FilmRecord>();
@@ -272,6 +273,7 @@ export function createStoredFilmRecord(
 function clearInMemoryIndexedDbCaches(): void {
   personRecordByIdCache.clear();
   personRecordByNameCache.clear();
+  canonicalPersonNameByTmdbIdCache.clear();
   missingPersonRecordIdsCache.clear();
   missingPersonRecordNamesCache.clear();
   filmRecordByIdCache.clear();
@@ -342,18 +344,15 @@ function cachePersonRecord(personRecord: PersonRecord | null | undefined): void 
   const canonicalTmdbId = recordTmdbId ?? recordId;
 
   if (canonicalTmdbId) {
-    Array.from(personRecordByNameCache.entries()).forEach(([cachedName, cachedPersonRecord]) => {
-      if (cachedName === normalizedName) {
-        return;
-      }
-
-      const cachedTmdbId = getValidTmdbEntityId(
-        cachedPersonRecord.tmdbId ?? cachedPersonRecord.id,
-      );
-      if (cachedTmdbId === canonicalTmdbId) {
-        personRecordByNameCache.delete(cachedName);
-      }
-    });
+    const previousNormalizedName = canonicalPersonNameByTmdbIdCache.get(canonicalTmdbId) ?? null;
+    if (previousNormalizedName && previousNormalizedName !== normalizedName) {
+      personRecordByNameCache.delete(previousNormalizedName);
+    }
+    if (normalizedName) {
+      canonicalPersonNameByTmdbIdCache.set(canonicalTmdbId, normalizedName);
+    } else {
+      canonicalPersonNameByTmdbIdCache.delete(canonicalTmdbId);
+    }
   }
 
   if (recordId) {
@@ -1034,23 +1033,43 @@ async function withStores<T>(
 async function loadPersistedSearchableConnectionEntities(): Promise<
   SearchableConnectionEntityRecord[]
 > {
-  return withStore(
-    SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME,
-    "readonly",
-    async (store) => {
-      const records = await indexedDbRequestToPromise<SearchableConnectionEntityRecord[]>(
-        store.getAll(),
-      );
-      return mergeSearchableConnectionEntityRecords(records ?? []);
+  return measureAsync(
+    "idb.loadPersistedSearchableConnectionEntities",
+    () =>
+      withStore(
+        SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME,
+        "readonly",
+        async (store) => {
+          const records = await indexedDbRequestToPromise<SearchableConnectionEntityRecord[]>(
+            store.getAll(),
+          );
+          return mergeSearchableConnectionEntityRecords(records ?? []);
+        },
+      ),
+    {
+      always: true,
+      summarizeResult: (records) => ({
+        recordCount: records.length,
+      }),
     },
   );
 }
 
 async function countPersistedSearchableConnectionEntities(): Promise<number> {
-  return withStore(
-    SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME,
-    "readonly",
-    async (store) => indexedDbRequestToPromise<number>(store.count()),
+  return measureAsync(
+    "idb.countPersistedSearchableConnectionEntities",
+    () =>
+      withStore(
+        SEARCHABLE_CONNECTION_ENTITIES_STORE_NAME,
+        "readonly",
+        async (store) => indexedDbRequestToPromise<number>(store.count()),
+      ),
+    {
+      always: true,
+      summarizeResult: (count) => ({
+        count,
+      }),
+    },
   );
 }
 
@@ -1107,25 +1126,36 @@ export async function incrementCinenerdleIndexedDbFetchCount(): Promise<number> 
 }
 
 async function loadPersistedCoreSnapshot(): Promise<IndexedDbSnapshot> {
-  return withStores(
-    [PEOPLE_STORE_NAME, FILMS_STORE_NAME],
-    "readonly",
-    async (stores) => {
+  return measureAsync(
+    "idb.loadPersistedCoreSnapshot",
+    () =>
+      withStores(
+        [PEOPLE_STORE_NAME, FILMS_STORE_NAME],
+        "readonly",
+        async (stores) => {
         const [storedPeople, storedFilms] = await Promise.all([
-        indexedDbRequestToPromise<StoredPersonRecord[]>(
-          stores.get(PEOPLE_STORE_NAME)!.getAll(),
-        ),
-        indexedDbRequestToPromise<StoredFilmRecord[]>(
-          stores.get(FILMS_STORE_NAME)!.getAll(),
-        ),
-      ]);
+          indexedDbRequestToPromise<StoredPersonRecord[]>(
+            stores.get(PEOPLE_STORE_NAME)!.getAll(),
+          ),
+          indexedDbRequestToPromise<StoredFilmRecord[]>(
+            stores.get(FILMS_STORE_NAME)!.getAll(),
+          ),
+        ]);
 
-      return {
-        format: "cinenerdle-indexed-db-snapshot",
-        version: INDEXED_DB_SNAPSHOT_VERSION,
-        people: storedPeople ?? [],
-        films: storedFilms ?? [],
-      };
+        return {
+          format: "cinenerdle-indexed-db-snapshot",
+          version: INDEXED_DB_SNAPSHOT_VERSION,
+          people: storedPeople ?? [],
+          films: storedFilms ?? [],
+        };
+      },
+      ),
+    {
+      always: true,
+      summarizeResult: (snapshot) => ({
+        filmCount: snapshot.films.length,
+        peopleCount: snapshot.people.length,
+      }),
     },
   );
 }
@@ -1136,10 +1166,44 @@ async function ensureCoreRecordCachesReady(): Promise<void> {
   }
 
   if (!coreRecordCachesReadyPromise) {
-    coreRecordCachesReadyPromise = (async () => {
-      const snapshot = await loadPersistedCoreSnapshot();
-      replaceCachedCoreRecords(inflateIndexedDbSnapshotCore(snapshot));
-    })().catch((error) => {
+    coreRecordCachesReadyPromise = measureAsync(
+      "idb.ensureCoreRecordCachesReady",
+      async () => {
+        const snapshot = await loadPersistedCoreSnapshot();
+        const inflatedSnapshot = measureSync(
+          "idb.inflateIndexedDbSnapshotCore",
+          () => inflateIndexedDbSnapshotCore(snapshot),
+          {
+            always: true,
+            details: {
+              filmCount: snapshot.films.length,
+              peopleCount: snapshot.people.length,
+            },
+            summarizeResult: (result) => ({
+              inflatedFilmCount: result.films.length,
+              inflatedPeopleCount: result.people.length,
+            }),
+          },
+        );
+
+        measureSync(
+          "idb.replaceCachedCoreRecords",
+          () => {
+            replaceCachedCoreRecords(inflatedSnapshot);
+          },
+          {
+            always: true,
+            details: {
+              filmCount: inflatedSnapshot.films.length,
+              peopleCount: inflatedSnapshot.people.length,
+            },
+          },
+        );
+      },
+      {
+        always: true,
+      },
+    ).catch((error) => {
       coreRecordCachesReadyPromise = null;
       throw error;
     });
@@ -2153,46 +2217,79 @@ export async function prepareSearchableConnectionEntitiesForStartup(): Promise<{
   isSearchablePersistencePending: boolean;
   searchableConnectionEntityCount: number;
 }> {
-  await ensureCoreRecordCachesReady();
+  return measureAsync(
+    "idb.prepareSearchableConnectionEntitiesForStartup",
+    async () => {
+      await ensureCoreRecordCachesReady();
 
-  if (allSearchableConnectionEntitiesCache) {
-    writeSearchableConnectionEntityPersistenceReadyMarker(true);
-    emitSearchableConnectionEntityPersistenceEvent("searchable-persist:startup-reused-memory-cache", {
-      searchableConnectionEntityCount: allSearchableConnectionEntitiesCache.length,
-    });
-    return {
-      isSearchablePersistencePending: false,
-      searchableConnectionEntityCount: allSearchableConnectionEntitiesCache.length,
-    };
-  }
+      if (allSearchableConnectionEntitiesCache) {
+        writeSearchableConnectionEntityPersistenceReadyMarker(true);
+        emitSearchableConnectionEntityPersistenceEvent("searchable-persist:startup-reused-memory-cache", {
+          searchableConnectionEntityCount: allSearchableConnectionEntitiesCache.length,
+        });
+        return {
+          isSearchablePersistencePending: false,
+          searchableConnectionEntityCount: allSearchableConnectionEntitiesCache.length,
+          startupSource: "memory-cache" as const,
+        };
+      }
 
-  const persistedSearchableConnectionEntityCount = await countPersistedSearchableConnectionEntities();
-  if (
-    getSearchableConnectionEntityPersistenceReadyMarkerValue() === "1" &&
-    persistedSearchableConnectionEntityCount > 0
-  ) {
-    emitSearchableConnectionEntityPersistenceEvent("searchable-persist:startup-reused-persisted-cache", {
-      searchableConnectionEntityCount: persistedSearchableConnectionEntityCount,
-    });
-    return {
-      isSearchablePersistencePending: false,
-      searchableConnectionEntityCount: persistedSearchableConnectionEntityCount,
-    };
-  }
+      const persistedSearchableConnectionEntityCount = await countPersistedSearchableConnectionEntities();
+      if (
+        getSearchableConnectionEntityPersistenceReadyMarkerValue() === "1" &&
+        persistedSearchableConnectionEntityCount > 0
+      ) {
+        emitSearchableConnectionEntityPersistenceEvent("searchable-persist:startup-reused-persisted-cache", {
+          searchableConnectionEntityCount: persistedSearchableConnectionEntityCount,
+        });
+        return {
+          isSearchablePersistencePending: false,
+          searchableConnectionEntityCount: persistedSearchableConnectionEntityCount,
+          startupSource: "persisted-cache" as const,
+        };
+      }
 
-  const searchableConnectionEntities = buildSnapshotSearchableConnectionEntities(
-    allPersonRecordsCache ?? [],
-    allFilmRecordsCache ?? [],
-  );
-  emitSearchableConnectionEntityPersistenceEvent("searchable-persist:startup-rebuild-scheduled", {
-    searchableConnectionEntityCount: searchableConnectionEntities.length,
-  });
-  void persistSearchableConnectionEntitiesInBackground(searchableConnectionEntities).catch(() => { });
+      const searchableConnectionEntities = measureSync(
+        "idb.buildSnapshotSearchableConnectionEntities",
+        () =>
+          buildSnapshotSearchableConnectionEntities(
+            allPersonRecordsCache ?? [],
+            allFilmRecordsCache ?? [],
+          ),
+        {
+          always: true,
+          details: {
+            filmCount: allFilmRecordsCache?.length ?? 0,
+            peopleCount: allPersonRecordsCache?.length ?? 0,
+          },
+          summarizeResult: (records) => ({
+            searchableConnectionEntityCount: records.length,
+          }),
+        },
+      );
+      emitSearchableConnectionEntityPersistenceEvent("searchable-persist:startup-rebuild-scheduled", {
+        searchableConnectionEntityCount: searchableConnectionEntities.length,
+      });
+      void persistSearchableConnectionEntitiesInBackground(searchableConnectionEntities).catch(() => { });
 
-  return {
-    isSearchablePersistencePending: true,
-    searchableConnectionEntityCount: searchableConnectionEntities.length,
-  };
+      return {
+        isSearchablePersistencePending: true,
+        searchableConnectionEntityCount: searchableConnectionEntities.length,
+        startupSource: "rebuilt-from-core-cache" as const,
+      };
+    },
+    {
+      always: true,
+      summarizeResult: (result) => ({
+        isSearchablePersistencePending: result.isSearchablePersistencePending,
+        searchableConnectionEntityCount: result.searchableConnectionEntityCount,
+        startupSource: result.startupSource,
+      }),
+    },
+  ).then(({ isSearchablePersistencePending, searchableConnectionEntityCount }) => ({
+    isSearchablePersistencePending,
+    searchableConnectionEntityCount,
+  }));
 }
 
 function getRequiredSnapshotTmdbId(
@@ -2425,10 +2522,86 @@ function createTmdbMovieCreditFromSnapshotFilm(
   };
 }
 
-function buildPersonMovieCreditsByTmdbId(
+function buildPersonSnapshotsByTmdbId(
   snapshot: IndexedDbSnapshot,
-): Map<number, TmdbPersonMovieCreditsResponse> {
+): Map<number, IndexedDbSnapshotPerson> {
+  const personSnapshotsByTmdbId = new Map<number, IndexedDbSnapshotPerson>();
+
+  snapshot.people.forEach((personSnapshot) => {
+    const validPersonId = getValidTmdbEntityId(personSnapshot.tmdbId);
+    if (validPersonId !== null) {
+      personSnapshotsByTmdbId.set(validPersonId, personSnapshot);
+    }
+  });
+
+  return personSnapshotsByTmdbId;
+}
+
+function appendUniqueValidTmdbEntityId(
+  values: number[],
+  seenValues: Set<number>,
+  candidate: string | number | null | undefined,
+): void {
+  const validId = getValidTmdbEntityId(candidate);
+  if (validId === null || seenValues.has(validId)) {
+    return;
+  }
+
+  seenValues.add(validId);
+  values.push(validId);
+}
+
+function getResolvedSnapshotPersonMovieConnectionKeys(
+  personSnapshot: IndexedDbSnapshotPerson,
+  movieCreditsResponse: TmdbPersonMovieCreditsResponse | undefined,
+): number[] {
+  const resolvedMovieConnectionKeys: number[] = [];
+  const seenMovieIds = new Set<number>();
+
+  (personSnapshot.movieConnectionKeys ?? []).forEach((movieKey) => {
+    appendUniqueValidTmdbEntityId(resolvedMovieConnectionKeys, seenMovieIds, movieKey);
+  });
+  movieCreditsResponse?.cast?.forEach((credit) => {
+    appendUniqueValidTmdbEntityId(resolvedMovieConnectionKeys, seenMovieIds, credit.id);
+  });
+  movieCreditsResponse?.crew?.forEach((credit) => {
+    appendUniqueValidTmdbEntityId(resolvedMovieConnectionKeys, seenMovieIds, credit.id);
+  });
+
+  return resolvedMovieConnectionKeys;
+}
+
+function getResolvedSnapshotFilmPersonConnectionKeys(
+  filmSnapshot: IndexedDbSnapshotFilm,
+): number[] {
+  const resolvedPersonConnectionKeys: number[] = [];
+  const seenPersonIds = new Set<number>();
+
+  filmSnapshot.personConnectionKeys.forEach((personId) => {
+    appendUniqueValidTmdbEntityId(resolvedPersonConnectionKeys, seenPersonIds, personId);
+  });
+  filmSnapshot.people.forEach((connection) => {
+    appendUniqueValidTmdbEntityId(
+      resolvedPersonConnectionKeys,
+      seenPersonIds,
+      connection.personTmdbId,
+    );
+  });
+
+  return resolvedPersonConnectionKeys;
+}
+
+function buildConnectionDerivedPersonData(
+  snapshot: IndexedDbSnapshot,
+): {
+  personMovieCreditsByTmdbId: Map<number, TmdbPersonMovieCreditsResponse>;
+  connectionDerivedPersonSummaryByTmdbId: Map<
+    number,
+    { fetchTimestamp: string; profilePath: string | null }
+  >;
+} {
   const personMovieCreditsByTmdbId = new Map<number, TmdbPersonMovieCreditsResponse>();
+  const summaryByTmdbId = new Map<number, { fetchTimestamp: string; profilePath: string | null }>();
 
   snapshot.films.forEach((filmSnapshot) => {
     filmSnapshot.people.forEach((connection) => {
@@ -2438,16 +2611,41 @@ function buildPersonMovieCreditsByTmdbId(
       const nextCredit = createTmdbMovieCreditFromSnapshotFilm(filmSnapshot, connection);
 
       if (connection.roleType === "cast") {
-        creditsResponse.cast = [...(creditsResponse.cast ?? []), nextCredit];
+        creditsResponse.cast?.push(nextCredit);
       } else {
-        creditsResponse.crew = [...(creditsResponse.crew ?? []), nextCredit];
+        creditsResponse.crew?.push(nextCredit);
       }
 
       personMovieCreditsByTmdbId.set(connection.personTmdbId, creditsResponse);
+
+      const existingSummary = summaryByTmdbId.get(connection.personTmdbId);
+      if (!existingSummary) {
+        summaryByTmdbId.set(connection.personTmdbId, {
+          fetchTimestamp: connection.fetchTimestamp,
+          profilePath: connection.profilePath,
+        });
+        return;
+      }
+
+      summaryByTmdbId.set(connection.personTmdbId, {
+        fetchTimestamp:
+          chooseNewestFetchTimestamp(existingSummary.fetchTimestamp, connection.fetchTimestamp) ??
+          existingSummary.fetchTimestamp,
+        profilePath:
+          mergeFetchedFieldValue(
+            existingSummary.profilePath,
+            connection.profilePath,
+            existingSummary.fetchTimestamp,
+            connection.fetchTimestamp,
+          ) ?? null,
+      });
     });
   });
 
-  return personMovieCreditsByTmdbId;
+  return {
+    personMovieCreditsByTmdbId,
+    connectionDerivedPersonSummaryByTmdbId: summaryByTmdbId,
+  };
 }
 
 function inflateFilmCreditsResponse(
@@ -2480,60 +2678,6 @@ function inflateFilmCreditsResponse(
   return { cast, crew };
 }
 
-function deriveFilmPersonConnectionKeys(
-  creditsResponse: TmdbMovieCreditsResponse | undefined,
-): number[] {
-  if (!creditsResponse) {
-    return [];
-  }
-
-  return Array.from(
-    new Set(
-      getAssociatedPeopleFromMovieCredits({
-        rawTmdbMovieCreditsResponse: creditsResponse,
-      } as FilmRecord)
-        .flatMap((credit) => {
-          const validPersonId = getValidTmdbEntityId(credit.id);
-          return validPersonId === null ? [] : [validPersonId];
-        }),
-    ),
-  );
-}
-
-function buildConnectionDerivedPersonSummaryByTmdbId(
-  snapshot: IndexedDbSnapshot,
-): Map<number, { fetchTimestamp: string; profilePath: string | null }> {
-  const summaryByTmdbId = new Map<number, { fetchTimestamp: string; profilePath: string | null }>();
-
-  snapshot.films.forEach((filmSnapshot) => {
-    filmSnapshot.people.forEach((connection) => {
-      const existingSummary = summaryByTmdbId.get(connection.personTmdbId);
-      if (!existingSummary) {
-        summaryByTmdbId.set(connection.personTmdbId, {
-          fetchTimestamp: connection.fetchTimestamp,
-          profilePath: connection.profilePath,
-        });
-        return;
-      }
-
-      summaryByTmdbId.set(connection.personTmdbId, {
-        fetchTimestamp:
-          chooseNewestFetchTimestamp(existingSummary.fetchTimestamp, connection.fetchTimestamp) ??
-          existingSummary.fetchTimestamp,
-        profilePath:
-          mergeFetchedFieldValue(
-            existingSummary.profilePath,
-            connection.profilePath,
-            existingSummary.fetchTimestamp,
-            connection.fetchTimestamp,
-          ) ?? null,
-      });
-    });
-  });
-
-  return summaryByTmdbId;
-}
-
 function getSnapshotFilmFetchTimestamp(
   filmSnapshot: IndexedDbSnapshotFilm,
 ): string | undefined {
@@ -2556,14 +2700,11 @@ function inflateIndexedDbSnapshotCore(
     throw new Error(`Unsupported IndexedDB snapshot version: ${String(snapshot.version)}`);
   }
 
-  const personSnapshotsByTmdbId = new Map(
-    snapshot.people
-      .filter((personSnapshot) => getValidTmdbEntityId(personSnapshot.tmdbId) !== null)
-      .map((personSnapshot) => [personSnapshot.tmdbId as number, personSnapshot] as const),
-  );
-  const personMovieCreditsByTmdbId = buildPersonMovieCreditsByTmdbId(snapshot);
-  const connectionDerivedPersonSummaryByTmdbId =
-    buildConnectionDerivedPersonSummaryByTmdbId(snapshot);
+  const personSnapshotsByTmdbId = buildPersonSnapshotsByTmdbId(snapshot);
+  const {
+    personMovieCreditsByTmdbId,
+    connectionDerivedPersonSummaryByTmdbId,
+  } = buildConnectionDerivedPersonData(snapshot);
   const people = snapshot.people.map((personSnapshot) => {
     const movieCreditsResponse = personMovieCreditsByTmdbId.get(personSnapshot.tmdbId);
     const connectionSummary = connectionDerivedPersonSummaryByTmdbId.get(personSnapshot.tmdbId);
@@ -2573,14 +2714,9 @@ function inflateIndexedDbSnapshotCore(
       lookupKey: getCinenerdlePersonId(personSnapshot.name),
       name: personSnapshot.name,
       nameLower: normalizeName(personSnapshot.name),
-      movieConnectionKeys: Array.from(
-        new Set(
-          (personSnapshot.movieConnectionKeys ?? [])
-            .flatMap((movieKey) => {
-              const validMovieId = getValidTmdbEntityId(movieKey);
-              return validMovieId === null ? [] : [validMovieId];
-            }),
-        ),
+      movieConnectionKeys: getResolvedSnapshotPersonMovieConnectionKeys(
+        personSnapshot,
+        movieCreditsResponse,
       ),
       tmdbSource: personSnapshot.fromTmdb ? "direct-person-fetch" : "connection-derived",
       rawTmdbPerson: createTmdbPersonFromSnapshot(personSnapshot, connectionSummary),
@@ -2588,13 +2724,6 @@ function inflateIndexedDbSnapshotCore(
       rawTmdbMovieCreditsResponse: movieCreditsResponse,
       fetchTimestamp: personSnapshot.fromTmdb?.fetchTimestamp ?? connectionSummary?.fetchTimestamp,
     };
-
-    personRecord.movieConnectionKeys = Array.from(
-      new Set([
-        ...personRecord.movieConnectionKeys,
-        ...getResolvedPersonMovieConnectionKeys(personRecord),
-      ]),
-    );
     return personRecord;
   });
   const films = snapshot.films.map((filmSnapshot) => {
@@ -2609,15 +2738,7 @@ function inflateIndexedDbSnapshotCore(
       titleYear: getFilmKey(filmSnapshot.title, filmSnapshot.year),
       popularity: filmSnapshot.popularity,
       genreIds: normalizeGenreIds(filmSnapshot.genreIds),
-      personConnectionKeys: Array.from(
-        new Set([
-          ...filmSnapshot.personConnectionKeys.flatMap((personId) => {
-            const validPersonId = getValidTmdbEntityId(personId);
-            return validPersonId === null ? [] : [validPersonId];
-          }),
-          ...deriveFilmPersonConnectionKeys(filmCreditsResponse),
-        ].filter(Boolean)),
-      ),
+      personConnectionKeys: getResolvedSnapshotFilmPersonConnectionKeys(filmSnapshot),
       tmdbSource: filmSnapshot.fromTmdb ? "direct-film-fetch" : "connection-derived",
       rawTmdbMovie: createTmdbMovieFromSnapshot(filmSnapshot),
       rawTmdbMovieSearchResponse: undefined,

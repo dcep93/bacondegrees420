@@ -10,7 +10,6 @@ type PerfMeasureOptions<T> = {
 const DEFAULT_SLOW_THRESHOLD_MS = 50;
 const perfMarks = new Map<string, number>();
 const loggedPerfOnceKeys = new Set<string>();
-
 function getPerfNow(): number {
   if (typeof performance !== "undefined" && typeof performance.now === "function") {
     return performance.now();
@@ -62,13 +61,16 @@ export function isPerfLoggingEnabled(): boolean {
   return import.meta.env.DEV;
 }
 
+function shouldMirrorPerfLabelToDebugLog(label: string): boolean {
+  void label;
+  return false;
+}
+
 export function logPerf(label: string, details?: PerfDetails): void {
-  if (!isPerfLoggingEnabled()) {
+  void details;
+  if (!isPerfLoggingEnabled() || !shouldMirrorPerfLabelToDebugLog(label)) {
     return;
   }
-
-  void label;
-  void details;
 }
 
 export function logPerfOnce(onceKey: string, label: string, details?: PerfDetails): void {
