@@ -9,6 +9,12 @@ import {
 } from "./utils";
 
 const PERSON_HASH_ID_DELIMITER = "~~";
+const HASH_SEGMENT_PERCENT_REPLACEMENTS: ReadonlyArray<readonly [RegExp, string]> = [
+  [/%20/g, "+"],
+  [/%26/gi, "&"],
+  [/%3A/gi, ":"],
+  [/%2C/gi, ","],
+];
 
 export function createPathNode(
   kind: "cinenerdle",
@@ -79,15 +85,11 @@ export function parseHashSegments(hashValue: string): string[] {
 }
 
 function serializeHashSegment(segment: string): string {
-  return encodeURIComponent(segment.trim().replace(/\s+/g, " ")).replace(
-    /%20/g,
-    "+",
-  ).replace(
-    /%3A/gi,
-    ":",
-  ).replace(
-    /%2C/gi,
-    ",",
+  const encodedSegment = encodeURIComponent(segment.trim().replace(/\s+/g, " "));
+  return HASH_SEGMENT_PERCENT_REPLACEMENTS.reduce(
+    (serializedSegment, [pattern, replacement]) =>
+      serializedSegment.replace(pattern, replacement),
+    encodedSegment,
   );
 }
 

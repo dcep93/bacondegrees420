@@ -209,6 +209,14 @@ describe("serializePathNodes", () => {
       ]),
     ).toBe("#film|The+Adventures+of+Priscilla,+Queen+of+the+Desert+(1994)");
   });
+
+  it("keeps ampersands readable in canonical movie labels", () => {
+    expect(
+      serializePathNodes([
+        createPathNode("movie", "One & Two", "2015"),
+      ]),
+    ).toBe("#film|One+&+Two+(2015)");
+  });
 });
 
 describe("normalizeHashValue", () => {
@@ -248,6 +256,12 @@ describe("normalizeHashValue", () => {
         "#film|The+Adventures+of+Priscilla%2C+Queen+of+the+Desert+(1994)",
       ),
     ).toBe("#film|The+Adventures+of+Priscilla,+Queen+of+the+Desert+(1994)");
+  });
+
+  it("canonicalizes encoded ampersands back to readable ampersands", () => {
+    expect(
+      normalizeHashValue("#film|One+%26+Two+(2015)"),
+    ).toBe("#film|One+&+Two+(2015)");
   });
 
   it("rewrites known skewed Star Wars movie titles to the TMDb title in cinenerdle hashes", () => {
