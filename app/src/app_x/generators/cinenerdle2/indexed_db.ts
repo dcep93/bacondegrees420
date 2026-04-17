@@ -405,13 +405,51 @@ function cacheFilmRecord(filmRecord: FilmRecord | null | undefined): void {
   filmRecordsByNormalizedTitleCache.set(normalizedTitle, Array.from(nextFilmRecordsById.values()));
 }
 
-function rebuildFilmRecordLookupCaches(): void {
-  filmRecordByIdCache.clear();
-  filmRecordQueryCache.clear();
-  filmRecordsByNormalizedTitleCache.clear();
-  (allFilmRecordsCache ?? []).forEach((filmRecord) => {
-    cacheFilmRecord(filmRecord);
+function removeCachedFilmRecord(filmRecord: FilmRecord | null | undefined): void {
+  if (!filmRecord) {
+    return;
+  }
+
+  if (filmRecord.id !== null && filmRecord.id !== undefined && filmRecord.id !== "") {
+    filmRecordByIdCache.delete(getFilmCacheIdKey(filmRecord.id));
+  }
+
+  if (filmRecord.tmdbId !== null && filmRecord.tmdbId !== undefined) {
+    filmRecordByIdCache.delete(getFilmCacheIdKey(filmRecord.tmdbId));
+  }
+
+  const normalizedTitle = normalizeTitle(filmRecord.title);
+  if (!normalizedTitle) {
+    return;
+  }
+
+  filmRecordQueryCache.delete(getFilmQueryCacheKey(normalizedTitle, filmRecord.year));
+
+  const cachedFilmRecords = filmRecordsByNormalizedTitleCache.get(normalizedTitle) ?? [];
+  const nextFilmRecords = cachedFilmRecords.filter((record) => {
+    if (record.id === filmRecord.id) {
+      return false;
+    }
+
+    const recordTmdbId = getValidTmdbEntityId(record.tmdbId);
+    const filmTmdbId = getValidTmdbEntityId(filmRecord.tmdbId);
+    return !(recordTmdbId && filmTmdbId && recordTmdbId === filmTmdbId);
   });
+
+  if (nextFilmRecords.length === 0) {
+    filmRecordsByNormalizedTitleCache.delete(normalizedTitle);
+    return;
+  }
+
+  filmRecordsByNormalizedTitleCache.set(normalizedTitle, nextFilmRecords);
+}
+
+function replaceCachedFilmRecord(
+  existingFilmRecord: FilmRecord | null | undefined,
+  nextFilmRecord: FilmRecord,
+): void {
+  removeCachedFilmRecord(existingFilmRecord);
+  cacheFilmRecord(nextFilmRecord);
 }
 
 function rebuildConnectionCountCaches(
@@ -557,6 +595,68 @@ function setConnectionCountCacheValue(
   cache.delete(key);
 }
 
+function getUniqueValidConnectionCountKeys(
+  keys: Iterable<number | string | null | undefined>,
+): number[] {
+  const normalizedKeys = new Set<number>();
+
+  Array.from(keys).forEach((key) => {
+    const validKey = getValidTmdbEntityId(key);
+    if (validKey !== null) {
+      normalizedKeys.add(validKey);
+    }
+  });
+
+  return Array.from(normalizedKeys);
+}
+
+function updateConnectionCountCacheForChangedKeys(
+  cache: Map<number, number>,
+  previousKeys: Iterable<number | string | null | undefined>,
+  nextKeys: Iterable<number | string | null | undefined>,
+): void {
+  const previousKeySet = new Set(getUniqueValidConnectionCountKeys(previousKeys));
+  const nextKeySet = new Set(getUniqueValidConnectionCountKeys(nextKeys));
+
+  previousKeySet.forEach((key) => {
+    if (nextKeySet.has(key)) {
+      return;
+    }
+
+    setConnectionCountCacheValue(cache, key, (cache.get(key) ?? 0) - 1);
+  });
+
+  nextKeySet.forEach((key) => {
+    if (previousKeySet.has(key)) {
+      return;
+    }
+
+    setConnectionCountCacheValue(cache, key, (cache.get(key) ?? 0) + 1);
+  });
+}
+
+function updatePersonCountCacheForPersonRecordChange(
+  previousPersonRecord: PersonRecord | null | undefined,
+  nextPersonRecord: PersonRecord | null | undefined,
+): void {
+  updateConnectionCountCacheForChangedKeys(
+    personCountByMovieKeyCache,
+    previousPersonRecord ? getResolvedPersonMovieConnectionKeys(previousPersonRecord) : [],
+    nextPersonRecord ? getResolvedPersonMovieConnectionKeys(nextPersonRecord) : [],
+  );
+}
+
+function updateFilmCountCacheForFilmRecordChange(
+  previousFilmRecord: FilmRecord | null | undefined,
+  nextFilmRecord: FilmRecord | null | undefined,
+): void {
+  updateConnectionCountCacheForChangedKeys(
+    filmCountByPersonNameCache,
+    previousFilmRecord?.personConnectionKeys ?? [],
+    nextFilmRecord?.personConnectionKeys ?? [],
+  );
+}
+
 function updatePersonCountCacheForMovieKeys(movieKeys: Iterable<number>): void {
   if (!allPersonRecordsCache) {
     return;
@@ -573,25 +673,6 @@ function updatePersonCountCacheForMovieKeys(movieKeys: Iterable<number>): void {
       const nextCount = allPersonRecordsCache?.reduce((count, personRecord) =>
         count + Number(personRecord.movieConnectionKeys.includes(movieKey)), 0) ?? 0;
       setConnectionCountCacheValue(personCountByMovieKeyCache, movieKey, nextCount);
-    });
-}
-
-function updateFilmCountCacheForPersonNames(personNames: Iterable<number>): void {
-  if (!allFilmRecordsCache) {
-    return;
-  }
-
-  Array.from(
-    new Set(
-      Array.from(personNames).flatMap((personName) => {
-        const validPersonId = getValidTmdbEntityId(personName);
-        return validPersonId === null ? [] : [validPersonId];
-      }),
-    ),
-  ).forEach((personName) => {
-      const nextCount = allFilmRecordsCache?.reduce((count, filmRecord) =>
-        count + Number(filmRecord.personConnectionKeys.includes(personName)), 0) ?? 0;
-      setConnectionCountCacheValue(filmCountByPersonNameCache, personName, nextCount);
     });
 }
 
@@ -3178,31 +3259,49 @@ export async function saveFilmRecords(filmRecords: FilmRecord[]): Promise<void> 
         cachePersonRecord(personRecord);
       });
       if (allFilmRecordsCache) {
-        const nextFilmsById = new Map(
-          allFilmRecordsCache.map((record) => [getFilmCacheIdKey(record.id), record] as const),
+        const filmRecordsByPrimaryId = new Map(
+          filmRecords.map((filmRecord) => [getFilmCacheIdKey(filmRecord.id), filmRecord] as const),
         );
-        filmRecords.forEach((filmRecord) => {
-          nextFilmsById.set(getFilmCacheIdKey(filmRecord.id), filmRecord);
-          const filmTmdbId = filmRecord.tmdbId;
-          if (filmTmdbId !== null && filmTmdbId !== undefined) {
-            nextFilmsById.set(getFilmCacheIdKey(filmTmdbId), filmRecord);
-          }
-        });
-        allFilmRecordsCache = Array.from(new Map(
-          Array.from(nextFilmsById.values()).map((record) => [getFilmCacheIdKey(record.id), record] as const),
-        ).values());
-      }
-      rebuildFilmRecordLookupCaches();
+        const seenPrimaryIds = new Set<string>();
+        const nextAllFilmRecords: FilmRecord[] = [];
 
-      updateFilmCountCacheForPersonNames([
-        ...existingFilmRecords.flatMap((filmRecord) => filmRecord?.personConnectionKeys ?? []),
-        ...filmRecords.flatMap((filmRecord) => filmRecord.personConnectionKeys),
-      ]);
-      updatePersonCountCacheForMovieKeys([
-        ...existingDerivedPersonRecords.flatMap((personRecord) =>
-          personRecord ? getResolvedPersonMovieConnectionKeys(personRecord) : []),
-        ...mergedPersonRecords.flatMap((personRecord) => getResolvedPersonMovieConnectionKeys(personRecord)),
-      ]);
+        allFilmRecordsCache.forEach((record) => {
+          const replacement =
+            filmRecordsByPrimaryId.get(getFilmCacheIdKey(record.id)) ??
+            (record.tmdbId !== null && record.tmdbId !== undefined
+              ? filmRecordsByPrimaryId.get(getFilmCacheIdKey(record.tmdbId))
+              : undefined);
+          if (replacement) {
+            nextAllFilmRecords.push(replacement);
+            seenPrimaryIds.add(getFilmCacheIdKey(replacement.id));
+            return;
+          }
+
+          nextAllFilmRecords.push(record);
+        });
+
+        filmRecords.forEach((filmRecord) => {
+          const primaryId = getFilmCacheIdKey(filmRecord.id);
+          if (seenPrimaryIds.has(primaryId)) {
+            return;
+          }
+
+          nextAllFilmRecords.push(filmRecord);
+          seenPrimaryIds.add(primaryId);
+        });
+
+        allFilmRecordsCache = nextAllFilmRecords;
+      }
+      filmRecords.forEach((filmRecord, index) => {
+        replaceCachedFilmRecord(existingFilmRecords[index], filmRecord);
+      });
+
+      existingFilmRecords.forEach((existingFilmRecord, index) => {
+        updateFilmCountCacheForFilmRecordChange(existingFilmRecord, filmRecords[index]);
+      });
+      existingDerivedPersonRecords.forEach((existingPersonRecord, index) => {
+        updatePersonCountCacheForPersonRecordChange(existingPersonRecord, mergedPersonRecords[index]);
+      });
 
       const existingSearchRecords = [
         ...existingFilmRecords.flatMap((filmRecord) =>

@@ -21,7 +21,6 @@ import {
 } from "../bookmarks";
 import { createPathNode, serializePathNodes } from "../generators/cinenerdle2/hash";
 import { clearCinenerdleDebugLog } from "../generators/cinenerdle2/debug";
-import { getCinenerdleDebugEntries } from "../generators/cinenerdle2/debug_log";
 
 describe("serializeBookmarksAsJsonlWithResolvedNames", () => {
   beforeEach(() => {
@@ -85,25 +84,6 @@ describe("serializeBookmarksAsJsonlWithResolvedNames", () => {
       "9023:film:What Lies Beneath 🐴",
       "6008:person:David Patrick Kelly 🟡",
     ].join("\n"));
-
-    expect(getCinenerdleDebugEntries()).toEqual([
-      expect.objectContaining({
-        event: "bookmarks:jsonl-attr-row-name-resolved",
-        details: expect.objectContaining({
-          bucket: "film",
-          id: "9023",
-          resolvedName: "What Lies Beneath",
-        }),
-      }),
-      expect.objectContaining({
-        event: "bookmarks:jsonl-attr-row-name-resolved",
-        details: expect.objectContaining({
-          bucket: "person",
-          id: "6008",
-          resolvedName: "David Patrick Kelly",
-        }),
-      }),
-    ]);
   });
 
   it("resolves orphan attr row names from cached credits when direct records are missing", async () => {
@@ -161,26 +141,5 @@ describe("serializeBookmarksAsJsonlWithResolvedNames", () => {
       "318177:film:A Boy Called Sailboat 0",
       "4724:person:James Remar 🥓",
     ].join("\n"));
-
-    expect(getCinenerdleDebugEntries()).toEqual([
-      expect.objectContaining({
-        event: "bookmarks:jsonl-attr-row-name-resolved",
-        details: expect.objectContaining({
-          bucket: "film",
-          id: "318177",
-          resolvedName: "A Boy Called Sailboat",
-          source: "cached-credit",
-        }),
-      }),
-      expect.objectContaining({
-        event: "bookmarks:jsonl-attr-row-name-resolved",
-        details: expect.objectContaining({
-          bucket: "person",
-          id: "4724",
-          resolvedName: "James Remar",
-          source: "cached-credit",
-        }),
-      }),
-    ]);
   });
 });

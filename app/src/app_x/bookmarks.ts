@@ -1,5 +1,4 @@
 import { normalizeHashValue } from "./generators/cinenerdle2/hash";
-import { addCinenerdleDebugLog } from "./generators/cinenerdle2/debug_log";
 import {
   getAllFilmRecords,
   getAllPersonRecords,
@@ -227,16 +226,6 @@ function serializeBookmarkItemAttrRowsFromContext(
 
     const fingerprint = `${bucket}:${id}`;
     const name = context.targetNamesByFingerprint.get(fingerprint) ?? id;
-    if (name === id) {
-      addCinenerdleDebugLog("bookmarks:jsonl-attr-row-name-fallback", {
-        bucket,
-        id,
-        chars,
-        fingerprint,
-        hasReferencedName: context.targetNamesByFingerprint.has(fingerprint),
-        isPrioritizedTarget: context.prioritizedFingerprints.includes(fingerprint),
-      });
-    }
     serializedAttrRows.push(`${id}:${bucket}:${name} ${chars.join("")}`);
   }
 
@@ -297,13 +286,6 @@ async function resolveStoredItemAttrNames(
 
           if (directRecordName) {
             context.targetNamesByFingerprint.set(fingerprint, directRecordName);
-            addCinenerdleDebugLog("bookmarks:jsonl-attr-row-name-resolved", {
-              bucket,
-              id,
-              fingerprint,
-              resolvedName: directRecordName,
-              source: "direct-record",
-            });
             return;
           }
 
@@ -312,30 +294,11 @@ async function resolveStoredItemAttrNames(
             : await resolvePersonNameFromCachedFilmCredits(id);
           if (creditResolvedName) {
             context.targetNamesByFingerprint.set(fingerprint, creditResolvedName);
-            addCinenerdleDebugLog("bookmarks:jsonl-attr-row-name-resolved", {
-              bucket,
-              id,
-              fingerprint,
-              resolvedName: creditResolvedName,
-              source: "cached-credit",
-            });
             return;
           }
-        } catch (error: unknown) {
-          addCinenerdleDebugLog("bookmarks:jsonl-attr-row-name-resolve-error", {
-            bucket,
-            id,
-            fingerprint,
-            message: error instanceof Error ? error.message : String(error),
-          });
+        } catch {
           return;
         }
-
-        addCinenerdleDebugLog("bookmarks:jsonl-attr-row-name-resolve-miss", {
-          bucket,
-          id,
-          fingerprint,
-        });
       })());
     });
   });

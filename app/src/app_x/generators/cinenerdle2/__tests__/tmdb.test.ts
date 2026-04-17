@@ -1140,6 +1140,14 @@ describe("tmdb forced refresh helpers", () => {
     );
     expect(debugLogMock.addCinenerdleDebugLog).toHaveBeenCalledWith(
       "gen 0 movie 1 / 1 fetch Gran Torino (2007) pop 88",
+      expect.objectContaining({
+        operation: "movie-details+credits",
+        networkElapsedMs: expect.any(Number),
+        saveElapsedMs: expect.any(Number),
+        queueRefreshElapsedMs: expect.any(Number),
+        dispatchElapsedMs: expect.any(Number),
+        totalElapsedMs: expect.any(Number),
+      }),
     );
   });
 
@@ -1206,6 +1214,15 @@ describe("tmdb forced refresh helpers", () => {
     );
     expect(debugLogMock.addCinenerdleDebugLog).toHaveBeenCalledWith(
       "gen 0 person 1 / 1 fetch Tom Brady pop 77",
+      expect.objectContaining({
+        operation: "person-details+credits",
+        networkElapsedMs: expect.any(Number),
+        saveElapsedMs: expect.any(Number),
+        linkedFilmSaveElapsedMs: expect.any(Number),
+        queueRefreshElapsedMs: expect.any(Number),
+        dispatchElapsedMs: expect.any(Number),
+        totalElapsedMs: expect.any(Number),
+      }),
     );
   });
 
@@ -1868,6 +1885,11 @@ describe("tmdb forced refresh helpers", () => {
     );
     expect(debugLogMock.addCinenerdleDebugLog).toHaveBeenCalledWith(
       "gen 1 movie 1 / 1 prefetch Gran Torino (2007) pop 9",
+      expect.objectContaining({
+        operation: "movie-details+credits",
+        networkElapsedMs: expect.any(Number),
+        totalElapsedMs: expect.any(Number),
+      }),
     );
     expect(consoleLogSpy).toHaveBeenCalledWith(
       "gen 1 person 1 / 1 prefetch Tom Brady pop 10",
@@ -1884,6 +1906,22 @@ describe("tmdb forced refresh helpers", () => {
     );
     expect(debugLogMock.addCinenerdleDebugLog).toHaveBeenCalledWith(
       "gen 1 person 1 / 1 prefetch Tom Brady pop 10",
+      expect.objectContaining({
+        operation: "person-details+credits",
+        networkElapsedMs: expect.any(Number),
+        totalElapsedMs: expect.any(Number),
+      }),
+    );
+    expect(debugLogMock.addCinenerdleDebugLog).toHaveBeenCalledWith(
+      "prefetch batch global",
+      expect.objectContaining({
+        initialQueueSyncElapsedMs: expect.any(Number),
+        firstSelectionElapsedMs: expect.any(Number),
+        firstWaveElapsedMs: expect.any(Number),
+        selectedMovieCount: 1,
+        selectedPersonCount: 1,
+        totalElapsedMs: expect.any(Number),
+      }),
     );
   });
 

@@ -1,5 +1,3 @@
-import { addCinenerdleDebugLog } from "./debug_log";
-
 let hasShownCinenerdleValidationAlert = false;
 
 export function resetCinenerdleValidationAlertState(): void {
@@ -7,7 +5,7 @@ export function resetCinenerdleValidationAlertState(): void {
 }
 
 export function recordCinenerdleValidationDetails(details: unknown): void {
-  addCinenerdleDebugLog("validation:error", details);
+  void details;
 }
 
 export function throwCinenerdleValidationError(

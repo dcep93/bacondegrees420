@@ -281,6 +281,7 @@ type FetchLogContext = {
   generation?: number;
   position?: FetchLogPosition;
   popularity?: number | null;
+  debugDetails?: Record<string, unknown>;
 };
 
 type SelectedPrefetchCard = Extract<CinenerdleCard, { kind: "movie" | "person" }>;
@@ -499,6 +500,40 @@ function formatFetchLogEvent(
   return `gen ${generation} ${kind} ${position.index} / ${position.total} ${reason} ${label}${popularityLabel}`;
 }
 
+function getTmdbDebugNow(): number {
+  if (typeof performance !== "undefined" && typeof performance.now === "function") {
+    return performance.now();
+  }
+
+  return Date.now();
+}
+
+function roundTmdbDebugElapsedMs(value: number): number {
+  return Number(value.toFixed(2));
+}
+
+function getTmdbDebugElapsedMs(startedAt: number): number {
+  return roundTmdbDebugElapsedMs(getTmdbDebugNow() - startedAt);
+}
+
+function mergeFetchLogContext(
+  baseContext: FetchLogContext | undefined,
+  nextContext: FetchLogContext | undefined,
+): FetchLogContext | undefined {
+  if (!baseContext && !nextContext) {
+    return undefined;
+  }
+
+  return {
+    ...baseContext,
+    ...nextContext,
+    debugDetails: {
+      ...(baseContext?.debugDetails ?? {}),
+      ...(nextContext?.debugDetails ?? {}),
+    },
+  };
+}
+
 export function setTmdbLogGeneration(generation: number): void {
   currentTmdbLogGeneration = Math.max(0, generation);
 }
@@ -523,7 +558,7 @@ function logRawTmdbMovieResponse(
     popularity,
   );
   console.log(event, payload);
-  addCinenerdleDebugLog(event);
+  addCinenerdleDebugLog(event, context?.debugDetails);
   void incrementCinenerdleIndexedDbFetchCount().catch(() => { });
 }
 
@@ -545,8 +580,18 @@ function logRawTmdbPersonResponse(
     popularity,
   );
   console.log(event, payload);
-  addCinenerdleDebugLog(event);
+  addCinenerdleDebugLog(event, context?.debugDetails);
   void incrementCinenerdleIndexedDbFetchCount().catch(() => { });
+}
+
+function logPrefetchBatchDebugEntry(
+  selectedCard: SelectedPrefetchCard | null,
+  details: Record<string, unknown>,
+): void {
+  const event = selectedCard
+    ? `prefetch batch ${selectedCard.kind}:${selectedCard.name}`
+    : "prefetch batch global";
+  addCinenerdleDebugLog(event, details);
 }
 
 export function getTmdbApiKey(): string | null {
@@ -658,10 +703,12 @@ async function fetchAndCacheMovieFromSearch(
     logContext?: FetchLogContext;
   } = {},
 ): Promise<FilmRecord | null> {
+  const searchStartedAt = getTmdbDebugNow();
   const searchPayload = await fetchTmdbSearch<TmdbMovieSearchResult>(
     "search/movie",
     movieName,
   );
+  const searchElapsedMs = getTmdbDebugElapsedMs(searchStartedAt);
   const movie = chooseBestMovieSearchResult(searchPayload.results, movieName, movieYear);
   const tmdbId = getValidTmdbEntityId(movie?.id);
 
@@ -674,7 +721,12 @@ async function fetchAndCacheMovieFromSearch(
     movieYear,
     reason,
     skipFollowOnPrefetch: options.skipFollowOnPrefetch,
-    logContext: options.logContext,
+    logContext: mergeFetchLogContext(options.logContext, {
+      debugDetails: {
+        operation: "movie-search-then-details",
+        searchElapsedMs,
+      },
+    }),
   });
 }
 
@@ -685,10 +737,12 @@ async function fetchAndCachePersonFromSearch(
     logContext?: FetchLogContext;
   } = {},
 ): Promise<PersonRecord | null> {
+  const searchStartedAt = getTmdbDebugNow();
   const searchPayload = await fetchTmdbSearch<TmdbPersonSearchResult>(
     "search/person",
     personName,
   );
+  const searchElapsedMs = getTmdbDebugElapsedMs(searchStartedAt);
   const person = chooseBestPersonSearchResult(searchPayload.results, personName);
   const tmdbId = getValidTmdbEntityId(person?.id);
 
@@ -696,7 +750,15 @@ async function fetchAndCachePersonFromSearch(
     return personName ? await getPersonRecordByName(personName) : null;
   }
 
-  return fetchAndCachePerson(personName, reason, tmdbId, options);
+  return fetchAndCachePerson(personName, reason, tmdbId, {
+    ...options,
+    logContext: mergeFetchLogContext(options.logContext, {
+      debugDetails: {
+        operation: "person-search-then-details",
+        searchElapsedMs,
+      },
+    }),
+  });
 }
 
 async function resolveCinenerdleDailyStarterTmdbId(
@@ -1145,11 +1207,13 @@ export async function fetchAndCachePerson(
   return measureAsync(
     "tmdb.fetchAndCachePerson",
     async () => {
+      const startedAt = getTmdbDebugNow();
       const validPreferredPersonId = getValidTmdbEntityId(preferredPersonId);
       if (!validPreferredPersonId) {
         return personName ? await getPersonRecordByName(personName) : null;
       }
 
+      const networkStartedAt = getTmdbDebugNow();
       const [person, creditsPayload] = await Promise.all([
         fetchTmdbCredits<TmdbPersonSearchResult>(
           `person/${validPreferredPersonId}`,
@@ -1158,24 +1222,13 @@ export async function fetchAndCachePerson(
           `person/${validPreferredPersonId}/movie_credits`,
         ),
       ]);
+      const networkElapsedMs = getTmdbDebugElapsedMs(networkStartedAt);
       const fetchTimestamp = new Date().toISOString();
       const personRecord = buildPersonRecord(
         person,
         createTimestampedPersonMovieCreditsResponse(creditsPayload, fetchTimestamp),
         undefined,
         fetchTimestamp,
-      );
-      logRawTmdbPersonResponse(
-        reason,
-        person.name ?? personName,
-        {
-          person,
-          movieCredits: creditsPayload,
-        },
-        {
-          ...options.logContext,
-          popularity: person.popularity ?? null,
-        },
       );
       const existingPersonRecord = pickBestPersonRecord(
         await getPersonRecordById(person.id),
@@ -1186,14 +1239,43 @@ export async function fetchAndCachePerson(
         personRecord,
       );
 
+      const saveStartedAt = getTmdbDebugNow();
       await savePersonRecord(mergedPersonRecord);
+      const saveElapsedMs = getTmdbDebugElapsedMs(saveStartedAt);
+      const linkedFilmSaveStartedAt = getTmdbDebugNow();
       await saveFilmRecordsFromCredits(mergedPersonRecord);
+      const linkedFilmSaveElapsedMs = getTmdbDebugElapsedMs(linkedFilmSaveStartedAt);
+      const queueRefreshStartedAt = getTmdbDebugNow();
       await refreshPopularConnectionPrefetchQueues();
+      const queueRefreshElapsedMs = getTmdbDebugElapsedMs(queueRefreshStartedAt);
 
       const storedPersonRecord =
         (await getPersonRecordById(person.id)) ?? mergedPersonRecord;
+      const dispatchStartedAt = getTmdbDebugNow();
       dispatchEntityRefreshRequest(
         createPersonEntityRefreshRequestFromRecord(storedPersonRecord, reason),
+      );
+      const dispatchElapsedMs = getTmdbDebugElapsedMs(dispatchStartedAt);
+      logRawTmdbPersonResponse(
+        reason,
+        person.name ?? personName,
+        {
+          person,
+          movieCredits: creditsPayload,
+        },
+        mergeFetchLogContext(options.logContext, {
+          popularity: person.popularity ?? null,
+          debugDetails: {
+            ...(options.logContext?.debugDetails ?? {}),
+            operation: options.logContext?.debugDetails?.operation ?? "person-details+credits",
+            networkElapsedMs,
+            saveElapsedMs,
+            linkedFilmSaveElapsedMs,
+            queueRefreshElapsedMs,
+            dispatchElapsedMs,
+            totalElapsedMs: getTmdbDebugElapsedMs(startedAt),
+          },
+        }),
       );
       return storedPersonRecord;
     },
@@ -1331,10 +1413,13 @@ async function fetchAndCacheMovieById(
   return measureAsync(
     "tmdb.fetchAndCacheMovieById",
     async () => {
+      const startedAt = getTmdbDebugNow();
+      const networkStartedAt = getTmdbDebugNow();
       const [exactMovie, creditsPayload] = await Promise.all([
         fetchTmdbCredits<TmdbMovieSearchResult>(`movie/${tmdbId}`),
         fetchTmdbCredits<TmdbMovieCreditsResponse>(`movie/${tmdbId}/credits`),
       ]);
+      const networkElapsedMs = getTmdbDebugElapsedMs(networkStartedAt);
       const existingRecord =
         (await getFilmRecordById(tmdbId)) ??
         (movieName ? await getFilmRecordByTitleAndYear(movieName, movieYear) : null);
@@ -1347,12 +1432,18 @@ async function fetchAndCacheMovieById(
         fetchTimestamp,
       );
 
+      const saveStartedAt = getTmdbDebugNow();
       await saveFilmRecord(hydratedMovieRecord);
+      const saveElapsedMs = getTmdbDebugElapsedMs(saveStartedAt);
+      const queueRefreshStartedAt = getTmdbDebugNow();
       await refreshPopularConnectionPrefetchQueues();
+      const queueRefreshElapsedMs = getTmdbDebugElapsedMs(queueRefreshStartedAt);
       const storedMovieRecord = (await getFilmRecordById(tmdbId)) ?? hydratedMovieRecord;
+      const dispatchStartedAt = getTmdbDebugNow();
       dispatchEntityRefreshRequest(
         createMovieEntityRefreshRequestFromRecord(storedMovieRecord, reason),
       );
+      const dispatchElapsedMs = getTmdbDebugElapsedMs(dispatchStartedAt);
       logRawTmdbMovieResponse(
         reason,
         filmRecord.title || movieName,
@@ -1361,10 +1452,18 @@ async function fetchAndCacheMovieById(
           movie: exactMovie,
           credits: creditsPayload,
         },
-        {
-          ...options.logContext,
+        mergeFetchLogContext(options.logContext, {
           popularity: exactMovie.popularity ?? filmRecord.popularity ?? null,
-        },
+          debugDetails: {
+            ...(options.logContext?.debugDetails ?? {}),
+            operation: options.logContext?.debugDetails?.operation ?? "movie-details+credits",
+            networkElapsedMs,
+            saveElapsedMs,
+            queueRefreshElapsedMs,
+            dispatchElapsedMs,
+            totalElapsedMs: getTmdbDebugElapsedMs(startedAt),
+          },
+        }),
       );
       return hydratedMovieRecord;
     },
@@ -1395,6 +1494,7 @@ export async function fetchAndCacheMovieCredits(
   return measureAsync(
     "tmdb.fetchAndCacheMovieCredits",
     async () => {
+      const startedAt = getTmdbDebugNow();
       const resolvedMovieRecord = movieRecord;
       const tmdbId = getValidTmdbEntityId(
         resolvedMovieRecord.tmdbId ?? resolvedMovieRecord.id,
@@ -1404,9 +1504,11 @@ export async function fetchAndCacheMovieCredits(
         return resolvedMovieRecord;
       }
 
+      const networkStartedAt = getTmdbDebugNow();
       const creditsPayload = await fetchTmdbCredits<TmdbMovieCreditsResponse>(
         `movie/${tmdbId}/credits`,
       );
+      const networkElapsedMs = getTmdbDebugElapsedMs(networkStartedAt);
       const fetchTimestamp = new Date().toISOString();
       const updatedRecord = buildMovieRecordWithCredits(
         resolvedMovieRecord,
@@ -1415,7 +1517,17 @@ export async function fetchAndCacheMovieCredits(
         fetchTimestamp,
       );
 
+      const saveStartedAt = getTmdbDebugNow();
       await saveFilmRecord(updatedRecord);
+      const saveElapsedMs = getTmdbDebugElapsedMs(saveStartedAt);
+      const queueRefreshStartedAt = getTmdbDebugNow();
+      await refreshPopularConnectionPrefetchQueues();
+      const queueRefreshElapsedMs = getTmdbDebugElapsedMs(queueRefreshStartedAt);
+      const dispatchStartedAt = getTmdbDebugNow();
+      dispatchEntityRefreshRequest(
+        createMovieEntityRefreshRequestFromRecord(updatedRecord, reason),
+      );
+      const dispatchElapsedMs = getTmdbDebugElapsedMs(dispatchStartedAt);
       if (!options.suppressLog) {
         logRawTmdbMovieResponse(
           reason,
@@ -1425,16 +1537,20 @@ export async function fetchAndCacheMovieCredits(
             movie: resolvedMovieRecord.rawTmdbMovie ?? null,
             credits: creditsPayload,
           },
-          {
-            ...options.logContext,
+          mergeFetchLogContext(options.logContext, {
             popularity: resolvedMovieRecord.popularity ?? null,
-          },
+            debugDetails: {
+              ...(options.logContext?.debugDetails ?? {}),
+              operation: options.logContext?.debugDetails?.operation ?? "movie-credits-only",
+              networkElapsedMs,
+              saveElapsedMs,
+              queueRefreshElapsedMs,
+              dispatchElapsedMs,
+              totalElapsedMs: getTmdbDebugElapsedMs(startedAt),
+            },
+          }),
         );
       }
-      await refreshPopularConnectionPrefetchQueues();
-      dispatchEntityRefreshRequest(
-        createMovieEntityRefreshRequestFromRecord(updatedRecord, reason),
-      );
       return updatedRecord;
     },
     {
@@ -1783,11 +1899,15 @@ export async function prefetchTopPopularUnhydratedConnections(
   prefetchTopPopularUnhydratedConnectionsPromise = measureAsync(
     "tmdb.prefetchTopPopularUnhydratedConnections",
     async () => {
+      const startedAt = getTmdbDebugNow();
+      const initialQueueSyncStartedAt = getTmdbDebugNow();
       await Promise.all([
         syncPopularConnectionPrefetchQueues(),
         syncDirectConnectionPrefetchQueues(selectedCard),
       ]);
+      const initialQueueSyncElapsedMs = getTmdbDebugElapsedMs(initialQueueSyncStartedAt);
 
+      const firstSelectionStartedAt = getTmdbDebugNow();
       let moviesToPrefetch = (
         await Promise.all(
           Array.from({ length: POPULAR_CONNECTION_PREFETCH_COUNT }, () =>
@@ -1802,7 +1922,9 @@ export async function prefetchTopPopularUnhydratedConnections(
           ),
         )
       ).filter((candidate): candidate is PendingPopularPersonPrefetch => candidate !== null);
+      const firstSelectionElapsedMs = getTmdbDebugElapsedMs(firstSelectionStartedAt);
 
+      const firstWaveStartedAt = getTmdbDebugNow();
       await Promise.allSettled([
         ...moviesToPrefetch.map((candidate, index) => prefetchPopularMovieCandidate(candidate, {
           index: index + 1,
@@ -1813,15 +1935,27 @@ export async function prefetchTopPopularUnhydratedConnections(
           total: peopleToPrefetch.length,
         })),
       ]);
+      const firstWaveElapsedMs = getTmdbDebugElapsedMs(firstWaveStartedAt);
 
       if (moviesToPrefetch.length > 0 && peopleToPrefetch.length > 0) {
+        logPrefetchBatchDebugEntry(selectedCard, {
+          initialQueueSyncElapsedMs,
+          firstSelectionElapsedMs,
+          firstWaveElapsedMs,
+          selectedMovieCount: moviesToPrefetch.length,
+          selectedPersonCount: peopleToPrefetch.length,
+          totalElapsedMs: getTmdbDebugElapsedMs(startedAt),
+        });
         return;
       }
 
+      const secondQueueSyncStartedAt = getTmdbDebugNow();
       await Promise.all([
         syncPopularConnectionPrefetchQueues(),
         syncDirectConnectionPrefetchQueues(selectedCard),
       ]);
+      const secondQueueSyncElapsedMs = getTmdbDebugElapsedMs(secondQueueSyncStartedAt);
+      const secondSelectionStartedAt = getTmdbDebugNow();
       moviesToPrefetch = moviesToPrefetch.length > 0
         ? []
         : (
@@ -1840,7 +1974,9 @@ export async function prefetchTopPopularUnhydratedConnections(
             ),
           )
         ).filter((candidate): candidate is PendingPopularPersonPrefetch => candidate !== null);
+      const secondSelectionElapsedMs = getTmdbDebugElapsedMs(secondSelectionStartedAt);
 
+      const secondWaveStartedAt = getTmdbDebugNow();
       await Promise.allSettled([
         ...moviesToPrefetch.map((candidate, index) => prefetchPopularMovieCandidate(candidate, {
           index: index + 1,
@@ -1851,6 +1987,18 @@ export async function prefetchTopPopularUnhydratedConnections(
           total: peopleToPrefetch.length,
         })),
       ]);
+      const secondWaveElapsedMs = getTmdbDebugElapsedMs(secondWaveStartedAt);
+      logPrefetchBatchDebugEntry(selectedCard, {
+        initialQueueSyncElapsedMs,
+        firstSelectionElapsedMs,
+        firstWaveElapsedMs,
+        secondQueueSyncElapsedMs,
+        secondSelectionElapsedMs,
+        secondWaveElapsedMs,
+        selectedMovieCount: moviesToPrefetch.length,
+        selectedPersonCount: peopleToPrefetch.length,
+        totalElapsedMs: getTmdbDebugElapsedMs(startedAt),
+      });
     },
     {
       always: true,

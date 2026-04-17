@@ -426,15 +426,7 @@ describe("buildFilmRecord", () => {
       ),
     ).toThrow("conflicting title/year");
     expect(alertMock).toHaveBeenCalledTimes(1);
-    expect(getCinenerdleDebugEntries()).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        event: "validation:error",
-        details: expect.objectContaining({
-          reason: "conflicting-film-data",
-          tmdbId: 999,
-        }),
-      }),
-    ]));
+    expect(getCinenerdleDebugEntries()).toEqual([]);
   });
 });
 

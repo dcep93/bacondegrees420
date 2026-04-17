@@ -6,7 +6,6 @@ import {
   getCinenerdleItemAttrTargetFromCard,
   getItemAttrsForTargetFromSnapshot,
 } from "./item_attrs";
-import { addCinenerdleDebugLog } from "./debug_log";
 import { getResolvedPersonMovieConnectionKeys } from "./records";
 import type { CinenerdleCard } from "./view_types";
 import {
@@ -92,18 +91,6 @@ function getMovieConnectionTargets(
 
     seenTargets.add(normalizedName);
     const resolvedName = personNamesById.get(normalizedName) ?? String(personId);
-    if (resolvedName === String(personId)) {
-      addCinenerdleDebugLog("bookmarks:connected-target-name-fallback", {
-        bucket: "person",
-        id: normalizedName,
-        fallbackName: resolvedName,
-        sourceCardKind: card.kind,
-        sourceCardKey: card.key,
-        sourceCardName: card.name,
-        sourceRecordId: card.record?.id ?? null,
-        sourceRecordTmdbId: card.record?.tmdbId ?? null,
-      });
-    }
     targets.push({
       bucket: "person",
       id: normalizedName,
@@ -139,18 +126,6 @@ function getPersonConnectionTargets(
 
     seenTargets.add(targetId);
     const resolvedName = movieNamesById.get(targetId) ?? String(movieKey);
-    if (resolvedName === String(movieKey)) {
-      addCinenerdleDebugLog("bookmarks:connected-target-name-fallback", {
-        bucket: "film",
-        id: targetId,
-        fallbackName: resolvedName,
-        sourceCardKind: card.kind,
-        sourceCardKey: card.key,
-        sourceCardName: card.name,
-        sourceRecordId: card.record?.id ?? null,
-        sourceRecordTmdbId: card.record?.tmdbId ?? null,
-      });
-    }
     targets.push({
       bucket: "film",
       id: targetId,
