@@ -130,6 +130,7 @@ export default function AppX() {
   const [clearDbFetchCount, setClearDbFetchCount] = useState(() => getCinenerdleFetchDebugEntryCount());
   const [clearDbTotalFetchCount, setClearDbTotalFetchCount] =
     useState(() => getCinenerdleFetchDebugEntryCount());
+  const [bookmarkNavigationRequestVersion, setBookmarkNavigationRequestVersion] = useState(0);
   const [highlightedConnectedSuggestion, setHighlightedConnectedSuggestion] =
     useState<ConnectedSuggestionMatchTarget | null>(null);
   const titleRef = useRef<HTMLHeadingElement | null>(null);
@@ -183,6 +184,16 @@ export default function AppX() {
     },
     [navigateToHash],
   );
+
+  const handleLoadBookmark = useCallback((bookmarkHash: string) => {
+    setBookmarkNavigationRequestVersion((version) => version + 1);
+    loadBookmarkHash(bookmarkHash);
+  }, [loadBookmarkHash]);
+
+  const handleLoadBookmarkCard = useCallback((bookmarkHash: string, previewCardIndex: number) => {
+    setBookmarkNavigationRequestVersion((version) => version + 1);
+    loadBookmarkCardHash(bookmarkHash, previewCardIndex);
+  }, [loadBookmarkCardHash]);
 
   const openConnectionEntityInNewTab = useCallback(
     (entity: ConnectionEntity) => {
@@ -587,8 +598,8 @@ export default function AppX() {
             <BookmarksPage
               bookmarkRows={displayedBookmarkRows}
               bookmarks={bookmarks}
-              onLoadBookmark={loadBookmarkHash}
-              onLoadBookmarkCard={loadBookmarkCardHash}
+              onLoadBookmark={handleLoadBookmark}
+              onLoadBookmarkCard={handleLoadBookmarkCard}
               onMoveBookmark={handleMoveBookmark}
               onOpenBookmarkCardAsRootInNewTab={openBookmarkCardAsRootInNewTab}
               onRemoveBookmark={handleRemoveBookmark}
@@ -605,6 +616,7 @@ export default function AppX() {
                 spawnAlternativeConnectionRow={spawnAlternativeConnectionRow}
               />
               <Cinenerdle2
+                bookmarkNavigationRequestVersion={bookmarkNavigationRequestVersion}
                 connectionPathAppendRequest={connectionPathAppendRequest}
                 connectedSuggestionSelectionRequest={connectedSuggestionSelectionRequest}
                 hashValue={hashValue}

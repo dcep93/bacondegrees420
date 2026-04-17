@@ -13,6 +13,9 @@ import {
   resetInitialViewportSettled,
   useCinenerdleController,
 } from "./controller";
+import {
+  getInitialTreeViewportBehavior,
+} from "./initial_tree_viewport";
 import { enrichCinenerdleTreeWithItemAttrs } from "./card_item_attrs";
 import {
   CINENERDLE_ENTITY_REFRESH_REQUESTED_EVENT,
@@ -72,6 +75,7 @@ type Cinenerdle2Props = {
   } | null;
   hashValue: string;
   highlightedConnectedSuggestion?: ConnectedSuggestionMatchTarget | null;
+  bookmarkNavigationRequestVersion?: number;
   navigationVersion: number;
   onYoungestSelectedCardChange?: (
     card: Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }> | null,
@@ -120,6 +124,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   connectedSuggestionSelectionRequest = null,
   hashValue,
   highlightedConnectedSuggestion = null,
+  bookmarkNavigationRequestVersion = 0,
   navigationVersion,
   onYoungestSelectedCardChange,
   onHashWrite,
@@ -150,6 +155,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   const activeTreeRefreshRequestRef = useRef<TreeRefreshRequestState | null>(null);
   const itemAttrTreeRefreshRequestSequenceRef = useRef(0);
   const escapeAppendRequestIdRef = useRef(0);
+  const lastHandledBookmarkNavigationRequestVersionRef = useRef(0);
   const pendingConnectionPathAppendRevealRef = useRef<{
     requestKey: string;
     targetEntity: ConnectionPathAppendRevealTarget;
@@ -618,9 +624,22 @@ const Cinenerdle2 = memo(function Cinenerdle2({
 
             pendingInitialTreeBottomSnapRef.current = false;
             const requestId = initialTreeBottomSnapRequestIdRef.current;
+            const initialTreeViewportBehavior = getInitialTreeViewportBehavior({
+              bookmarkNavigationRequestVersion,
+              lastHandledBookmarkNavigationRequestVersion:
+                lastHandledBookmarkNavigationRequestVersionRef.current,
+            });
+            if (initialTreeViewportBehavior === "align-like-root-bubble") {
+              lastHandledBookmarkNavigationRequestVersionRef.current =
+                bookmarkNavigationRequestVersion;
+            }
             markInitialViewportSettled();
             if (initialTreeBottomSnapRequestIdRef.current === requestId) {
-              scrollPageToBottom();
+              if (initialTreeViewportBehavior === "align-like-root-bubble") {
+                generatorHandleRef.current?.alignTreeLikeRootBubble();
+              } else {
+                scrollPageToBottom();
+              }
             }
             setInitialTreeShellVisibility(true);
             if (
