@@ -174,13 +174,15 @@ describe("serializePathNodes", () => {
     ).toBe("#cinenerdle|Heat+(1995)|Al+Pacino||Kenneth+Collard");
   });
 
-  it("normalizes internal whitespace and percent-encodes special characters", () => {
+  it("normalizes internal whitespace and keeps safe punctuation readable", () => {
     expect(
       serializePathNodes([
-        createPathNode("person", "  Kenneth   Collard / Jr.  "),
-        createPathNode("movie", "L.A. Confidential", "1997"),
+        createPathNode("person", "  Kenneth   Collard / Jr.?  "),
+        createPathNode("movie", "L.A. Confidential: Case, File & Notes; Director=Me @ Home $", "1997"),
       ]),
-    ).toBe("#person|Kenneth+Collard+%2F+Jr.|L.A.+Confidential+(1997)");
+    ).toBe(
+      "#person|Kenneth+Collard+/+Jr.?|L.A.+Confidential:+Case,+File+&+Notes;+Director=Me+@+Home+$+(1997)",
+    );
   });
 
   it("keeps colons readable in canonical movie labels", () => {
@@ -262,6 +264,16 @@ describe("normalizeHashValue", () => {
     expect(
       normalizeHashValue("#film|One+%26+Two+(2015)"),
     ).toBe("#film|One+&+Two+(2015)");
+  });
+
+  it("canonicalizes additional encoded punctuation back to readable characters", () => {
+    expect(
+      normalizeHashValue(
+        "#person|Kenneth+Collard+%2F+Jr.%3F|L.A.+Confidential%3A+Case%2C+File+%26+Notes%3B+Director%3DMe+%40+Home+%24+(1997)",
+      ),
+    ).toBe(
+      "#person|Kenneth+Collard+/+Jr.?|L.A.+Confidential:+Case,+File+&+Notes;+Director=Me+@+Home+$+(1997)",
+    );
   });
 
   it("rewrites known skewed Star Wars movie titles to the TMDb title in cinenerdle hashes", () => {

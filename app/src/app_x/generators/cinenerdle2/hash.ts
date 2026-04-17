@@ -11,9 +11,15 @@ import {
 const PERSON_HASH_ID_DELIMITER = "~~";
 const HASH_SEGMENT_PERCENT_REPLACEMENTS: ReadonlyArray<readonly [RegExp, string]> = [
   [/%20/g, "+"],
+  [/%24/gi, "$"],
   [/%26/gi, "&"],
+  [/%2F/gi, "/"],
   [/%3A/gi, ":"],
   [/%2C/gi, ","],
+  [/%3B/gi, ";"],
+  [/%3D/gi, "="],
+  [/%3F/gi, "?"],
+  [/%40/gi, "@"],
 ];
 
 export function createPathNode(
