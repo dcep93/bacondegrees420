@@ -424,9 +424,30 @@ describe("buildFilmRecord", () => {
           release_date: "2004-08-06",
         }),
       ),
-    ).toThrow("conflicting title/year");
+    ).toThrow(
+      'Cannot merge film records for TMDb film 999: title/year mismatch. Existing title="Heat", year="1995". Next title="Collateral", year="2004".',
+    );
     expect(alertMock).toHaveBeenCalledTimes(1);
     expect(getCinenerdleDebugEntries()).toEqual([]);
+  });
+
+  it("fills in a missing year when a later tmdb fetch provides it", () => {
+    const filmRecord = buildFilmRecord(
+      makeFilmRecord({
+        id: 858035,
+        tmdbId: 858035,
+        title: "Klara and the Sun",
+        year: "",
+      }),
+      makeTmdbMovieSearchResult({
+        id: 858035,
+        title: "Klara and the Sun",
+        release_date: "2026-01-01",
+      }),
+    );
+
+    expect(filmRecord.year).toBe("2026");
+    expect(filmRecord.titleYear).toBe("klara and the sun (2026)");
   });
 });
 

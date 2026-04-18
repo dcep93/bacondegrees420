@@ -17,6 +17,7 @@ import {
   normalizeTitle,
 } from "./utils";
 import {
+  formatCinenerdleValidationValue,
   resetCinenerdleValidationAlertState,
   throwCinenerdleValidationError,
 } from "./validation";
@@ -37,16 +38,21 @@ function assertFilmRecordMatchesTmdbFilm(
 
   const nextTitle = tmdbFilm.title ?? tmdbFilm.original_title ?? "";
   const nextYear = tmdbFilm.release_date?.slice(0, 4) ?? "";
+  const existingYear = existingFilmRecord.year ?? "";
   if (
     normalizeTitle(existingFilmRecord.title) === normalizeTitle(nextTitle) &&
-    (existingFilmRecord.year ?? "") === nextYear
+    (existingYear === nextYear || !existingYear || !nextYear)
   ) {
     return;
   }
 
   resetCinenerdleValidationAlertState();
   throwCinenerdleValidationError(
-    `Cannot merge film records: conflicting title/year for TMDb film ${nextTmdbId}.`,
+    [
+      `Cannot merge film records for TMDb film ${nextTmdbId}: title/year mismatch.`,
+      `Existing title=${formatCinenerdleValidationValue(existingFilmRecord.title)}, year=${formatCinenerdleValidationValue(existingFilmRecord.year ?? "")}.`,
+      `Next title=${formatCinenerdleValidationValue(nextTitle)}, year=${formatCinenerdleValidationValue(nextYear)}.`,
+    ].join(" "),
     {
       reason: "conflicting-film-data",
       tmdbId: nextTmdbId,
@@ -493,7 +499,7 @@ export function buildFilmRecord(
   const title =
     existingFilmRecord?.title ?? tmdbFilm.title ?? tmdbFilm.original_title ?? "";
   const year =
-    existingFilmRecord?.year ?? tmdbFilm.release_date?.slice(0, 4) ?? "";
+    existingFilmRecord?.year?.trim() || (tmdbFilm.release_date?.slice(0, 4) ?? "");
 
   return withDerivedFilmFields({
     ...existingFilmRecord,

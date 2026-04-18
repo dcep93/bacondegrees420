@@ -50,7 +50,10 @@ import {
 } from "./utils";
 import { measureAsync, measureSync } from "../../perf";
 import { isExcludedFilmRecord } from "./exclusion";
-import { throwCinenerdleValidationError } from "./validation";
+import {
+  formatCinenerdleValidationValue,
+  throwCinenerdleValidationError,
+} from "./validation";
 
 const REQUIRED_OBJECT_STORE_NAMES = [
   PEOPLE_STORE_NAME,
@@ -2380,7 +2383,7 @@ function getRequiredSnapshotTmdbId(
   const validTmdbId = getValidTmdbEntityId(tmdbId);
   if (validTmdbId === null) {
     throwCinenerdleValidationError(
-      `Cannot export snapshot: ${label} is missing a numeric TMDb id.`,
+      `Cannot export snapshot: ${label} is missing a numeric TMDb id (received ${formatCinenerdleValidationValue(tmdbId)}).`,
     );
   }
 
@@ -2394,7 +2397,7 @@ function getRequiredSnapshotFetchTimestamp(
   const normalizedFetchTimestamp = fetchTimestamp?.trim();
   if (!normalizedFetchTimestamp) {
     throwCinenerdleValidationError(
-      `Cannot export snapshot: ${label} is missing a fetch timestamp.`,
+      `Cannot export snapshot: ${label} is missing a fetch timestamp (received ${formatCinenerdleValidationValue(fetchTimestamp)}).`,
     );
   }
 
@@ -2452,7 +2455,7 @@ function createSnapshotConnectionFromFilmCredit(
   const personTmdbId = getValidTmdbEntityId(credit.id);
   if (personTmdbId === null) {
     throwCinenerdleValidationError(
-      `Cannot export snapshot: film credit person "${credit.name ?? ""}" is missing a numeric TMDb id.`,
+      `Cannot export snapshot: film credit person ${formatCinenerdleValidationValue(credit.name ?? "")} is missing a numeric TMDb id (received ${formatCinenerdleValidationValue(credit.id)}).`,
     );
   }
 
