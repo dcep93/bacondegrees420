@@ -41,7 +41,6 @@ import {
   getYoungestSelectedCard,
   getYoungestSelectedGenerationIndex,
 } from "./navigation";
-import { appendEscapedConnectionEntityToHash } from "../../connection_hash";
 import {
   CINENERDLE_RECORDS_UPDATED_EVENT,
 } from "./indexed_db";
@@ -154,7 +153,6 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   const recordsRefreshScheduledRef = useRef(false);
   const activeTreeRefreshRequestRef = useRef<TreeRefreshRequestState | null>(null);
   const itemAttrTreeRefreshRequestSequenceRef = useRef(0);
-  const escapeAppendRequestIdRef = useRef(0);
   const lastHandledBookmarkNavigationRequestVersionRef = useRef(0);
   const pendingConnectionPathAppendRevealRef = useRef<{
     requestKey: string;
@@ -300,23 +298,6 @@ const Cinenerdle2 = memo(function Cinenerdle2({
     setActiveTreeRefreshRequest((currentRequest) =>
       currentRequest ?? pendingTreeRefreshRequestsRef.current.shift() ?? null);
   }, []);
-  const handleEscapeAppendRequested = useCallback((targetEntity: ConnectionPathAppendRevealTarget) => {
-    const sourceHash = readHash();
-    const nextHash = appendEscapedConnectionEntityToHash(sourceHash, targetEntity);
-
-    if (normalizeHashValue(nextHash) === normalizeHashValue(sourceHash)) {
-      return;
-    }
-
-    escapeAppendRequestIdRef.current += 1;
-    queueConnectionPathAppendRequest({
-      sourceHash,
-      nextHash,
-      requestKey: `escape-append-${escapeAppendRequestIdRef.current}`,
-      targetEntity,
-    });
-  }, [queueConnectionPathAppendRequest, readHash]);
-
   const requestItemAttrTreeRefresh = useCallback((nextItemAttrsSnapshot: CinenerdleItemAttrs) => {
     itemAttrTreeRefreshRequestSequenceRef.current += 1;
     pendingTreeRefreshRequestsRef.current = [
@@ -366,7 +347,6 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   }, []);
 
   const controller = useCinenerdleController({
-    onEscapeAppendRequested: handleEscapeAppendRequested,
     onInitialDailyStartersPrefetchBlocked: handleInitialDailyStartersPrefetchBlocked,
     onItemAttrMutationRequested: handleItemAttrMutationRequested,
     onItemAttrsSnapshotChange: (nextItemAttrsSnapshot) => {

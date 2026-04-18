@@ -83,7 +83,6 @@ import {
   refreshSelectedMovieCard,
   refreshSelectedPersonCard,
 } from "./view_model";
-import type { ConnectionPathAppendRevealTarget } from "./connection_path_append_reveal";
 import { hasDirectTmdbMovieSource, hasDirectTmdbPersonSource } from "./tmdb_provenance";
 import type { CinenerdleCard, CinenerdlePathNode } from "./view_types";
 
@@ -210,7 +209,6 @@ function createEscapeBreakCard(): Extract<CinenerdleCard, { kind: "break" }> {
 }
 
 type CinenerdleControllerOptions = {
-  onEscapeAppendRequested?: (targetEntity: ConnectionPathAppendRevealTarget) => void;
   onInitialDailyStartersPrefetchBlocked?: () => void;
   onItemAttrMutationRequested?: (
     request: {
@@ -1452,8 +1450,6 @@ function renderCinenerdleCard(
   isViewportPriorityRow: boolean,
   onCardDeselect: (() => void) | null | undefined,
   selectedAncestorCards: CinenerdleCard[],
-  selectedRowCard: CinenerdleCard | null,
-  onEscapeAppendRequested: CinenerdleControllerOptions["onEscapeAppendRequested"],
   onItemAttrMutationRequested: CinenerdleControllerOptions["onItemAttrMutationRequested"],
   writeHash: (nextHash: string, mode?: "selection" | "navigation") => void,
   onExplicitTmdbRowClick?: () => void,
@@ -1526,12 +1522,6 @@ function renderCinenerdleCard(
     node.selected &&
     immediateSelectedAncestor !== null &&
     immediateSelectedAncestor.kind !== "break";
-  const canRenderEscapeCornerAction =
-    !node.selected &&
-    card.kind === "movie" &&
-    selectedRowCard?.kind === "movie" &&
-    immediateSelectedAncestor !== null &&
-    immediateSelectedAncestor.kind !== "break";
 
   return renderLoggedCinenerdleCard({
     cornerAction: canRenderUnselectCornerAction
@@ -1543,21 +1533,7 @@ function renderCinenerdleCard(
             writeHash(unselectHash, "selection");
           },
         }
-      : canRenderEscapeCornerAction
-        ? {
-            ariaLabel: `Escape to ${card.name}`,
-            label: "^",
-            onClick: () => {
-              onEscapeAppendRequested?.({
-                key: card.key,
-                kind: "movie",
-                name: card.name,
-                tmdbId: getValidTmdbEntityId(card.record?.tmdbId ?? card.record?.id),
-                year: card.year,
-              });
-            },
-          }
-        : null,
+      : null,
     imageFetchPriority,
     imageLoading,
     onAddItemAttr:
@@ -1667,7 +1643,6 @@ export async function getConnectedItemAttrChildSourceCards(
 }
 
 export function useCinenerdleController({
-  onEscapeAppendRequested,
   onInitialDailyStartersPrefetchBlocked,
   onItemAttrMutationRequested,
   onItemAttrsSnapshotChange,
@@ -2010,15 +1985,12 @@ export function useCinenerdleController({
         isViewportPriorityRow,
         onCardDeselect,
         selectedAncestorData,
-        selectedRowData,
       }) {
         return renderCinenerdleCard(
           node,
           isViewportPriorityRow,
           onCardDeselect,
           selectedAncestorData,
-          selectedRowData,
-          onEscapeAppendRequested,
           onItemAttrMutationRequested,
           writeHash,
           onExplicitTmdbRowClick,
@@ -2028,7 +2000,6 @@ export function useCinenerdleController({
     [
       onInitialDailyStartersPrefetchBlocked,
       onExplicitTmdbRowClick,
-      onEscapeAppendRequested,
       onItemAttrMutationRequested,
       readHash,
       updateLatestItemAttrsSnapshot,

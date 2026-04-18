@@ -41,19 +41,6 @@ export function appendConnectionEntityToHash(
   ]);
 }
 
-export function appendEscapedConnectionEntityToHash(
-  hashValue: string,
-  entity: ConnectionHashEntity,
-): string {
-  const currentPathNodes = buildPathNodesFromSegments(parseHashSegments(hashValue));
-
-  return serializePathNodes([
-    ...currentPathNodes,
-    createPathNode("break", ""),
-    createPathNodeFromConnectionEntity(entity),
-  ]);
-}
-
 function getSerializedPathNodeSignature(pathNode: CinenerdlePathNode): string {
   return serializePathNodes([pathNode]);
 }

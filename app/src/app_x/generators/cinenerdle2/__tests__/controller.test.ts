@@ -1007,108 +1007,7 @@ describe("renderCard", () => {
     expect(html).not.toContain("aria-label=\"Unselect Ratatouille\"");
   });
 
-  it("renders an escape bubble for an unselected movie sibling when the selected movie can unselect", () => {
-    const controller = renderController();
-    const html = renderToStaticMarkup(
-      controller.renderCard({
-        row: 2,
-        col: 1,
-        isViewportPriorityRow: false,
-        node: {
-          data: makeMovieCard({
-            key: "movie:they-will-kill-you:2026",
-            name: "They Will Kill You",
-            year: "2026",
-            record: makeFilmRecord({
-              id: 2,
-              tmdbId: 2,
-              title: "They Will Kill You",
-              year: "2026",
-            }),
-          }),
-          selected: false,
-        },
-        onCardDeselect: null,
-        selectedAncestorData: [
-          makePersonCard({
-            key: "person:101",
-            name: "James Remar",
-          }),
-        ],
-        selectedRowData: makeMovieCard({
-          key: "movie:oppenheimer:2023",
-          name: "Oppenheimer",
-          year: "2023",
-        }),
-        selectedChildData: null,
-        selectedDescendantData: [],
-        selectedParentData: makePersonCard({
-          key: "person:101",
-          name: "James Remar",
-        }),
-      }),
-    );
-
-    expect(html).toContain("cinenerdle-card-unselect-bubble");
-    expect(html).toContain("aria-label=\"Escape to They Will Kill You\"");
-    expect(html).toContain(">^<");
-  });
-
-  it("requests an escaped append for an eligible movie sibling", () => {
-    const onEscapeAppendRequested = vi.fn();
-    const controller = renderController({ onEscapeAppendRequested });
-
-    const renderedCard = controller.renderCard({
-      row: 2,
-      col: 1,
-      isViewportPriorityRow: false,
-      node: {
-        data: makeMovieCard({
-          key: "movie:they-will-kill-you:2026",
-          name: "They Will Kill You",
-          year: "2026",
-          record: makeFilmRecord({
-            id: 2,
-            tmdbId: 2,
-            title: "They Will Kill You",
-            year: "2026",
-          }),
-        }),
-        selected: false,
-      },
-      onCardDeselect: null,
-      selectedAncestorData: [
-        makePersonCard({
-          key: "person:101",
-          name: "James Remar",
-        }),
-      ],
-      selectedRowData: makeMovieCard({
-        key: "movie:oppenheimer:2023",
-        name: "Oppenheimer",
-        year: "2023",
-      }),
-      selectedChildData: null,
-      selectedDescendantData: [],
-      selectedParentData: makePersonCard({
-        key: "person:101",
-        name: "James Remar",
-      }),
-    });
-
-    const cornerAction = (renderedCard.props as { cornerAction?: { onClick: () => void } }).cornerAction;
-    cornerAction?.onClick();
-
-    expect(onEscapeAppendRequested).toHaveBeenCalledWith({
-      key: "movie:they-will-kill-you:2026",
-      kind: "movie",
-      name: "They Will Kill You",
-      tmdbId: 2,
-      year: "2026",
-    });
-  });
-
-  it("does not render an escape bubble when the selected movie sits immediately after an escape", () => {
+  it("does not render a sibling corner bubble for unselected movie siblings", () => {
     const controller = renderController();
     const html = renderToStaticMarkup(
       controller.renderCard({
@@ -1152,6 +1051,7 @@ describe("renderCard", () => {
       }),
     );
 
+    expect(html).not.toContain("cinenerdle-card-unselect-bubble");
     expect(html).not.toContain("aria-label=\"Escape to They Will Kill You\"");
   });
 });

@@ -349,16 +349,16 @@ describe("CinenerdleEntityCard", () => {
       <CinenerdleEntityCard
         card={makeRenderableMovieCard()}
         cornerAction={{
-          ariaLabel: "Escape to Heat",
-          label: "^",
+          ariaLabel: "Pin Heat",
+          label: "!",
           onClick: () => {},
         }}
       />,
     );
 
     expect(html).toContain("cinenerdle-card-unselect-bubble");
-    expect(html).toContain("aria-label=\"Escape to Heat\"");
-    expect(html).toContain(">^<");
+    expect(html).toContain("aria-label=\"Pin Heat\"");
+    expect(html).toContain(">!<");
     expect(html).toContain("Toggle attrs for Heat");
   });
 
