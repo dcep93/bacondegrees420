@@ -1167,7 +1167,7 @@
   padding: 18px 24px 28px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 100px;
 }
 
 .bacon-bookmarks-empty-state,
