@@ -1275,6 +1275,15 @@
   display: none;
 }
 
+.bacon-bookmark-card-row-spacer {
+  flex: 0 0 var(--cinenerdle-card-width, 184px);
+  width: var(--cinenerdle-card-width, 184px);
+  min-width: var(--cinenerdle-card-width, 184px);
+  max-width: var(--cinenerdle-card-width, 184px);
+  pointer-events: none;
+  background: transparent;
+}
+
 .bacon-cover-page {
   box-sizing: border-box;
   width: 100%;

@@ -13,6 +13,17 @@ import {
 } from "../generators/cinenerdle2";
 
 function findCinenerdleEntityCardElement(node: ReactNode): ReactElement | null {
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const foundChild = findCinenerdleEntityCardElement(child);
+      if (foundChild) {
+        return foundChild;
+      }
+    }
+
+    return null;
+  }
+
   if (!isValidElement(node)) {
     return null;
   }
@@ -117,6 +128,7 @@ describe("BookmarksPage", () => {
       />,
     );
 
+    expect(html).toContain("bacon-bookmark-card-row-spacer");
     expect(html).toContain("cinenerdle-card-chip-tooltip-anchor cinenerdle-card-footer-tooltip-anchor");
     expect(html).toContain("cinenerdle-card-inline-tooltip cinenerdle-card-inline-tooltip-right cinenerdle-card-footer-tooltip");
     expect(html).toContain("cinenerdle-card-footer-tooltip-panel");
@@ -171,6 +183,27 @@ describe("BookmarksPage", () => {
 
     expect(html).not.toContain("cinenerdle-card-footer-tooltip-anchor");
     expect(html).not.toContain("cinenerdle-card-footer-tooltip-panel");
+  });
+
+  it("renders the spacer before the first bookmark row item", () => {
+    const html = renderToStaticMarkup(
+      <BookmarksPage
+        bookmarkRows={[{
+          cards: [{ key: "break:0", kind: "break", label: "Start" }],
+          hash: "movie|Heat (1995)",
+        }]}
+        bookmarks={[{ hash: "movie|Heat (1995)" }]}
+        onLoadBookmark={vi.fn()}
+        onLoadBookmarkCard={vi.fn()}
+        onMoveBookmark={vi.fn()}
+        onOpenBookmarkCardAsRootInNewTab={vi.fn()}
+        onRemoveBookmark={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain("bacon-bookmark-card-row-spacer");
+    expect(html.indexOf("bacon-bookmark-card-row-spacer"))
+      .toBeLessThan(html.indexOf("generator-card-button generator-card-button-row-break"));
   });
 
   it("wires bookmark card attr add/remove actions to shared item attr storage", () => {

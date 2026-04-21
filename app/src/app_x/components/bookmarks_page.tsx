@@ -107,6 +107,10 @@ export default function BookmarksPage({
             </div>
             <div className="bacon-bookmark-row-body">
               <div className="bacon-bookmark-card-row">
+                <div
+                  aria-hidden="true"
+                  className="bacon-bookmark-card-row-spacer"
+                />
                 {bookmarkRow.cards.map((card, cardIndex) => {
                   if (card.kind === "break") {
                     return (
