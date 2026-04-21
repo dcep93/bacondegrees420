@@ -1,4 +1,5 @@
 import type { Ref } from "react";
+import Tooltip from "./tooltip";
 
 export function BookmarksJsonlEditButton({
   onClick,
@@ -6,14 +7,16 @@ export function BookmarksJsonlEditButton({
   onClick: () => void;
 }) {
   return (
-    <button
-      aria-label="Edit as text"
-      className="bacon-title-action-button"
-      onClick={onClick}
-      type="button"
-    >
-      <span>Edit as text</span>
-    </button>
+    <Tooltip content="Edit as text" useFixedPosition>
+      <button
+        aria-label="Edit as text"
+        className="bacon-title-action-button"
+        onClick={onClick}
+        type="button"
+      >
+        <span>Edit as text</span>
+      </button>
+    </Tooltip>
   );
 }
 

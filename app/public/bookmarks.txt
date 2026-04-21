@@ -1,4 +1,4 @@
-#person|Emma+Stone|Dear+Diary:+World's+First+Pranks+(2021)|Emma+Stone|Paper+Man+(2009)|Jeff+Daniels|Speed+(1994)
+#person|Emma+Stone|The+Croods+(2013)|Nicolas+Cage|The+Croods:+A+New+Age+(2020)|Emma+Stone|Paper+Man+(2009)|Jeff+Daniels|Speed+(1994)|Jeff+Daniels|The+Martian+(2015)
 #person|Timoth%C3%A9e+Chalamet|One+&+Two+(2015)|Timoth%C3%A9e+Chalamet|Loving+Leah+(2009)|Natasha+Lyonne|The+Fantastic+4:+First+Steps+(2025)|Natasha+Lyonne|American+Pie+(1999)|Natasha+Lyonne|Scary+Movie+2+(2001)|Natasha+Lyonne|Glass+Onion:+A+Knives+Out+Mystery+(2022)|Natasha+Lyonne|Ad+Astra+(2019)|Natasha+Lyonne|Robots+(2005)
 #person|Josh+Brolin|Milwaukee,+Minnesota+(2003)|Josh+Brolin|Women+in+Trouble+(2009)|Simon+Baker|The+Devil+Wears+Prada+(2006)
 #person|Hans+Zimmer|Cool+Runnings+(1993)|Hans+Zimmer|Spirit:+Stallion+of+the+Cimarron+(2002)|Matt+Damon|EuroTrip+(2004)|Lucy+Lawless|Spider-Man+(2002)

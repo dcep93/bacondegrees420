@@ -82,7 +82,7 @@ export default function BaconTitleBar({
           ) : null}
           {isGeneratorView ? (
             <div className="bacon-title-action-slot bacon-title-action-slot-square">
-              <Tooltip content="Save bookmark">
+              <Tooltip content="Save bookmark" useFixedPosition>
                 <button
                   aria-label="Save bookmark"
                   className="bacon-title-action-icon-button"
@@ -101,7 +101,10 @@ export default function BaconTitleBar({
             </div>
           ) : null}
           <div className="bacon-title-action-slot bacon-title-action-slot-square">
-            <Tooltip content={isBookmarksView ? "Close bookmarks" : "Open bookmarks"}>
+            <Tooltip
+              content={isBookmarksView ? "Close bookmarks" : "Open bookmarks"}
+              useFixedPosition
+            >
               <button
                 aria-label={isBookmarksView ? "Close bookmarks" : "Open bookmarks"}
                 className="bacon-title-action-icon-button"
@@ -122,15 +125,17 @@ export default function BaconTitleBar({
                   {toastOverlayMessage}
                 </span>
               ) : null}
-              <button
-                aria-label={`Clear database (${clearDbBadgeText})`}
-                className="bacon-title-action-button bacon-clear-db-button"
-                onClick={onClearDatabase}
-                ref={clearDbButtonRef}
-                type="button"
-              >
-                {`Clear DB (${clearDbBadgeText})`}
-              </button>
+              <Tooltip content="Clear database" useFixedPosition>
+                <button
+                  aria-label={`Clear database (${clearDbBadgeText})`}
+                  className="bacon-title-action-button bacon-clear-db-button"
+                  onClick={onClearDatabase}
+                  ref={clearDbButtonRef}
+                  type="button"
+                >
+                  {`Clear DB (${clearDbBadgeText})`}
+                </button>
+              </Tooltip>
             </div>
           </div>
         </div>
