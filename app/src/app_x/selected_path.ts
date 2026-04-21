@@ -1,6 +1,6 @@
 import { measureAsync } from "./perf";
 import { parseHashSegments, buildPathNodesFromSegments } from "./generators/cinenerdle2/hash";
-import { formatMoviePathLabel, getAssociatedMoviesFromPersonCredits, getAssociatedPeopleFromMovieCredits, getValidTmdbEntityId, normalizeName, normalizeWhitespace } from "./generators/cinenerdle2/utils";
+import { formatMoviePathLabel, getAssociatedMoviesFromPersonCredits, getAssociatedPeopleFromMovieCredits, getFilmKey, getValidTmdbEntityId, normalizeName, normalizeWhitespace } from "./generators/cinenerdle2/utils";
 import { getFilmRecordById, getFilmRecordByTitleAndYear, getPersonRecordById, getPersonRecordByName } from "./generators/cinenerdle2/indexed_db";
 import { getMovieConnectionEntityKey, getPersonConnectionEntityKey } from "./generators/cinenerdle2/connection_graph";
 import type { YoungestSelectedCard } from "./connection_matchup_preview";
@@ -66,6 +66,56 @@ export function getHighestGenerationSelectedTarget(hashValue: string): SelectedP
     tmdbId: selectedPathNode.tmdbId,
     year: "",
   };
+}
+
+export function getImmediateSelectedParentTarget(hashValue: string): SelectedPathTarget | null {
+  const pathNodes = buildPathNodesFromSegments(parseHashSegments(hashValue)).filter(
+    (pathNode): pathNode is Exclude<typeof pathNode, { kind: "break" }> =>
+      pathNode.kind === "cinenerdle" ||
+      pathNode.kind === "movie" ||
+      pathNode.kind === "person",
+  );
+  const parentPathNode = pathNodes[pathNodes.length - 2];
+
+  if (!parentPathNode) {
+    return null;
+  }
+
+  if (parentPathNode.kind === "cinenerdle") {
+    return {
+      kind: "cinenerdle",
+      name: "cinenerdle",
+      year: "",
+    };
+  }
+
+  if (parentPathNode.kind === "movie") {
+    return {
+      kind: "movie",
+      name: parentPathNode.name,
+      year: parentPathNode.year,
+    };
+  }
+
+  return {
+    kind: "person",
+    name: parentPathNode.name,
+    tmdbId: parentPathNode.tmdbId,
+    year: "",
+  };
+}
+
+export function getExcludedBoostSharedConnectionLookupKey(
+  hashValue: string,
+): string | null {
+  const immediateParentTarget = getImmediateSelectedParentTarget(hashValue);
+  if (!immediateParentTarget || immediateParentTarget.kind === "cinenerdle") {
+    return null;
+  }
+
+  return immediateParentTarget.kind === "movie"
+    ? getFilmKey(immediateParentTarget.name, immediateParentTarget.year)
+    : normalizeName(immediateParentTarget.name);
 }
 
 export function getHighestGenerationSelectedLabel(hashValue: string): string {

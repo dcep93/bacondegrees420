@@ -62,6 +62,7 @@ import {
 import { formatIndexedDbClearConfirmationMessage } from "./indexed_db_clear_confirmation";
 import {
   getDocumentTitle,
+  getExcludedBoostSharedConnectionLookupKey,
   getHighestGenerationSelectedLabel,
 } from "./selected_path";
 import "./styles/app_shell.css";
@@ -146,6 +147,7 @@ export default function AppX() {
   const clearDbBadgeText = formatClearDbBadgeText(clearDbFetchCount, clearDbTotalFetchCount);
   const selectedPathTooltipEntries = getSelectedPathTooltipEntries(hashValue);
   const highestGenerationSelectedLabel = getHighestGenerationSelectedLabel(hashValue);
+  const excludedBoostSharedConnectionLookupKey = getExcludedBoostSharedConnectionLookupKey(hashValue);
 
   function sayToast(message: string) {
     setCopyStatusPlacement("toast");
@@ -416,6 +418,7 @@ export default function AppX() {
 
     void (shouldResolvePreview
       ? resolveStableConnectionPreviews(youngestSelectedCard, {
+        excludedBoostSharedConnectionLookupKey,
         shouldCancel: () => cancelled,
       })
       : Promise.resolve<{
@@ -443,6 +446,7 @@ export default function AppX() {
     };
   }, [
     connectionMatchupPreviewRefreshVersion,
+    excludedBoostSharedConnectionLookupKey,
     isCoverView,
     isBookmarksView,
     isCinenerdleIndexedDbBootstrapLoading,

@@ -42,6 +42,10 @@ export type ConnectionBoostPreview = {
   sharedConnection: ConnectionBoostPreviewEntity;
 };
 
+export type ResolveConnectionBoostPreviewOptions = {
+  excludedSharedConnectionLookupKey?: string | null;
+};
+
 type PersonChildCandidate = {
   key: string;
   lookupKey: string;
@@ -460,8 +464,10 @@ function createPreviewEntityFromPersonChildCandidate(
 
 async function resolveMovieBoostPreview(
   selectedMovieRecord: FilmRecord,
+  options: ResolveConnectionBoostPreviewOptions = {},
 ): Promise<ConnectionBoostPreview | null> {
   const selectedMovieKey = getMovieRecordKey(selectedMovieRecord);
+  const excludedSharedConnectionLookupKey = options.excludedSharedConnectionLookupKey ?? null;
   const directPeople = await getMovieDirectChildren(selectedMovieRecord);
   const movieCandidates = new Map<
     string,
@@ -473,6 +479,13 @@ async function resolveMovieBoostPreview(
 
   await Promise.all(
     directPeople.map(async (personCandidate) => {
+      if (
+        excludedSharedConnectionLookupKey &&
+        personCandidate.lookupKey === excludedSharedConnectionLookupKey
+      ) {
+        return;
+      }
+
       const matchingMovies = await getFilmRecordsByPersonConnectionKey(personCandidate.lookupKey);
 
       matchingMovies.forEach((candidateMovie) => {
@@ -521,8 +534,10 @@ async function resolveMovieBoostPreview(
 
 async function resolvePersonBoostPreview(
   selectedPersonRecord: PersonRecord,
+  options: ResolveConnectionBoostPreviewOptions = {},
 ): Promise<ConnectionBoostPreview | null> {
   const selectedPersonKey = getPersonRecordKey(selectedPersonRecord);
+  const excludedSharedConnectionLookupKey = options.excludedSharedConnectionLookupKey ?? null;
   const directMovies = await getPersonDirectChildren(selectedPersonRecord);
   const personCandidates = new Map<
     string,
@@ -534,6 +549,13 @@ async function resolvePersonBoostPreview(
 
   await Promise.all(
     directMovies.map(async (movieCandidate) => {
+      if (
+        excludedSharedConnectionLookupKey &&
+        movieCandidate.lookupKey === excludedSharedConnectionLookupKey
+      ) {
+        return;
+      }
+
       const matchingPeople = await getPersonRecordsByMovieKey(movieCandidate.lookupKey);
 
       matchingPeople.forEach((candidatePerson) => {
@@ -582,6 +604,7 @@ async function resolvePersonBoostPreview(
 
 export async function resolveConnectionBoostPreview(
   youngestSelectedCard: YoungestSelectedCard | null,
+  options: ResolveConnectionBoostPreviewOptions = {},
 ): Promise<ConnectionBoostPreview | null> {
   if (!youngestSelectedCard || youngestSelectedCard.kind === "cinenerdle") {
     return null;
@@ -593,7 +616,7 @@ export async function resolveConnectionBoostPreview(
       return null;
     }
 
-    return resolveMovieBoostPreview(selectedMovieRecord);
+    return resolveMovieBoostPreview(selectedMovieRecord, options);
   }
 
   const selectedPersonRecord = await resolveSelectedPersonRecord(youngestSelectedCard);
@@ -601,5 +624,5 @@ export async function resolveConnectionBoostPreview(
     return null;
   }
 
-  return resolvePersonBoostPreview(selectedPersonRecord);
+  return resolvePersonBoostPreview(selectedPersonRecord, options);
 }

@@ -293,4 +293,18 @@ describe("resolveStableConnectionPreviews", () => {
     expectHydrationCall(1, firstMovie);
     expect(matchupPreviewMock.resolveConnectionMatchupPreview).toHaveBeenCalledTimes(1);
   });
+
+  it("forwards the excluded boost shared-connection lookup key", async () => {
+    boostPreviewMock.resolveConnectionBoostPreview.mockResolvedValue(null);
+    matchupPreviewMock.resolveConnectionMatchupPreview.mockResolvedValue(null);
+
+    await resolveStableConnectionPreviews(makeSelectedMovieCard(), {
+      excludedBoostSharedConnectionLookupKey: "al pacino",
+    });
+
+    expect(boostPreviewMock.resolveConnectionBoostPreview).toHaveBeenCalledWith(
+      makeSelectedMovieCard(),
+      { excludedSharedConnectionLookupKey: "al pacino" },
+    );
+  });
 });

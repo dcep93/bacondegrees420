@@ -23,6 +23,7 @@ import {
   resolveConnectionBoostPreview,
   type ConnectionBoostPreview,
   type ConnectionBoostPreviewEntity,
+  type ResolveConnectionBoostPreviewOptions,
 } from "./connection_boost_preview";
 import {
   resolveConnectionMatchupPreview,
@@ -39,6 +40,7 @@ export type StableConnectionPreviewResolution = {
 };
 
 export type ResolveStableConnectionPreviewsOptions = {
+  excludedBoostSharedConnectionLookupKey?: string | null;
   maxPasses?: number;
   shouldCancel?: () => boolean;
 };
@@ -152,12 +154,16 @@ async function isPreviewEntityFullyHydrated(
 
 async function resolvePreviewPass(
   youngestSelectedCard: YoungestSelectedCard | null,
+  options: ResolveStableConnectionPreviewsOptions,
 ): Promise<StableConnectionPreviewResolution> {
+  const boostPreviewOptions: ResolveConnectionBoostPreviewOptions = {
+    excludedSharedConnectionLookupKey: options.excludedBoostSharedConnectionLookupKey,
+  };
   const [
     boostPreview,
     matchupPreview,
   ] = await Promise.all([
-    resolveConnectionBoostPreview(youngestSelectedCard),
+    resolveConnectionBoostPreview(youngestSelectedCard, boostPreviewOptions),
     resolveConnectionMatchupPreview(youngestSelectedCard),
   ]);
 
@@ -185,7 +191,7 @@ export async function resolveStableConnectionPreviews(
       return latestResolution;
     }
 
-    latestResolution = await resolvePreviewPass(youngestSelectedCard);
+    latestResolution = await resolvePreviewPass(youngestSelectedCard, options);
     if (shouldCancelResolution(options)) {
       return latestResolution;
     }
@@ -220,7 +226,7 @@ export async function resolveStableConnectionPreviews(
   }
 
   if (didHydrateInLastPass && !shouldCancelResolution(options)) {
-    return resolvePreviewPass(youngestSelectedCard);
+    return resolvePreviewPass(youngestSelectedCard, options);
   }
 
   return latestResolution;
