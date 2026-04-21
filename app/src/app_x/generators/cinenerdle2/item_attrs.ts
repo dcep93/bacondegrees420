@@ -1,4 +1,8 @@
 import { normalizeName, normalizeTitle } from "./utils";
+import {
+  readRouteXBookmarkItemAttrs,
+  writeRouteXBookmarkItemAttrs,
+} from "../../route_x_bookmarks";
 
 export const CINENERDLE_ITEM_ATTRS_STORAGE_KEY = "bacondegrees420.cinenerdle-item-attrs.v1";
 export const CINENERDLE_ITEM_ATTRS_UPDATED_EVENT = "cinenerdle-item-attrs-updated";
@@ -121,6 +125,11 @@ function dispatchItemAttrsUpdatedEvent(detail: CinenerdleItemAttrsMutationResult
 }
 
 export function readCinenerdleItemAttrs(): CinenerdleItemAttrs {
+  const routeXItemAttrs = readRouteXBookmarkItemAttrs();
+  if (routeXItemAttrs) {
+    return normalizeCinenerdleItemAttrs(routeXItemAttrs);
+  }
+
   if (!canUseLocalStorage()) {
     return createEmptyItemAttrs();
   }
@@ -164,6 +173,10 @@ export function writeCinenerdleItemAttrs(
   changedTargets: CinenerdleItemAttrTarget[] = [],
 ): CinenerdleItemAttrs {
   const normalizedItemAttrs = normalizeCinenerdleItemAttrs(nextItemAttrs);
+  const routeXItemAttrs = writeRouteXBookmarkItemAttrs(normalizedItemAttrs);
+  if (routeXItemAttrs) {
+    return routeXItemAttrs;
+  }
 
   if (!canUseLocalStorage()) {
     return normalizedItemAttrs;

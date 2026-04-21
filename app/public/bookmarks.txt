@@ -1,9 +1,9 @@
+#person|Emma+Stone|Dear+Diary:+World's+First+Pranks+(2021)|Emma+Stone|Paper+Man+(2009)|Jeff+Daniels|Speed+(1994)
 #person|Timoth%C3%A9e+Chalamet|One+&+Two+(2015)|Timoth%C3%A9e+Chalamet|Loving+Leah+(2009)|Natasha+Lyonne|The+Fantastic+4:+First+Steps+(2025)|Natasha+Lyonne|American+Pie+(1999)|Natasha+Lyonne|Scary+Movie+2+(2001)|Natasha+Lyonne|Glass+Onion:+A+Knives+Out+Mystery+(2022)|Natasha+Lyonne|Ad+Astra+(2019)|Natasha+Lyonne|Robots+(2005)
 #person|Josh+Brolin|Milwaukee,+Minnesota+(2003)|Josh+Brolin|Women+in+Trouble+(2009)|Simon+Baker|The+Devil+Wears+Prada+(2006)
 #person|Hans+Zimmer|Cool+Runnings+(1993)|Hans+Zimmer|Spirit:+Stallion+of+the+Cimarron+(2002)|Matt+Damon|EuroTrip+(2004)|Lucy+Lawless|Spider-Man+(2002)
 #person|Robert+De+Niro|Born+to+Win+(1971)|Robert+De+Niro|The+Gang+That+Couldn't+Shoot+Straight+(1971)|Jerry+Orbach|Dirty+Dancing+(1987)
 #person|Tom+Cruise|Losin'+It+(1983)|Tom+Cruise|Taps+(1981)|Giancarlo+Esposito|Taps+(1981)|Sean+Penn
-#person|Emma+Stone
 #person|Brad+Pitt|Cutting+Class+(1989)|Brad+Pitt|The+Favor+(1994)|Holland+Taylor|Legally+Blonde+(2001)
 #person|Samuel+L.+Jackson|The+Return+of+Superfly+(1990)|Samuel+L.+Jackson|Hail+Caesar+(1994)|Anthony+Michael+Hall|The+Breakfast+Club+(1985)
 #person|John+Williams|Heidi+(1968)|John+Williams|Earthquake+(1974)|Mario+Puzo|Christopher+Columbus:+The+Discovery+(1992)|Tom+Selleck|3+Men+and+a+Baby+(1987)|Ted+Danson|3+Men+and+a+Little+Lady+(1990)|Bryan+Pringle|Brazil+(1985)
@@ -23,3 +23,4 @@
 6701:person:Norbert Weisser ✡
 12852:person:Barry Corbin 🪙
 1736:person:James Remar 🐷
+8396:person:Tommy Lister Jr. 🐛

@@ -19,6 +19,10 @@ import {
   getValidTmdbEntityId,
 } from "./generators/cinenerdle2/utils";
 import type { BookmarkRowData } from "./bookmark_rows";
+import {
+  loadRouteXBookmarkSource,
+  writeRouteXBookmarkEntries,
+} from "./route_x_bookmarks";
 
 export const BOOKMARKS_STORAGE_KEY = "bacondegrees420.bookmarks.v1";
 
@@ -102,11 +106,23 @@ function readLegacyBookmarksFromLocalStorage(): BookmarkEntry[] {
 }
 
 export async function loadBookmarks(): Promise<BookmarkEntry[]> {
+  const routeXBookmarks = await loadRouteXBookmarkSource({
+    parseBookmarksText: parseBookmarksJsonlWithItemAttrs,
+  });
+  if (routeXBookmarks) {
+    return normalizeBookmarkEntries(routeXBookmarks.bookmarks);
+  }
+
   return readLegacyBookmarksFromLocalStorage();
 }
 
 export async function saveBookmarks(bookmarks: BookmarkEntry[]): Promise<BookmarkEntry[]> {
   const normalizedBookmarks = normalizeBookmarkEntries(bookmarks);
+  const routeXBookmarks = writeRouteXBookmarkEntries(normalizedBookmarks);
+  if (routeXBookmarks) {
+    return normalizeBookmarkEntries(routeXBookmarks);
+  }
+
   if (typeof localStorage !== "undefined") {
     localStorage.setItem(BOOKMARKS_STORAGE_KEY, JSON.stringify(normalizedBookmarks));
   }

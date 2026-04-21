@@ -61,6 +61,10 @@ import {
 } from "./indexed_db_bootstrap_loading_shell";
 import { formatIndexedDbClearConfirmationMessage } from "./indexed_db_clear_confirmation";
 import {
+  isRouteXBookmarksPath,
+  useWarmRouteXBookmarks,
+} from "./route_x_bookmarks";
+import {
   getDocumentTitle,
   getExcludedBoostSharedConnectionLookupKey,
   getHighestGenerationSelectedLabel,
@@ -148,6 +152,7 @@ export default function AppX() {
   const selectedPathTooltipEntries = getSelectedPathTooltipEntries(hashValue);
   const highestGenerationSelectedLabel = getHighestGenerationSelectedLabel(hashValue);
   const excludedBoostSharedConnectionLookupKey = getExcludedBoostSharedConnectionLookupKey(hashValue);
+  const isRouteXBookmarks = isRouteXBookmarksPath();
 
   function sayToast(message: string) {
     setCopyStatusPlacement("toast");
@@ -173,7 +178,14 @@ export default function AppX() {
   } = useBookmarksState({
     hashValue,
     onToast: sayToast,
-    shouldHydrateBookmarks: isBookmarksView && !isCinenerdleIndexedDbBootstrapLoading,
+    shouldHydrateBookmarks:
+      !isRouteXBookmarks &&
+      isBookmarksView &&
+      !isCinenerdleIndexedDbBootstrapLoading,
+  });
+  useWarmRouteXBookmarks({
+    bookmarks,
+    isReady: !isCinenerdleIndexedDbBootstrapLoading,
   });
   const shouldShowIndexedDbBootstrapLoadingShellIndicator = shouldShowIndexedDbBootstrapLoadingShell({
     hasLoadingShellDelayElapsed: hasIndexedDbBootstrapLoadingShellDelayElapsed,
