@@ -23,6 +23,7 @@ type BookmarksHistoryState = {
   bookmarkReturnPathname?: string;
 };
 
+const ROOT_ROUTE_X_PATHNAME = "/x";
 const BOOKMARKS_PATH_SUFFIX = "/bookmarks";
 const COVER_PATH_SUFFIX = "/cover";
 
@@ -72,11 +73,40 @@ export function getBasePathname(pathname: string): string {
   return normalizedPathname;
 }
 
+export function isRootRouteXPath(pathname: string): boolean {
+  return normalizePathname(pathname) === ROOT_ROUTE_X_PATHNAME;
+}
+
+export function getGeneratorPathname(basePathname: string): string {
+  const normalizedBasePathname = normalizePathname(basePathname);
+  return normalizedBasePathname === ROOT_ROUTE_X_PATHNAME ? "/" : normalizedBasePathname;
+}
+
+export function getDefaultBookmarksReturnPathname(
+  location: Pick<AppLocationState, "basePathname" | "pathname" | "viewMode">,
+): string {
+  if (getGeneratorPathname(location.basePathname) !== normalizePathname(location.basePathname)) {
+    return "/";
+  }
+
+  return location.viewMode === "bookmarks"
+    ? normalizePathname(location.basePathname)
+    : normalizePathname(location.pathname);
+}
+
+export function getDefaultBookmarksReturnHashValue(
+  location: Pick<AppLocationState, "basePathname" | "hash">,
+): string {
+  return getGeneratorPathname(location.basePathname) === normalizePathname(location.basePathname)
+    ? normalizeHashValue(location.hash)
+    : "";
+}
+
 export function readAppLocationState(): AppLocationState {
   const pathname = normalizePathname(window.location.pathname);
   const basePathname = getBasePathname(pathname);
   const viewMode: AppViewMode =
-    pathname === getBookmarksPathname(basePathname)
+    isRootRouteXPath(pathname) || pathname === getBookmarksPathname(basePathname)
       ? "bookmarks"
       : pathname === getCoverPathname(basePathname)
         ? "cover"
@@ -115,12 +145,8 @@ export function useAppLocationState() {
   const [navigationVersion, setNavigationVersion] = useState(0);
   const pendingHashWriteRef = useRef<PendingHashWrite | null>(null);
   const lastSyncedHashRef = useRef(normalizeHashValue(initialLocationState.hash));
-  const bookmarksReturnHashRef = useRef(normalizeHashValue(initialLocationState.hash));
-  const bookmarksReturnPathnameRef = useRef(
-    initialLocationState.viewMode === "bookmarks"
-      ? initialLocationState.basePathname
-      : initialLocationState.pathname,
-  );
+  const bookmarksReturnHashRef = useRef(getDefaultBookmarksReturnHashValue(initialLocationState));
+  const bookmarksReturnPathnameRef = useRef(getDefaultBookmarksReturnPathname(initialLocationState));
 
   const syncLocationFromWindow = useCallback((options?: {
     incrementNavigationVersion?: boolean;
@@ -172,7 +198,7 @@ export function useAppLocationState() {
       }
 
       window.open(
-        buildLocationHref(appLocation.basePathname, normalizedHash),
+        buildLocationHref(getGeneratorPathname(appLocation.basePathname), normalizedHash),
         "_blank",
         "noopener,noreferrer",
       );
@@ -187,7 +213,7 @@ export function useAppLocationState() {
       window.history.replaceState(
         null,
         "",
-        buildLocationHref(appLocation.basePathname, normalizedBookmarkHash),
+        buildLocationHref(getGeneratorPathname(appLocation.basePathname), normalizedBookmarkHash),
       );
       syncLocationFromWindow({
         incrementNavigationVersion: true,
@@ -204,7 +230,7 @@ export function useAppLocationState() {
       window.history.replaceState(
         null,
         "",
-        buildLocationHref(appLocation.basePathname, previewCardHash),
+        buildLocationHref(getGeneratorPathname(appLocation.basePathname), previewCardHash),
       );
       syncLocationFromWindow({
         incrementNavigationVersion: true,
@@ -218,7 +244,7 @@ export function useAppLocationState() {
     (bookmarkHash: string, previewCardIndex: number) => {
       const previewCardRootHash = getBookmarkPreviewCardRootHash(bookmarkHash, previewCardIndex);
       window.open(
-        buildLocationHref(appLocation.basePathname, previewCardRootHash),
+        buildLocationHref(getGeneratorPathname(appLocation.basePathname), previewCardRootHash),
         "_blank",
         "noopener,noreferrer",
       );
@@ -236,7 +262,8 @@ export function useAppLocationState() {
       );
       const restorePathname = normalizePathname(
         ((window.history.state as BookmarksHistoryState | null)?.bookmarkReturnPathname) ??
-        bookmarksReturnPathnameRef.current,
+        bookmarksReturnPathnameRef.current ??
+        getDefaultBookmarksReturnPathname(currentLocation),
       );
       window.history.replaceState(
         null,
