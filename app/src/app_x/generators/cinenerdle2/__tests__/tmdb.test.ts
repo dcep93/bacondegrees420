@@ -2642,6 +2642,117 @@ describe("tmdb forced refresh helpers", () => {
     expect(indexedDbMock.getFilmRecordByTitleAndYear).toHaveBeenCalledWith("Heat", "1995");
   });
 
+  it("uses a space-separated year as a TMDB year hint when the movie is not cached", async () => {
+    const fetchMock = vi.fn(async (input: string) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/search/movie")) {
+        const searchQuery = url.searchParams.get("query");
+        if (searchQuery === "The Mummy 2017") {
+          return createJsonResponse({
+            results: [
+              makeTmdbMovieSearchResult({
+                id: 1734,
+                popularity: 80,
+                release_date: "2001-05-04",
+                title: "The Mummy Returns",
+              }),
+            ],
+          });
+        }
+
+        if (searchQuery === "The Mummy") {
+          return createJsonResponse({
+            results: [
+              makeTmdbMovieSearchResult({
+                id: 564,
+                popularity: 50,
+                release_date: "2017-06-09",
+                title: "The Mummy",
+              }),
+              makeTmdbMovieSearchResult({
+                id: 5642,
+                popularity: 90,
+                release_date: "1999-05-07",
+                title: "The Mummy",
+              }),
+            ],
+          });
+        }
+      }
+
+      if (url.pathname.endsWith("/search/person")) {
+        return createJsonResponse({ results: [] });
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    indexedDbMock.getAllSearchableConnectionEntities.mockResolvedValue([]);
+    indexedDbMock.getPersonRecordByName.mockResolvedValue(null);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(null);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const target = await resolveConnectionQuery("The Mummy 2017");
+
+    expect(target).toEqual({
+      kind: "movie",
+      name: "The Mummy",
+      tmdbId: 564,
+      year: "2017",
+    });
+  });
+
+  it("prefers a real title containing a year-shaped number over a trailing-year parse", async () => {
+    const fetchMock = vi.fn(async (input: string) => {
+      const url = String(input);
+      if (url.includes("/search/movie?")) {
+        return createJsonResponse({
+          results: [
+            makeTmdbMovieSearchResult({
+              id: 8970,
+              popularity: 80,
+              release_date: "1998-02-06",
+              title: "Blues Brothers 2000",
+            }),
+          ],
+        });
+      }
+
+      if (url.includes("/search/person?")) {
+        return createJsonResponse({ results: [] });
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    indexedDbMock.getAllSearchableConnectionEntities.mockResolvedValue([
+      {
+        key: "movie:blues brothers 2000:1998",
+        type: "movie",
+        nameLower: "blues brothers 2000 (1998)",
+        popularity: 80,
+      },
+    ]);
+    indexedDbMock.getPersonRecordByName.mockResolvedValue(null);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(makeFilmRecord({
+      id: 2000,
+      tmdbId: 2000,
+      title: "Blues Brothers",
+      year: "2000",
+      popularity: 99,
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const target = await resolveConnectionQuery("Blues Brothers 2000");
+
+    expect(target).toEqual({
+      kind: "movie",
+      name: "Blues Brothers 2000",
+      tmdbId: 8970,
+      year: "1998",
+    });
+  });
+
   it("resolves bare movie title submits as movies from tmdb search", async () => {
     const movieSearchResponse = {
       results: [

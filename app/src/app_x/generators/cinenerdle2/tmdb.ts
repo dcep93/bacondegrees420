@@ -2377,6 +2377,21 @@ function getMovieLabelNameLower(movieName: string, movieYear = ""): string {
   return normalizeTitle(formatMoviePathLabel(movieName, movieYear));
 }
 
+function parseSpaceSeparatedMovieYearQuery(query: string): {
+  name: string;
+  year: string;
+} | null {
+  const match = normalizeWhitespace(query).match(/^(.*\S)\s+(\d{4})$/);
+  if (!match) {
+    return null;
+  }
+
+  return {
+    name: normalizeWhitespace(match[1]),
+    year: match[2],
+  };
+}
+
 type ConnectionPersonCandidate = {
   exactMatch: boolean;
   kind: "person";
@@ -2587,11 +2602,15 @@ export async function resolveConnectionQuery(
       }
 
       const parsedMovie = parseMoviePathLabel(normalizedQuery);
+      const spaceSeparatedMovieYear = parsedMovie.year
+        ? null
+        : parseSpaceSeparatedMovieYearQuery(normalizedQuery);
       const [
         searchRecords,
         personRecordByName,
         exactMovieRecord,
         movieSearchResponse,
+        spaceSeparatedMovieYearSearchResponse,
         personSearchResponse,
       ] = await Promise.all([
         getAllSearchableConnectionEntities(),
@@ -2600,6 +2619,12 @@ export async function resolveConnectionQuery(
           ? getFilmRecordByTitleAndYear(parsedMovie.name, parsedMovie.year)
           : Promise.resolve(null),
         fetchTmdbSearch<TmdbMovieSearchResult>("search/movie", parsedMovie.name),
+        spaceSeparatedMovieYear
+          ? fetchTmdbSearch<TmdbMovieSearchResult>(
+            "search/movie",
+            spaceSeparatedMovieYear.name,
+          )
+          : Promise.resolve(null),
         fetchTmdbSearch<TmdbPersonSearchResult>("search/person", normalizedQuery),
       ]);
       const exactPersonRecord = getValidConnectionPersonRecord(personRecordByName);
@@ -2623,6 +2648,15 @@ export async function resolveConnectionQuery(
             record.nameLower === getMovieLabelNameLower(parsedMovie.name, parsedMovie.year),
         ) ?? null)
         : null;
+      const exactMovieTitleSearchRecord = parsedMovie.year
+        ? null
+        : (searchRecords.find((record) => {
+          if (record.type !== "movie") {
+            return false;
+          }
+          const movieLabel = parseMoviePathLabel(record.nameLower);
+          return normalizeTitle(movieLabel.name) === normalizeTitle(parsedMovie.name);
+        }) ?? null);
       const [personEntity, movieEntity] = await Promise.all([
         exactPersonSearchRecord
           ? hydrateConnectionEntityFromSearchRecord(exactPersonSearchRecord)
@@ -2636,6 +2670,20 @@ export async function resolveConnectionQuery(
         parsedMovie.name,
         parsedMovie.year,
       );
+      const hasExactMovieTitleSearchResult =
+        normalizeTitle(bestMovieSearchResult?.title ?? "") === normalizeTitle(parsedMovie.name);
+      const shouldUseSpaceSeparatedMovieYear =
+        Boolean(spaceSeparatedMovieYear) &&
+        !exactMovieTitleSearchRecord &&
+        !hasExactMovieTitleSearchResult;
+      const bestSpaceSeparatedMovieYearSearchResult =
+        shouldUseSpaceSeparatedMovieYear && spaceSeparatedMovieYear
+          ? chooseBestMovieSearchResult(
+            spaceSeparatedMovieYearSearchResponse?.results,
+            spaceSeparatedMovieYear.name,
+            spaceSeparatedMovieYear.year,
+          )
+          : null;
       const bestPersonSearchResult = chooseBestPersonSearchResult(
         personSearchResponse.results,
         normalizedQuery,
@@ -2663,6 +2711,16 @@ export async function resolveConnectionQuery(
               queryMovieYear: parsedMovie.year,
             })
             : null,
+          bestSpaceSeparatedMovieYearSearchResult
+            ? createMovieCandidate({
+              movieName: bestSpaceSeparatedMovieYearSearchResult.title ?? "",
+              movieYear: getTmdbMovieSearchResultYear(bestSpaceSeparatedMovieYearSearchResult),
+              popularity: bestSpaceSeparatedMovieYearSearchResult.popularity,
+              tmdbId: bestSpaceSeparatedMovieYearSearchResult.id,
+              queryMovieName: spaceSeparatedMovieYear?.name ?? parsedMovie.name,
+              queryMovieYear: spaceSeparatedMovieYear?.year ?? parsedMovie.year,
+            })
+            : null,
           createMovieCandidate({
             movieName: bestMovieSearchResult?.title ?? "",
             movieYear: getTmdbMovieSearchResultYear(bestMovieSearchResult),
@@ -2672,7 +2730,9 @@ export async function resolveConnectionQuery(
             queryMovieYear: parsedMovie.year,
           }),
         ]),
-        movieYear: parsedMovie.year,
+        movieYear: parsedMovie.year || (
+          shouldUseSpaceSeparatedMovieYear ? spaceSeparatedMovieYear?.year : ""
+        ) || "",
         personCandidate: chooseBestConnectionKindCandidate([
           exactPersonRecord
             ? createPersonCandidate({
