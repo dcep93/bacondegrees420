@@ -294,17 +294,17 @@ describe("resolveStableConnectionPreviews", () => {
     expect(matchupPreviewMock.resolveConnectionMatchupPreview).toHaveBeenCalledTimes(1);
   });
 
-  it("forwards the excluded boost shared-connection lookup key", async () => {
+  it("forwards the excluded boost shared-connection lookup keys", async () => {
     boostPreviewMock.resolveConnectionBoostPreview.mockResolvedValue(null);
     matchupPreviewMock.resolveConnectionMatchupPreview.mockResolvedValue(null);
 
     await resolveStableConnectionPreviews(makeSelectedMovieCard(), {
-      excludedBoostSharedConnectionLookupKey: "al pacino",
+      excludedBoostSharedConnectionLookupKeys: ["al pacino", "heat (1995)"],
     });
 
     expect(boostPreviewMock.resolveConnectionBoostPreview).toHaveBeenCalledWith(
       makeSelectedMovieCard(),
-      { excludedSharedConnectionLookupKey: "al pacino" },
+      { excludedSharedConnectionLookupKeys: ["al pacino", "heat (1995)"] },
     );
   });
 });

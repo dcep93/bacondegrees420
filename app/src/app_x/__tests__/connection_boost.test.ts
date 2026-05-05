@@ -341,7 +341,99 @@ describe("resolveConnectionBoostPreview", () => {
       voteCount: null,
       record: null,
     }, {
-      excludedSharedConnectionLookupKey: "parent person",
+      excludedSharedConnectionLookupKeys: ["parent person"],
+    });
+
+    expect(preview).not.toBeNull();
+    expect(preview?.distanceTwo.name).toBe("High Pop Movie (2005)");
+    expect(preview?.sharedConnection.name).toBe("Alternate Person");
+  });
+
+  it("skips any selected-path shared person for movie selections", async () => {
+    const selectedMovie = makeFilmRecord({
+      id: "selected-movie-2000",
+      tmdbId: 2000,
+      title: "Selected Movie",
+      year: "2000",
+      popularity: 30,
+      personConnectionKeys: ["ancestor person", "parent person", "alternate person"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          { id: 101, name: "Ancestor Person", order: 0, popularity: 99, profile_path: "/ancestor.jpg" },
+          { id: 102, name: "Parent Person", order: 1, popularity: 95, profile_path: "/parent.jpg" },
+          { id: 103, name: "Alternate Person", order: 2, popularity: 60, profile_path: "/alternate.jpg" },
+        ],
+        crew: [],
+      },
+    });
+    const highPopMovie = makeFilmRecord({
+      id: "high-pop-2005",
+      tmdbId: 2005,
+      title: "High Pop Movie",
+      year: "2005",
+      popularity: 95,
+      personConnectionKeys: ["ancestor person", "parent person", "alternate person"],
+    });
+    const ancestorPerson = makePersonRecord({
+      id: 101,
+      tmdbId: 101,
+      name: "Ancestor Person",
+      movieConnectionKeys: ["selected movie (2000)", "high pop movie (2005)"],
+      rawTmdbPerson: { id: 101, name: "Ancestor Person", popularity: 99, profile_path: "/ancestor-cached.jpg" },
+    });
+    const parentPerson = makePersonRecord({
+      id: 102,
+      tmdbId: 102,
+      name: "Parent Person",
+      movieConnectionKeys: ["selected movie (2000)", "high pop movie (2005)"],
+      rawTmdbPerson: { id: 102, name: "Parent Person", popularity: 95, profile_path: "/parent-cached.jpg" },
+    });
+    const alternatePerson = makePersonRecord({
+      id: 103,
+      tmdbId: 103,
+      name: "Alternate Person",
+      movieConnectionKeys: ["selected movie (2000)", "high pop movie (2005)"],
+      rawTmdbPerson: { id: 103, name: "Alternate Person", popularity: 60, profile_path: "/alternate-cached.jpg" },
+    });
+    const people = [ancestorPerson, parentPerson, alternatePerson];
+
+    indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (title: string, year: string) =>
+      [selectedMovie, highPopMovie].find((film) => film.title === title && film.year === year) ?? null,
+    );
+    indexedDbMock.getFilmRecordsByPersonConnectionKey.mockImplementation(async (personName: string) =>
+      [selectedMovie, highPopMovie].filter((film) =>
+        film.personConnectionKeys.some((candidate) => {
+          const matchingPersonId =
+            people.find((person) => normalizeName(person.name) === normalizeName(personName))?.tmdbId ?? null;
+          return candidate === matchingPersonId || candidate === getLegacyPersonConnectionId(personName);
+        }),
+      ),
+    );
+    indexedDbMock.getPersonRecordById.mockImplementation(async (id: number) =>
+      people.find((person) => person.id === id) ?? null,
+    );
+    indexedDbMock.getPersonRecordByName.mockImplementation(async (name: string) =>
+      people.find((person) => normalizeName(person.name) === normalizeName(name)) ?? null,
+    );
+
+    const preview = await resolveConnectionBoostPreview({
+      key: "movie:selected movie:2000",
+      kind: "movie",
+      name: "Selected Movie",
+      year: "2000",
+      popularity: 0,
+      popularitySource: null,
+      imageUrl: null,
+      subtitle: "",
+      subtitleDetail: "",
+      connectionCount: null,
+      sources: [],
+      status: null,
+      voteAverage: null,
+      voteCount: null,
+      record: null,
+    }, {
+      excludedSharedConnectionLookupKeys: ["ancestor person", "parent person"],
     });
 
     expect(preview).not.toBeNull();
@@ -525,7 +617,95 @@ describe("resolveConnectionBoostPreview", () => {
       status: null,
       record: null,
     }, {
-      excludedSharedConnectionLookupKey: "parent movie (2010)",
+      excludedSharedConnectionLookupKeys: ["parent movie (2010)"],
+    });
+
+    expect(preview).not.toBeNull();
+    expect(preview?.distanceTwo.name).toBe("Distance Two High");
+    expect(preview?.sharedConnection.name).toBe("Alternate Movie (2011)");
+  });
+
+  it("skips any selected-path shared movie for person selections", async () => {
+    const selectedPerson = makePersonRecord({
+      id: 401,
+      tmdbId: 401,
+      name: "Selected Person",
+      movieConnectionKeys: [301, 302, 303],
+      rawTmdbPerson: { id: 401, name: "Selected Person", popularity: 45 },
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          { id: 301, title: "Ancestor Movie", release_date: "2009-01-01", popularity: 99 },
+          { id: 302, title: "Parent Movie", release_date: "2010-01-01", popularity: 95 },
+          { id: 303, title: "Alternate Movie", release_date: "2011-01-01", popularity: 60 },
+        ],
+        crew: [],
+      },
+    });
+    const distanceTwoHigh = makePersonRecord({
+      id: 402,
+      tmdbId: 402,
+      name: "Distance Two High",
+      movieConnectionKeys: [301, 302, 303],
+      rawTmdbPerson: { id: 402, name: "Distance Two High", popularity: 99 },
+    });
+    const ancestorMovie = makeFilmRecord({
+      id: "ancestor-movie-2009",
+      tmdbId: 301,
+      title: "Ancestor Movie",
+      year: "2009",
+      popularity: 99,
+    });
+    const parentMovie = makeFilmRecord({
+      id: "parent-movie-2010",
+      tmdbId: 302,
+      title: "Parent Movie",
+      year: "2010",
+      popularity: 95,
+    });
+    const alternateMovie = makeFilmRecord({
+      id: "alternate-movie-2011",
+      tmdbId: 303,
+      title: "Alternate Movie",
+      year: "2011",
+      popularity: 60,
+    });
+    const movies = [ancestorMovie, parentMovie, alternateMovie];
+
+    indexedDbMock.getPersonRecordById.mockImplementation(async (id: number) =>
+      [selectedPerson, distanceTwoHigh].find((person) => person.id === id) ?? null,
+    );
+    indexedDbMock.getPersonRecordByName.mockImplementation(async (name: string) =>
+      [selectedPerson, distanceTwoHigh].find(
+        (person) => normalizeName(person.name) === normalizeName(name),
+      ) ?? null,
+    );
+    indexedDbMock.getPersonRecordsByMovieKey.mockImplementation(async (movieKey: string) =>
+      ["ancestor movie (2009)", "parent movie (2010)", "alternate movie (2011)"].includes(movieKey)
+        ? [selectedPerson, distanceTwoHigh]
+        : [],
+    );
+    indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (title: string, year: string) =>
+      movies.find((film) => film.title === title && film.year === year) ?? null,
+    );
+    indexedDbMock.getFilmRecordById.mockImplementation(async (id: number) =>
+      movies.find((film) => film.tmdbId === id) ?? null,
+    );
+
+    const preview = await resolveConnectionBoostPreview({
+      key: "person:401",
+      kind: "person",
+      name: "Selected Person",
+      popularity: 0,
+      popularitySource: null,
+      imageUrl: null,
+      subtitle: "",
+      subtitleDetail: "",
+      connectionCount: null,
+      sources: [],
+      status: null,
+      record: null,
+    }, {
+      excludedSharedConnectionLookupKeys: ["ancestor movie (2009)", "parent movie (2010)"],
     });
 
     expect(preview).not.toBeNull();
@@ -622,12 +802,94 @@ describe("resolveConnectionBoostPreview", () => {
       voteCount: null,
       record: null,
     }, {
-      excludedSharedConnectionLookupKey: "parent person",
+      excludedSharedConnectionLookupKeys: ["parent person"],
     });
 
     expect(preview).not.toBeNull();
     expect(preview?.distanceTwo.name).toBe("Fallback Movie (2004)");
     expect(preview?.sharedConnection.name).toBe("Alternate Person");
+  });
+
+  it("returns null when all valid shared connectors are selected-path blocked", async () => {
+    const selectedMovie = makeFilmRecord({
+      id: "selected-movie-2000",
+      tmdbId: 2000,
+      title: "Selected Movie",
+      year: "2000",
+      popularity: 30,
+      personConnectionKeys: ["ancestor person", "parent person"],
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          { id: 101, name: "Ancestor Person", order: 0, popularity: 99 },
+          { id: 102, name: "Parent Person", order: 1, popularity: 95 },
+        ],
+        crew: [],
+      },
+    });
+    const blockedMovie = makeFilmRecord({
+      id: "blocked-movie-2005",
+      tmdbId: 2005,
+      title: "Blocked Movie",
+      year: "2005",
+      popularity: 95,
+      personConnectionKeys: ["ancestor person", "parent person"],
+    });
+    const ancestorPerson = makePersonRecord({
+      id: 101,
+      tmdbId: 101,
+      name: "Ancestor Person",
+      movieConnectionKeys: ["selected movie (2000)", "blocked movie (2005)"],
+      rawTmdbPerson: { id: 101, name: "Ancestor Person", popularity: 99 },
+    });
+    const parentPerson = makePersonRecord({
+      id: 102,
+      tmdbId: 102,
+      name: "Parent Person",
+      movieConnectionKeys: ["selected movie (2000)", "blocked movie (2005)"],
+      rawTmdbPerson: { id: 102, name: "Parent Person", popularity: 95 },
+    });
+    const people = [ancestorPerson, parentPerson];
+
+    indexedDbMock.getFilmRecordByTitleAndYear.mockImplementation(async (title: string, year: string) =>
+      [selectedMovie, blockedMovie].find((film) => film.title === title && film.year === year) ?? null,
+    );
+    indexedDbMock.getFilmRecordsByPersonConnectionKey.mockImplementation(async (personName: string) =>
+      [selectedMovie, blockedMovie].filter((film) =>
+        film.personConnectionKeys.some((candidate) => {
+          const matchingPersonId =
+            people.find((person) => normalizeName(person.name) === normalizeName(personName))?.tmdbId ?? null;
+          return candidate === matchingPersonId || candidate === getLegacyPersonConnectionId(personName);
+        }),
+      ),
+    );
+    indexedDbMock.getPersonRecordById.mockImplementation(async (id: number) =>
+      people.find((person) => person.id === id) ?? null,
+    );
+    indexedDbMock.getPersonRecordByName.mockImplementation(async (name: string) =>
+      people.find((person) => normalizeName(person.name) === normalizeName(name)) ?? null,
+    );
+
+    const preview = await resolveConnectionBoostPreview({
+      key: "movie:selected movie:2000",
+      kind: "movie",
+      name: "Selected Movie",
+      year: "2000",
+      popularity: 0,
+      popularitySource: null,
+      imageUrl: null,
+      subtitle: "",
+      subtitleDetail: "",
+      connectionCount: null,
+      sources: [],
+      status: null,
+      voteAverage: null,
+      voteCount: null,
+      record: null,
+    }, {
+      excludedSharedConnectionLookupKeys: ["ancestor person", "parent person"],
+    });
+
+    expect(preview).toBeNull();
   });
 
   it("returns null when the selected person has no valid distance-2 result", async () => {

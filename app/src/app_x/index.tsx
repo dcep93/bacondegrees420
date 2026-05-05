@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { formatClearDbBadgeText } from "./clear_db_badge";
 import {
   type ConnectionBoostPreview as ConnectionBoostPreviewData,
@@ -66,7 +66,7 @@ import {
 } from "./route_x_bookmarks";
 import {
   getDocumentTitle,
-  getExcludedBoostSharedConnectionLookupKey,
+  getExcludedBoostSharedConnectionLookupKeys,
   getHighestGenerationSelectedLabel,
 } from "./selected_path";
 import "./styles/app_shell.css";
@@ -151,7 +151,10 @@ export default function AppX() {
   const clearDbBadgeText = formatClearDbBadgeText(clearDbFetchCount, clearDbTotalFetchCount);
   const selectedPathTooltipEntries = getSelectedPathTooltipEntries(hashValue);
   const highestGenerationSelectedLabel = getHighestGenerationSelectedLabel(hashValue);
-  const excludedBoostSharedConnectionLookupKey = getExcludedBoostSharedConnectionLookupKey(hashValue);
+  const excludedBoostSharedConnectionLookupKeys = useMemo(
+    () => getExcludedBoostSharedConnectionLookupKeys(hashValue),
+    [hashValue],
+  );
   const isRouteXBookmarks = isRouteXBookmarksPath();
 
   function sayToast(message: string) {
@@ -430,7 +433,7 @@ export default function AppX() {
 
     void (shouldResolvePreview
       ? resolveStableConnectionPreviews(youngestSelectedCard, {
-        excludedBoostSharedConnectionLookupKey,
+        excludedBoostSharedConnectionLookupKeys,
         shouldCancel: () => cancelled,
       })
       : Promise.resolve<{
@@ -458,7 +461,7 @@ export default function AppX() {
     };
   }, [
     connectionMatchupPreviewRefreshVersion,
-    excludedBoostSharedConnectionLookupKey,
+    excludedBoostSharedConnectionLookupKeys,
     isCoverView,
     isBookmarksView,
     isCinenerdleIndexedDbBootstrapLoading,

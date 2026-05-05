@@ -105,17 +105,22 @@ export function getImmediateSelectedParentTarget(hashValue: string): SelectedPat
   };
 }
 
-export function getExcludedBoostSharedConnectionLookupKey(
+export function getExcludedBoostSharedConnectionLookupKeys(
   hashValue: string,
-): string | null {
-  const immediateParentTarget = getImmediateSelectedParentTarget(hashValue);
-  if (!immediateParentTarget || immediateParentTarget.kind === "cinenerdle") {
-    return null;
-  }
+): string[] {
+  const excludedLookupKeys = new Set<string>();
+  buildPathNodesFromSegments(parseHashSegments(hashValue)).forEach((pathNode) => {
+    if (pathNode.kind === "movie") {
+      excludedLookupKeys.add(getFilmKey(pathNode.name, pathNode.year));
+      return;
+    }
 
-  return immediateParentTarget.kind === "movie"
-    ? getFilmKey(immediateParentTarget.name, immediateParentTarget.year)
-    : normalizeName(immediateParentTarget.name);
+    if (pathNode.kind === "person") {
+      excludedLookupKeys.add(normalizeName(pathNode.name));
+    }
+  });
+
+  return [...excludedLookupKeys];
 }
 
 export function getHighestGenerationSelectedLabel(hashValue: string): string {

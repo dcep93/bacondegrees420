@@ -40,7 +40,7 @@ export type StableConnectionPreviewResolution = {
 };
 
 export type ResolveStableConnectionPreviewsOptions = {
-  excludedBoostSharedConnectionLookupKey?: string | null;
+  excludedBoostSharedConnectionLookupKeys?: readonly string[] | null;
   maxPasses?: number;
   shouldCancel?: () => boolean;
 };
@@ -157,7 +157,7 @@ async function resolvePreviewPass(
   options: ResolveStableConnectionPreviewsOptions,
 ): Promise<StableConnectionPreviewResolution> {
   const boostPreviewOptions: ResolveConnectionBoostPreviewOptions = {
-    excludedSharedConnectionLookupKey: options.excludedBoostSharedConnectionLookupKey,
+    excludedSharedConnectionLookupKeys: options.excludedBoostSharedConnectionLookupKeys,
   };
   const [
     boostPreview,

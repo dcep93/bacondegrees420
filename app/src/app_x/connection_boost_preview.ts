@@ -43,7 +43,7 @@ export type ConnectionBoostPreview = {
 };
 
 export type ResolveConnectionBoostPreviewOptions = {
-  excludedSharedConnectionLookupKey?: string | null;
+  excludedSharedConnectionLookupKeys?: readonly string[] | null;
 };
 
 type PersonChildCandidate = {
@@ -467,7 +467,7 @@ async function resolveMovieBoostPreview(
   options: ResolveConnectionBoostPreviewOptions = {},
 ): Promise<ConnectionBoostPreview | null> {
   const selectedMovieKey = getMovieRecordKey(selectedMovieRecord);
-  const excludedSharedConnectionLookupKey = options.excludedSharedConnectionLookupKey ?? null;
+  const excludedSharedConnectionLookupKeys = new Set(options.excludedSharedConnectionLookupKeys ?? []);
   const directPeople = await getMovieDirectChildren(selectedMovieRecord);
   const movieCandidates = new Map<
     string,
@@ -479,10 +479,7 @@ async function resolveMovieBoostPreview(
 
   await Promise.all(
     directPeople.map(async (personCandidate) => {
-      if (
-        excludedSharedConnectionLookupKey &&
-        personCandidate.lookupKey === excludedSharedConnectionLookupKey
-      ) {
+      if (excludedSharedConnectionLookupKeys.has(personCandidate.lookupKey)) {
         return;
       }
 
@@ -537,7 +534,7 @@ async function resolvePersonBoostPreview(
   options: ResolveConnectionBoostPreviewOptions = {},
 ): Promise<ConnectionBoostPreview | null> {
   const selectedPersonKey = getPersonRecordKey(selectedPersonRecord);
-  const excludedSharedConnectionLookupKey = options.excludedSharedConnectionLookupKey ?? null;
+  const excludedSharedConnectionLookupKeys = new Set(options.excludedSharedConnectionLookupKeys ?? []);
   const directMovies = await getPersonDirectChildren(selectedPersonRecord);
   const personCandidates = new Map<
     string,
@@ -549,10 +546,7 @@ async function resolvePersonBoostPreview(
 
   await Promise.all(
     directMovies.map(async (movieCandidate) => {
-      if (
-        excludedSharedConnectionLookupKey &&
-        movieCandidate.lookupKey === excludedSharedConnectionLookupKey
-      ) {
+      if (excludedSharedConnectionLookupKeys.has(movieCandidate.lookupKey)) {
         return;
       }
 
