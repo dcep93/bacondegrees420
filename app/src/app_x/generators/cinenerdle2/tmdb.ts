@@ -81,6 +81,8 @@ import {
 import type { CinenerdleCard } from "./view_types";
 import type { CinenerdlePathNode } from "./view_types";
 
+const IS_DEV_MODE = import.meta.env.DEV;
+
 export type ConnectionTarget =
   | {
     kind: "cinenerdle";
@@ -557,7 +559,9 @@ function logRawTmdbMovieResponse(
     label,
     popularity,
   );
-  console.log(event, payload);
+  if (IS_DEV_MODE) {
+    console.log(event, payload);
+  }
   addCinenerdleDebugLog(event, context?.debugDetails);
   void incrementCinenerdleIndexedDbFetchCount().catch(() => { });
 }
@@ -579,7 +583,9 @@ function logRawTmdbPersonResponse(
     personName,
     popularity,
   );
-  console.log(event, payload);
+  if (IS_DEV_MODE) {
+    console.log(event, payload);
+  }
   addCinenerdleDebugLog(event, context?.debugDetails);
   void incrementCinenerdleIndexedDbFetchCount().catch(() => { });
 }
@@ -2629,11 +2635,13 @@ export async function resolveConnectionQuery(
       ]);
       const exactPersonRecord = getValidConnectionPersonRecord(personRecordByName);
 
-      console.log("tmdb.resolveConnectionQuery search responses", {
-        movieSearchResponse,
-        personSearchResponse,
-        query: normalizedQuery,
-      });
+      if (IS_DEV_MODE) {
+        console.log("tmdb.resolveConnectionQuery search responses", {
+          movieSearchResponse,
+          personSearchResponse,
+          query: normalizedQuery,
+        });
+      }
 
       const exactPersonSearchRecord =
         searchRecords.find(

@@ -9,6 +9,7 @@ export type CinenerdleDebugEntry = {
 };
 
 const cinenerdleDebugEntries: CinenerdleDebugEntry[] = [];
+let cinenerdleFetchDebugEntryCount = 0;
 
 function dispatchCinenerdleDebugLogUpdatedEvent(): void {
   if (
@@ -26,11 +27,29 @@ function trimCinenerdleDebugEntries() {
     return;
   }
 
-  cinenerdleDebugEntries.splice(0, cinenerdleDebugEntries.length - MAX_DEBUG_ENTRIES);
+  const removeCount = cinenerdleDebugEntries.length - MAX_DEBUG_ENTRIES;
+  const removedFetchDebugEntryCount = cinenerdleDebugEntries
+    .slice(0, removeCount)
+    .filter(isCinenerdleFetchDebugEntry).length;
+
+  cinenerdleDebugEntries.splice(0, removeCount);
+  cinenerdleFetchDebugEntryCount = Math.max(
+    0,
+    cinenerdleFetchDebugEntryCount - removedFetchDebugEntryCount,
+  );
 }
 
 export function addCinenerdleDebugLog(event: string, details?: unknown): void {
+  const isFetchDebugEntry = isCinenerdleFetchDebugEvent(event);
+
+  if (isFetchDebugEntry) {
+    cinenerdleFetchDebugEntryCount += 1;
+  }
+
   if (!IS_DEV_MODE) {
+    if (isFetchDebugEntry) {
+      dispatchCinenerdleDebugLogUpdatedEvent();
+    }
     return;
   }
 
@@ -45,6 +64,7 @@ export function addCinenerdleDebugLog(event: string, details?: unknown): void {
 
 export function clearCinenerdleDebugLog(): void {
   cinenerdleDebugEntries.length = 0;
+  cinenerdleFetchDebugEntryCount = 0;
   dispatchCinenerdleDebugLogUpdatedEvent();
 }
 
@@ -62,27 +82,39 @@ export function getCinenerdleDebugEntriesMatching(
   return cinenerdleDebugEntries.filter(predicate);
 }
 
+function isCinenerdleFetchDebugEvent(event: string): boolean {
+  return event.startsWith("gen ") && /\b(?:pre)?fetch\b/.test(event);
+}
+
 export function isCinenerdleFetchDebugEntry(entry: CinenerdleDebugEntry): boolean {
-  return entry.event.startsWith("gen ") && /\b(?:pre)?fetch\b/.test(entry.event);
+  return isCinenerdleFetchDebugEvent(entry.event);
 }
 
 export function getCinenerdleFetchDebugEntryCount(): number {
-  return cinenerdleDebugEntries.filter(isCinenerdleFetchDebugEntry).length;
+  return cinenerdleFetchDebugEntryCount;
 }
 
 export function removeCinenerdleDebugEntriesMatching(
   predicate: (entry: CinenerdleDebugEntry) => boolean,
 ): number {
   const originalLength = cinenerdleDebugEntries.length;
+  let removedFetchDebugEntryCount = 0;
 
   for (let index = cinenerdleDebugEntries.length - 1; index >= 0; index -= 1) {
     if (predicate(cinenerdleDebugEntries[index]!)) {
+      if (isCinenerdleFetchDebugEntry(cinenerdleDebugEntries[index]!)) {
+        removedFetchDebugEntryCount += 1;
+      }
       cinenerdleDebugEntries.splice(index, 1);
     }
   }
 
   const removedCount = originalLength - cinenerdleDebugEntries.length;
   if (removedCount > 0) {
+    cinenerdleFetchDebugEntryCount = Math.max(
+      0,
+      cinenerdleFetchDebugEntryCount - removedFetchDebugEntryCount,
+    );
     dispatchCinenerdleDebugLogUpdatedEvent();
   }
 

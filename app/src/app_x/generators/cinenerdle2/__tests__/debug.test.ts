@@ -26,7 +26,10 @@ import {
   copyCinenerdleTextToClipboard,
   getCinenerdleDebugEntryCount,
 } from "../debug";
-import { getCinenerdleDebugEntries } from "../debug_log";
+import {
+  getCinenerdleDebugEntries,
+  getCinenerdleFetchDebugEntryCount,
+} from "../debug_log";
 
 const originalNavigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, "navigator");
 const originalDocumentDescriptor = Object.getOwnPropertyDescriptor(globalThis, "document");
@@ -274,6 +277,20 @@ describe("addCinenerdleDebugLog", () => {
         },
       }),
     ]);
+  });
+
+  it("counts fetch debug entries for the clear-db badge", () => {
+    expect(getCinenerdleFetchDebugEntryCount()).toBe(0);
+
+    addCinenerdleDebugLog("gen 1 movie 1 / 2 fetch Heat (1995)");
+    addCinenerdleDebugLog("gen 1 person 2 / 2 prefetch Al Pacino");
+    addCinenerdleDebugLog("bootstrap:hydrate-core");
+
+    expect(getCinenerdleFetchDebugEntryCount()).toBe(2);
+
+    clearCinenerdleDebugLog();
+
+    expect(getCinenerdleFetchDebugEntryCount()).toBe(0);
   });
 
   it("copies text without recording a debug entry", async () => {
