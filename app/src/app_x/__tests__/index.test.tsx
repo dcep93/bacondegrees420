@@ -15,6 +15,7 @@ import { getFullyVisibleViewportScrollTop } from "../components/abstract_generat
 import ConnectionEntityCard from "../components/connection_entity_card";
 import ConnectionResults from "../components/connection_results";
 import ConnectionMatchupPreview from "../components/connection_matchup_preview";
+import { FishburneRankingPageContent } from "../components/fishburne_ranking_page";
 import IndexedDbBootstrapLoadingIndicator from "../components/indexed_db_bootstrap_loading_indicator";
 import {
   shouldResolveConnectionMatchupPreview,
@@ -315,6 +316,64 @@ describe("Connection matchup loading state", () => {
       isConnectedToYoungestSelection: false,
     })).toBe(false);
     expect(shouldSelectConnectedDropdownSuggestionAsYoungest(null)).toBe(false);
+  });
+});
+
+describe("Fishburne ranking page", () => {
+  it("renders the loading progress state", () => {
+    const html = renderToStaticMarkup(
+      <FishburneRankingPageContent state={{
+        kind: "loading",
+        completed: 2,
+        total: 5,
+      }} />,
+    );
+
+    expect(html).toContain("Hydrating 2 of 5");
+    expect(html).toContain("aria-busy=\"true\"");
+  });
+
+  it("renders the error state", () => {
+    const html = renderToStaticMarkup(
+      <FishburneRankingPageContent state={{
+        kind: "error",
+        message: "A TMDB API key is required to continue.",
+      }} />,
+    );
+
+    expect(html).toContain("A TMDB API key is required to continue.");
+    expect(html).toContain("role=\"alert\"");
+  });
+
+  it("renders populated ranked rows", () => {
+    const html = renderToStaticMarkup(
+      <FishburneRankingPageContent state={{
+        kind: "loaded",
+        rows: [
+          {
+            movie: {
+              popularity: 44,
+              title: "Deep Cover",
+              tmdbId: 101,
+              year: "1992",
+            },
+            status: "ranked",
+            topConnection: {
+              creditType: "cast",
+              name: "Jeff Goldblum",
+              popularity: 12,
+              roleLabel: "David Jason",
+              tmdbId: 202,
+            },
+          },
+        ],
+      }} />,
+    );
+
+    expect(html).toContain("Deep Cover (1992)");
+    expect(html).toContain("Jeff Goldblum");
+    expect(html).toContain("Cast: David Jason");
+    expect(html).toContain("12.00");
   });
 });
 

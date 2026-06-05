@@ -106,11 +106,13 @@ export function readAppLocationState(): AppLocationState {
   const pathname = normalizePathname(window.location.pathname);
   const basePathname = getBasePathname(pathname);
   const viewMode: AppViewMode =
-    isRootRouteXPath(pathname) || pathname === getBookmarksPathname(basePathname)
-      ? "bookmarks"
-      : pathname === getCoverPathname(basePathname)
-        ? "cover"
-        : "generator";
+    isRootRouteXPath(pathname)
+      ? "fishburneRanking"
+      : pathname === getBookmarksPathname(basePathname)
+        ? "bookmarks"
+        : pathname === getCoverPathname(basePathname)
+          ? "cover"
+          : "generator";
 
   return {
     viewMode,
@@ -363,6 +365,7 @@ export function useAppLocationState() {
     handleHashWrite,
     hashValue,
     isCoverView: appLocation.viewMode === "cover",
+    isFishburneRankingView: appLocation.viewMode === "fishburneRanking",
     isBookmarksView: appLocation.viewMode === "bookmarks",
     loadBookmarkCardHash,
     loadBookmarkHash,

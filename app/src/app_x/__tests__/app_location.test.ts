@@ -77,7 +77,7 @@ describe("app_location routes", () => {
     expect(getBasePathname("/bacon/cover")).toBe("/bacon");
   });
 
-  it("recognizes the exact /x route as the route-backed bookmarks entry", () => {
+  it("recognizes the exact /x route as the Fishburne ranking entry", () => {
     expect(isRootRouteXPath("/x")).toBe(true);
     expect(isRootRouteXPath("/x/")).toBe(true);
     expect(isRootRouteXPath("/x/bookmarks")).toBe(false);
@@ -100,7 +100,7 @@ describe("app_location routes", () => {
     });
   });
 
-  it("reads /x as the bookmarks view mode", () => {
+  it("reads /x as the Fishburne ranking view mode", () => {
     vi.stubGlobal("window", {
       location: {
         hash: "",
@@ -109,14 +109,14 @@ describe("app_location routes", () => {
     });
 
     expect(readAppLocationState()).toEqual({
-      viewMode: "bookmarks",
+      viewMode: "fishburneRanking",
       pathname: "/x",
       basePathname: "/x",
       hash: "",
     });
   });
 
-  it("keeps /x in bookmarks view even when a hash is present", () => {
+  it("keeps /x in Fishburne ranking view even when a hash is present", () => {
     vi.stubGlobal("window", {
       location: {
         hash: "#person|Fred+Willard",
@@ -125,10 +125,26 @@ describe("app_location routes", () => {
     });
 
     expect(readAppLocationState()).toEqual({
-      viewMode: "bookmarks",
+      viewMode: "fishburneRanking",
       pathname: "/x",
       basePathname: "/x",
       hash: "#person|Fred+Willard",
+    });
+  });
+
+  it("reads /x/bookmarks as the route-backed bookmarks view mode", () => {
+    vi.stubGlobal("window", {
+      location: {
+        hash: "",
+        pathname: "/x/bookmarks",
+      },
+    });
+
+    expect(readAppLocationState()).toEqual({
+      viewMode: "bookmarks",
+      pathname: "/x/bookmarks",
+      basePathname: "/x",
+      hash: "",
     });
   });
 
@@ -141,7 +157,7 @@ describe("app_location routes", () => {
   it("uses root as the direct-close fallback for x-family bookmarks", () => {
     expect(getDefaultBookmarksReturnPathname({
       viewMode: "bookmarks",
-      pathname: "/x",
+      pathname: "/x/bookmarks",
       basePathname: "/x",
     })).toBe("/");
     expect(getDefaultBookmarksReturnHashValue({

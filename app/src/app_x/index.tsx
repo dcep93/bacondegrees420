@@ -79,6 +79,7 @@ import ConnectionBar from "./components/connection_bar";
 import ConnectionBoostPreview from "./components/connection_boost_preview";
 import ConnectionMatchupPreview from "./components/connection_matchup_preview";
 import ConnectionResults from "./components/connection_results";
+import FishburneRankingPage from "./components/fishburne_ranking_page";
 import IndexedDbBootstrapLoadingIndicator from "./components/indexed_db_bootstrap_loading_indicator";
 
 declare global {
@@ -92,6 +93,7 @@ export default function AppX() {
     handleHashWrite,
     hashValue,
     isCoverView,
+    isFishburneRankingView,
     isBookmarksView,
     loadBookmarkCardHash,
     loadBookmarkHash,
@@ -146,6 +148,7 @@ export default function AppX() {
   const indexedDbBootstrapLoadingShellDelayManagerRef =
     useRef<IndexedDbBootstrapLoadingShellDelayManager | null>(null);
   const isCinenerdleIndexedDbBootstrapLoading = !cinenerdleIndexedDbBootstrapStatus.isCoreReady;
+  const isGeneratorView = !isBookmarksView && !isCoverView && !isFishburneRankingView;
   const isSearchablePersistencePending =
     cinenerdleIndexedDbBootstrapStatus.isSearchablePersistencePending;
   const clearDbBadgeText = formatClearDbBadgeText(clearDbFetchCount, clearDbTotalFetchCount);
@@ -391,12 +394,14 @@ export default function AppX() {
   }, [copyStatus]);
 
   useEffect(() => {
-    document.title = isBookmarksView
-      ? "Bookmarks | BaconDegrees420"
-      : isCoverView
-        ? "Cover | BaconDegrees420"
-        : getDocumentTitle(hashValue);
-  }, [hashValue, isBookmarksView, isCoverView]);
+    document.title = isFishburneRankingView
+      ? "Laurence Fishburne | BaconDegrees420"
+      : isBookmarksView
+        ? "Bookmarks | BaconDegrees420"
+        : isCoverView
+          ? "Cover | BaconDegrees420"
+          : getDocumentTitle(hashValue);
+  }, [hashValue, isBookmarksView, isCoverView, isFishburneRankingView]);
 
   useEffect(() => {
     function handleWindowKeyDown(event: globalThis.KeyboardEvent) {
@@ -426,7 +431,7 @@ export default function AppX() {
   useEffect(() => {
     let cancelled = false;
     const shouldResolvePreview = shouldResolveConnectionMatchupPreview({
-      isBookmarksView: isBookmarksView || isCoverView,
+      isBookmarksView: isBookmarksView || isCoverView || isFishburneRankingView,
       isCinenerdleIndexedDbBootstrapLoading,
       youngestSelectedCard,
     });
@@ -463,6 +468,7 @@ export default function AppX() {
     connectionMatchupPreviewRefreshVersion,
     excludedBoostSharedConnectionLookupKeys,
     isCoverView,
+    isFishburneRankingView,
     isBookmarksView,
     isCinenerdleIndexedDbBootstrapLoading,
     youngestSelectedCard,
@@ -564,15 +570,15 @@ export default function AppX() {
 
       <div className="bacon-app-chrome">
         <BaconTitleBar
-          boostPreview={isCoverView ? undefined : <ConnectionBoostPreview preview={connectionBoostPreview} />}
+          boostPreview={isCoverView || isFishburneRankingView ? undefined : <ConnectionBoostPreview preview={connectionBoostPreview} />}
           clearDbBadgeText={clearDbBadgeText}
           clearDbButtonRef={clearDbButtonRef}
           copyStatus={copyStatus}
           copyStatusPlacement={copyStatusPlacement}
-          isGeneratorView={!isBookmarksView && !isCoverView}
+          isGeneratorView={isGeneratorView}
           isBookmarksView={isBookmarksView}
           isSavingBookmark={isSavingBookmark}
-          matchupPreview={isCoverView ? undefined : <ConnectionMatchupPreview preview={connectionMatchupPreview} />}
+          matchupPreview={isCoverView || isFishburneRankingView ? undefined : <ConnectionMatchupPreview preview={connectionMatchupPreview} />}
           onClearDatabase={handleClearDatabase}
           onOpenBookmarksJsonlEditor={handleOpenBookmarksJsonlEditor}
           onReset={handleReset}
@@ -590,7 +596,7 @@ export default function AppX() {
           />
         ) : null}
 
-        {!isBookmarksView && !isCoverView && !isCinenerdleIndexedDbBootstrapLoading ? (
+        {isGeneratorView && !isCinenerdleIndexedDbBootstrapLoading ? (
           <section className="bacon-connection-bar">
             <ConnectionBar
               connectionInputWrapRef={connectionInputWrapRef}
@@ -625,6 +631,8 @@ export default function AppX() {
             />
           ) : isCoverView ? (
             <CoverPage />
+          ) : isFishburneRankingView ? (
+            <FishburneRankingPage />
           ) : (
             <div className="bacon-app-main-stack">
               <ConnectionResults

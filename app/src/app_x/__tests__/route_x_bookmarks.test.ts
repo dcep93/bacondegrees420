@@ -49,8 +49,9 @@ describe("route_x_bookmarks", () => {
     vi.unstubAllGlobals();
   });
 
-  it("matches the /x route family without catching unrelated paths", () => {
-    expect(isRouteXBookmarksPath("/x")).toBe(true);
+  it("matches the /x route-backed bookmark family without catching exact /x or unrelated paths", () => {
+    expect(isRouteXBookmarksPath("/x")).toBe(false);
+    expect(isRouteXBookmarksPath("/x/")).toBe(false);
     expect(isRouteXBookmarksPath("/x/bookmarks")).toBe(true);
     expect(isRouteXBookmarksPath("/x/cover")).toBe(true);
     expect(isRouteXBookmarksPath("/x/custom")).toBe(true);
@@ -58,8 +59,8 @@ describe("route_x_bookmarks", () => {
     expect(isRouteXBookmarksPath("/xyz")).toBe(false);
   });
 
-  it("fetches bookmarks.txt on /x and exposes the parsed bookmarks and item attrs", async () => {
-    window.history.replaceState(null, "", "/x");
+  it("fetches bookmarks.txt on /x/bookmarks and exposes the parsed bookmarks and item attrs", async () => {
+    window.history.replaceState(null, "", "/x/bookmarks");
     const fetchMock = vi.fn(async () => createFetchResponse("bookmark text"));
     const parseBookmarksText = vi.fn(() => ({
       bookmarks: [{ hash: "#movie|heat|1995" }],
@@ -110,7 +111,7 @@ describe("route_x_bookmarks", () => {
   });
 
   it("keeps route-backed bookmark writes isolated to /x", () => {
-    window.history.replaceState(null, "", "/x");
+    window.history.replaceState(null, "", "/x/bookmarks");
 
     expect(writeRouteXBookmarkEntries([{ hash: "#person|keanu+reeves" }])).toEqual([
       { hash: "#person|keanu+reeves" },

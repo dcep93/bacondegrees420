@@ -20,7 +20,7 @@ type RouteBookmarkSnapshot = {
   itemAttrs: RouteBookmarkItemAttrs;
 };
 
-const ROUTE_X_BOOKMARKS_PATH_PATTERN = /^\/x(?:\/|$)/u;
+const ROUTE_X_BOOKMARKS_PATH_PATTERN = /^\/x\/.+/u;
 const ROUTE_X_BOOKMARKS_URL = "/bookmarks.txt";
 const ROUTE_X_ITEM_ATTRS_UPDATED_EVENT = "cinenerdle-item-attrs-updated";
 
