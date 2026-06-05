@@ -1,4 +1,4 @@
-const CINENERDLE_BATTLE_ORIGIN = "https://www.cinenerdle2.app";
+const CINENERDLE_BATTLE_ORIGIN = "https://www.cinenerdle.app";
 const CINENERDLE_BATTLE_PATHNAME = "/battle";
 const BACONDEGREES_HOME_URL = "https://bacondegrees420.web.app";
 const CINENERDLE_GAME_OVER_DATASET_KEY = "bacondegreesCinenerdleGameOverLink";
@@ -23,7 +23,7 @@ let cinenerdleHoveredPosterElement = null;
 let cinenerdlePosterPreviewHovered = false;
 let cinenerdlePosterPreviewHideTimeoutId = null;
 
-if (window.location.hostname === "www.cinenerdle2.app") {
+if (window.location.hostname === "www.cinenerdle.app") {
   injectCinenerdleHideStyles();
   window.setInterval(() => {
     attachCinenerdleGameOverLink();

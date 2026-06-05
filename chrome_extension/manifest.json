@@ -22,7 +22,7 @@
     "http://localhost/*",
     "https://localhost/*",
     "https://bacondegrees420.web.app/*",
-    "https://www.cinenerdle2.app/*"
+    "https://www.cinenerdle.app/*"
   ],
   "content_scripts": [
     {
@@ -30,7 +30,7 @@
         "http://localhost/*",
         "https://localhost/*",
         "https://bacondegrees420.web.app/*",
-        "https://www.cinenerdle2.app/*"
+        "https://www.cinenerdle.app/*"
       ],
       "js": ["content.js"],
       "run_at": "document_start"

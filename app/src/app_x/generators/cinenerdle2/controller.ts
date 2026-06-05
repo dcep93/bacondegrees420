@@ -20,7 +20,7 @@ import {
   createPersonAssociationCard,
   createPersonRootCard,
 } from "./cards";
-import { ESCAPE_LABEL, TMDB_ICON_URL } from "./constants";
+import { CINENERDLE_BATTLE_URL, ESCAPE_LABEL, TMDB_ICON_URL } from "./constants";
 import {
   buildPathNodesFromSegments,
   createPathNode,
@@ -1493,7 +1493,7 @@ function renderCinenerdleCard(
 
     event.preventDefault();
     event.stopPropagation();
-    window.open("https://www.cinenerdle2.app/battle", "_blank", "noopener,noreferrer");
+    window.open(CINENERDLE_BATTLE_URL, "_blank", "noopener,noreferrer");
   }
 
   const tmdbRowClickHandler =
@@ -1559,7 +1559,7 @@ function renderCinenerdleCard(
         : null,
     onTitleClick: (event) => {
       if (isCinenerdleLaunchCard) {
-        window.open("https://www.cinenerdle2.app/battle", "_blank", "noopener,noreferrer");
+        window.open(CINENERDLE_BATTLE_URL, "_blank", "noopener,noreferrer");
         return;
       }
 

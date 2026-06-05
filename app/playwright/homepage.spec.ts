@@ -349,7 +349,7 @@ async function primeCinenerdlePage(page: Page) {
     };
   });
 
-  await page.route("https://www.cinenerdle2.app/api/battle-data/daily-starters?*", async (route) => {
+  await page.route("https://www.cinenerdle.app/api/battle-data/daily-starters?*", async (route) => {
     await route.fulfill(createJsonResponse({
       data: [{ id: "starter-zootopia", title: "Zootopia (2016)" }],
     }));
@@ -362,7 +362,7 @@ async function primeCinenerdlePage(page: Page) {
     });
   });
 
-  await page.route("https://www.cinenerdle2.app/icon.png", async (route) => {
+  await page.route("https://www.cinenerdle.app/icon.png", async (route) => {
     await route.fulfill({
       status: 204,
       body: "",
@@ -657,7 +657,7 @@ test("homepage cold start only fetches mocked daily starters and starter movie c
 
   await seedCinenerdleStorage(page);
 
-  await page.route("https://www.cinenerdle2.app/api/battle-data/daily-starters?*", async (route) => {
+  await page.route("https://www.cinenerdle.app/api/battle-data/daily-starters?*", async (route) => {
     requests.record(route.request().url());
     await route.fulfill({
       contentType: "application/json",
@@ -781,7 +781,7 @@ test("homepage cold start only fetches mocked daily starters and starter movie c
     });
   });
 
-  await page.route("https://www.cinenerdle2.app/icon.png", async (route) => {
+  await page.route("https://www.cinenerdle.app/icon.png", async (route) => {
     await route.fulfill({
       status: 204,
       body: "",
@@ -797,7 +797,7 @@ test("homepage cold start only fetches mocked daily starters and starter movie c
     .poll(() => ({
       dailyStartersCount: countRecordedRequests(
         requests,
-        "https://www.cinenerdle2.app/api/battle-data/daily-starters",
+        "https://www.cinenerdle.app/api/battle-data/daily-starters",
       ),
       readySearchCount: countRecordedRequests(
         requests,
@@ -888,7 +888,7 @@ test("cinenerdle starter generation auto-scrolls when it mounts", async ({ page 
     ],
   });
 
-  await page.route("https://www.cinenerdle2.app/api/battle-data/daily-starters?*", async (route) => {
+  await page.route("https://www.cinenerdle.app/api/battle-data/daily-starters?*", async (route) => {
     await route.fulfill(createJsonResponse({
       data: starterMovies,
     }));
@@ -943,7 +943,7 @@ test("cinenerdle starter generation auto-scrolls when it mounts", async ({ page 
     });
   });
 
-  await page.route("https://www.cinenerdle2.app/icon.png", async (route) => {
+  await page.route("https://www.cinenerdle.app/icon.png", async (route) => {
     await route.fulfill({
       status: 204,
       body: "",
@@ -2172,7 +2172,7 @@ test("gen 2 refresh redraws gen 3 for the newly selected person", async ({
     dailyStarterTitles: ["Mock Starter Movie (2001)"],
   });
 
-  await page.route("https://www.cinenerdle2.app/api/battle-data/daily-starters?*", async (route) => {
+  await page.route("https://www.cinenerdle.app/api/battle-data/daily-starters?*", async (route) => {
     requests.record(route.request().url());
     await route.fulfill(createJsonResponse({
       data: [
@@ -2191,7 +2191,7 @@ test("gen 2 refresh redraws gen 3 for the newly selected person", async ({
     });
   });
 
-  await page.route("https://www.cinenerdle2.app/icon.png", async (route) => {
+  await page.route("https://www.cinenerdle.app/icon.png", async (route) => {
     await route.fulfill({
       status: 204,
       body: "",
@@ -2750,7 +2750,7 @@ test("preview bubbles paint their tooltips when hovered", async ({ page }) => {
     dailyStarterTitles: ["Mock Starter Movie (2001)"],
   });
 
-  await page.route("https://www.cinenerdle2.app/api/battle-data/daily-starters?*", async (route) => {
+  await page.route("https://www.cinenerdle.app/api/battle-data/daily-starters?*", async (route) => {
     await route.fulfill(createJsonResponse({
       data: [{ id: "mock-starter", title: "Mock Starter Movie (2001)" }],
     }));
@@ -2763,7 +2763,7 @@ test("preview bubbles paint their tooltips when hovered", async ({ page }) => {
     });
   });
 
-  await page.route("https://www.cinenerdle2.app/icon.png", async (route) => {
+  await page.route("https://www.cinenerdle.app/icon.png", async (route) => {
     await route.fulfill({
       status: 204,
       body: "",
@@ -3056,7 +3056,7 @@ test("zootopia-to-fred-willard regression keeps fred root navigation and bookmar
     dailyStarterTitles: ["Zootopia (2016)"],
   });
 
-  await page.route("https://www.cinenerdle2.app/api/battle-data/daily-starters?*", async (route) => {
+  await page.route("https://www.cinenerdle.app/api/battle-data/daily-starters?*", async (route) => {
     await route.fulfill(createJsonResponse({
       data: [{ id: "starter-zootopia", title: "Zootopia (2016)" }],
     }));
@@ -3228,7 +3228,7 @@ test("zootopia-to-fred-willard regression keeps fred root navigation and bookmar
     });
   });
 
-  await page.route("https://www.cinenerdle2.app/icon.png", async (route) => {
+  await page.route("https://www.cinenerdle.app/icon.png", async (route) => {
     await route.fulfill({
       status: 204,
       body: "",

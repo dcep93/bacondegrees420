@@ -1264,7 +1264,7 @@ describe("tmdb forced refresh helpers", () => {
     };
     const fetchMock = vi.fn(async (input: string) => {
       const url = String(input);
-      if (url === "https://www.cinenerdle2.app/api/battle-data/daily-starters?") {
+      if (url === "https://www.cinenerdle.app/api/battle-data/daily-starters?") {
         return createJsonResponse({
           data: [
             {
