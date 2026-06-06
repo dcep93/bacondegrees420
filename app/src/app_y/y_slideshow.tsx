@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import fastBreakSrc from "../assets/y/fast_break.jpg";
 import greatnanaSrc from "../assets/y/greatnana.avif";
 import shape0Src from "../assets/y/shape_0.png";
 import shape1Src from "../assets/y/shape_1.png";
@@ -15,14 +16,14 @@ type ImageSlide = {
 type LinkSlide = {
   href: string;
   kind: "link";
-  label: string;
+  src: string;
 };
 
 type Slide = ImageSlide | LinkSlide;
 
 const slides: Slide[] = [
   { kind: "image", src: shape0Src },
-  { kind: "link", href: "/#film|Fast+Break+(1979)", label: "Fast Break (1979)" },
+  { kind: "link", href: "/#film|Fast+Break+(1979)", src: fastBreakSrc },
   { kind: "image", src: greatnanaSrc },
   { kind: "image", src: shape1Src },
   { kind: "image", src: shape2Src },
@@ -85,7 +86,7 @@ export default function YSlideshow() {
             rel="noopener noreferrer"
             target="_blank"
           >
-            {slide.label}
+            <img className="y-slideshow__poster" src={slide.src} alt="" />
           </a>
         )}
       </div>

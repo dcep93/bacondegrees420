@@ -36,14 +36,24 @@
 }
 
 .y-slideshow__link-slide {
-  display: inline-flex;
+  display: block;
   max-width: calc(100vw - 96px);
-  padding: 18px 26px;
-  border: 2px solid rgba(255, 255, 255, 0.82);
-  color: #fff;
+  max-height: calc(100svh - 48px);
+  max-height: calc(100dvh - 48px);
+  border: 0;
+  color: inherit;
   background: transparent;
-  font: 26px / 1.2 ui-sans-serif, system-ui, sans-serif;
   text-decoration: none;
+}
+
+.y-slideshow__poster {
+  display: block;
+  max-width: calc(100vw - 96px);
+  max-height: calc(100svh - 48px);
+  max-height: calc(100dvh - 48px);
+  width: auto;
+  height: auto;
+  object-fit: contain;
 }
 
 .y-slideshow__nav {
