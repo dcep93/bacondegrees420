@@ -5,8 +5,6 @@ import shape1Src from "../assets/y/shape_1.png";
 import shape2Src from "../assets/y/shape_2.png";
 import shape3Src from "../assets/y/shape_3.png";
 import shape4Src from "../assets/y/shape_4.png";
-import shape5Src from "../assets/y/shape_5.png";
-import shape6Src from "../assets/y/shape_6.png";
 import "./y_slideshow.css";
 
 type ImageSlide = {
@@ -17,31 +15,30 @@ type ImageSlide = {
 type LinkSlide = {
   href: string;
   kind: "link";
+  label: string;
 };
 
 type Slide = ImageSlide | LinkSlide;
 
 const slides: Slide[] = [
   { kind: "image", src: shape0Src },
-  { kind: "link", href: "/#film|Fast+Break+(1979)" },
+  { kind: "link", href: "/#film|Fast+Break+(1979)", label: "Fast Break (1979)" },
   { kind: "image", src: greatnanaSrc },
   { kind: "image", src: shape1Src },
   { kind: "image", src: shape2Src },
   { kind: "image", src: shape3Src },
   { kind: "image", src: shape4Src },
-  { kind: "image", src: shape5Src },
-  { kind: "image", src: shape6Src },
 ];
 
 export default function YSlideshow() {
   const [slideIndex, setSlideIndex] = useState(0);
 
   const goBack = useCallback(() => {
-    setSlideIndex((index) => (index + slides.length - 1) % slides.length);
+    setSlideIndex((index) => Math.max(0, index - 1));
   }, []);
 
   const goForward = useCallback(() => {
-    setSlideIndex((index) => (index + 1) % slides.length);
+    setSlideIndex((index) => Math.min(slides.length - 1, index + 1));
   }, []);
 
   useEffect(() => {
@@ -62,12 +59,15 @@ export default function YSlideshow() {
   }, [goBack, goForward]);
 
   const slide = slides[slideIndex];
+  const isFirstSlide = slideIndex === 0;
+  const isLastSlide = slideIndex === slides.length - 1;
 
   return (
     <main className="y-slideshow">
       <button
         aria-label="Previous slide"
         className="y-slideshow__nav y-slideshow__nav--prev"
+        disabled={isFirstSlide}
         onClick={goBack}
         type="button"
       >
@@ -84,13 +84,16 @@ export default function YSlideshow() {
             href={slide.href}
             rel="noopener noreferrer"
             target="_blank"
-          />
+          >
+            {slide.label}
+          </a>
         )}
       </div>
 
       <button
         aria-label="Next slide"
         className="y-slideshow__nav y-slideshow__nav--next"
+        disabled={isLastSlide}
         onClick={goForward}
         type="button"
       >
