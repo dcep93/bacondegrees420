@@ -1,12 +1,21 @@
 import { useCallback, useEffect, useState } from "react";
+import boxesSrc from "../assets/y/boxes.png";
+import constellationSrc from "../assets/y/constellation.png";
 import fastBreakSrc from "../assets/y/fast_break.jpg";
 import greatnanaSrc from "../assets/y/greatnana.avif";
-import shape0Src from "../assets/y/shape_0.png";
-import shape1Src from "../assets/y/shape_1.png";
-import shape2Src from "../assets/y/shape_2.png";
-import shape3Src from "../assets/y/shape_3.png";
-import shape4Src from "../assets/y/shape_4.png";
+import infographicSrc from "../assets/y/infographic.png";
+import lifeSavingGameScreenshotSrc from "../assets/y/life_saving_game_screenshot.png";
+import overlayEndSrc from "../assets/y/overlay_end.png";
+import overlayStartSrc from "../assets/y/overlay_start.png";
+import poseConstellationSrc from "../assets/y/pose_constellation.png";
+import poseSrc from "../assets/y/pose.png";
 import "./y_slideshow.css";
+
+type TextSlide = {
+  bullets?: string[];
+  kind: "text";
+  text?: string;
+};
 
 type ImageSlide = {
   kind: "image";
@@ -19,16 +28,35 @@ type LinkSlide = {
   src: string;
 };
 
-type Slide = ImageSlide | LinkSlide;
+type Slide = ImageSlide | LinkSlide | TextSlide;
 
 const slides: Slide[] = [
-  { kind: "image", src: shape0Src },
+  {
+    kind: "text",
+    text: "this constellation evokes a particular movie in my mind, and also, that pattern might save your life",
+  },
+  { kind: "image", src: constellationSrc },
+  {
+    bullets: [
+      "the winner of this game is the one who names that movie",
+      "this URL referencing a particular different movie will help us discover that secret movie, which is contained in a particular set",
+      "name movies or movie people as they come to your mind, and this tool will reveal whether or not it is within that set",
+    ],
+    kind: "text",
+  },
   { kind: "link", href: "/#film|Fast+Break+(1979)", src: fastBreakSrc },
+  {
+    kind: "text",
+    text: "at this point, you have guessed the movie, but have you found an example of a movie not within the referenced set? (this is a fun feature of bacondegrees420)",
+  },
   { kind: "image", src: greatnanaSrc },
-  { kind: "image", src: shape1Src },
-  { kind: "image", src: shape2Src },
-  { kind: "image", src: shape3Src },
-  { kind: "image", src: shape4Src },
+  { kind: "image", src: poseSrc },
+  { kind: "image", src: poseConstellationSrc },
+  { kind: "image", src: boxesSrc },
+  { kind: "image", src: infographicSrc },
+  { kind: "image", src: lifeSavingGameScreenshotSrc },
+  { kind: "image", src: overlayStartSrc },
+  { kind: "image", src: overlayEndSrc },
 ];
 
 export default function YSlideshow() {
@@ -78,7 +106,7 @@ export default function YSlideshow() {
       <div className="y-slideshow__stage">
         {slide.kind === "image" ? (
           <img className="y-slideshow__image" src={slide.src} alt="" />
-        ) : (
+        ) : slide.kind === "link" ? (
           <a
             aria-label="Open Fast Break (1979)"
             className="y-slideshow__link-slide"
@@ -88,6 +116,17 @@ export default function YSlideshow() {
           >
             <img className="y-slideshow__poster" src={slide.src} alt="" />
           </a>
+        ) : (
+          <section className="y-slideshow__text-slide">
+            {slide.text ? <p>{slide.text}</p> : null}
+            {slide.bullets ? (
+              <ul>
+                {slide.bullets.map((bullet) => (
+                  <li key={bullet}>{bullet}</li>
+                ))}
+              </ul>
+            ) : null}
+          </section>
         )}
       </div>
 
