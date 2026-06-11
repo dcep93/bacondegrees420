@@ -33,61 +33,104 @@ type LinkSlide = {
   src: string;
 };
 
-type Slide = ImageSlide | LinkSlide | TextSlide;
+type StackSlide = {
+  kind: "stack";
+  media: ImageSlide | LinkSlide;
+  text: TextSlide;
+};
+
+type Slide = ImageSlide | LinkSlide | StackSlide | TextSlide;
+
+function renderTextSlide(slide: TextSlide, className = "y-slideshow__text-slide") {
+  return (
+    <section className={className}>
+      {slide.text ? <p>{slide.text}</p> : null}
+      {slide.bullets ? (
+        <ul>
+          {slide.bullets.map((bullet) => (
+            <li key={bullet.id}>{bullet.content}</li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
+function renderMediaSlide(slide: ImageSlide | LinkSlide) {
+  return slide.kind === "image" ? (
+    <img className="y-slideshow__image" src={slide.src} alt="" />
+  ) : (
+    <a
+      aria-label="Open Fast Break (1979)"
+      className="y-slideshow__link-slide"
+      href={slide.href}
+      rel="noopener noreferrer"
+      target="_blank"
+    >
+      <img className="y-slideshow__poster" src={slide.src} alt="" />
+    </a>
+  );
+}
 
 const slides: Slide[] = [
   {
-    bullets: [
-      {
-        content: (
-          <>
-            this constellation evokes in my mind a particular <strong>scene</strong> from a movie
-          </>
-        ),
-        id: "scene-evocation",
-      },
-      {
-        content: (
-          <>
-            that constellation might <strong>save your life</strong>
-          </>
-        ),
-        id: "life-saving-constellation",
-      },
-    ],
-    kind: "text",
+    kind: "stack",
+    media: { kind: "image", src: constellationSrc },
+    text: {
+      bullets: [
+        {
+          content: (
+            <>
+              this constellation evokes in my mind a particular <strong>scene</strong> from a movie
+            </>
+          ),
+          id: "scene-evocation",
+        },
+        {
+          content: (
+            <>
+              that constellation might <strong>save your life</strong>
+            </>
+          ),
+          id: "life-saving-constellation",
+        },
+      ],
+      kind: "text",
+    },
   },
-  { kind: "image", src: constellationSrc },
   {
-    bullets: [
-      {
-        content: (
-          <>
-            the winner of this first game is the one who names that <strong>scene</strong>
-          </>
-        ),
-        id: "winner-names-scene",
-      },
-      {
-        content: (
-          <>
-            this tool referencing a particular <strong>different</strong> movie will help
-          </>
-        ),
-        id: "different-movie-tool",
-      },
-      {
-        content: (
-          <>
-            <strong>name movies or movie people</strong> as they come to your mind
-          </>
-        ),
-        id: "name-movies-or-people",
-      },
-    ],
-    kind: "text",
+    kind: "stack",
+    media: { kind: "link", href: "/?slideshow#film|Fast+Break+(1979)", src: fastBreakSrc },
+    text: {
+      bullets: [
+        {
+          content: (
+            <>
+              the winner of this first game is the one who names that <strong>scene</strong>
+            </>
+          ),
+          id: "winner-names-scene",
+        },
+        {
+          content: (
+            <>
+              this tool referencing a particular <strong>different</strong> movie will help
+            </>
+          ),
+          id: "different-movie-tool",
+        },
+        {
+          content: (
+            <>
+              <strong>name movies or movie people</strong> as they come to your mind
+            </>
+          ),
+          id: "name-movies-or-people",
+        },
+      ],
+      kind: "text",
+    },
   },
-  { kind: "link", href: "/?slideshow#film|Fast+Break+(1979)", src: fastBreakSrc },
   { kind: "image", src: greatnanaSrc },
   { kind: "image", src: poseSrc },
   { kind: "image", src: poseConstellationSrc },
@@ -143,29 +186,17 @@ export default function YSlideshow() {
       </button>
 
       <div className="y-slideshow__stage">
-        {slide.kind === "image" ? (
-          <img className="y-slideshow__image" src={slide.src} alt="" />
-        ) : slide.kind === "link" ? (
-          <a
-            aria-label="Open Fast Break (1979)"
-            className="y-slideshow__link-slide"
-            href={slide.href}
-            rel="noopener noreferrer"
-            target="_blank"
-          >
-            <img className="y-slideshow__poster" src={slide.src} alt="" />
-          </a>
-        ) : (
-          <section className="y-slideshow__text-slide">
-            {slide.text ? <p>{slide.text}</p> : null}
-            {slide.bullets ? (
-              <ul>
-                {slide.bullets.map((bullet) => (
-                  <li key={bullet.id}>{bullet.content}</li>
-                ))}
-              </ul>
-            ) : null}
+        {slide.kind === "stack" ? (
+          <section className="y-slideshow__stack-slide">
+            {renderTextSlide(slide.text, "y-slideshow__text-slide y-slideshow__text-slide--stack")}
+            <div className="y-slideshow__stack-media">
+              {renderMediaSlide(slide.media)}
+            </div>
           </section>
+        ) : slide.kind === "text" ? (
+          renderTextSlide(slide)
+        ) : (
+          renderMediaSlide(slide)
         )}
       </div>
 
