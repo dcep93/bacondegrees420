@@ -34,16 +34,15 @@ type LinkSlide = {
 };
 
 type StackSlide = {
+  items: Array<ImageSlide | LinkSlide | TextSlide>;
   kind: "stack";
-  media: ImageSlide | LinkSlide;
-  text: TextSlide;
 };
 
 type Slide = ImageSlide | LinkSlide | StackSlide | TextSlide;
 
-function renderTextSlide(slide: TextSlide, className = "y-slideshow__text-slide") {
+function renderTextSlide(slide: TextSlide, className = "y-slideshow__text-slide", key?: string) {
   return (
-    <section className={className}>
+    <section className={className} key={key}>
       {slide.text ? <p>{slide.text}</p> : null}
       {slide.bullets ? (
         <ul>
@@ -56,13 +55,13 @@ function renderTextSlide(slide: TextSlide, className = "y-slideshow__text-slide"
   );
 }
 
-function renderMediaSlide(slide: ImageSlide | LinkSlide) {
+function renderMediaSlide(slide: ImageSlide | LinkSlide, className?: string) {
   return slide.kind === "image" ? (
-    <img className="y-slideshow__image" src={slide.src} alt="" />
+    <img className={className ? `y-slideshow__image ${className}` : "y-slideshow__image"} src={slide.src} alt="" />
   ) : (
     <a
       aria-label="Open Fast Break (1979)"
-      className="y-slideshow__link-slide"
+      className={className ? `y-slideshow__link-slide ${className}` : "y-slideshow__link-slide"}
       href={slide.href}
       rel="noopener noreferrer"
       target="_blank"
@@ -72,64 +71,68 @@ function renderMediaSlide(slide: ImageSlide | LinkSlide) {
   );
 }
 
+const constellationTextSlide: TextSlide = {
+  bullets: [
+    {
+      content: (
+        <>
+          this constellation evokes in my mind a particular <strong>scene</strong> from a movie
+        </>
+      ),
+      id: "scene-evocation",
+    },
+    {
+      content: (
+        <>
+          that constellation might <strong>save your life</strong>
+        </>
+      ),
+      id: "life-saving-constellation",
+    },
+  ],
+  kind: "text",
+};
+
+const firstGameTextSlide: TextSlide = {
+  bullets: [
+    {
+      content: (
+        <>
+          the winner of this first game is the one who names that <strong>scene</strong>
+        </>
+      ),
+      id: "winner-names-scene",
+    },
+    {
+      content: (
+        <>
+          this tool referencing a particular <strong>different</strong> movie will help
+        </>
+      ),
+      id: "different-movie-tool",
+    },
+    {
+      content: (
+        <>
+          <strong>name movies or movie people</strong> as they come to your mind
+        </>
+      ),
+      id: "name-movies-or-people",
+    },
+  ],
+  kind: "text",
+};
+
 const slides: Slide[] = [
+  constellationTextSlide,
   {
+    items: [
+      constellationTextSlide,
+      { kind: "image", src: constellationSrc },
+      firstGameTextSlide,
+      { kind: "link", href: "/?slideshow#film|Fast+Break+(1979)", src: fastBreakSrc },
+    ],
     kind: "stack",
-    media: { kind: "image", src: constellationSrc },
-    text: {
-      bullets: [
-        {
-          content: (
-            <>
-              this constellation evokes in my mind a particular <strong>scene</strong> from a movie
-            </>
-          ),
-          id: "scene-evocation",
-        },
-        {
-          content: (
-            <>
-              that constellation might <strong>save your life</strong>
-            </>
-          ),
-          id: "life-saving-constellation",
-        },
-      ],
-      kind: "text",
-    },
-  },
-  {
-    kind: "stack",
-    media: { kind: "link", href: "/?slideshow#film|Fast+Break+(1979)", src: fastBreakSrc },
-    text: {
-      bullets: [
-        {
-          content: (
-            <>
-              the winner of this first game is the one who names that <strong>scene</strong>
-            </>
-          ),
-          id: "winner-names-scene",
-        },
-        {
-          content: (
-            <>
-              this tool referencing a particular <strong>different</strong> movie will help
-            </>
-          ),
-          id: "different-movie-tool",
-        },
-        {
-          content: (
-            <>
-              <strong>name movies or movie people</strong> as they come to your mind
-            </>
-          ),
-          id: "name-movies-or-people",
-        },
-      ],
-      kind: "text",
-    },
   },
   { kind: "image", src: greatnanaSrc },
   { kind: "image", src: poseSrc },
@@ -188,10 +191,19 @@ export default function YSlideshow() {
       <div className="y-slideshow__stage">
         {slide.kind === "stack" ? (
           <section className="y-slideshow__stack-slide">
-            {renderTextSlide(slide.text, "y-slideshow__text-slide y-slideshow__text-slide--stack")}
-            <div className="y-slideshow__stack-media">
-              {renderMediaSlide(slide.media)}
-            </div>
+            {slide.items.map((item, itemIndex) =>
+              item.kind === "text" ? (
+                renderTextSlide(
+                  item,
+                  `y-slideshow__text-slide y-slideshow__text-slide--stack y-slideshow__stack-item y-slideshow__stack-item--text`,
+                  `text-${itemIndex}`,
+                )
+              ) : (
+                <div className="y-slideshow__stack-item y-slideshow__stack-item--media" key={`${item.kind}-${itemIndex}`}>
+                  {renderMediaSlide(item, "y-slideshow__stack-media-asset")}
+                </div>
+              ),
+            )}
           </section>
         ) : slide.kind === "text" ? (
           renderTextSlide(slide)
