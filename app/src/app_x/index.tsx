@@ -82,6 +82,7 @@ import ConnectionMatchupPreview from "./components/connection_matchup_preview";
 import ConnectionResults from "./components/connection_results";
 import FishburneRankingPage from "./components/fishburne_ranking_page";
 import IndexedDbBootstrapLoadingIndicator from "./components/indexed_db_bootstrap_loading_indicator";
+import { getShaX } from "./config/sha_x";
 
 declare global {
   interface Window {
@@ -328,6 +329,10 @@ export default function AppX() {
       nextHashOverride: window.location.hash,
     });
   }, [syncLocationFromWindow]);
+
+  useEffect(() => {
+    console.log(JSON.stringify(getShaX()));
+  }, []);
 
   useEffect(() => {
     window.idleFetch = () => startIdleFetch();
