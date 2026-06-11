@@ -11,6 +11,7 @@ export default function ConnectionResults({
   connectionSessions,
   isSlideshowMode = false,
   navigateToConnectionEntity,
+  onExitSlideshowMode,
   openConnectionEntityInNewTab,
   spawnAlternativeConnectionRow,
 }: {
@@ -19,6 +20,7 @@ export default function ConnectionResults({
   connectionSessions?: ConnectionSession[];
   isSlideshowMode?: boolean;
   navigateToConnectionEntity: (entity: ConnectionEntity) => void;
+  onExitSlideshowMode?: () => void;
   openConnectionEntityInNewTab: (entity: ConnectionEntity) => void;
   spawnAlternativeConnectionRow: (parentRowId: string, exclusion: ConnectionExclusion) => void;
 }) {
@@ -54,6 +56,21 @@ export default function ConnectionResults({
     return null;
   }
 
+  function handleConnectionEntityNavigation(entity: ConnectionEntity) {
+    onExitSlideshowMode?.();
+    navigateToConnectionEntity(entity);
+  }
+
+  function handleConnectionPathAppend(path: ConnectionEntity[], entity: ConnectionEntity) {
+    onExitSlideshowMode?.();
+    appendConnectionPathToTree(path, entity);
+  }
+
+  function handleAlternativeConnectionRow(parentRowId: string, exclusion: ConnectionExclusion) {
+    onExitSlideshowMode?.();
+    spawnAlternativeConnectionRow(parentRowId, exclusion);
+  }
+
   return (
     <div className="bacon-connection-results" ref={resultsRef}>
       {renderedConnectionSessions.map((session) => {
@@ -66,14 +83,14 @@ export default function ConnectionResults({
               <div className={getConnectionRowClassName(isSlideshowMode, "b")}>
                 <ConnectionEntityCard
                   entity={session.left}
-                  onCardClick={() => navigateToConnectionEntity(session.left)}
+                  onCardClick={() => handleConnectionEntityNavigation(session.left)}
                   onNameClick={(event) => {
                     if (didRequestNewTabNavigation(event)) {
                       openConnectionEntityInNewTab(session.left);
                       return;
                     }
 
-                    navigateToConnectionEntity(session.left);
+                    handleConnectionEntityNavigation(session.left);
                   }}
                 />
                 <span className="bacon-connection-arrow bacon-connection-arrow-static">
@@ -85,14 +102,14 @@ export default function ConnectionResults({
                 </span>
                 <ConnectionEntityCard
                   entity={session.right}
-                  onCardClick={() => navigateToConnectionEntity(session.right)}
+                  onCardClick={() => handleConnectionEntityNavigation(session.right)}
                   onNameClick={(event) => {
                     if (didRequestNewTabNavigation(event)) {
                       openConnectionEntityInNewTab(session.right);
                       return;
                     }
 
-                    navigateToConnectionEntity(session.right);
+                    handleConnectionEntityNavigation(session.right);
                   }}
                 />
               </div>
@@ -140,7 +157,7 @@ export default function ConnectionResults({
                           entity={entity}
                           onCardClick={isMiddleNode
                             ? () =>
-                                spawnAlternativeConnectionRow(row.id, {
+                                handleAlternativeConnectionRow(row.id, {
                                   kind: "node",
                                   nodeKey: entity.key,
                                 })
@@ -152,7 +169,7 @@ export default function ConnectionResults({
                                   return;
                                 }
 
-                                appendConnectionPathToTree(row.path, entity);
+                                handleConnectionPathAppend(row.path, entity);
                               }
                             : (event) => {
                                 if (didRequestNewTabNavigation(event)) {
@@ -160,7 +177,7 @@ export default function ConnectionResults({
                                   return;
                                 }
 
-                                appendConnectionPathToTree(row.path, entity);
+                                handleConnectionPathAppend(row.path, entity);
                               }}
                           previousEntity={row.path[index - 1] ?? null}
                         />

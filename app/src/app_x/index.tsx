@@ -102,6 +102,7 @@ export default function AppX() {
     openBookmarkCardAsRootInNewTab,
     openHashInNewTab,
     resetLocation,
+    syncLocationFromWindow,
     toggleBookmarks,
     navigateToHash,
   } = useAppLocationState();
@@ -310,6 +311,23 @@ export default function AppX() {
     },
     [hashValue],
   );
+
+  const handleExitSlideshowMode = useCallback(() => {
+    if (!isSlideshowSearchParam()) {
+      return;
+    }
+
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.delete("slideshow");
+    window.history.replaceState(
+      null,
+      "",
+      `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`,
+    );
+    syncLocationFromWindow({
+      nextHashOverride: window.location.hash,
+    });
+  }, [syncLocationFromWindow]);
 
   useEffect(() => {
     window.idleFetch = () => startIdleFetch();
@@ -647,6 +665,7 @@ export default function AppX() {
                 connectionSessions={connectionSessions}
                 isSlideshowMode={isSlideshowMode}
                 navigateToConnectionEntity={navigateToConnectionEntity}
+                onExitSlideshowMode={isSlideshowMode ? handleExitSlideshowMode : undefined}
                 openConnectionEntityInNewTab={openConnectionEntityInNewTab}
                 spawnAlternativeConnectionRow={spawnAlternativeConnectionRow}
               />
