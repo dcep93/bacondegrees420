@@ -21,7 +21,7 @@ export default function ConnectionResults({
   isSlideshowMode?: boolean;
   navigateToConnectionEntity: (entity: ConnectionEntity) => void;
   onExitSlideshowMode?: () => void;
-  openConnectionEntityInNewTab: (entity: ConnectionEntity) => void;
+  openConnectionEntityInNewTab: (entity: ConnectionEntity, options?: { omitSlideshow?: boolean }) => void;
   spawnAlternativeConnectionRow: (parentRowId: string, exclusion: ConnectionExclusion) => void;
 }) {
   const resultsRef = useRef<HTMLDivElement | null>(null);
@@ -61,14 +61,15 @@ export default function ConnectionResults({
     navigateToConnectionEntity(entity);
   }
 
+  function handleConnectionEntityNewTabNavigation(entity: ConnectionEntity) {
+    openConnectionEntityInNewTab(entity, {
+      omitSlideshow: isSlideshowMode,
+    });
+  }
+
   function handleConnectionPathAppend(path: ConnectionEntity[], entity: ConnectionEntity) {
     onExitSlideshowMode?.();
     appendConnectionPathToTree(path, entity);
-  }
-
-  function handleAlternativeConnectionRow(parentRowId: string, exclusion: ConnectionExclusion) {
-    onExitSlideshowMode?.();
-    spawnAlternativeConnectionRow(parentRowId, exclusion);
   }
 
   return (
@@ -86,7 +87,7 @@ export default function ConnectionResults({
                   onCardClick={() => handleConnectionEntityNavigation(session.left)}
                   onNameClick={(event) => {
                     if (didRequestNewTabNavigation(event)) {
-                      openConnectionEntityInNewTab(session.left);
+                      handleConnectionEntityNewTabNavigation(session.left);
                       return;
                     }
 
@@ -105,7 +106,7 @@ export default function ConnectionResults({
                   onCardClick={() => handleConnectionEntityNavigation(session.right)}
                   onNameClick={(event) => {
                     if (didRequestNewTabNavigation(event)) {
-                      openConnectionEntityInNewTab(session.right);
+                      handleConnectionEntityNewTabNavigation(session.right);
                       return;
                     }
 
@@ -157,7 +158,7 @@ export default function ConnectionResults({
                           entity={entity}
                           onCardClick={isMiddleNode
                             ? () =>
-                                handleAlternativeConnectionRow(row.id, {
+                                spawnAlternativeConnectionRow(row.id, {
                                   kind: "node",
                                   nodeKey: entity.key,
                                 })
@@ -165,7 +166,7 @@ export default function ConnectionResults({
                           onNameClick={isLeftmostNode
                             ? (event) => {
                                 if (didRequestNewTabNavigation(event)) {
-                                  openConnectionEntityInNewTab(entity);
+                                  handleConnectionEntityNewTabNavigation(entity);
                                   return;
                                 }
 
@@ -173,7 +174,7 @@ export default function ConnectionResults({
                               }
                             : (event) => {
                                 if (didRequestNewTabNavigation(event)) {
-                                  openConnectionEntityInNewTab(entity);
+                                  handleConnectionEntityNewTabNavigation(entity);
                                   return;
                                 }
 

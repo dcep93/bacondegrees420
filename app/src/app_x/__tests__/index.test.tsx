@@ -972,6 +972,51 @@ describe("ConnectionResults", () => {
     expect(html).toContain("bacon-connection-arrow-button bacon-connection-arrow-disconnected");
   });
 
+  it("keeps only middle found connection row cards clickable outside name buttons", () => {
+    const left = makeConnectionEntity();
+    const middle = makeConnectionEntity({
+      key: "person:1158",
+      kind: "person",
+      name: "Al Pacino",
+      year: "",
+      tmdbId: 1158,
+      label: "Al Pacino",
+    });
+    const right = makeConnectionEntity({
+      key: "movie:godfather:1972",
+      name: "The Godfather",
+      year: "1972",
+      label: "The Godfather (1972)",
+    });
+    const html = renderToStaticMarkup(
+      <ConnectionResults
+        appendConnectionPathToTree={vi.fn()}
+        connectionSession={{
+          id: "session:found",
+          left,
+          right,
+          rows: [{
+            id: "row:found",
+            excludedNodeKeys: [],
+            excludedEdgeKeys: [],
+            childDisallowedNodeKeys: [],
+            childDisallowedEdgeKeys: [],
+            parentRowId: null,
+            sourceExclusion: null,
+            status: "found",
+            path: [left, middle, right],
+          }],
+        }}
+        isSlideshowMode
+        navigateToConnectionEntity={vi.fn()}
+        openConnectionEntityInNewTab={vi.fn()}
+        spawnAlternativeConnectionRow={vi.fn()}
+      />,
+    );
+
+    expect(html.match(/bacon-connection-node-clickable/g)).toHaveLength(1);
+  });
+
   it("marks slideshow rows as type a when Laurence Fishburne is the last node before Fast Break", () => {
     const source = makeConnectionEntity({
       key: "movie:matrix:1999",

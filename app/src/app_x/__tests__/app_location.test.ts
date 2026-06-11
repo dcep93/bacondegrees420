@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  buildLocationHref,
   getDefaultBookmarksReturnHashValue,
   getDefaultBookmarksReturnPathname,
   getBasePathname,
@@ -161,6 +162,30 @@ describe("app_location routes", () => {
     expect(isSlideshowSearchParam("?foo=1&slideshow&bar=2")).toBe(true);
     expect(isSlideshowSearchParam("?foo=slideshow")).toBe(false);
     expect(isSlideshowSearchParam("")).toBe(false);
+  });
+
+  it("can build hrefs that omit only the slideshow query parameter", () => {
+    vi.stubGlobal("window", {
+      location: {
+        search: "?foo=1&slideshow&bar=2",
+      },
+    });
+
+    expect(buildLocationHref("/", "#person|Al+Pacino", { omitSlideshow: true })).toBe(
+      "/?foo=1&bar=2#person|Al+Pacino",
+    );
+  });
+
+  it("preserves the slideshow query parameter by default when building hrefs", () => {
+    vi.stubGlobal("window", {
+      location: {
+        search: "?slideshow",
+      },
+    });
+
+    expect(buildLocationHref("/", "#person|Al+Pacino")).toBe(
+      "/?slideshow#person|Al+Pacino",
+    );
   });
 
   it("uses root as the direct-close fallback for x-family bookmarks", () => {

@@ -122,8 +122,23 @@ export function readAppLocationState(): AppLocationState {
   };
 }
 
-export function buildLocationHref(pathname: string, hashValue: string) {
-  return `${normalizePathname(pathname)}${window.location.search}${normalizeHashValue(hashValue)}`;
+function getLocationSearch(options?: { omitSlideshow?: boolean }): string {
+  if (!options?.omitSlideshow) {
+    return window.location.search;
+  }
+
+  const searchParams = new URLSearchParams(window.location.search);
+  searchParams.delete("slideshow");
+  const nextSearch = searchParams.toString();
+  return nextSearch ? `?${nextSearch}` : "";
+}
+
+export function buildLocationHref(
+  pathname: string,
+  hashValue: string,
+  options?: { omitSlideshow?: boolean },
+) {
+  return `${normalizePathname(pathname)}${getLocationSearch(options)}${normalizeHashValue(hashValue)}`;
 }
 
 export function isSlideshowSearchParam(search: string = window.location.search): boolean {
@@ -197,14 +212,14 @@ export function useAppLocationState() {
   );
 
   const openHashInNewTab = useCallback(
-    (nextHash: string) => {
+    (nextHash: string, options?: { omitSlideshow?: boolean }) => {
       const normalizedHash = normalizeHashValue(nextHash);
       if (!normalizedHash) {
         return;
       }
 
       window.open(
-        buildLocationHref(getGeneratorPathname(appLocation.basePathname), normalizedHash),
+        buildLocationHref(getGeneratorPathname(appLocation.basePathname), normalizedHash, options),
         "_blank",
         "noopener,noreferrer",
       );

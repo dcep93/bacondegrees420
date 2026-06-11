@@ -219,8 +219,8 @@ export default function AppX() {
   }, [loadBookmarkCardHash]);
 
   const openConnectionEntityInNewTab = useCallback(
-    (entity: ConnectionEntity) => {
-      openHashInNewTab(serializeConnectionEntityHash(entity));
+    (entity: ConnectionEntity, options?: { omitSlideshow?: boolean }) => {
+      openHashInNewTab(serializeConnectionEntityHash(entity), options);
     },
     [openHashInNewTab],
   );
