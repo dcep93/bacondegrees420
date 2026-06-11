@@ -33,16 +33,22 @@ type LinkSlide = {
   src: string;
 };
 
+type StackItem = {
+  content: ImageSlide | LinkSlide | TextSlide;
+  id: string;
+  isHidden?: boolean;
+};
+
 type StackSlide = {
-  items: Array<ImageSlide | LinkSlide | TextSlide>;
+  items: StackItem[];
   kind: "stack";
 };
 
 type Slide = ImageSlide | LinkSlide | StackSlide | TextSlide;
 
-function renderTextSlide(slide: TextSlide, className = "y-slideshow__text-slide", key?: string) {
+function renderTextSlide(slide: TextSlide, className = "y-slideshow__text-slide", key?: string, isHidden = false) {
   return (
-    <section className={className} key={key}>
+    <section aria-hidden={isHidden || undefined} className={className} key={key}>
       {slide.text ? <p>{slide.text}</p> : null}
       {slide.bullets ? (
         <ul>
@@ -123,15 +129,26 @@ const firstGameTextSlide: TextSlide = {
   kind: "text",
 };
 
+function getIntroStackItems(showRemainingContent: boolean): StackItem[] {
+  return [
+    { content: constellationTextSlide, id: "constellation-text" },
+    { content: { kind: "image", src: constellationSrc }, id: "constellation-image" },
+    { content: firstGameTextSlide, id: "first-game-text", isHidden: !showRemainingContent },
+    {
+      content: { kind: "link", href: "/?slideshow#film|Fast+Break+(1979)", src: fastBreakSrc },
+      id: "fast-break-link",
+      isHidden: !showRemainingContent,
+    },
+  ];
+}
+
 const slides: Slide[] = [
-  constellationTextSlide,
   {
-    items: [
-      constellationTextSlide,
-      { kind: "image", src: constellationSrc },
-      firstGameTextSlide,
-      { kind: "link", href: "/?slideshow#film|Fast+Break+(1979)", src: fastBreakSrc },
-    ],
+    items: getIntroStackItems(false),
+    kind: "stack",
+  },
+  {
+    items: getIntroStackItems(true),
     kind: "stack",
   },
   { kind: "image", src: greatnanaSrc },
@@ -191,19 +208,27 @@ export default function YSlideshow() {
       <div className="y-slideshow__stage">
         {slide.kind === "stack" ? (
           <section className="y-slideshow__stack-slide">
-            {slide.items.map((item, itemIndex) =>
-              item.kind === "text" ? (
+            {slide.items.map((stackItem) => {
+              const item = stackItem.content;
+              const stackItemClassName = `y-slideshow__stack-item${stackItem.isHidden ? " y-slideshow__stack-item--hidden" : ""}`;
+
+              return item.kind === "text" ? (
                 renderTextSlide(
                   item,
-                  `y-slideshow__text-slide y-slideshow__text-slide--stack y-slideshow__stack-item y-slideshow__stack-item--text`,
-                  `text-${itemIndex}`,
+                  `y-slideshow__text-slide y-slideshow__text-slide--stack ${stackItemClassName} y-slideshow__stack-item--text`,
+                  stackItem.id,
+                  Boolean(stackItem.isHidden),
                 )
               ) : (
-                <div className="y-slideshow__stack-item y-slideshow__stack-item--media" key={`${item.kind}-${itemIndex}`}>
+                <div
+                  aria-hidden={stackItem.isHidden || undefined}
+                  className={`${stackItemClassName} y-slideshow__stack-item--media`}
+                  key={stackItem.id}
+                >
                   {renderMediaSlide(item, "y-slideshow__stack-media-asset")}
                 </div>
-              ),
-            )}
+              );
+            })}
           </section>
         ) : slide.kind === "text" ? (
           renderTextSlide(slide)

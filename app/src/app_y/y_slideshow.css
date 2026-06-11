@@ -74,6 +74,11 @@
   min-height: 0;
 }
 
+.y-slideshow__stack-item--hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .y-slideshow__stack-item--media {
   place-items: center;
   overflow: hidden;
