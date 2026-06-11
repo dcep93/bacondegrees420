@@ -82,7 +82,8 @@
 }
 
 .y-slideshow__text-slide strong {
-  color: #f6c95f;
+  color: #ff5fb7;
+  font-family: "Comic Sans MS", "Comic Sans", cursive;
   font-weight: 700;
 }
 
