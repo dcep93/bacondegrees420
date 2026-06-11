@@ -57,9 +57,10 @@
 }
 
 .y-slideshow__text-slide {
-  width: min(980px, calc(100vw - 128px));
+  width: min(1740px, calc(100vw - 176px));
   color: #f4efe4;
   font: 500 34px / 1.32 ui-serif, Georgia, serif;
+  text-align: left;
 }
 
 .y-slideshow__text-slide p {
@@ -69,12 +70,20 @@
 .y-slideshow__text-slide ul {
   display: grid;
   gap: 28px;
+  justify-items: start;
   margin: 0;
   padding-left: 1.2em;
+  text-align: left;
 }
 
 .y-slideshow__text-slide li {
   padding-left: 0.18em;
+  text-align: left;
+}
+
+.y-slideshow__text-slide strong {
+  color: #f6c95f;
+  font-weight: 700;
 }
 
 .y-slideshow__nav {
