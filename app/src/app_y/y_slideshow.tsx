@@ -39,11 +39,19 @@ const slides: Slide[] = [
   {
     bullets: [
       {
-        content: "this constellation evokes in my mind a particular scene from a movie",
+        content: (
+          <>
+            this constellation evokes in my mind a particular <strong>scene</strong> from a movie
+          </>
+        ),
         id: "scene-evocation",
       },
       {
-        content: "that constellation might save your life",
+        content: (
+          <>
+            that constellation might <strong>save your life</strong>
+          </>
+        ),
         id: "life-saving-constellation",
       },
     ],
@@ -53,7 +61,11 @@ const slides: Slide[] = [
   {
     bullets: [
       {
-        content: "the winner of this first game is the one who names that scene",
+        content: (
+          <>
+            the winner of this first game is the one who names that <strong>scene</strong>
+          </>
+        ),
         id: "winner-names-scene",
       },
       {
