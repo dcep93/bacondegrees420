@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import boxesSrc from "../assets/y/boxes.png";
 import constellationSrc from "../assets/y/constellation.png";
 import fastBreakSrc from "../assets/y/fast_break.jpg";
@@ -11,10 +11,15 @@ import poseConstellationSrc from "../assets/y/pose_constellation.png";
 import poseSrc from "../assets/y/pose.png";
 import "./y_slideshow.css";
 
+type TextBullet = {
+  content: ReactNode;
+  id: string;
+};
+
 type TextSlide = {
-  bullets?: string[];
+  bullets?: TextBullet[];
   kind: "text";
-  text?: string;
+  text?: ReactNode;
 };
 
 type ImageSlide = {
@@ -32,23 +37,45 @@ type Slide = ImageSlide | LinkSlide | TextSlide;
 
 const slides: Slide[] = [
   {
+    bullets: [
+      {
+        content: "this constellation evokes in my mind a particular scene from a movie",
+        id: "scene-evocation",
+      },
+      {
+        content: "that constellation might save your life",
+        id: "life-saving-constellation",
+      },
+    ],
     kind: "text",
-    text: "this constellation evokes a particular movie in my mind, and also, that pattern might save your life",
   },
   { kind: "image", src: constellationSrc },
   {
     bullets: [
-      "the winner of this game is the one who names that movie",
-      "this URL referencing a particular different movie will help us discover that secret movie, which is contained in a particular set",
-      "name movies or movie people as they come to your mind, and this tool will reveal whether or not it is within that set",
+      {
+        content: "the winner of this first game is the one who names that scene",
+        id: "winner-names-scene",
+      },
+      {
+        content: (
+          <>
+            this tool referencing a particular <strong>different</strong> movie will help
+          </>
+        ),
+        id: "different-movie-tool",
+      },
+      {
+        content: (
+          <>
+            <strong>name movies or movie people</strong> as they come to your mind
+          </>
+        ),
+        id: "name-movies-or-people",
+      },
     ],
     kind: "text",
   },
   { kind: "link", href: "/#film|Fast+Break+(1979)", src: fastBreakSrc },
-  {
-    kind: "text",
-    text: "at this point, you have guessed the movie, but have you found an example of a movie not within the referenced set? (this is a fun feature of bacondegrees420)",
-  },
   { kind: "image", src: greatnanaSrc },
   { kind: "image", src: poseSrc },
   { kind: "image", src: poseConstellationSrc },
@@ -122,7 +149,7 @@ export default function YSlideshow() {
             {slide.bullets ? (
               <ul>
                 {slide.bullets.map((bullet) => (
-                  <li key={bullet}>{bullet}</li>
+                  <li key={bullet.id}>{bullet.content}</li>
                 ))}
               </ul>
             ) : null}
