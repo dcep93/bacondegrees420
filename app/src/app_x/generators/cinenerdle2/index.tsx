@@ -74,6 +74,7 @@ type Cinenerdle2Props = {
   } | null;
   hashValue: string;
   highlightedConnectedSuggestion?: ConnectedSuggestionMatchTarget | null;
+  isSlideshowMode?: boolean;
   bookmarkNavigationRequestVersion?: number;
   navigationVersion: number;
   onYoungestSelectedCardChange?: (
@@ -123,6 +124,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   connectedSuggestionSelectionRequest = null,
   hashValue,
   highlightedConnectedSuggestion = null,
+  isSlideshowMode = false,
   bookmarkNavigationRequestVersion = 0,
   navigationVersion,
   onYoungestSelectedCardChange,
@@ -426,7 +428,26 @@ const Cinenerdle2 = memo(function Cinenerdle2({
       },
     };
   }, [activeTreeRefreshRequest, readHash, writeHash]);
-  const getRowPresentation = useCallback((row: GeneratorNode<CinenerdleCard>[]) => {
+  const getRowPresentation = useCallback((
+    row: GeneratorNode<CinenerdleCard>[],
+    generationIndex: number,
+  ) => {
+    if (isSlideshowMode) {
+      if (generationIndex > 0) {
+        return {
+          hideBubble: true,
+          className: "generator-row-slideshow-hidden",
+        };
+      }
+
+      return {
+        hideBubble: true,
+        className: "generator-row-slideshow-root",
+        trackClassName: "generator-row-track-slideshow-root",
+        cardButtonClassName: "generator-card-button-slideshow-root",
+      };
+    }
+
     const isBreakRow = row.length === 1 && row[0]?.data.kind === "break";
 
     if (!isBreakRow) {
@@ -439,7 +460,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
       trackClassName: "generator-row-track-break",
       cardButtonClassName: "generator-card-button-row-break",
     };
-  }, []);
+  }, [isSlideshowMode]);
   const shouldAutoScrollMountedGeneration = useCallback((info: {
     generationIndex: number;
     tree: GeneratorNode<CinenerdleCard>[][];

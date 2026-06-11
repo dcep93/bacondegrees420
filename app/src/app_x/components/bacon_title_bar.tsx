@@ -7,6 +7,7 @@ export default function BaconTitleBar({
   clearDbBadgeText,
   copyStatus,
   copyStatusPlacement,
+  hideActions = false,
   isGeneratorView,
   isBookmarksView,
   isSavingBookmark,
@@ -25,6 +26,7 @@ export default function BaconTitleBar({
   clearDbBadgeText: string;
   copyStatus: string;
   copyStatusPlacement: "toast" | "title";
+  hideActions?: boolean;
   isGeneratorView: boolean;
   isBookmarksView: boolean;
   isSavingBookmark: boolean;
@@ -68,78 +70,80 @@ export default function BaconTitleBar({
           ) : null}
         </div>
       </div>
-      <div className="bacon-title-actions-shell">
-        <div className="bacon-title-actions">
-          {boostPreview ? (
-            <div className="bacon-title-action-slot bacon-title-action-slot-matchup">
-              {boostPreview}
-            </div>
-          ) : null}
-          {matchupPreview ? (
-            <div className="bacon-title-action-slot bacon-title-action-slot-matchup">
-              {matchupPreview}
-            </div>
-          ) : null}
-          {isGeneratorView ? (
+      {hideActions ? null : (
+        <div className="bacon-title-actions-shell">
+          <div className="bacon-title-actions">
+            {boostPreview ? (
+              <div className="bacon-title-action-slot bacon-title-action-slot-matchup">
+                {boostPreview}
+              </div>
+            ) : null}
+            {matchupPreview ? (
+              <div className="bacon-title-action-slot bacon-title-action-slot-matchup">
+                {matchupPreview}
+              </div>
+            ) : null}
+            {isGeneratorView ? (
+              <div className="bacon-title-action-slot bacon-title-action-slot-square">
+                <Tooltip content="Save bookmark" useFixedPosition>
+                  <button
+                    aria-label="Save bookmark"
+                    className="bacon-title-action-icon-button"
+                    disabled={isSavingBookmark}
+                    onClick={onSaveBookmark}
+                    type="button"
+                  >
+                    💾
+                  </button>
+                </Tooltip>
+              </div>
+            ) : null}
+            {isBookmarksView ? (
+              <div className="bacon-title-action-slot bacon-title-action-slot-text">
+                <BookmarksJsonlEditButton onClick={onOpenBookmarksJsonlEditor} />
+              </div>
+            ) : null}
             <div className="bacon-title-action-slot bacon-title-action-slot-square">
-              <Tooltip content="Save bookmark" useFixedPosition>
-                <button
-                  aria-label="Save bookmark"
-                  className="bacon-title-action-icon-button"
-                  disabled={isSavingBookmark}
-                  onClick={onSaveBookmark}
-                  type="button"
-                >
-                  💾
-                </button>
-              </Tooltip>
-            </div>
-          ) : null}
-          {isBookmarksView ? (
-            <div className="bacon-title-action-slot bacon-title-action-slot-text">
-              <BookmarksJsonlEditButton onClick={onOpenBookmarksJsonlEditor} />
-            </div>
-          ) : null}
-          <div className="bacon-title-action-slot bacon-title-action-slot-square">
-            <Tooltip
-              content={isBookmarksView ? "Close bookmarks" : "Open bookmarks"}
-              useFixedPosition
-            >
-              <button
-                aria-label={isBookmarksView ? "Close bookmarks" : "Open bookmarks"}
-                className="bacon-title-action-icon-button"
-                onClick={onToggleBookmarks}
-                type="button"
+              <Tooltip
+                content={isBookmarksView ? "Close bookmarks" : "Open bookmarks"}
+                useFixedPosition
               >
-                {isBookmarksView ? "🎬" : "📚"}
-              </button>
-            </Tooltip>
-          </div>
-          <div className="bacon-title-action-slot bacon-title-action-slot-text">
-            <div className="bacon-title-overlay-anchor">
-              {toastOverlayMessage ? (
-                <span
-                  className="bacon-copy-status bacon-copy-status-overlay bacon-copy-status-overlay-toast"
-                  ref={toastStatusRef}
-                >
-                  {toastOverlayMessage}
-                </span>
-              ) : null}
-              <Tooltip content="Clear database" useFixedPosition>
                 <button
-                  aria-label={`Clear database (${clearDbBadgeText})`}
-                  className="bacon-title-action-button bacon-clear-db-button"
-                  onClick={onClearDatabase}
-                  ref={clearDbButtonRef}
+                  aria-label={isBookmarksView ? "Close bookmarks" : "Open bookmarks"}
+                  className="bacon-title-action-icon-button"
+                  onClick={onToggleBookmarks}
                   type="button"
                 >
-                  {`Clear DB (${clearDbBadgeText})`}
+                  {isBookmarksView ? "🎬" : "📚"}
                 </button>
               </Tooltip>
+            </div>
+            <div className="bacon-title-action-slot bacon-title-action-slot-text">
+              <div className="bacon-title-overlay-anchor">
+                {toastOverlayMessage ? (
+                  <span
+                    className="bacon-copy-status bacon-copy-status-overlay bacon-copy-status-overlay-toast"
+                    ref={toastStatusRef}
+                  >
+                    {toastOverlayMessage}
+                  </span>
+                ) : null}
+                <Tooltip content="Clear database" useFixedPosition>
+                  <button
+                    aria-label={`Clear database (${clearDbBadgeText})`}
+                    className="bacon-title-action-button bacon-clear-db-button"
+                    onClick={onClearDatabase}
+                    ref={clearDbButtonRef}
+                    type="button"
+                  >
+                    {`Clear DB (${clearDbBadgeText})`}
+                  </button>
+                </Tooltip>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </header>
   );
 }

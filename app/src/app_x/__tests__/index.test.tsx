@@ -597,6 +597,34 @@ describe("BaconTitleBar", () => {
     expect(html).toContain("matchup-preview-stub");
   });
 
+  it("hides the title actions when requested", () => {
+    const html = renderToStaticMarkup(
+      <BaconTitleBar
+        boostPreview={renderBoostPreviewStub()}
+        clearDbBadgeText="12 / 34"
+        copyStatus=""
+        copyStatusPlacement="toast"
+        hideActions
+        isGeneratorView
+        isBookmarksView={false}
+        isSavingBookmark={false}
+        onClearDatabase={() => { }}
+        onOpenBookmarksJsonlEditor={() => { }}
+        onReset={() => { }}
+        onSaveBookmark={() => { }}
+        onToggleBookmarks={() => { }}
+        matchupPreview={renderMatchupPreviewStub()}
+      />,
+    );
+
+    expect(html).toContain("bacon-title-brand");
+    expect(html).not.toContain("bacon-title-actions");
+    expect(html).not.toContain("boost-preview-stub");
+    expect(html).not.toContain("matchup-preview-stub");
+    expect(html).not.toContain("aria-label=\"Save bookmark\"");
+    expect(html).not.toContain("Clear DB (12 / 34)");
+  });
+
   it("renders boost tooltip copy as x plus y", () => {
     const html = renderToStaticMarkup(
       <ConnectionBoostPreview

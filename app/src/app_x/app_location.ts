@@ -126,6 +126,10 @@ export function buildLocationHref(pathname: string, hashValue: string) {
   return `${normalizePathname(pathname)}${window.location.search}${normalizeHashValue(hashValue)}`;
 }
 
+export function isSlideshowSearchParam(search: string = window.location.search): boolean {
+  return new URLSearchParams(search).has("slideshow");
+}
+
 export function getBookmarksReturnHashValue(
   hashValue: string,
   lastSyncedHashValue = "",

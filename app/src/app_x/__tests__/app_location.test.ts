@@ -7,6 +7,7 @@ import {
   getBookmarksReturnHashValue,
   getCoverPathname,
   getGeneratorPathname,
+  isSlideshowSearchParam,
   isRootRouteXPath,
   normalizePathname,
   readAppLocationState,
@@ -152,6 +153,14 @@ describe("app_location routes", () => {
     expect(getGeneratorPathname("/x")).toBe("/");
     expect(getGeneratorPathname("/")).toBe("/");
     expect(getGeneratorPathname("/bacon")).toBe("/bacon");
+  });
+
+  it("detects slideshow mode from a defined URL search parameter", () => {
+    expect(isSlideshowSearchParam("?slideshow")).toBe(true);
+    expect(isSlideshowSearchParam("?slideshow=")).toBe(true);
+    expect(isSlideshowSearchParam("?foo=1&slideshow&bar=2")).toBe(true);
+    expect(isSlideshowSearchParam("?foo=slideshow")).toBe(false);
+    expect(isSlideshowSearchParam("")).toBe(false);
   });
 
   it("uses root as the direct-close fallback for x-family bookmarks", () => {

@@ -87,7 +87,7 @@ const slides: Slide[] = [
     ],
     kind: "text",
   },
-  { kind: "link", href: "/#film|Fast+Break+(1979)", src: fastBreakSrc },
+  { kind: "link", href: "/?slideshow#film|Fast+Break+(1979)", src: fastBreakSrc },
   { kind: "image", src: greatnanaSrc },
   { kind: "image", src: poseSrc },
   { kind: "image", src: poseConstellationSrc },

@@ -134,6 +134,49 @@
   color: #cbd5e1;
 }
 
+.generator-row-slideshow-hidden {
+  display: none;
+}
+
+.generator-row-slideshow-root {
+  min-height: 0;
+  justify-content: center;
+}
+
+.generator-row-track-slideshow-root {
+  flex: 0 1 auto;
+  justify-content: center;
+  margin-top: 0;
+  overflow: visible;
+  padding: 0;
+}
+
+.generator-card-button-slideshow-root {
+  align-self: center;
+  cursor: default;
+  pointer-events: none;
+}
+
+.generator-card-button-slideshow-root .cinenerdle-card {
+  --cinenerdle-card-width: clamp(180px, 24vw, 360px);
+  height: auto;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.generator-card-button-slideshow-root .cinenerdle-card-image-shell {
+  aspect-ratio: 2 / 3;
+  border-radius: 14px;
+}
+
+.generator-card-button-slideshow-root .cinenerdle-card-copy,
+.generator-card-button-slideshow-root .cinenerdle-card-extra-row,
+.generator-card-button-slideshow-root .cinenerdle-card-unselect-bubble {
+  display: none;
+}
+
 .cinenerdle-card-copy {
   min-width: 0;
   display: flex;

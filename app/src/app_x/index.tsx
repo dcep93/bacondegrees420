@@ -15,6 +15,7 @@ import {
 } from "./connection_matchup_preview";
 import {
   useAppLocationState,
+  isSlideshowSearchParam,
 } from "./app_location";
 import { useBookmarksState } from "./bookmarks_state";
 import {
@@ -149,6 +150,7 @@ export default function AppX() {
     useRef<IndexedDbBootstrapLoadingShellDelayManager | null>(null);
   const isCinenerdleIndexedDbBootstrapLoading = !cinenerdleIndexedDbBootstrapStatus.isCoreReady;
   const isGeneratorView = !isBookmarksView && !isCoverView && !isFishburneRankingView;
+  const isSlideshowMode = isGeneratorView && isSlideshowSearchParam();
   const isSearchablePersistencePending =
     cinenerdleIndexedDbBootstrapStatus.isSearchablePersistencePending;
   const clearDbBadgeText = formatClearDbBadgeText(clearDbFetchCount, clearDbTotalFetchCount);
@@ -575,6 +577,7 @@ export default function AppX() {
           clearDbButtonRef={clearDbButtonRef}
           copyStatus={copyStatus}
           copyStatusPlacement={copyStatusPlacement}
+          hideActions={isSlideshowMode}
           isGeneratorView={isGeneratorView}
           isBookmarksView={isBookmarksView}
           isSavingBookmark={isSavingBookmark}
@@ -648,6 +651,7 @@ export default function AppX() {
                 connectedSuggestionSelectionRequest={connectedSuggestionSelectionRequest}
                 hashValue={hashValue}
                 highlightedConnectedSuggestion={highlightedConnectedSuggestion}
+                isSlideshowMode={isSlideshowMode}
                 navigationVersion={navigationVersion}
                 onYoungestSelectedCardChange={setYoungestSelectedCard}
                 onHashWrite={handleHashWrite}
