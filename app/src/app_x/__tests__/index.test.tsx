@@ -971,6 +971,177 @@ describe("ConnectionResults", () => {
     expect(html).toContain("bacon-connection-node-dimmed");
     expect(html).toContain("bacon-connection-arrow-button bacon-connection-arrow-disconnected");
   });
+
+  it("marks slideshow rows as type a when Laurence Fishburne is the last node before Fast Break", () => {
+    const source = makeConnectionEntity({
+      key: "movie:matrix:1999",
+      name: "The Matrix",
+      year: "1999",
+      label: "The Matrix (1999)",
+    });
+    const laurenceFishburne = makeConnectionEntity({
+      key: "person:2975",
+      kind: "person",
+      name: "Laurence Fishburne",
+      year: "",
+      tmdbId: 2975,
+      label: "Laurence Fishburne",
+    });
+    const fastBreak = makeConnectionEntity({
+      key: "movie:fast break:1979",
+      name: "Fast Break",
+      year: "1979",
+      label: "Fast Break (1979)",
+    });
+    const html = renderToStaticMarkup(
+      <ConnectionResults
+        appendConnectionPathToTree={vi.fn()}
+        connectionSession={{
+          id: "session:fishburne",
+          left: source,
+          right: fastBreak,
+          rows: [{
+            id: "row:fishburne",
+            excludedNodeKeys: [],
+            excludedEdgeKeys: [],
+            childDisallowedNodeKeys: [],
+            childDisallowedEdgeKeys: [],
+            parentRowId: null,
+            sourceExclusion: null,
+            status: "found",
+            path: [source, laurenceFishburne, fastBreak],
+          }],
+        }}
+        isSlideshowMode
+        navigateToConnectionEntity={vi.fn()}
+        openConnectionEntityInNewTab={vi.fn()}
+        spawnAlternativeConnectionRow={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain("bacon-connection-row-slideshow-type-a");
+    expect(html).not.toContain("bacon-connection-row-slideshow-type-b");
+  });
+
+  it("marks slideshow rows as type b when the last node before Fast Break is not Laurence Fishburne", () => {
+    const source = makeConnectionEntity({
+      key: "movie:heat:1995",
+      name: "Heat",
+      year: "1995",
+      label: "Heat (1995)",
+    });
+    const alPacino = makeConnectionEntity({
+      key: "person:1158",
+      kind: "person",
+      name: "Al Pacino",
+      year: "",
+      tmdbId: 1158,
+      label: "Al Pacino",
+    });
+    const fastBreak = makeConnectionEntity({
+      key: "movie:fast break:1979",
+      name: "Fast Break",
+      year: "1979",
+      label: "Fast Break (1979)",
+    });
+    const html = renderToStaticMarkup(
+      <ConnectionResults
+        appendConnectionPathToTree={vi.fn()}
+        connectionSession={{
+          id: "session:pacino",
+          left: source,
+          right: fastBreak,
+          rows: [{
+            id: "row:pacino",
+            excludedNodeKeys: [],
+            excludedEdgeKeys: [],
+            childDisallowedNodeKeys: [],
+            childDisallowedEdgeKeys: [],
+            parentRowId: null,
+            sourceExclusion: null,
+            status: "found",
+            path: [source, alPacino, fastBreak],
+          }],
+        }}
+        isSlideshowMode
+        navigateToConnectionEntity={vi.fn()}
+        openConnectionEntityInNewTab={vi.fn()}
+        spawnAlternativeConnectionRow={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain("bacon-connection-row-slideshow-type-b");
+    expect(html).not.toContain("bacon-connection-row-slideshow-type-a");
+  });
+
+  it("renders multiple connection sessions for slideshow history", () => {
+    const fastBreak = makeConnectionEntity({
+      key: "movie:fast break:1979",
+      name: "Fast Break",
+      year: "1979",
+      label: "Fast Break (1979)",
+    });
+    const heat = makeConnectionEntity({
+      key: "movie:heat:1995",
+      name: "Heat",
+      year: "1995",
+      label: "Heat (1995)",
+    });
+    const matrix = makeConnectionEntity({
+      key: "movie:matrix:1999",
+      name: "The Matrix",
+      year: "1999",
+      label: "The Matrix (1999)",
+    });
+    const html = renderToStaticMarkup(
+      <ConnectionResults
+        appendConnectionPathToTree={vi.fn()}
+        connectionSession={null}
+        connectionSessions={[
+          {
+            id: "session:heat",
+            left: heat,
+            right: fastBreak,
+            rows: [{
+              id: "row:heat",
+              excludedNodeKeys: [],
+              excludedEdgeKeys: [],
+              childDisallowedNodeKeys: [],
+              childDisallowedEdgeKeys: [],
+              parentRowId: null,
+              sourceExclusion: null,
+              status: "found",
+              path: [heat, fastBreak],
+            }],
+          },
+          {
+            id: "session:matrix",
+            left: matrix,
+            right: fastBreak,
+            rows: [{
+              id: "row:matrix",
+              excludedNodeKeys: [],
+              excludedEdgeKeys: [],
+              childDisallowedNodeKeys: [],
+              childDisallowedEdgeKeys: [],
+              parentRowId: null,
+              sourceExclusion: null,
+              status: "found",
+              path: [matrix, fastBreak],
+            }],
+          },
+        ]}
+        isSlideshowMode
+        navigateToConnectionEntity={vi.fn()}
+        openConnectionEntityInNewTab={vi.fn()}
+        spawnAlternativeConnectionRow={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain("Heat");
+    expect(html).toContain("The Matrix");
+    expect(html.match(/bacon-connection-row-slideshow-type-b/g)).toHaveLength(2);
+  });
 });
 
 describe("annotateDirectionalConnectionPathRanks", () => {

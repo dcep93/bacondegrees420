@@ -266,6 +266,7 @@ export default function AppX() {
     connectionInputWrapRef,
     connectionQuery,
     connectionSession,
+    connectionSessions,
     connectionSuggestions,
     handleConnectionInputKeyDown,
     handleConnectionSubmit,
@@ -280,6 +281,7 @@ export default function AppX() {
     isSearchablePersistencePending,
     onConnectedSuggestionHighlight: handleConnectedSuggestionHighlight,
     onSelectConnectedSuggestionAsYoungest: handleSelectConnectedSuggestionAsYoungest,
+    preserveConnectionSessionHistory: isSlideshowMode,
     youngestSelectedCard,
   });
 
@@ -641,6 +643,8 @@ export default function AppX() {
               <ConnectionResults
                 appendConnectionPathToTree={appendConnectionPathToTree}
                 connectionSession={connectionSession}
+                connectionSessions={connectionSessions}
+                isSlideshowMode={isSlideshowMode}
                 navigateToConnectionEntity={navigateToConnectionEntity}
                 openConnectionEntityInNewTab={openConnectionEntityInNewTab}
                 spawnAlternativeConnectionRow={spawnAlternativeConnectionRow}

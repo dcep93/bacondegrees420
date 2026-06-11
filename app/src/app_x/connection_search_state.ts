@@ -429,12 +429,14 @@ export function useConnectionSearchState({
   isSearchablePersistencePending,
   onConnectedSuggestionHighlight,
   onSelectConnectedSuggestionAsYoungest,
+  preserveConnectionSessionHistory = false,
   youngestSelectedCard,
 }: {
   hashValue: string;
   isSearchablePersistencePending: boolean;
   onConnectedSuggestionHighlight?: (suggestion: ConnectionSuggestion | null) => void;
   onSelectConnectedSuggestionAsYoungest: (suggestion: ConnectionSuggestion) => void;
+  preserveConnectionSessionHistory?: boolean;
   youngestSelectedCard: YoungestSelectedCard | null;
 }) {
   const [connectionQuery, setConnectionQuery] = useState("");
@@ -446,6 +448,7 @@ export function useConnectionSearchState({
     Record<string, number | null>
   >({});
   const [connectionSession, setConnectionSession] = useState<ConnectionSession | null>(null);
+  const [connectionSessionHistory, setConnectionSessionHistory] = useState<ConnectionSession[]>([]);
   const connectionSessionRef = useRef<ConnectionSession | null>(null);
   const autocompleteRequestIdRef = useRef(0);
   const connectionSessionIdRef = useRef(0);
@@ -453,6 +456,31 @@ export function useConnectionSearchState({
   const connectionInputWrapRef = useRef<HTMLDivElement | null>(null);
   const deferredConnectionQuery = useDeferredValue(connectionQuery);
   const youngestSelectedCardKey = youngestSelectedCard?.key ?? "";
+
+  const writeConnectionSession = useCallback((nextSession: ConnectionSession | null) => {
+    connectionSessionRef.current = nextSession;
+    setConnectionSession(nextSession);
+
+    if (!preserveConnectionSessionHistory) {
+      return;
+    }
+
+    setConnectionSessionHistory((currentHistory) => {
+      if (!nextSession) {
+        return currentHistory;
+      }
+
+      const existingIndex = currentHistory.findIndex((session) => session.id === nextSession.id);
+
+      if (existingIndex < 0) {
+        return [...currentHistory, nextSession];
+      }
+
+      return currentHistory.map((session, index) =>
+        index === existingIndex ? nextSession : session,
+      );
+    });
+  }, [preserveConnectionSessionHistory]);
 
   const clearConnectionInputState = useCallback(() => {
     autocompleteRequestIdRef.current += 1;
@@ -467,9 +495,12 @@ export function useConnectionSearchState({
   }, [connectionSession]);
 
   useEffect(() => {
-    connectionSessionRef.current = null;
-    setConnectionSession(null);
-  }, [hashValue]);
+    if (preserveConnectionSessionHistory) {
+      return;
+    }
+
+    writeConnectionSession(null);
+  }, [hashValue, preserveConnectionSessionHistory, writeConnectionSession]);
 
   useEffect(() => {
     if (connectionQuery.length === 0 && isConnectionDropdownDismissed) {
@@ -633,19 +664,38 @@ export function useConnectionSearchState({
 
     const rankedPath = await annotateConnectionPathRanks(result.path);
 
+    const resolvedEntities = {
+      left: leftEntity,
+      right: rightEntity,
+    };
+
     setConnectionSession((currentSession) => {
-      return updateConnectionSessionRowResult(
+      const nextSession = updateConnectionSessionRowResult(
         currentSession,
         params,
-        {
-          left: leftEntity,
-          right: rightEntity,
-        },
+        resolvedEntities,
         rankedPath,
         result.status,
       );
+      connectionSessionRef.current = nextSession;
+
+      return nextSession;
     });
-  }, []);
+
+    if (preserveConnectionSessionHistory) {
+      setConnectionSessionHistory((currentHistory) =>
+        currentHistory.map((session) =>
+          updateConnectionSessionRowResult(
+            session,
+            params,
+            resolvedEntities,
+            rankedPath,
+            result.status,
+          ) ?? session,
+        ),
+      );
+    }
+  }, [preserveConnectionSessionHistory]);
 
   const openConnectionRowsForEntity = useCallback(async (entity: ConnectionEntity) => {
     const counterpart = createFallbackConnectionEntity(getHighestGenerationSelectedTarget(hashValue));
@@ -654,7 +704,7 @@ export function useConnectionSearchState({
     const rowId = `connection-row-${connectionRowIdRef.current + 1}`;
     connectionRowIdRef.current += 1;
 
-    setConnectionSession(createInitialConnectionSession({
+    writeConnectionSession(createInitialConnectionSession({
       entity,
       counterpart,
       rowId,
@@ -670,7 +720,7 @@ export function useConnectionSearchState({
       rowId,
       sessionId,
     });
-  }, [clearConnectionInputState, hashValue, runConnectionRowSearch]);
+  }, [clearConnectionInputState, hashValue, runConnectionRowSearch, writeConnectionSession]);
 
   const spawnAlternativeConnectionRow = useCallback((
     parentRowId: string,
@@ -697,8 +747,7 @@ export function useConnectionSearchState({
         exclusion,
       );
 
-      connectionSessionRef.current = nextSession;
-      setConnectionSession(nextSession);
+      writeConnectionSession(nextSession);
       return;
     }
 
@@ -711,10 +760,9 @@ export function useConnectionSearchState({
       rowId,
     });
 
-    connectionSessionRef.current = nextSession;
-    setConnectionSession(nextSession);
+    writeConnectionSession(nextSession);
     void runConnectionRowSearch(nextSearch);
-  }, [runConnectionRowSearch]);
+  }, [runConnectionRowSearch, writeConnectionSession]);
 
   const handleConnectionSuggestionSelection = useCallback(async (suggestion: ConnectionSuggestion) => {
     await selectConnectionSuggestion({
@@ -840,6 +888,11 @@ export function useConnectionSearchState({
     connectionInputWrapRef,
     connectionQuery,
     connectionSession,
+    connectionSessions: preserveConnectionSessionHistory
+      ? connectionSessionHistory
+      : connectionSession
+        ? [connectionSession]
+        : [],
     connectionSuggestions,
     handleConnectionInputKeyDown,
     handleConnectionSubmit,
