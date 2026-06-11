@@ -237,15 +237,19 @@ export async function selectConnectionSuggestion(params: {
   clearConnectionInputState: () => void;
   onSelectConnectedSuggestionAsYoungest: (suggestion: ConnectionSuggestion) => void;
   openConnectionRowsForEntity: (entity: ConnectionEntity) => Promise<void>;
+  selectConnectedSuggestionsAsYoungest?: boolean;
   suggestion: ConnectionSuggestion;
 }): Promise<void> {
   const {
     clearConnectionInputState,
     onSelectConnectedSuggestionAsYoungest,
     openConnectionRowsForEntity,
+    selectConnectedSuggestionsAsYoungest = true,
     suggestion,
   } = params;
-  const selectsYoungest = shouldSelectConnectedDropdownSuggestionAsYoungest(suggestion);
+  const selectsYoungest =
+    selectConnectedSuggestionsAsYoungest &&
+    shouldSelectConnectedDropdownSuggestionAsYoungest(suggestion);
 
   if (selectsYoungest) {
     clearConnectionInputState();
@@ -430,6 +434,7 @@ export function useConnectionSearchState({
   onConnectedSuggestionHighlight,
   onSelectConnectedSuggestionAsYoungest,
   preserveConnectionSessionHistory = false,
+  selectConnectedSuggestionsAsYoungest = true,
   youngestSelectedCard,
 }: {
   hashValue: string;
@@ -437,6 +442,7 @@ export function useConnectionSearchState({
   onConnectedSuggestionHighlight?: (suggestion: ConnectionSuggestion | null) => void;
   onSelectConnectedSuggestionAsYoungest: (suggestion: ConnectionSuggestion) => void;
   preserveConnectionSessionHistory?: boolean;
+  selectConnectedSuggestionsAsYoungest?: boolean;
   youngestSelectedCard: YoungestSelectedCard | null;
 }) {
   const [connectionQuery, setConnectionQuery] = useState("");
@@ -574,7 +580,9 @@ export function useConnectionSearchState({
   useEffect(() => {
     const selectedSuggestion =
       selectedSuggestionIndex >= 0 ? connectionSuggestions[selectedSuggestionIndex] ?? null : null;
-    const highlightedSuggestion = shouldSelectConnectedDropdownSuggestionAsYoungest(selectedSuggestion)
+    const highlightedSuggestion =
+      selectConnectedSuggestionsAsYoungest &&
+      shouldSelectConnectedDropdownSuggestionAsYoungest(selectedSuggestion)
       ? selectedSuggestion
       : null;
 
@@ -584,6 +592,7 @@ export function useConnectionSearchState({
   }, [
     connectionSuggestions,
     onConnectedSuggestionHighlight,
+    selectConnectedSuggestionsAsYoungest,
     selectedSuggestionIndex,
   ]);
 
@@ -769,12 +778,14 @@ export function useConnectionSearchState({
       clearConnectionInputState,
       onSelectConnectedSuggestionAsYoungest,
       openConnectionRowsForEntity,
+      selectConnectedSuggestionsAsYoungest,
       suggestion,
     });
   }, [
     clearConnectionInputState,
     onSelectConnectedSuggestionAsYoungest,
     openConnectionRowsForEntity,
+    selectConnectedSuggestionsAsYoungest,
   ]);
 
   const handleConnectionSubmit = useCallback(async (event: FormEvent<HTMLFormElement>) => {

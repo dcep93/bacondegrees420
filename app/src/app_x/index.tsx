@@ -282,6 +282,7 @@ export default function AppX() {
     onConnectedSuggestionHighlight: handleConnectedSuggestionHighlight,
     onSelectConnectedSuggestionAsYoungest: handleSelectConnectedSuggestionAsYoungest,
     preserveConnectionSessionHistory: isSlideshowMode,
+    selectConnectedSuggestionsAsYoungest: !isSlideshowMode,
     youngestSelectedCard,
   });
 

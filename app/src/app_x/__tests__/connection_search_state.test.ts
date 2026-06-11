@@ -138,4 +138,35 @@ describe("connection dropdown suggestion selection", () => {
     expect(onSelectConnectedSuggestionAsYoungest).toHaveBeenCalledWith(suggestion);
     expect(openConnectionRowsForEntity).not.toHaveBeenCalled();
   });
+
+  it("routes connected suggestions into connection rows when youngest selection is disabled", async () => {
+    const clearConnectionInputState = vi.fn();
+    const onSelectConnectedSuggestionAsYoungest = vi.fn();
+    const openConnectionRowsForEntity = vi.fn().mockResolvedValue(undefined);
+    const suggestion = makeConnectionSuggestion({
+      connectionOrderToYoungestSelection: 1,
+      isConnectedToYoungestSelection: true,
+      key: "person:2975",
+      kind: "person",
+      label: "Laurence Fishburne",
+      name: "Laurence Fishburne",
+      tmdbId: 2975,
+      year: "",
+    });
+
+    await selectConnectionSuggestion({
+      clearConnectionInputState,
+      onSelectConnectedSuggestionAsYoungest,
+      openConnectionRowsForEntity,
+      selectConnectedSuggestionsAsYoungest: false,
+      suggestion,
+    });
+
+    expect(openConnectionRowsForEntity).toHaveBeenCalledTimes(1);
+    expect(openConnectionRowsForEntity).toHaveBeenCalledWith(
+      createFallbackConnectionEntity(suggestion),
+    );
+    expect(clearConnectionInputState).not.toHaveBeenCalled();
+    expect(onSelectConnectedSuggestionAsYoungest).not.toHaveBeenCalled();
+  });
 });
