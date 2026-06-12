@@ -37,6 +37,7 @@ type StackItem = {
   content: ImageSlide | LinkSlide | TextSlide;
   id: string;
   isHidden?: boolean;
+  slot: "bottom-left" | "bottom-right" | "top-left" | "top-right";
 };
 
 type StackSlide = {
@@ -131,13 +132,14 @@ const firstGameTextSlide: TextSlide = {
 
 function getIntroStackItems(showRemainingContent: boolean): StackItem[] {
   return [
-    { content: constellationTextSlide, id: "constellation-text" },
-    { content: { kind: "image", src: constellationSrc }, id: "constellation-image" },
-    { content: firstGameTextSlide, id: "first-game-text", isHidden: !showRemainingContent },
+    { content: constellationTextSlide, id: "constellation-text", slot: "top-left" },
+    { content: { kind: "image", src: constellationSrc }, id: "constellation-image", slot: "top-right" },
+    { content: firstGameTextSlide, id: "first-game-text", isHidden: !showRemainingContent, slot: "bottom-left" },
     {
       content: { kind: "link", href: "/?slideshow#film|Fast+Break+(1979)", src: fastBreakSrc },
       id: "fast-break-link",
       isHidden: !showRemainingContent,
+      slot: "bottom-right",
     },
   ];
 }
@@ -210,7 +212,9 @@ export default function YSlideshow() {
           <section className="y-slideshow__stack-slide">
             {slide.items.map((stackItem) => {
               const item = stackItem.content;
-              const stackItemClassName = `y-slideshow__stack-item${stackItem.isHidden ? " y-slideshow__stack-item--hidden" : ""}`;
+              const stackItemClassName = `y-slideshow__stack-item y-slideshow__stack-item--${stackItem.slot}${
+                stackItem.isHidden ? " y-slideshow__stack-item--hidden" : ""
+              }`;
 
               return item.kind === "text" ? (
                 renderTextSlide(
