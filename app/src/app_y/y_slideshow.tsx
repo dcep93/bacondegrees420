@@ -28,6 +28,7 @@ type ImageSlide = {
 };
 
 type LinkSlide = {
+  ariaLabel: string;
   href: string;
   kind: "link";
   src: string;
@@ -67,7 +68,7 @@ function renderMediaSlide(slide: ImageSlide | LinkSlide, className?: string) {
     <img className={className ? `y-slideshow__image ${className}` : "y-slideshow__image"} src={slide.src} alt="" />
   ) : (
     <a
-      aria-label="Open Fast Break (1979)"
+      aria-label={slide.ariaLabel}
       className={className ? `y-slideshow__link-slide ${className}` : "y-slideshow__link-slide"}
       href={slide.href}
       rel="noopener noreferrer"
@@ -136,13 +137,21 @@ function getIntroStackItems(showRemainingContent: boolean): StackItem[] {
     { content: { kind: "image", src: constellationSrc }, id: "constellation-image", slot: "top-right" },
     { content: firstGameTextSlide, id: "first-game-text", isHidden: !showRemainingContent, slot: "bottom-left" },
     {
-      content: { kind: "link", href: "/?slideshow#film|Fast+Break+(1979)", src: fastBreakSrc },
+      content: {
+        ariaLabel: "Open Fast Break (1979)",
+        kind: "link",
+        href: "/?slideshow#film|Fast+Break+(1979)",
+        src: fastBreakSrc,
+      },
       id: "fast-break-link",
       isHidden: !showRemainingContent,
       slot: "bottom-right",
     },
   ];
 }
+
+const knightAndBishopEndgameHref =
+  "https://chess420.web.app/endgames/knightAndBishop+#w//7k/8/5K2/6N1/4B3/8/8/8_w_-_-_42_22";
 
 const slides: Slide[] = [
   {
@@ -160,7 +169,12 @@ const slides: Slide[] = [
   { kind: "image", src: infographicSrc },
   { kind: "image", src: lifeSavingGameScreenshotSrc },
   { kind: "image", src: overlayStartSrc },
-  { kind: "image", src: overlayEndSrc },
+  {
+    ariaLabel: "Open knight and bishop endgame",
+    kind: "link",
+    href: knightAndBishopEndgameHref,
+    src: overlayEndSrc,
+  },
 ];
 
 export default function YSlideshow() {
