@@ -868,7 +868,7 @@ describe("ConnectionEntityCard", () => {
     expect(html).not.toContain("<p class=\"cinenerdle-card-subtitle\">1995</p>");
   });
 
-  it("renders the shared card title as a button when a name click handler is provided", () => {
+  it("renders the shared card title and image as buttons when a name click handler is provided", () => {
     const html = renderToStaticMarkup(
       <ConnectionEntityCard
         entity={makeConnectionEntity()}
@@ -879,6 +879,8 @@ describe("ConnectionEntityCard", () => {
 
     expect(html).toContain("<button");
     expect(html).toContain("cinenerdle-card-title");
+    expect(html).toContain("cinenerdle-card-image-shell cinenerdle-card-image-button");
+    expect(html).toContain("aria-label=\"Open Heat\"");
   });
 
   it("adds the dimmed class to shared cards for excluded nodes", () => {

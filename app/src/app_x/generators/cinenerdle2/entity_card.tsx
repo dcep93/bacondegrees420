@@ -83,6 +83,7 @@ export function CinenerdleEntityCard({
   onAddItemAttr,
   onCardClick,
   footerTooltip = null,
+  onImageClick,
   onRemoveItemAttr,
   onTitleClick,
   titleElement = "p",
@@ -95,6 +96,7 @@ export function CinenerdleEntityCard({
   onAddItemAttr?: ((nextChar: string) => void) | null;
   onCardClick?: (event: MouseEvent<HTMLElement>) => void;
   footerTooltip?: CinenerdleFooterTooltip | null;
+  onImageClick?: (event: MouseEvent<HTMLElement>) => void;
   onRemoveItemAttr?: ((itemAttr: string) => void) | null;
   onTitleClick?: (event: MouseEvent<HTMLElement>) => void;
   titleElement?: "button" | "p";
@@ -123,6 +125,20 @@ export function CinenerdleEntityCard({
   const extraInputRef = useRef<HTMLInputElement | null>(null);
   const itemAttrs = card.itemAttrs ?? [];
   const inheritedItemAttrs = card.inheritedItemAttrs ?? [];
+  const imageContent = card.imageUrl ? (
+    <img
+      alt={card.name}
+      className="cinenerdle-card-image"
+      decoding="async"
+      fetchPriority={imageFetchPriority}
+      loading={imageLoading}
+      src={card.imageUrl}
+    />
+  ) : (
+    <div className="cinenerdle-card-image cinenerdle-card-image-fallback">
+      {card.name}
+    </div>
+  );
 
   useEffect(() => {
     if (!isExtraInputVisible) {
@@ -177,22 +193,22 @@ export function CinenerdleEntityCard({
           {cornerAction.label}
         </button>
       ) : null}
-      <div className="cinenerdle-card-image-shell">
-        {card.imageUrl ? (
-          <img
-            alt={card.name}
-            className="cinenerdle-card-image"
-            decoding="async"
-            fetchPriority={imageFetchPriority}
-            loading={imageLoading}
-            src={card.imageUrl}
-          />
-        ) : (
-          <div className="cinenerdle-card-image cinenerdle-card-image-fallback">
-            {card.name}
-          </div>
-        )}
-      </div>
+      {onImageClick ? (
+        <button
+          aria-label={`Open ${card.name}`}
+          className="cinenerdle-card-image-shell cinenerdle-card-image-button"
+          onClick={(event) => {
+            handleIsolatedClick(event, onImageClick);
+          }}
+          type="button"
+        >
+          {imageContent}
+        </button>
+      ) : (
+        <div className="cinenerdle-card-image-shell">
+          {imageContent}
+        </div>
+      )}
       {isCinenerdleRootCard ? null : (
         <div className="cinenerdle-card-copy">
           <CardTitle

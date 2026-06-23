@@ -502,6 +502,11 @@ export default function ConnectionEntityCard({
           }
         : undefined}
       onCardClick={onCardClick}
+      onImageClick={onNameClick
+        ? (event) => {
+            onNameClick(event as MouseEvent<HTMLButtonElement>);
+          }
+        : undefined}
       onRemoveItemAttr={itemAttrTarget
         ? (itemAttr) => {
             removeItemAttrFromTarget(itemAttrTarget, itemAttr);

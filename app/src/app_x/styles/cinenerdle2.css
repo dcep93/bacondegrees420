@@ -116,6 +116,12 @@
   flex: 0 0 auto;
 }
 
+.cinenerdle-card-image-button {
+  border: 0;
+  cursor: pointer;
+  padding: 0;
+}
+
 .cinenerdle-card-ancestor-selected .cinenerdle-card-image-shell {
   opacity: 0.25;
 }
