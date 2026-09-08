@@ -39,6 +39,7 @@ import type {
 } from "../types/generator";
 
 export type AbstractGeneratorTreeRefreshRequest<T, TMeta = undefined> = {
+  deferWhileSelectionEffectPending?: boolean;
   requestKey: string;
   run: (state: GeneratorState<T, TMeta>) => Promise<GeneratorUpdate<T, TMeta> | null>;
 };
@@ -247,8 +248,11 @@ type GenerationRenderWaitResult = {
   targetDataKey: string | null;
 };
 
-function isGenerationRenderReady(result: GenerationRenderWaitResult): boolean {
-  return result.hasGeneration && result.hasRowElement && result.hasTargetCard;
+function isGenerationRenderReady(
+  result: GenerationRenderWaitResult,
+  requireTargetCard = true,
+): boolean {
+  return result.hasGeneration && result.hasRowElement && (!requireTargetCard || result.hasTargetCard);
 }
 
 type GeneratorRowViewProps<T> = {
@@ -764,6 +768,7 @@ async function waitForGenerationToRender<T, TMeta>(
     }>;
     getState: () => GeneratorState<T, TMeta>;
     getRowElement: (index: number) => HTMLDivElement | null | undefined;
+    requireTargetCard?: boolean;
   },
 ): Promise<GenerationRenderWaitResult> {
   const maxFrames = 8;
@@ -791,7 +796,7 @@ async function waitForGenerationToRender<T, TMeta>(
       selectedIndex,
     });
     const targetNode = targetCardIndex === null ? null : generation[targetCardIndex] ?? null;
-    const hasGeneration = generation.length > 0;
+    const hasGeneration = tree[generationIndex] !== undefined;
     const hasRowElement = Boolean(options.getRowElement(generationIndex));
     const hasTargetCard = Boolean(
       targetCardIndex !== null &&
@@ -814,7 +819,7 @@ async function waitForGenerationToRender<T, TMeta>(
           : null,
     };
 
-    if (hasGeneration && hasRowElement && hasTargetCard) {
+    if (isGenerationRenderReady(lastResult, options.requireTargetCard)) {
       return lastResult;
     }
 
@@ -863,6 +868,12 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
   const mountedRef = useRef(true);
   const activeLifecycleRef = useRef(0);
   const activeSelectionRef = useRef(0);
+  const selectionCommitRevisionRef = useRef(0);
+  const pendingSelectionEffectsRef = useRef<{
+    lifecycleId: number;
+    selectionId: number;
+  } | null>(null);
+  const [selectionEffectsVersion, setSelectionEffectsVersion] = useState(0);
   const lastHandledTreeRefreshRequestKeyRef = useRef<string | null>(null);
   const mountedGenerationIndexesRef = useRef<Set<number>>(new Set());
   const committedTreeRef = useRef<GeneratorTree<T>>([]);
@@ -1003,6 +1014,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
         };
 
         if (options?.urgent) {
+          selectionCommitRevisionRef.current += 1;
           flushSync(() => {
             applyStateUpdate();
           });
@@ -1017,9 +1029,13 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
   );
 
   useEffect(() => {
+    const pendingSelectionEffects = pendingSelectionEffectsRef.current;
     if (
       treeRefreshRequest === null ||
-      treeRefreshRequest.requestKey === lastHandledTreeRefreshRequestKeyRef.current
+      treeRefreshRequest.requestKey === lastHandledTreeRefreshRequestKeyRef.current ||
+      (treeRefreshRequest.deferWhileSelectionEffectPending &&
+        pendingSelectionEffects?.lifecycleId === activeLifecycleRef.current &&
+        pendingSelectionEffects.selectionId === activeSelectionRef.current)
     ) {
       return;
     }
@@ -1028,6 +1044,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
 
     const lifecycleId = activeLifecycleRef.current;
     const selectionId = activeSelectionRef.current;
+    const selectionCommitRevision = selectionCommitRevisionRef.current;
     const applyUpdate = createGuardedApplyUpdate(lifecycleId, selectionId);
     void treeRefreshRequest.run(stateRef.current)
       .then((nextUpdate) => {
@@ -1035,10 +1052,20 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
           return;
         }
 
-        applyUpdate(nextUpdate);
+        applyUpdate(() => {
+          // A selection can commit refreshed children after the cached fallback
+          // allowed this rebuild to start, without changing its selection id.
+          if (
+            treeRefreshRequest.deferWhileSelectionEffectPending &&
+            selectionCommitRevisionRef.current !== selectionCommitRevision
+          ) {
+            return null;
+          }
+          return nextUpdate;
+        });
       })
       .catch(() => { });
-  }, [createGuardedApplyUpdate, treeRefreshRequest]);
+  }, [createGuardedApplyUpdate, selectionEffectsVersion, treeRefreshRequest]);
 
   const resolvedTree = useMemo(
     () => resolveGeneratorTree(state),
@@ -1365,6 +1392,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
   ) => {
     const alignRowHorizontally = options?.alignRowHorizontally ?? true;
     const waitResult = await waitForGenerationToRender(generationIndex, {
+      requireTargetCard: alignRowHorizontally,
       getCardElement: (rowIndex, cardIndex, data) =>
         cardRefs.current[`${rowIndex}:${getDataKey(data, cardIndex)}`],
       getRenderedRowOrder: (index) => renderedRowOrderRef.current[index] ?? [],
@@ -1372,7 +1400,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       getRowElement: (index) => rowRefs.current[index],
     });
     debugLog?.(
-      waitResult.hasGeneration && waitResult.hasRowElement && waitResult.hasTargetCard
+      isGenerationRenderReady(waitResult, alignRowHorizontally)
         ? "generator:scroll-vertical-ready"
         : "generator:scroll-vertical-timeout",
       waitResult,
@@ -1430,24 +1458,38 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       urgent: true,
     });
 
-    for (const effect of effects) {
-      if (
-        !mountedRef.current ||
-        activeLifecycleRef.current !== lifecycleId ||
-        activeSelectionRef.current !== selectionId
-      ) {
-        return;
-      }
+    try {
+      for (const effect of effects) {
+        if (
+          !mountedRef.current ||
+          activeLifecycleRef.current !== lifecycleId ||
+          activeSelectionRef.current !== selectionId
+        ) {
+          return;
+        }
 
-      await runEffect(effect, {
-        applyUpdate,
-        applyUrgentUpdate,
-        getState: () => stateRef.current,
-        lifecycleId,
-        selectionId,
-        scrollGenerationIntoVerticalView,
-        scrollGenerationLikeBubble,
-      });
+        await runEffect(effect, {
+          applyUpdate,
+          applyUrgentUpdate,
+          getState: () => stateRef.current,
+          lifecycleId,
+          selectionId,
+          scrollGenerationIntoVerticalView,
+          scrollGenerationLikeBubble,
+        });
+      }
+    } finally {
+      const pendingSelectionEffects = pendingSelectionEffectsRef.current;
+      if (
+        mountedRef.current &&
+        activeLifecycleRef.current === lifecycleId &&
+        activeSelectionRef.current === selectionId &&
+        pendingSelectionEffects?.lifecycleId === lifecycleId &&
+        pendingSelectionEffects.selectionId === selectionId
+      ) {
+        pendingSelectionEffectsRef.current = null;
+        setSelectionEffectsVersion((version) => version + 1);
+      }
     }
   }, [createGuardedApplyUpdate, runEffect, scrollGenerationIntoVerticalView, scrollGenerationLikeBubble]);
 
@@ -1459,6 +1501,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     const lifecycleId = activeLifecycleRef.current + 1;
     activeLifecycleRef.current = lifecycleId;
     activeSelectionRef.current = 0;
+    pendingSelectionEffectsRef.current = null;
     stateRef.current = initialTransition.state;
     // Initialization should only run on mount/reset. Re-running it on tree changes
     // cancels queued selection effects by resetting the active selection id.
@@ -1712,6 +1755,11 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
 
     const nextSelectionId = activeSelectionRef.current + 1;
     activeSelectionRef.current = nextSelectionId;
+    // Block background rebuilds before any click-triggered render or deferred work.
+    pendingSelectionEffectsRef.current = {
+      lifecycleId: activeLifecycleRef.current,
+      selectionId: nextSelectionId,
+    };
     const selectionMarkName = `abstractGenerator.selectCard.${nextSelectionId}`;
     const clickStartedAt = getGeneratorPerfNow();
     const clickDate = new Date();
@@ -1866,6 +1914,8 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
 
     const nextSelectionId = activeSelectionRef.current + 1;
     activeSelectionRef.current = nextSelectionId;
+    pendingSelectionEffectsRef.current = null;
+    setSelectionEffectsVersion((version) => version + 1);
     pendingSelectionPerfRef.current = null;
     const deselectedState = reduce(stateRef.current, {
       type: "deselect",

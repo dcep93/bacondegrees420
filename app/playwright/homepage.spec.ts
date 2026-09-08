@@ -2373,10 +2373,20 @@ test("gen 2 refresh redraws gen 3 for the newly selected person", async ({
   await expect(gen3Row.locator(".cinenerdle-card")).toHaveCount(7);
 });
 
-test("deep descendant selection renders cached DB children before the delayed TMDb refresh completes", async ({
+test("deep descendant selection hides cached children while a fast TMDb refresh is pending", async ({
   page,
 }) => {
   const requests = createRouteRequestRecorder();
+  const fetchedIndiaMovie = {
+    id: 2301,
+    title: "Fetched India Movie",
+    original_title: "Fetched India Movie",
+    poster_path: "/fetched-india.jpg",
+    release_date: "2013-03-22",
+    popularity: 75,
+    vote_average: 7.3,
+    vote_count: 3100,
+  };
   let releaseIndiaMovieCredits: (() => void) | null = null;
   const indiaMovieCreditsGate = new Promise<void>((resolve) => {
     releaseIndiaMovieCredits = resolve;
@@ -2385,6 +2395,7 @@ test("deep descendant selection renders cached DB children before the delayed TM
   const indiaMovieCreditsUrl = "https://api.themoviedb.org/3/person/1009/movie_credits";
 
   await primeCinenerdlePage(page);
+  await page.clock.install({ time: new Date("2026-09-07T12:00:00Z") });
 
   await page.route("**/dump.json", async (route) => {
     await route.fulfill(createJsonResponse({
@@ -2527,41 +2538,7 @@ test("deep descendant selection renders cached DB children before the delayed TM
     if (url.pathname === "/3/person/1009/movie_credits") {
       await indiaMovieCreditsGate;
       await route.fulfill(createJsonResponse({
-        cast: [
-          {
-            id: 9001,
-            title: "Mock Starter Movie",
-            original_title: "Mock Starter Movie",
-            poster_path: "/mock-starter-movie.jpg",
-            release_date: "2001-06-15",
-            popularity: 95.5,
-            vote_average: 7.4,
-            vote_count: 8100,
-            character: "India Nine Character",
-          },
-          {
-            id: 2201,
-            title: "India Movie A",
-            original_title: "India Movie A",
-            poster_path: "/india-a.jpg",
-            release_date: "2011-01-21",
-            popularity: 72,
-            vote_average: 6.8,
-            vote_count: 2800,
-            character: "India Role 1",
-          },
-          {
-            id: 2202,
-            title: "India Movie B",
-            original_title: "India Movie B",
-            poster_path: "/india-b.jpg",
-            release_date: "2012-02-17",
-            popularity: 70,
-            vote_average: 6.9,
-            vote_count: 2600,
-            character: "India Role 2",
-          },
-        ],
+        cast: [{ ...fetchedIndiaMovie, character: "Fetched India Role" }],
         crew: [],
       }));
       return;
@@ -2581,6 +2558,7 @@ test("deep descendant selection renders cached DB children before the delayed TM
     const movieDetailsId = Number(url.pathname.match(/^\/3\/movie\/(\d+)$/)?.[1] ?? NaN);
     if (Number.isFinite(movieDetailsId)) {
       const movieById = new Map([
+        [fetchedIndiaMovie.id, fetchedIndiaMovie],
         [2101, {
           id: 2101,
           title: "Alpha Movie A",
@@ -2652,29 +2630,41 @@ test("deep descendant selection renders cached DB children before the delayed TM
   await expect(getGenerationCardByTitle(page, 2, "Alpha Movie A")).toBeVisible();
   await expect(getGenerationCardByTitle(page, 2, "India Movie A")).toHaveCount(0);
 
-  await indiaCard.click();
+  // Keep the fallback timer below 1000ms while network and layout assertions run.
+  await page.clock.pauseAt(new Date("2026-09-07T13:00:00Z"));
+  const gen2Row = getGenerationRow(page, 2);
+  try {
+    await indiaCard.click();
+    await page.clock.runFor(100);
 
-  await expect
-    .poll(() => ({
-      indiaDetailsCount: countRecordedRequests(requests, indiaDetailsUrl),
-      indiaMovieCreditsCount: countRecordedRequests(requests, indiaMovieCreditsUrl),
-    }))
-    .toEqual({
-      indiaDetailsCount: 1,
-      indiaMovieCreditsCount: 1,
-    });
+    await expect
+      .poll(() => ({
+        indiaDetailsRequested: countRecordedRequests(requests, indiaDetailsUrl) > 0,
+        indiaMovieCreditsRequested: countRecordedRequests(requests, indiaMovieCreditsUrl) > 0,
+      }))
+      .toEqual({
+        indiaDetailsRequested: true,
+        indiaMovieCreditsRequested: true,
+      });
 
-  await expect(getGenerationCardByTitle(page, 2, "India Movie A")).toBeVisible();
-  await expect(getGenerationCardByTitle(page, 2, "India Movie B")).toBeVisible();
-  await expect(getGenerationCardByTitle(page, 2, "Alpha Movie A")).toHaveCount(0);
-  await expect(getTmdbBadgeIcon(indiaCard)).toHaveCount(0);
-
-  releaseIndiaMovieCredits?.();
+    await expect(gen2Row).toBeVisible();
+    await expect(gen2Row.locator(".cinenerdle-card")).toHaveCount(0);
+    await expect(getTmdbBadgeIcon(indiaCard)).toHaveCount(0);
+    await page.clock.runFor(100);
+    await expect
+      .poll(() => gen2Row.locator(".generator-row-track").evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return rect.top >= 0 && rect.bottom <= window.innerHeight;
+      }))
+      .toBe(true);
+  } finally {
+    releaseIndiaMovieCredits?.();
+  }
 
   await expect(getTmdbBadgeIcon(indiaCard)).toHaveCount(1);
-  await expect(getGenerationCardByTitle(page, 2, "India Movie A")).toBeVisible();
-  await expect(getGenerationCardByTitle(page, 2, "India Movie B")).toBeVisible();
-  await expect(getGenerationCardByTitle(page, 2, "Alpha Movie A")).toHaveCount(0);
+  await expect(getGenerationCardByTitle(page, 2, fetchedIndiaMovie.title)).toBeVisible();
+  await expect(gen2Row.locator(".cinenerdle-card")).toHaveCount(1);
+  await expect(gen2Row.locator(".cinenerdle-card-title")).toHaveText([fetchedIndiaMovie.title]);
 });
 
 test("preview bubbles paint their tooltips when hovered", async ({ page }) => {

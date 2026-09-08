@@ -90,6 +90,8 @@ export { getCardTmdbRowTooltipText } from "./view_model";
 
 type ConnectedItemAttrSourceCard = Extract<CinenerdleCard, { kind: "movie" | "person" }>;
 
+const CACHED_CHILD_ROW_FALLBACK_DELAY_MS = 1000;
+
 const connectedItemAttrChildSourcesCache = new Map<
   string,
   Promise<ConnectedItemAttrSourceCard[]>
@@ -648,6 +650,14 @@ function scheduleConnectionPrefetch(
   void prefetchTopPopularUnhydratedConnections(card).catch(() => { });
 }
 
+function shouldRefreshCardFromTmdb(
+  card: Extract<CinenerdleCard, { kind: "movie" | "person" }>,
+): boolean {
+  return card.kind === "movie"
+    ? !hasDirectTmdbMovieSource(card.record)
+    : !hasDirectTmdbPersonSource(card.record);
+}
+
 async function refreshCardFromTmdb(
   card: Extract<CinenerdleCard, { kind: "movie" | "person" }>,
   options: {
@@ -657,16 +667,15 @@ async function refreshCardFromTmdb(
   didRefresh: boolean;
   refreshedCard: Extract<CinenerdleCard, { kind: "movie" | "person" }>;
 }> {
-  if (card.kind === "movie") {
-    const alreadyHydrated = hasDirectTmdbMovieSource(card.record);
-    if (options.skipIfAlreadyHydrated && alreadyHydrated) {
-      scheduleConnectionPrefetch(card);
-      return {
-        didRefresh: false,
-        refreshedCard: card,
-      };
-    }
+  if (options.skipIfAlreadyHydrated && !shouldRefreshCardFromTmdb(card)) {
+    scheduleConnectionPrefetch(card);
+    return {
+      didRefresh: false,
+      refreshedCard: card,
+    };
+  }
 
+  if (card.kind === "movie") {
     const refreshedMovieRecord = await prepareSelectedMovie(
       card.name,
       card.year,
@@ -683,15 +692,6 @@ async function refreshCardFromTmdb(
     return {
       didRefresh: true,
       refreshedCard: refreshedMovieCard,
-    };
-  }
-
-  const alreadyHydrated = hasDirectTmdbPersonSource(card.record);
-  if (options.skipIfAlreadyHydrated && alreadyHydrated) {
-    scheduleConnectionPrefetch(card);
-    return {
-      didRefresh: false,
-      refreshedCard: card,
     };
   }
 
@@ -1813,6 +1813,10 @@ export function useCinenerdleController({
             selectedCard.kind === "movie" ||
             selectedCard.kind === "person")
         ) {
+          let markSelectionReady!: () => void;
+          const selectionReady = new Promise<void>((resolve) => {
+            markSelectionReady = resolve;
+          });
           void measureAsync(
             "controller.afterCardSelected",
             async () => {
@@ -1821,14 +1825,14 @@ export function useCinenerdleController({
               async function revealChildGenerationVertically(
                 childRow: GeneratorNode<CinenerdleCard>[] | null,
               ) {
-                if (!childRow || childRow.length === 0 || didRevealChildGeneration) {
+                if (!childRow || didRevealChildGeneration) {
                   return;
                 }
 
+                didRevealChildGeneration = true;
                 await scrollGenerationIntoVerticalView(childGenerationIndex, {
                   alignRowHorizontally: false,
                 });
-                didRevealChildGeneration = true;
               }
 
               async function scrollFinalizedChildGenerationHorizontally(
@@ -1867,46 +1871,96 @@ export function useCinenerdleController({
                       selectedEffectCol,
                       initialSelection.selectedCard,
                     );
-              const initialChildRow = await buildChildRowForCard(initialSelection.selectedCard, {
-                movieRecord: initialMovieRecord,
-                personRecord: initialPersonRecord,
-              });
-              const initialSelectedTree = appendChildRow(
-                initialSelectedTreeBase,
-                initialChildRow,
-              );
-              const preparedInitialTree = await prepareTreeRowsForRender(
-                initialSelectedTree,
-                itemAttrsSnapshot,
-                [
-                  ...(initialSelection.selectedCard === selectedCard ? [] : [selectedEffectRow]),
-                  ...(initialChildRow && initialChildRow.length > 0 ? [childGenerationIndex] : []),
-                ],
-              );
-              commitSelectionUpdate({
-                meta: {
+              async function prepareCachedSelection() {
+                const childRow = await buildChildRowForCard(initialSelection.selectedCard, {
+                  movieRecord: initialMovieRecord,
+                  personRecord: initialPersonRecord,
+                });
+                const preparedTree = await prepareTreeRowsForRender(
+                  appendChildRow(initialSelectedTreeBase, childRow),
                   itemAttrsSnapshot,
-                },
-                tree: preparedInitialTree,
-              });
-
-              setTmdbLogGeneration(Math.max(0, preparedInitialTree.length - 1));
-              await revealChildGenerationVertically(initialChildRow);
-
-              if (
-                initialSelection.selectedCard.kind !== "movie" &&
-                initialSelection.selectedCard.kind !== "person"
-              ) {
-                void scrollFinalizedChildGenerationHorizontally(initialChildRow).catch(() => { });
-                return initialChildRow;
+                  [
+                    ...(initialSelection.selectedCard === selectedCard ? [] : [selectedEffectRow]),
+                    ...(childRow && childRow.length > 0 ? [childGenerationIndex] : []),
+                  ],
+                );
+                return { childRow, preparedTree };
               }
 
-              const refreshResult = await refreshCardFromTmdb(initialSelection.selectedCard, {
-                skipIfAlreadyHydrated: true,
-              });
-              if (!refreshResult.didRefresh) {
-                void scrollFinalizedChildGenerationHorizontally(initialChildRow).catch(() => { });
-                return initialChildRow;
+              function commitPreparedTree(
+                preparedTree: GeneratorTree<CinenerdleCard>,
+                isPlaceholder = false,
+              ) {
+                commitSelectionUpdate({
+                  meta: { itemAttrsSnapshot },
+                  tree: preparedTree,
+                });
+                setTmdbLogGeneration(Math.max(0, preparedTree.length - 1));
+                if (!isPlaceholder) {
+                  markSelectionReady();
+                }
+              }
+
+              if (
+                (initialSelection.selectedCard.kind !== "movie" &&
+                  initialSelection.selectedCard.kind !== "person") ||
+                !shouldRefreshCardFromTmdb(initialSelection.selectedCard)
+              ) {
+                const cachedSelection = await prepareCachedSelection();
+                commitPreparedTree(cachedSelection.preparedTree);
+                await revealChildGenerationVertically(cachedSelection.childRow);
+                if (
+                  initialSelection.selectedCard.kind === "movie" ||
+                  initialSelection.selectedCard.kind === "person"
+                ) {
+                  scheduleConnectionPrefetch(initialSelection.selectedCard);
+                }
+                void scrollFinalizedChildGenerationHorizontally(cachedSelection.childRow).catch(() => { });
+                return cachedSelection.childRow;
+              }
+
+              const placeholderTree = await prepareTreeRowsForRender(
+                [...initialSelectedTreeBase, []],
+                itemAttrsSnapshot,
+                initialSelection.selectedCard === selectedCard ? [] : [selectedEffectRow],
+              );
+              commitPreparedTree(placeholderTree, true);
+              void revealChildGenerationVertically([]).catch(() => { });
+
+              const cachedSelectionPromise = prepareCachedSelection();
+              void cachedSelectionPromise.catch(() => { });
+              let refreshState: "pending" | "succeeded" | "failed" = "pending";
+              let didRevealCachedSelection = false;
+
+              async function revealCachedSelection(onlyWhilePending = false) {
+                const cachedSelection = await cachedSelectionPromise;
+                if (
+                  refreshState !== "succeeded" &&
+                  (!onlyWhilePending || refreshState === "pending") &&
+                  !didRevealCachedSelection
+                ) {
+                  didRevealCachedSelection = true;
+                  commitPreparedTree(cachedSelection.preparedTree);
+                }
+                return cachedSelection.childRow;
+              }
+
+              const fallbackTimer = setTimeout(() => {
+                void revealCachedSelection(true).catch(() => { });
+              }, CACHED_CHILD_ROW_FALLBACK_DELAY_MS);
+              let refreshResult: Awaited<ReturnType<typeof refreshCardFromTmdb>>;
+              try {
+                refreshResult = await refreshCardFromTmdb(initialSelection.selectedCard, {
+                  skipIfAlreadyHydrated: true,
+                });
+                refreshState = "succeeded";
+                clearTimeout(fallbackTimer);
+              } catch {
+                refreshState = "failed";
+                clearTimeout(fallbackTimer);
+                const cachedChildRow = await revealCachedSelection();
+                void scrollFinalizedChildGenerationHorizontally(cachedChildRow).catch(() => { });
+                return cachedChildRow;
               }
 
               const refreshedSelectedTreeBase = replaceTreeNodeCard(
@@ -1937,14 +1991,7 @@ export function useCinenerdleController({
                   ...(refreshedChildRow && refreshedChildRow.length > 0 ? [childGenerationIndex] : []),
                 ],
               );
-              commitSelectionUpdate({
-                meta: {
-                  itemAttrsSnapshot,
-                },
-                tree: preparedRefreshedTree,
-              });
-
-              setTmdbLogGeneration(Math.max(0, preparedRefreshedTree.length - 1));
+              commitPreparedTree(preparedRefreshedTree);
               void scrollFinalizedChildGenerationHorizontally(refreshedChildRow).catch(() => { });
 
               return refreshedChildRow;
@@ -1968,7 +2015,13 @@ export function useCinenerdleController({
                 },
                 tree: selectedPathTree,
               });
-            });
+            })
+            .finally(markSelectionReady);
+          writeHash(nextHash, "selection");
+          // Background entity rebuilds may resume once the child row is revealed,
+          // including the timed fallback while a slow refresh continues.
+          await selectionReady;
+          return;
         } else {
           applyUpdate({
             meta: {

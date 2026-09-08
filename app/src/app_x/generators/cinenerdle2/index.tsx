@@ -364,6 +364,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
     }
 
     return {
+      deferWhileSelectionEffectPending: "reason" in activeTreeRefreshRequest,
       requestKey: activeTreeRefreshRequest.requestKey,
       run: async (state) => {
         try {
