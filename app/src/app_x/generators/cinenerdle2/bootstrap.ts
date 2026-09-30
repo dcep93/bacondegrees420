@@ -1,3 +1,4 @@
+import { addCinenerdleDebugLog } from "./debug_log";
 import {
   deleteCinenerdleIndexedDbDatabase,
   getSearchableConnectionEntityPersistenceStatus,
@@ -121,6 +122,9 @@ export function startCinenerdleIndexedDbBootstrap(): Promise<boolean> {
     return cinenerdleIndexedDbBootstrapPromise;
   }
 
+  const startedAt = performance.now();
+  let source = "cache-check";
+  let cacheCheckMs: number | null = null;
   cinenerdleIndexedDbBootstrapPromise = (async () => {
     setCinenerdleIndexedDbBootstrapStatus({
       isCoreReady: false,
@@ -129,6 +133,8 @@ export function startCinenerdleIndexedDbBootstrap(): Promise<boolean> {
     });
 
     const hasCachedRecords = await hasCinenerdleIndexedDbRecords();
+    cacheCheckMs = Math.round(performance.now() - startedAt);
+    source = hasCachedRecords ? "indexeddb" : "snapshot";
 
     if (hasCachedRecords) {
       setCinenerdleIndexedDbBootstrapStatus({
@@ -158,6 +164,7 @@ export function startCinenerdleIndexedDbBootstrap(): Promise<boolean> {
       });
       return false;
     } catch {
+      source = "empty-after-snapshot-error";
       try {
         await deleteCinenerdleIndexedDbDatabase();
       } catch {
@@ -173,6 +180,7 @@ export function startCinenerdleIndexedDbBootstrap(): Promise<boolean> {
       return false;
     }
   })().catch(async (error) => {
+    source = "cache-error";
     cinenerdleIndexedDbBootstrapPromise = null;
     if (isRecoverableCinenerdleBootstrapError(error)) {
       try {
@@ -199,6 +207,13 @@ export function startCinenerdleIndexedDbBootstrap(): Promise<boolean> {
           : "Cached Cinenerdle data is outdated or incompatible. Clear DB and refresh.",
     });
     return false;
+  }).finally(() => {
+    addCinenerdleDebugLog("diagnostic:load-cache-ready", {
+      source,
+      cacheCheckMs,
+      elapsedMs: Math.round(performance.now() - startedAt),
+      ...getCinenerdleIndexedDbBootstrapStatus(),
+    });
   });
 
   return cinenerdleIndexedDbBootstrapPromise;

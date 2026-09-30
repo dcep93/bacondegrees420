@@ -53,12 +53,21 @@ import {
   writeCinenerdleItemAttrs,
 } from "./item_attrs";
 import { primeTmdbApiKeyOnInit, setTmdbLogGeneration } from "./tmdb";
+import { addCinenerdleDebugLog } from "./debug_log";
 import type { CinenerdleCard } from "./view_types";
 export {
   CinenerdleBreakBar,
   CinenerdleEntityCard,
   type RenderableCinenerdleEntityCard
 } from "./entity_card";
+
+// Keep the clipboard trace small; existing verbose scroll/render hooks stay silent.
+function logFocusedGeneratorEvent(event: string, details?: unknown): void {
+  if (event.startsWith("diagnostic:") ||
+      event === "generator:init-tree-committed" || event === "generator:init-tree-painted") {
+    addCinenerdleDebugLog(event, details);
+  }
+}
 
 type Cinenerdle2Props = {
   connectionPathAppendRequest?: {
@@ -615,6 +624,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
         ref={initialTreeShellRef}
       >
         <AbstractGenerator
+          debugLog={import.meta.env.DEV ? logFocusedGeneratorEvent : null}
           createInitialState={controller.createInitialState}
           generatorHandleRef={generatorHandleRef}
           getRowPresentation={getRowPresentation}

@@ -260,7 +260,7 @@ type GeneratorRowViewProps<T> = {
   generationIndex: number;
   handleBubbleClickRef: MutableRefObject<((generationIndex: number) => void) | null>;
   handleCardDeselect: (row: number, col: number) => void;
-  handleCardSelect: (row: number, col: number) => void;
+  handleCardSelect: (row: number, col: number, renderedKey?: string) => void;
   hideBubble: boolean;
   immediateSelectedOriginalCol: number | null;
   onRowRendered: (sample: GeneratorRowRenderSample) => void;
@@ -511,8 +511,11 @@ function GeneratorRowViewInner<T>({
           isDisabledNode(node) ? "generator-card-button-disabled" : "",
           cardButtonClassName,
         ].filter(Boolean).join(" ")}
+        data-generator-key={import.meta.env.DEV ? dataKey : undefined}
+        data-generator-row={import.meta.env.DEV ? generationIndex : undefined}
+        data-generator-col={import.meta.env.DEV ? originalCol : undefined}
         key={refKey}
-        onClick={() => handleCardSelect(generationIndex, originalCol)}
+        onClick={() => handleCardSelect(generationIndex, originalCol, dataKey)}
         ref={(element) => {
           setCardRef(refKey, element);
         }}
@@ -894,7 +897,42 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     clickAtEpochMs: number;
     clickAtIso: string;
     clickStartedAt: number;
+    row: number;
+    col: number;
   }>>(new Map());
+  const pointerDownRef = useRef<null | {
+    at: number;
+    dataKey: string;
+    row: number;
+    col: number;
+    visualIndex: number;
+    order: string[];
+  }>(null);
+  const startupSampleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rowReorderCountRef = useRef(0);
+  const readDiagnosticLayout = useCallback((row: number) => {
+    const tree = resolveGeneratorTree(stateRef.current);
+    return {
+      scrollY: Math.round(window.scrollY),
+      pageHeight: document.documentElement.scrollHeight,
+      rowSizes: tree.map((generation) => generation.length),
+      rowReorderCount: rowReorderCountRef.current,
+      rows: [row, row + 1].map((index) => {
+        const element = rowRefs.current[index];
+        const rect = element?.getBoundingClientRect();
+        return {
+          row: index,
+          mounted: Boolean(element),
+          empty: tree[index]?.length === 0,
+          top: rect ? Math.round(rect.top) : null,
+          height: rect ? Math.round(rect.height) : null,
+          scrollLeft: element ? Math.round(element.scrollLeft) : null,
+          selectedKeys: (tree[index] ?? []).flatMap((node, col) =>
+            node.selected ? [getDataKey(node.data, col)] : []),
+        };
+      }),
+    };
+  }, []);
   const pendingInitialTreeRenderRef = useRef<null | {
     acceptedAt: number;
     lifecycleId: number;
@@ -919,6 +957,9 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      if (startupSampleTimerRef.current !== null) {
+        clearTimeout(startupSampleTimerRef.current);
+      }
     };
   }, []);
 
@@ -1018,6 +1059,23 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
           flushSync(() => {
             applyStateUpdate();
           });
+          const click = selectionClickTelemetryRef.current.get(selectionId);
+          if (debugLog && click) {
+            const atCommit = readDiagnosticLayout(click.row);
+            const committedMs = Math.round(getGeneratorPerfNow() - click.clickStartedAt);
+            window.requestAnimationFrame(() => {
+              if (!mountedRef.current || activeLifecycleRef.current !== lifecycleId) return;
+              debugLog("diagnostic:selection-tree-committed", {
+                lifecycleId,
+                selectionId,
+                committedMs,
+                nextFrameMs: Math.round(getGeneratorPerfNow() - click.clickStartedAt),
+                superseded: activeSelectionRef.current !== selectionId,
+                atCommit,
+                nextFrame: readDiagnosticLayout(click.row),
+              });
+            });
+          }
           return;
         }
 
@@ -1025,7 +1083,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
           applyStateUpdate();
         });
       },
-    [debugLog],
+    [debugLog, readDiagnosticLayout],
   );
 
   useEffect(() => {
@@ -1540,6 +1598,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
 
   const handleRowRendered = useCallback((sample: GeneratorRowRenderSample) => {
     rowRenderSamplesRef.current.push(sample);
+    if (sample.rowOrderChanged) rowReorderCountRef.current += 1;
   }, []);
   const reportRenderedRowOrder = useCallback((
     generationIndex: number,
@@ -1735,6 +1794,23 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
         totalCardCount: committedInitialTreeRender.totalCardCount,
       });
       onInitialTreePainted?.(resolvedTree);
+      if (debugLog) {
+        const lifecycleId = activeLifecycleRef.current;
+        const selectionId = activeSelectionRef.current;
+        const row = Math.max(0, resolvedTree.length - 2);
+        const firstFrame = readDiagnosticLayout(row);
+        if (startupSampleTimerRef.current !== null) clearTimeout(startupSampleTimerRef.current);
+        startupSampleTimerRef.current = setTimeout(() => {
+          if (!mountedRef.current || activeLifecycleRef.current !== lifecycleId) return;
+          debugLog("diagnostic:load-layout-sample", {
+            lifecycleId,
+            sinceFirstFrameMs: Math.round(getGeneratorPerfNow() - paintedAt),
+            selectionChanged: activeSelectionRef.current !== selectionId,
+            firstFrame,
+            later: readDiagnosticLayout(row),
+          });
+        }, 500);
+      }
       committedInitialTreeRenderRef.current = null;
       pendingInitialTreeRenderRef.current = null;
     });
@@ -1742,9 +1818,11 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [debugLog, onInitialTreePainted, resolvedTree]);
+  }, [debugLog, onInitialTreePainted, readDiagnosticLayout, resolvedTree]);
 
-  const handleCardSelect = useCallback((row: number, col: number) => {
+  const handleCardSelect = useCallback((row: number, col: number, renderedKey?: string) => {
+    const pointerDown = renderedKey ? pointerDownRef.current : null;
+    pointerDownRef.current = null;
     const currentTree = stateRef.current.tree ?? [];
     const selectedRow = currentTree?.[row];
     const selectedNode = selectedRow?.[col] ?? null;
@@ -1767,7 +1845,33 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       clickAtEpochMs: clickDate.getTime(),
       clickAtIso: clickDate.toISOString(),
       clickStartedAt,
+      row,
+      col,
     });
+    if (debugLog) {
+      const order = renderedRowOrderRef.current[row]?.map((entry) => entry.dataKey) ?? [];
+      const visualIndex = order.indexOf(renderedKey ?? getDataKey(selectedNode.data, col));
+      debugLog("diagnostic:selection-click", {
+        lifecycleId: activeLifecycleRef.current,
+        selectionId: nextSelectionId,
+        row,
+        col,
+        renderedKey: renderedKey ?? null,
+        resolvedKey: getDataKey(selectedNode.data, col),
+        label: getGeneratorDebugItemLabel(selectedNode.data),
+        visualIndex,
+        neighbors: order.slice(Math.max(0, visualIndex - 2), visualIndex + 3),
+        pointerDown: pointerDown ? {
+          dataKey: pointerDown.dataKey,
+          row: pointerDown.row,
+          col: pointerDown.col,
+          visualIndex: pointerDown.visualIndex,
+          elapsedMs: Math.round(clickStartedAt - pointerDown.at),
+          orderChanged: !shallowReferenceArrayEqual(pointerDown.order, order),
+          neighbors: pointerDown.order.slice(Math.max(0, pointerDown.visualIndex - 2), pointerDown.visualIndex + 3),
+        } : null,
+      });
+    }
     if (selectionClickTelemetryRef.current.size > 20) {
       const oldestSelectionId = selectionClickTelemetryRef.current.keys().next().value;
       if (typeof oldestSelectionId === "number") {
@@ -1812,6 +1916,15 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
         selectionId: nextSelectionId,
       });
     });
+    if (debugLog) {
+      debugLog("diagnostic:selection-immediate", {
+        lifecycleId: activeLifecycleRef.current,
+        selectionId: nextSelectionId,
+        elapsedMs: Math.round(getGeneratorPerfNow() - clickStartedAt),
+        highlightedKey: getDataKey(selectedNode.data, col),
+        layout: readDiagnosticLayout(row),
+      });
+    }
     if (isPerfLoggingEnabled()) {
       logPerfSinceMark("abstractGenerator.selectCard.localStateApplied", selectionMarkName, {
         col,
@@ -1901,7 +2014,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
         );
       })();
     });
-  }, [reduce, runEffects, scrollCardElementIntoViewInTree, scrollToCardIndexInTree]);
+  }, [debugLog, readDiagnosticLayout, reduce, runEffects, scrollCardElementIntoViewInTree, scrollToCardIndexInTree]);
 
   const handleCardDeselect = useCallback((row: number, col: number) => {
     const currentTree = stateRef.current.tree ?? [];
@@ -1996,6 +2109,26 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       aria-busy={state.tree === null}
       aria-label="Generator"
       className="abstract-generator"
+      onPointerDownCapture={debugLog ? (event) => {
+        const card = (event.target as Element).closest<HTMLElement>("[data-generator-key]");
+        pointerDownRef.current = null;
+        if (!card) return;
+        const row = Number(card.dataset.generatorRow);
+        const order = renderedRowOrderRef.current[row]?.map((entry) => entry.dataKey) ?? [];
+        const dataKey = card.dataset.generatorKey!;
+        pointerDownRef.current = {
+          at: getGeneratorPerfNow(),
+          dataKey,
+          row,
+          col: Number(card.dataset.generatorCol),
+          visualIndex: order.indexOf(dataKey),
+          order,
+        };
+      } : undefined}
+      onPointerCancelCapture={debugLog ? () => { pointerDownRef.current = null; } : undefined}
+      onClickCapture={debugLog ? (event) => {
+        if (event.detail === 0) pointerDownRef.current = null;
+      } : undefined}
     >
       {renderedGenerations.map(({
         generationIndex,

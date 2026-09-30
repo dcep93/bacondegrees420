@@ -1,5 +1,6 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, type MouseEvent as ReactMouseEvent } from "react";
 import { didRequestNewTabNavigation } from "../../index_helpers";
+import { addCinenerdleDebugLog } from "./debug_log";
 import { measureAsync } from "../../perf";
 import { createGeneratorState, reduceGeneratorLifecycleEvent } from "../generator_runtime";
 import type {
@@ -1686,6 +1687,8 @@ export function useCinenerdleController({
           applyUpdate,
           applyUrgentUpdate,
           getState,
+          lifecycleId,
+          selectionId,
           scrollGenerationIntoVerticalView,
           scrollGenerationLikeBubble,
         },
@@ -1693,6 +1696,7 @@ export function useCinenerdleController({
         const commitSelectionUpdate = applyUrgentUpdate ?? applyUpdate;
 
         if (effect.type === "load-initial-tree") {
+          const startedAt = performance.now();
           const initialHash = readHash();
           const shouldBypassInFlightCache =
             latestRecordsRefreshVersionRef.current !== lastHandledRecordsRefreshVersionRef.current;
@@ -1714,6 +1718,13 @@ export function useCinenerdleController({
                   bypassInFlightCache: shouldBypassInFlightCache,
                   itemAttrsSnapshot,
                 });
+                addCinenerdleDebugLog("diagnostic:load-tree-prepared", {
+                  lifecycleId,
+                  elapsedMs: Math.round(performance.now() - startedAt),
+                  blockedForDailyStarters: shouldBlockForDailyStarters,
+                  rowSizes: treeSession.tree.map((row) => row.length),
+                  fallback: false,
+                });
                 updateLatestItemAttrsSnapshot(treeSession.itemAttrsSnapshot);
                 applyUpdate({
                   meta: {
@@ -1725,11 +1736,18 @@ export function useCinenerdleController({
                 if (shouldHydrateHashPathOnInit(initialHash)) {
                   void hydrateHashPath(initialHash).catch(() => { });
                 }
-              } catch {
+              } catch (error) {
                 const fallbackTree = await prepareTreeForRender(
                   await createCinenerdleRootTree(),
                   itemAttrsSnapshot,
                 );
+                addCinenerdleDebugLog("diagnostic:load-tree-prepared", {
+                  lifecycleId,
+                  elapsedMs: Math.round(performance.now() - startedAt),
+                  rowSizes: fallbackTree.map((row) => row.length),
+                  fallback: true,
+                  error: error instanceof Error ? error.message : String(error),
+                });
                 updateLatestItemAttrsSnapshot(itemAttrsSnapshot);
                 applyUpdate({
                   meta: {
@@ -1846,6 +1864,7 @@ export function useCinenerdleController({
                 await scrollGenerationLikeBubble(childGenerationIndex);
               }
 
+              const cacheStartedAt = performance.now();
               const initialSelection =
                 selectedCard.kind === "movie" || selectedCard.kind === "person"
                   ? await resolveInitialSelectedCard(selectedCard)
@@ -1854,6 +1873,18 @@ export function useCinenerdleController({
                       movieRecord: undefined,
                       personRecord: undefined,
                     };
+              addCinenerdleDebugLog("diagnostic:selection-cache-resolved", {
+                lifecycleId,
+                selectionId,
+                row: selectedEffectRow,
+                col: selectedEffectCol,
+                cardKey: selectedCard.key,
+                resolvedCardKey: initialSelection.selectedCard.key,
+                cacheReadMs: Math.round(performance.now() - cacheStartedAt),
+                needsRefresh: (initialSelection.selectedCard.kind === "movie" ||
+                  initialSelection.selectedCard.kind === "person") &&
+                  shouldRefreshCardFromTmdb(initialSelection.selectedCard),
+              });
               const initialMovieRecord =
                 initialSelection.selectedCard.kind === "movie"
                   ? initialSelection.movieRecord ?? null
