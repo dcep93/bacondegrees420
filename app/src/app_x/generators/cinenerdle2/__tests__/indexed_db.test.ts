@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getAssociatedPeopleFromMovieCredits, getAssociatedMoviesFromPersonCredits } from "../utils";
 import { isExcludedFilmRecord } from "../exclusion";
 import type {
   IndexedDbSnapshot,
   IndexedDbSnapshotConnection,
   IndexedDbSnapshotPerson,
 } from "../indexed_db";
-import { makeFilmRecord, makeTmdbMovieSearchResult } from "./factories";
+import { makeFilmRecord, makePersonRecord, makeTmdbMovieSearchResult, makeTmdbPersonSearchResult } from "./factories";
 
 const originalIndexedDbDescriptor = Object.getOwnPropertyDescriptor(globalThis, "indexedDB");
 const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
@@ -608,5 +609,81 @@ describe("IndexedDB snapshot film genre preservation", () => {
         }),
       ]),
     );
+  });
+});
+
+
+describe("browser cache credit-order preservation", () => {
+  it("preserves cast/crew queues, missing order, all roles and parent popularity on reload", async () => {
+    const { createStoredFilmRecord, createStoredPersonRecord, inflateStoredCoreSnapshot } = await import("../indexed_db");
+    const film = makeFilmRecord({
+      id: 9016, tmdbId: 9016, title: "Queue round trip", year: "2002",
+      fetchTimestamp: "2026-10-03T12:00:00Z",
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          { id: 1, name: "Cast Head", order: 0, popularity: 80, character: "Lead" },
+          { id: 2, name: "Cast Second", order: 1, popularity: 60 },
+        ],
+        crew: [
+          { id: 3, name: "Crew Head", popularity: 50, job: "Director" },
+          { id: 4, name: "Crew High", popularity: 90, job: "Screenplay" },
+          { id: 3, name: "Crew Head", popularity: 50, job: "Story" },
+          { id: 5, name: "Other Crew", popularity: 100, job: "Editor" },
+        ],
+      },
+    });
+    const people = ["Cast Head", "Cast Second", "Crew Head", "Crew High", "Other Crew"].map((name, index) =>
+      createStoredPersonRecord(makePersonRecord({
+        id: index + 1, tmdbId: index + 1, name,
+        fetchTimestamp: "2026-10-03T12:00:00Z",
+        rawTmdbPerson: makeTmdbPersonSearchResult({ id: index + 1, name, popularity: 999 }),
+      })));
+    const stored = structuredClone({ people, films: [createStoredFilmRecord(film)] });
+    const reloaded = inflateStoredCoreSnapshot(stored).films[0];
+
+    expect(reloaded.rawTmdbMovieCreditsResponse).toEqual(film.rawTmdbMovieCreditsResponse);
+    expect(reloaded.rawTmdbMovieCreditsResponse?.crew?.[0].order).toBeUndefined();
+    expect(getAssociatedPeopleFromMovieCredits(reloaded).map((credit) => credit.id))
+      .toEqual(getAssociatedPeopleFromMovieCredits(film).map((credit) => credit.id));
+    const savedAgain = { ...stored, films: [createStoredFilmRecord(reloaded)] };
+    expect(inflateStoredCoreSnapshot(structuredClone(savedAgain)).films[0].rawTmdbMovieCreditsResponse)
+      .toEqual(film.rawTmdbMovieCreditsResponse);
+  });
+
+  it("preserves the person's movie credit queues independently of film-store order", async () => {
+    const { createStoredPersonRecord, inflateStoredCoreSnapshot } = await import("../indexed_db");
+    const person = makePersonRecord({
+      id: 102, tmdbId: 102, name: "John Musker",
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          { id: 90, title: "First cast", popularity: 80 },
+          { id: 10, title: "Second cast", popularity: 60 },
+        ],
+        crew: [
+          { id: 70, title: "First crew", popularity: 50, job: "Director" },
+          { id: 30, title: "Popular crew", popularity: 90, job: "Screenplay" },
+          { id: 70, title: "First crew", popularity: 50, job: "Screenplay" },
+        ],
+      },
+    });
+    const stored = structuredClone({ people: [createStoredPersonRecord(person)], films: [] });
+    const reloaded = inflateStoredCoreSnapshot(stored).people[0];
+    expect(reloaded.rawTmdbMovieCreditsResponse).toEqual(person.rawTmdbMovieCreditsResponse);
+    expect(getAssociatedMoviesFromPersonCredits(reloaded).map((credit) => credit.id))
+      .toEqual(getAssociatedMoviesFromPersonCredits(person).map((credit) => credit.id));
+  });
+
+  it("distinguishes absent credits from an empty response and rejects legacy cache rows", async () => {
+    const { createStoredFilmRecord, createStoredPersonRecord, inflateStoredCoreSnapshot } = await import("../indexed_db");
+    const film = createStoredFilmRecord(makeFilmRecord({ rawTmdbMovieCreditsResponse: undefined }));
+    const person = createStoredPersonRecord(makePersonRecord({ rawTmdbMovieCreditsResponse: { cast: [], crew: [] } }));
+    const reloaded = inflateStoredCoreSnapshot({ people: [person], films: [film] });
+    expect(film.sourceCredits).toBeNull();
+    expect(reloaded.films[0].rawTmdbMovieCreditsResponse).toBeUndefined();
+    expect(reloaded.people[0].rawTmdbMovieCreditsResponse).toEqual({ cast: [], crew: [] });
+    const legacy = { ...film };
+    Reflect.deleteProperty(legacy, "sourceCredits");
+    expect(() => inflateStoredCoreSnapshot({ people: [], films: [legacy] }))
+      .toThrow("IndexedDB record is missing source credits");
   });
 });

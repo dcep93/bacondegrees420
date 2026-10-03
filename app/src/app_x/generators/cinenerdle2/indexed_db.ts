@@ -68,8 +68,16 @@ export const CINENERDLE_INDEXED_DB_FETCH_COUNT_UPDATED_EVENT =
 const INDEXED_DB_SNAPSHOT_VERSION = 13 as const;
 const INDEXED_DB_FETCH_COUNT_KEY = "tmdbFetchCount";
 
-type StoredPersonRecord = IndexedDbSnapshotPerson;
-type StoredFilmRecord = IndexedDbSnapshotFilm;
+type StoredPersonRecord = IndexedDbSnapshotPerson & {
+  sourceCredits: TmdbPersonMovieCreditsResponse | null;
+};
+type StoredFilmRecord = IndexedDbSnapshotFilm & {
+  sourceCredits: TmdbMovieCreditsResponse | null;
+};
+type StoredCoreSnapshot = {
+  people: StoredPersonRecord[];
+  films: StoredFilmRecord[];
+};
 type IndexedDbMetadataRecord = {
   key: string;
   value: unknown;
@@ -257,20 +265,26 @@ function getFilmQueryCacheKey(title: string, year = ""): string {
     : `title:${normalizedTitle}`;
 }
 
-function createStoredPersonRecord(
+export function createStoredPersonRecord(
   personRecord: PersonRecord,
 ): StoredPersonRecord {
-  return createPersonSnapshotFromPersonRecord(personRecord);
+  return {
+    ...createPersonSnapshotFromPersonRecord(personRecord),
+    sourceCredits: personRecord.rawTmdbMovieCreditsResponse ?? null,
+  };
 }
 
 export function createStoredFilmRecord(
   filmRecord: FilmRecord,
 ): StoredFilmRecord {
-  return createSnapshotFilmRecord(
-    filmRecord,
-    getAssociatedPeopleFromMovieCredits(filmRecord),
-    new Map<number, IndexedDbSnapshotPerson>(),
-  );
+  return {
+    ...createSnapshotFilmRecord(
+      filmRecord,
+      getAssociatedPeopleFromMovieCredits(filmRecord),
+      new Map<number, IndexedDbSnapshotPerson>(),
+    ),
+    sourceCredits: filmRecord.rawTmdbMovieCreditsResponse ?? null,
+  };
 }
 
 function clearInMemoryIndexedDbCaches(): void {
@@ -1209,7 +1223,7 @@ export async function incrementCinenerdleIndexedDbFetchCount(): Promise<number> 
   return nextCount;
 }
 
-async function loadPersistedCoreSnapshot(): Promise<IndexedDbSnapshot> {
+async function loadPersistedCoreSnapshot(): Promise<StoredCoreSnapshot> {
   return measureAsync(
     "idb.loadPersistedCoreSnapshot",
     () =>
@@ -1256,7 +1270,7 @@ async function ensureCoreRecordCachesReady(): Promise<void> {
         const snapshot = await loadPersistedCoreSnapshot();
         const inflatedSnapshot = measureSync(
           "idb.inflateIndexedDbSnapshotCore",
-          () => inflateIndexedDbSnapshotCore(snapshot),
+          () => inflateStoredCoreSnapshot(snapshot),
           {
             always: true,
             details: {
@@ -2839,6 +2853,31 @@ function inflateIndexedDbSnapshotCore(
   };
 }
 
+// Browser storage is lossless for ranking inputs. Compact seed/export snapshots
+// are a separate format and are converted explicitly at import, never at read time.
+export function inflateStoredCoreSnapshot(snapshot: StoredCoreSnapshot): LiveIndexedDbCoreSnapshot {
+  for (const record of [...snapshot.people, ...snapshot.films]) {
+    if (record.sourceCredits === undefined) {
+      throw new Error("IndexedDB record is missing source credits");
+    }
+  }
+  const inflated = inflateIndexedDbSnapshotCore({
+    format: "cinenerdle-indexed-db-snapshot",
+    version: INDEXED_DB_SNAPSHOT_VERSION,
+    ...snapshot,
+  });
+  return {
+    people: inflated.people.map((person, index) => ({
+      ...person,
+      rawTmdbMovieCreditsResponse: snapshot.people[index].sourceCredits ?? undefined,
+    })),
+    films: inflated.films.map((film, index) => ({
+      ...film,
+      rawTmdbMovieCreditsResponse: snapshot.films[index].sourceCredits ?? undefined,
+    })),
+  };
+}
+
 function countSnapshotHydratedFetchRows(snapshot: IndexedDbSnapshot): number {
   return (
     snapshot.people.filter((personSnapshot) => personSnapshot.fromTmdb !== null).length +
@@ -2909,8 +2948,16 @@ export async function getIndexedDbSnapshot(): Promise<IndexedDbSnapshot> {
       return {
         format: "cinenerdle-indexed-db-snapshot",
         version: INDEXED_DB_SNAPSHOT_VERSION,
-        people: storedPeople ?? [],
-        films: storedFilms ?? [],
+        people: (storedPeople ?? []).map((record) => {
+          const { sourceCredits, ...person } = record;
+          void sourceCredits;
+          return person;
+        }),
+        films: (storedFilms ?? []).map((record) => {
+          const { sourceCredits, ...film } = record;
+          void sourceCredits;
+          return film;
+        }),
       };
     },
   );
@@ -2968,8 +3015,14 @@ export async function importIndexedDbSnapshot(
 
       const normalizeStartedAt = getIndexedDbPerfNow();
       const inflatedCoreSnapshot = inflateIndexedDbSnapshotCore(snapshot);
-      const storedPeople = snapshot.people;
-      const storedFilms = snapshot.films;
+      const storedPeople: StoredPersonRecord[] = snapshot.people.map((person, index) => ({
+        ...person,
+        sourceCredits: inflatedCoreSnapshot.people[index].rawTmdbMovieCreditsResponse ?? null,
+      }));
+      const storedFilms: StoredFilmRecord[] = snapshot.films.map((film, index) => ({
+        ...film,
+        sourceCredits: inflatedCoreSnapshot.films[index].rawTmdbMovieCreditsResponse ?? null,
+      }));
       const hydratedFetchRowCount = countSnapshotHydratedFetchRows(snapshot);
       options?.onProgress?.("normalize-records", {
         elapsedMs: roundIndexedDbElapsedMs(getIndexedDbPerfNow() - normalizeStartedAt),
@@ -3228,9 +3281,7 @@ export async function saveFilmRecords(filmRecords: FilmRecord[]): Promise<void> 
                 personRecordByNameCache.get(normalizeName(personRecord.name));
               const storedPersonRecord = existingStoredPeople[index];
               const persistedExistingPersonRecord = storedPersonRecord
-                ? inflateIndexedDbSnapshot({
-                    format: "cinenerdle-indexed-db-snapshot",
-                    version: INDEXED_DB_SNAPSHOT_VERSION,
+                ? inflateStoredCoreSnapshot({
                     people: [storedPersonRecord],
                     films: [],
                   }).people[0] ?? null

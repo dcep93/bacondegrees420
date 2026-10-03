@@ -149,23 +149,27 @@ function mergePartialFilmCredit(
   const existingCast = existingCreditsResponse?.cast ?? [];
   const existingCrew = existingCreditsResponse?.crew ?? [];
 
-  if (creditType === "cast") {
-    return {
-      cast: [
-        ...existingCast.filter((credit) => getPartialFilmCreditKey(credit) !== nextCreditKey),
-        nextCredit,
-      ],
-      crew: existingCrew,
+  const queue = creditType === "cast" ? existingCast : existingCrew;
+  const existingIndex = queue.findIndex((credit) =>
+    getPartialFilmCreditKey({ ...credit, creditType }) === nextCreditKey);
+  const nextQueue = [...queue];
+  if (existingIndex === -1) {
+    nextQueue.push(nextCredit);
+  } else {
+    const existingCredit = queue[existingIndex];
+    // A person fetch enriches the relationship; only a parent fetch replaces
+    // the parent's ranking inputs (including an intentionally missing order).
+    nextQueue[existingIndex] = {
+      ...existingCredit,
+      ...nextCredit,
+      order: existingCredit.order,
+      popularity: existingCredit.popularity,
     };
   }
 
-  return {
-    cast: existingCast,
-    crew: [
-      ...existingCrew.filter((credit) => getPartialFilmCreditKey(credit) !== nextCreditKey),
-      nextCredit,
-    ],
-  };
+  return creditType === "cast"
+    ? { cast: nextQueue, crew: existingCrew }
+    : { cast: existingCast, crew: nextQueue };
 }
 
 function createPartialFilmCreditFromMovieCredit(
@@ -188,7 +192,7 @@ function createPartialFilmCreditFromMovieCredit(
     name: connectedPerson.name,
     profile_path: connectedPerson.rawTmdbPerson?.profile_path ?? null,
     popularity: connectedPerson.rawTmdbPerson?.popularity ?? 0,
-    order: typeof movieCredit.order === "number" ? movieCredit.order : 0,
+    order: movieCredit.order,
     fetchTimestamp: connectedPerson.fetchTimestamp,
     creditType,
     character: creditType === "cast" ? movieCredit.character : undefined,
@@ -1310,17 +1314,18 @@ export async function saveFilmRecordsFromCredits(
     movieCredits.map((credit) => credit.id),
   );
 
-  const nextRecords = movieCredits.flatMap((credit) => {
-    const existingRecord = (credit.id ? existingRecords.get(credit.id) : null) ?? null;
+  const nextRecords = new Map<number, FilmRecord>();
+  for (const credit of movieCredits) {
+    const filmId = credit.id!;
+    const existingRecord = nextRecords.get(filmId) ?? existingRecords.get(filmId) ?? null;
     const filmRecord = createConnectionDerivedFilmRecord(
       existingRecord,
       credit,
       connectedPerson,
     );
-
-    return filmRecord ? [filmRecord] : [];
-  });
-  await saveFilmRecords(nextRecords);
+    if (filmRecord) nextRecords.set(filmId, filmRecord);
+  }
+  await saveFilmRecords([...nextRecords.values()]);
 }
 
 export async function fetchAndCacheMovie(

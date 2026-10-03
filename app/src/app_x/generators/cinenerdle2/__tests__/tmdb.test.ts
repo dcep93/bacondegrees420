@@ -60,7 +60,10 @@ import {
   prepareSelectedMovie,
   prepareSelectedPerson,
   resolveConnectionQuery,
+  saveFilmRecordsFromCredits,
 } from "../tmdb";
+import { getAssociatedPeopleFromMovieCredits } from "../utils";
+import type { FilmRecord } from "../types";
 import { createPathNode, serializePathNodes } from "../hash";
 
 function createJsonResponse(payload: unknown) {
@@ -155,6 +158,83 @@ describe("tmdb forced refresh helpers", () => {
     consoleLogSpy.mockClear();
     vi.unstubAllGlobals();
     vi.stubGlobal("fetch", vi.fn(async () => createJsonResponse({})));
+  });
+
+  it("keeps the parent ranking inputs when Musker is explicitly refreshed", async () => {
+    const film = makeFilmRecord({
+      id: 9016, tmdbId: 9016, title: "Treasure Planet", year: "2002",
+      rawTmdbMovieCreditsResponse: {
+        cast: [
+          { id: 1, name: "Joseph Gordon-Levitt", order: 0, popularity: 5.78 },
+          { id: 2, name: "Brian Murray", order: 1, popularity: 1.19 },
+          { id: 3, name: "Emma Thompson", order: 2, popularity: 5.10 },
+          { id: 4, name: "David Hyde Pierce", order: 3, popularity: 2.54 },
+          { id: 5, name: "Martin Short", order: 4, popularity: 2.94 },
+          { id: 6, name: "Laurie Metcalf", order: 5, popularity: 3.53 },
+          { id: 7, name: "Dee Bradley Baker", order: 6, popularity: 4.52 },
+        ],
+        crew: [
+          { id: 101, name: "Ron Clements", popularity: 1.94, job: "Director", creditType: "crew" },
+          { id: 102, name: "John Musker", popularity: 1.34, job: "Screenplay", creditType: "crew" },
+        ],
+      },
+    });
+    indexedDbMock.getFilmRecordsByIds.mockResolvedValue(new Map([[9016, film]]));
+    const person = makePersonRecord({
+      id: 102, tmdbId: 102, name: "John Musker",
+      rawTmdbPerson: makeTmdbPersonSearchResult({ id: 102, name: "John Musker", popularity: 99 }),
+      rawTmdbMovieCreditsResponse: {
+        crew: [{ id: 9016, title: "Treasure Planet", release_date: "2002-11-26", job: "Screenplay" }],
+      },
+    });
+
+    await saveFilmRecordsFromCredits(person);
+
+    const [updated] = indexedDbMock.saveFilmRecords.mock.calls[0]![0] as FilmRecord[];
+    expect(updated.rawTmdbMovieCreditsResponse?.crew?.map((credit) => credit.id)).toEqual([101, 102]);
+    expect(updated.rawTmdbMovieCreditsResponse?.crew?.[1]).toMatchObject({ popularity: 1.34 });
+    expect(updated.rawTmdbMovieCreditsResponse?.crew?.[1].order).toBeUndefined();
+    expect(getAssociatedPeopleFromMovieCredits(updated).map((credit) => credit.name))
+      .toEqual(getAssociatedPeopleFromMovieCredits(film).map((credit) => credit.name));
+    expect(getAssociatedPeopleFromMovieCredits(updated).slice(0, 6).map((credit) => credit.name))
+      .toEqual(["Joseph Gordon-Levitt", "Emma Thompson", "Ron Clements", "Dee Bradley Baker", "John Musker", "Laurie Metcalf"]);
+  });
+
+  it("updates all roles for one film in place and appends new credits without inventing an order", async () => {
+    const film = makeFilmRecord({
+      id: 9016, tmdbId: 9016, title: "Treasure Planet", year: "2002",
+      rawTmdbMovieCreditsResponse: {
+        cast: [{ id: 102, name: "John Musker", character: "Cameo", order: 9, popularity: 1.34 }],
+        crew: [
+          { id: 102, name: "John Musker", job: "Screenplay", popularity: 1.34, profile_path: "/old.jpg" },
+          { id: 101, name: "Ron Clements", job: "Director", popularity: 1.94 },
+        ],
+      },
+    });
+    indexedDbMock.getFilmRecordsByIds.mockResolvedValue(new Map([[9016, film]]));
+    const person = makePersonRecord({
+      id: 102, tmdbId: 102, name: "John Musker",
+      rawTmdbPerson: makeTmdbPersonSearchResult({ id: 102, name: "John Musker", profile_path: "/new.jpg" }),
+      rawTmdbMovieCreditsResponse: {
+        cast: [{ id: 9016, title: "Treasure Planet", character: "Cameo", order: 0 }],
+        crew: [
+          { id: 9016, title: "Treasure Planet", job: "Screenplay", order: 0 },
+          { id: 9016, title: "Treasure Planet", job: "Director" },
+        ],
+      },
+    });
+
+    await saveFilmRecordsFromCredits(person);
+
+    const updatedFilms = indexedDbMock.saveFilmRecords.mock.calls[0]![0] as FilmRecord[];
+    expect(updatedFilms).toHaveLength(1);
+    const credits = updatedFilms[0].rawTmdbMovieCreditsResponse!;
+    expect(credits.cast?.[0]).toMatchObject({ order: 9, profile_path: "/new.jpg" });
+    expect(credits.crew?.map((credit) => [credit.id, credit.job]))
+      .toEqual([[102, "Screenplay"], [101, "Director"], [102, "Director"]]);
+    expect(credits.crew?.[0]).toMatchObject({ profile_path: "/new.jpg", popularity: 1.34 });
+    expect(credits.crew?.[0].order).toBeUndefined();
+    expect(credits.crew?.[2].order).toBeUndefined();
   });
 
   it("treats hydrated as direct tmdb source even before credits arrive", () => {

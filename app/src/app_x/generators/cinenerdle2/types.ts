@@ -58,7 +58,7 @@ export type TmdbPersonCredit = {
   name?: string;
   profile_path?: string | null;
   popularity?: number;
-  order: number;
+  order?: number;
   fetchTimestamp?: string;
   known_for_department?: string;
   creditType?: "cast" | "crew";
