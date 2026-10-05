@@ -1278,18 +1278,22 @@
 .bacon-connection-row-puzzle {
   border-radius: 18px;
   padding: 10px;
+  background:
+    linear-gradient(90deg, rgb(var(--puzzle-row-color) / 0.42), rgb(var(--puzzle-row-color) / 0.16)),
+    rgb(var(--puzzle-row-color) / 0.08);
+  box-shadow: inset 0 0 0 0.0625rem rgb(var(--puzzle-row-color) / 0.45);
 }
 
 .bacon-connection-row-puzzle-green {
-  background:
-    linear-gradient(90deg, rgba(34, 197, 94, 0.2), rgba(20, 83, 45, 0.1)),
-    rgba(8, 47, 73, 0.32);
+  --puzzle-row-color: 34 197 94;
 }
 
 .bacon-connection-row-puzzle-red {
-  background:
-    linear-gradient(90deg, rgba(239, 68, 68, 0.25), rgba(124, 45, 18, 0.08)),
-    rgba(68, 64, 60, 0.24);
+  --puzzle-row-color: 255 105 180;
+}
+
+.bacon-connection-row-puzzle-gold {
+  --puzzle-row-color: 255 208 48;
 }
 
 .bacon-bookmark-card-row-spacer {
@@ -1474,8 +1478,4 @@
   .bacon-title {
     font-size: 32px;
   }
-}
-
-.bacon-connection-row-puzzle-gold {
-  background: linear-gradient(90deg, rgba(250, 204, 21, 0.4), rgba(161, 98, 7, 0.2));
 }
