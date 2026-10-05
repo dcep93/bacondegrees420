@@ -23,6 +23,8 @@ type BookmarksHistoryState = {
   bookmarkReturnPathname?: string;
 };
 
+export const PUZZLE_ROOT_HASH = "#film|Fast+Break+(1979)";
+
 const ROOT_ROUTE_X_PATHNAME = "/x";
 const BOOKMARKS_PATH_SUFFIX = "/bookmarks";
 const COVER_PATH_SUFFIX = "/cover";
@@ -118,16 +120,19 @@ export function readAppLocationState(): AppLocationState {
     viewMode,
     pathname,
     basePathname,
-    hash: normalizeHashValue(window.location.hash),
+    hash: viewMode === "generator" && isPuzzleSearchParam()
+      ? PUZZLE_ROOT_HASH
+      : normalizeHashValue(window.location.hash),
   };
 }
 
-function getLocationSearch(options?: { omitSlideshow?: boolean }): string {
-  if (!options?.omitSlideshow) {
+function getLocationSearch(options?: { omitPuzzle?: boolean }): string {
+  if (!options?.omitPuzzle) {
     return window.location.search;
   }
 
   const searchParams = new URLSearchParams(window.location.search);
+  searchParams.delete("puzzle");
   searchParams.delete("slideshow");
   const nextSearch = searchParams.toString();
   return nextSearch ? `?${nextSearch}` : "";
@@ -136,13 +141,13 @@ function getLocationSearch(options?: { omitSlideshow?: boolean }): string {
 export function buildLocationHref(
   pathname: string,
   hashValue: string,
-  options?: { omitSlideshow?: boolean },
+  options?: { omitPuzzle?: boolean },
 ) {
   return `${normalizePathname(pathname)}${getLocationSearch(options)}${normalizeHashValue(hashValue)}`;
 }
 
-export function isSlideshowSearchParam(search: string = window.location.search): boolean {
-  return new URLSearchParams(search).has("slideshow");
+export function isPuzzleSearchParam(search: string = window.location.search): boolean {
+  return new URLSearchParams(search).has("puzzle");
 }
 
 export function getBookmarksReturnHashValue(
@@ -212,7 +217,7 @@ export function useAppLocationState() {
   );
 
   const openHashInNewTab = useCallback(
-    (nextHash: string, options?: { omitSlideshow?: boolean }) => {
+    (nextHash: string, options?: { omitPuzzle?: boolean }) => {
       const normalizedHash = normalizeHashValue(nextHash);
       if (!normalizedHash) {
         return;
@@ -324,7 +329,7 @@ export function useAppLocationState() {
     window.history.replaceState(
       null,
       "",
-      buildLocationHref(appLocation.basePathname, ""),
+      buildLocationHref(appLocation.basePathname, "", { omitPuzzle: true }),
     );
     syncLocationFromWindow({
       incrementNavigationVersion: true,
@@ -333,6 +338,16 @@ export function useAppLocationState() {
   }, [appLocation.basePathname, syncLocationFromWindow]);
 
   useEffect(() => {
+    function normalizePuzzleLocation() {
+      const nextLocation = readAppLocationState();
+      if (nextLocation.viewMode === "generator" && isPuzzleSearchParam() &&
+          normalizeHashValue(window.location.hash) !== PUZZLE_ROOT_HASH) {
+        window.history.replaceState(null, "", buildLocationHref(nextLocation.pathname, PUZZLE_ROOT_HASH));
+      }
+      return nextLocation;
+    }
+    normalizePuzzleLocation();
+
     function syncHashState(nextHash: string) {
       const normalizedNextHash = normalizeHashValue(nextHash);
       const pendingHashWrite = pendingHashWriteRef.current;
@@ -360,12 +375,13 @@ export function useAppLocationState() {
     }
 
     function handleHashChange() {
-      setAppLocation(readAppLocationState());
-      syncHashState(window.location.hash);
+      const nextLocation = normalizePuzzleLocation();
+      setAppLocation(nextLocation);
+      syncHashState(nextLocation.hash);
     }
 
     function handlePopState() {
-      const nextLocation = readAppLocationState();
+      const nextLocation = normalizePuzzleLocation();
       setAppLocation(nextLocation);
       syncHashState(nextLocation.hash);
     }

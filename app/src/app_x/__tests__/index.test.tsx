@@ -1009,7 +1009,6 @@ describe("ConnectionResults", () => {
             path: [left, middle, right],
           }],
         }}
-        isSlideshowMode
         navigateToConnectionEntity={vi.fn()}
         openConnectionEntityInNewTab={vi.fn()}
         spawnAlternativeConnectionRow={vi.fn()}
@@ -1019,12 +1018,12 @@ describe("ConnectionResults", () => {
     expect(html.match(/bacon-connection-node-clickable/g)).toHaveLength(1);
   });
 
-  it("marks slideshow rows as type a when Laurence Fishburne is the last node before Fast Break", () => {
+  it("marks puzzle rows green when Laurence Fishburne is the last node before Fast Break", () => {
     const source = makeConnectionEntity({
-      key: "movie:matrix:1999",
-      name: "The Matrix",
-      year: "1999",
-      label: "The Matrix (1999)",
+      key: "movie:boyz n the hood:1991",
+      name: "Boyz n the Hood",
+      year: "1991",
+      label: "Boyz n the Hood (1991)",
     });
     const laurenceFishburne = makeConnectionEntity({
       key: "person:2975",
@@ -1059,18 +1058,18 @@ describe("ConnectionResults", () => {
             path: [source, laurenceFishburne, fastBreak],
           }],
         }}
-        isSlideshowMode
+        isPuzzleMode
         navigateToConnectionEntity={vi.fn()}
         openConnectionEntityInNewTab={vi.fn()}
         spawnAlternativeConnectionRow={vi.fn()}
       />,
     );
 
-    expect(html).toContain("bacon-connection-row-slideshow-type-a");
-    expect(html).not.toContain("bacon-connection-row-slideshow-type-b");
+    expect(html).toContain("bacon-connection-row-puzzle-green");
+    expect(html).not.toContain("bacon-connection-row-puzzle-red");
   });
 
-  it("marks slideshow rows as type b when the last node before Fast Break is not Laurence Fishburne", () => {
+  it("marks puzzle rows red when the last node before Fast Break is not Laurence Fishburne", () => {
     const source = makeConnectionEntity({
       key: "movie:heat:1995",
       name: "Heat",
@@ -1110,18 +1109,18 @@ describe("ConnectionResults", () => {
             path: [source, alPacino, fastBreak],
           }],
         }}
-        isSlideshowMode
+        isPuzzleMode
         navigateToConnectionEntity={vi.fn()}
         openConnectionEntityInNewTab={vi.fn()}
         spawnAlternativeConnectionRow={vi.fn()}
       />,
     );
 
-    expect(html).toContain("bacon-connection-row-slideshow-type-b");
-    expect(html).not.toContain("bacon-connection-row-slideshow-type-a");
+    expect(html).toContain("bacon-connection-row-puzzle-red");
+    expect(html).not.toContain("bacon-connection-row-puzzle-green");
   });
 
-  it("renders multiple connection sessions for slideshow history", () => {
+  it("renders multiple connection sessions for puzzle history", () => {
     const fastBreak = makeConnectionEntity({
       key: "movie:fast break:1979",
       name: "Fast Break",
@@ -1178,7 +1177,7 @@ describe("ConnectionResults", () => {
             }],
           },
         ]}
-        isSlideshowMode
+        isPuzzleMode
         navigateToConnectionEntity={vi.fn()}
         openConnectionEntityInNewTab={vi.fn()}
         spawnAlternativeConnectionRow={vi.fn()}
@@ -1187,7 +1186,8 @@ describe("ConnectionResults", () => {
 
     expect(html).toContain("Heat");
     expect(html).toContain("The Matrix");
-    expect(html.match(/bacon-connection-row-slideshow-type-b/g)).toHaveLength(2);
+    expect(html.match(/bacon-connection-row-puzzle-red/g)).toHaveLength(1);
+    expect(html.match(/bacon-connection-row-puzzle-gold/g)).toHaveLength(1);
   });
 });
 

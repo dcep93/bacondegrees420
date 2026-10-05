@@ -8,6 +8,7 @@ export default function ConnectionBar({
   connectionQuery,
   connectionSuggestions,
   highestGenerationSelectedLabel,
+  isPuzzleMode = false,
   isConnectionInputDisabled,
   isSearchablePersistencePending,
   onConnectionQueryChange,
@@ -22,6 +23,7 @@ export default function ConnectionBar({
   connectionQuery: string;
   connectionSuggestions: ConnectionSuggestion[];
   highestGenerationSelectedLabel: string;
+  isPuzzleMode?: boolean;
   isConnectionInputDisabled: boolean;
   isSearchablePersistencePending: boolean;
   onConnectionQueryChange: (value: string) => void;
@@ -73,7 +75,7 @@ export default function ConnectionBar({
               <button
                 className={joinClassNames(
                   "bacon-connection-option",
-                  suggestion.isConnectedToYoungestSelection && "bacon-connection-option-connected",
+                  !isPuzzleMode && suggestion.isConnectedToYoungestSelection && "bacon-connection-option-connected",
                   index === selectedSuggestionIndex && "bacon-connection-option-selected",
                 )}
                 key={suggestion.key}
@@ -86,7 +88,7 @@ export default function ConnectionBar({
                 type="button"
               >
                 <span className="bacon-connection-option-label">{suggestion.label}</span>
-                {typeof suggestion.connectionOrderToYoungestSelection === "number" ? (
+                {!isPuzzleMode && typeof suggestion.connectionOrderToYoungestSelection === "number" ? (
                   <span className="bacon-connection-option-badge">
                     {`#${suggestion.connectionOrderToYoungestSelection}`}
                   </span>
@@ -96,13 +98,13 @@ export default function ConnectionBar({
           </div>
         ) : null}
       </div>
-      <Tooltip content={selectedPathTooltipEntries} placement="top-center">
+      {isPuzzleMode ? <span className="bacon-connection-pill">{highestGenerationSelectedLabel}</span> : <Tooltip content={selectedPathTooltipEntries} placement="top-center">
         <span className="bacon-connection-pill-wrap">
           <span className="bacon-connection-pill" tabIndex={0}>
             {highestGenerationSelectedLabel}
           </span>
         </span>
-      </Tooltip>
+      </Tooltip>}
     </form>
   );
 }

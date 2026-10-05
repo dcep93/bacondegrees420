@@ -9,19 +9,17 @@ export default function ConnectionResults({
   appendConnectionPathToTree,
   connectionSession,
   connectionSessions,
-  isSlideshowMode = false,
+  isPuzzleMode = false,
   navigateToConnectionEntity,
-  onExitSlideshowMode,
   openConnectionEntityInNewTab,
   spawnAlternativeConnectionRow,
 }: {
   appendConnectionPathToTree: (path: ConnectionEntity[], targetEntity: ConnectionEntity) => void;
   connectionSession: ConnectionSession | null;
   connectionSessions?: ConnectionSession[];
-  isSlideshowMode?: boolean;
+  isPuzzleMode?: boolean;
   navigateToConnectionEntity: (entity: ConnectionEntity) => void;
-  onExitSlideshowMode?: () => void;
-  openConnectionEntityInNewTab: (entity: ConnectionEntity, options?: { omitSlideshow?: boolean }) => void;
+  openConnectionEntityInNewTab: (entity: ConnectionEntity, options?: { omitPuzzle?: boolean }) => void;
   spawnAlternativeConnectionRow: (parentRowId: string, exclusion: ConnectionExclusion) => void;
 }) {
   const resultsRef = useRef<HTMLDivElement | null>(null);
@@ -57,18 +55,16 @@ export default function ConnectionResults({
   }
 
   function handleConnectionEntityNavigation(entity: ConnectionEntity) {
-    onExitSlideshowMode?.();
     navigateToConnectionEntity(entity);
   }
 
   function handleConnectionEntityNewTabNavigation(entity: ConnectionEntity) {
     openConnectionEntityInNewTab(entity, {
-      omitSlideshow: isSlideshowMode,
+      omitPuzzle: isPuzzleMode,
     });
   }
 
   function handleConnectionPathAppend(path: ConnectionEntity[], entity: ConnectionEntity) {
-    onExitSlideshowMode?.();
     appendConnectionPathToTree(path, entity);
   }
 
@@ -81,11 +77,12 @@ export default function ConnectionResults({
         return (
           <Fragment key={session.id}>
             {!hasFoundConnectionRow ? (
-              <div className={getConnectionRowClassName(isSlideshowMode, "b")}>
+              <div className={getConnectionRowClassName(isPuzzleMode, getPuzzleConnectionRowType(session.left, []))}>
                 <ConnectionEntityCard
+                  isPuzzleMode={isPuzzleMode}
                   entity={session.left}
-                  onCardClick={() => handleConnectionEntityNavigation(session.left)}
-                  onNameClick={(event) => {
+                  onCardClick={isPuzzleMode ? undefined : () => handleConnectionEntityNavigation(session.left)}
+                  onNameClick={isPuzzleMode ? undefined : (event) => {
                     if (didRequestNewTabNavigation(event)) {
                       handleConnectionEntityNewTabNavigation(session.left);
                       return;
@@ -102,9 +99,10 @@ export default function ConnectionResults({
                   </span>
                 </span>
                 <ConnectionEntityCard
+                  isPuzzleMode={isPuzzleMode}
                   entity={session.right}
-                  onCardClick={() => handleConnectionEntityNavigation(session.right)}
-                  onNameClick={(event) => {
+                  onCardClick={isPuzzleMode ? undefined : () => handleConnectionEntityNavigation(session.right)}
+                  onNameClick={isPuzzleMode ? undefined : (event) => {
                     if (didRequestNewTabNavigation(event)) {
                       handleConnectionEntityNewTabNavigation(session.right);
                       return;
@@ -119,7 +117,7 @@ export default function ConnectionResults({
             {session.rows.map((row) => {
               if (row.status === "searching") {
                 return (
-                  <div className={getConnectionRowClassName(isSlideshowMode, "b")} key={row.id}>
+                  <div className={getConnectionRowClassName(isPuzzleMode, getPuzzleConnectionRowType(session.left, []))} key={row.id}>
                     <div className="bacon-connection-status-card">
                       Searching cached connections...
                     </div>
@@ -129,7 +127,7 @@ export default function ConnectionResults({
 
               if (row.status !== "found" || row.path.length === 0) {
                 return (
-                  <div className={getConnectionRowClassName(isSlideshowMode, "b")} key={row.id}>
+                  <div className={getConnectionRowClassName(isPuzzleMode, getPuzzleConnectionRowType(session.left, []))} key={row.id}>
                     <div className="bacon-connection-status-card">
                       {row.status === "timeout"
                         ? "Timed out after 5 seconds without finding a cached path."
@@ -139,14 +137,13 @@ export default function ConnectionResults({
                 );
               }
 
-              const slideshowRowType = getSlideshowConnectionRowType(row.path);
+              const puzzleRowType = getPuzzleConnectionRowType(session.left, row.path);
 
               return (
-                <div className={getConnectionRowClassName(isSlideshowMode, slideshowRowType)} key={row.id}>
+                <div className={getConnectionRowClassName(isPuzzleMode, puzzleRowType)} key={row.id}>
                   {row.path.map((entity, index) => {
                     const nextEntity = row.path[index + 1] ?? null;
                     const edgeKey = nextEntity ? getConnectionEdgeKey(entity.key, nextEntity.key) : "";
-                    const isLeftmostNode = index === 0;
                     const isMiddleNode = index > 0 && index < row.path.length - 1;
                     const isNodeDimmed = row.childDisallowedNodeKeys.includes(entity.key);
                     const isEdgeDimmed = row.childDisallowedEdgeKeys.includes(edgeKey);
@@ -154,36 +151,29 @@ export default function ConnectionResults({
                     return (
                       <Fragment key={`${row.id}:${entity.key}:${index}`}>
                         <ConnectionEntityCard
+                          isPuzzleMode={isPuzzleMode}
                           dimmed={isNodeDimmed}
                           entity={entity}
-                          onCardClick={isMiddleNode
+                          onCardClick={!isPuzzleMode && isMiddleNode
                             ? () =>
                                 spawnAlternativeConnectionRow(row.id, {
                                   kind: "node",
                                   nodeKey: entity.key,
                                 })
                             : undefined}
-                          onNameClick={isLeftmostNode
-                            ? (event) => {
-                                if (didRequestNewTabNavigation(event)) {
-                                  handleConnectionEntityNewTabNavigation(entity);
-                                  return;
-                                }
+                          onNameClick={isPuzzleMode ? undefined : (event) => {
+                            if (didRequestNewTabNavigation(event)) {
+                              handleConnectionEntityNewTabNavigation(entity);
+                              return;
+                            }
 
-                                handleConnectionPathAppend(row.path, entity);
-                              }
-                            : (event) => {
-                                if (didRequestNewTabNavigation(event)) {
-                                  handleConnectionEntityNewTabNavigation(entity);
-                                  return;
-                                }
-
-                                handleConnectionPathAppend(row.path, entity);
-                              }}
+                            handleConnectionPathAppend(row.path, entity);
+                          }}
                           previousEntity={row.path[index - 1] ?? null}
                         />
                         {nextEntity ? (
                           <button
+                            aria-label={`Exclude connection between ${entity.name} and ${nextEntity.name}`}
                             aria-pressed={isEdgeDimmed}
                             className={joinClassNames(
                               "bacon-connection-arrow",
@@ -215,7 +205,7 @@ export default function ConnectionResults({
   );
 }
 
-type SlideshowConnectionRowType = "a" | "b";
+type PuzzleConnectionRowType = "green" | "red" | "gold";
 
 const FAST_BREAK_KEY = "movie:fast break:1979";
 const FAST_BREAK_NAME = "fast break";
@@ -236,7 +226,14 @@ function isLaurenceFishburneEntity(entity: ConnectionEntity): boolean {
     normalizeConnectionName(entity.name) === LAURENCE_FISHBURNE_NAME;
 }
 
-function getSlideshowConnectionRowType(path: ConnectionEntity[]): SlideshowConnectionRowType {
+function getPuzzleConnectionRowType(submittedEntity: ConnectionEntity, path: ConnectionEntity[]): PuzzleConnectionRowType {
+  if (submittedEntity.kind === "movie" && (
+    submittedEntity.tmdbId === 603 ||
+    (normalizeConnectionName(submittedEntity.name) === "the matrix" && submittedEntity.year === "1999")
+  )) {
+    return "gold";
+  }
+
   const finalEntity = path[path.length - 1] ?? null;
   const penultimateEntity = path[path.length - 2] ?? null;
 
@@ -244,18 +241,18 @@ function getSlideshowConnectionRowType(path: ConnectionEntity[]): SlideshowConne
     penultimateEntity &&
     isFastBreakEntity(finalEntity) &&
     isLaurenceFishburneEntity(penultimateEntity)
-    ? "a"
-    : "b";
+    ? "green"
+    : "red";
 }
 
 function getConnectionRowClassName(
-  isSlideshowMode: boolean,
-  slideshowRowType: SlideshowConnectionRowType,
+  isPuzzleMode: boolean,
+  puzzleRowType: PuzzleConnectionRowType,
 ): string {
   return joinClassNames(
     "bacon-connection-row",
     "bacon-bookmark-card-row",
-    isSlideshowMode && "bacon-connection-row-slideshow",
-    isSlideshowMode && `bacon-connection-row-slideshow-type-${slideshowRowType}`,
+    isPuzzleMode && "bacon-connection-row-puzzle",
+    isPuzzleMode && `bacon-connection-row-puzzle-${puzzleRowType}`,
   );
 }

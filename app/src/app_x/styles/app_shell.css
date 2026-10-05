@@ -1275,20 +1275,20 @@
   display: none;
 }
 
-.bacon-connection-row-slideshow {
+.bacon-connection-row-puzzle {
   border-radius: 18px;
   padding: 10px;
 }
 
-.bacon-connection-row-slideshow-type-a {
+.bacon-connection-row-puzzle-green {
   background:
     linear-gradient(90deg, rgba(34, 197, 94, 0.2), rgba(20, 83, 45, 0.1)),
     rgba(8, 47, 73, 0.32);
 }
 
-.bacon-connection-row-slideshow-type-b {
+.bacon-connection-row-puzzle-red {
   background:
-    linear-gradient(90deg, rgba(244, 114, 182, 0.22), rgba(124, 45, 18, 0.08)),
+    linear-gradient(90deg, rgba(239, 68, 68, 0.25), rgba(124, 45, 18, 0.08)),
     rgba(68, 64, 60, 0.24);
 }
 
@@ -1474,4 +1474,8 @@
   .bacon-title {
     font-size: 32px;
   }
+}
+
+.bacon-connection-row-puzzle-gold {
+  background: linear-gradient(90deg, rgba(250, 204, 21, 0.4), rgba(161, 98, 7, 0.2));
 }

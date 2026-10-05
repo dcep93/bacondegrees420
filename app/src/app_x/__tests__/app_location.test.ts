@@ -8,10 +8,11 @@ import {
   getBookmarksReturnHashValue,
   getCoverPathname,
   getGeneratorPathname,
-  isSlideshowSearchParam,
+  isPuzzleSearchParam,
   isRootRouteXPath,
   normalizePathname,
   readAppLocationState,
+  PUZZLE_ROOT_HASH,
 } from "../app_location";
 
 describe("getBookmarksReturnHashValue", () => {
@@ -156,35 +157,56 @@ describe("app_location routes", () => {
     expect(getGeneratorPathname("/bacon")).toBe("/bacon");
   });
 
-  it("detects slideshow mode from a defined URL search parameter", () => {
-    expect(isSlideshowSearchParam("?slideshow")).toBe(true);
-    expect(isSlideshowSearchParam("?slideshow=")).toBe(true);
-    expect(isSlideshowSearchParam("?foo=1&slideshow&bar=2")).toBe(true);
-    expect(isSlideshowSearchParam("?foo=slideshow")).toBe(false);
-    expect(isSlideshowSearchParam("")).toBe(false);
+  it("detects puzzle mode from a defined URL search parameter", () => {
+    expect(isPuzzleSearchParam("?puzzle")).toBe(true);
+    expect(isPuzzleSearchParam("?puzzle=")).toBe(true);
+    expect(isPuzzleSearchParam("?foo=1&puzzle&bar=2")).toBe(true);
+    expect(isPuzzleSearchParam("?foo=puzzle")).toBe(false);
+    expect(isPuzzleSearchParam("")).toBe(false);
+    expect(isPuzzleSearchParam("?slideshow")).toBe(false);
+    expect(isPuzzleSearchParam("?slideshow=puzzle")).toBe(false);
   });
 
-  it("can build hrefs that omit only the slideshow query parameter", () => {
+  it("clears both puzzle and legacy slideshow parameters while preserving unrelated parameters", () => {
     vi.stubGlobal("window", {
       location: {
-        search: "?foo=1&slideshow&bar=2",
+        search: "?foo=1&puzzle&slideshow&bar=2",
       },
     });
 
-    expect(buildLocationHref("/", "#person|Al+Pacino", { omitSlideshow: true })).toBe(
+    expect(buildLocationHref("/", "#person|Al+Pacino", { omitPuzzle: true })).toBe(
       "/?foo=1&bar=2#person|Al+Pacino",
     );
   });
 
-  it("preserves the slideshow query parameter by default when building hrefs", () => {
+  it.each(["", "#person|Al+Pacino", "#film|Fast+Break+(1979)|Laurence+Fishburne"])(
+    "initializes the fixed puzzle root for hash %s", (hash) => {
+      vi.stubGlobal("window", { location: { pathname: "/", search: "?puzzle", hash } });
+      expect(readAppLocationState().hash).toBe(PUZZLE_ROOT_HASH);
+    },
+  );
+
+  it("leaves the legacy parameter in normal mode without replacing its root", () => {
+    vi.stubGlobal("window", {
+      location: { pathname: "/", search: "?slideshow", hash: "#person|Al+Pacino" },
+    });
+    expect(readAppLocationState().hash).toBe("#person|Al+Pacino");
+  });
+
+  it("builds a normal-app reset URL with no hash or minigame parameters", () => {
+    vi.stubGlobal("window", { location: { search: "?puzzle&foo=1&slideshow" } });
+    expect(buildLocationHref("/", "", { omitPuzzle: true })).toBe("/?foo=1");
+  });
+
+  it("preserves the puzzle query parameter by default when building hrefs", () => {
     vi.stubGlobal("window", {
       location: {
-        search: "?slideshow",
+        search: "?puzzle",
       },
     });
 
     expect(buildLocationHref("/", "#person|Al+Pacino")).toBe(
-      "/?slideshow#person|Al+Pacino",
+      "/?puzzle#person|Al+Pacino",
     );
   });
 

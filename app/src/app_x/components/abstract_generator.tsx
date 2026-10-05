@@ -74,6 +74,7 @@ export type AbstractGeneratorProps<T, TMeta = undefined, TEffect = never> =
       cardButtonClassName?: string;
       className?: string;
       hideBubble?: boolean;
+      disableCardSelection?: boolean;
       trackClassName?: string;
     };
     shouldAutoScrollMountedGeneration?: (info: {
@@ -262,6 +263,7 @@ type GeneratorRowViewProps<T> = {
   handleCardDeselect: (row: number, col: number) => void;
   handleCardSelect: (row: number, col: number, renderedKey?: string) => void;
   hideBubble: boolean;
+  disableCardSelection: boolean;
   immediateSelectedOriginalCol: number | null;
   onRowRendered: (sample: GeneratorRowRenderSample) => void;
   renderCard: GeneratorController<T>["renderCard"];
@@ -325,6 +327,7 @@ function GeneratorRowViewInner<T>({
   handleCardDeselect,
   handleCardSelect,
   hideBubble,
+  disableCardSelection,
   immediateSelectedOriginalCol,
   onRowRendered,
   renderCard,
@@ -515,7 +518,7 @@ function GeneratorRowViewInner<T>({
         data-generator-row={import.meta.env.DEV ? generationIndex : undefined}
         data-generator-col={import.meta.env.DEV ? originalCol : undefined}
         key={refKey}
-        onClick={() => handleCardSelect(generationIndex, originalCol, dataKey)}
+        onClick={disableCardSelection ? undefined : () => handleCardSelect(generationIndex, originalCol, dataKey)}
         ref={(element) => {
           setCardRef(refKey, element);
         }}
@@ -525,7 +528,7 @@ function GeneratorRowViewInner<T>({
           col: originalCol,
           isViewportPriorityRow,
           node: renderNode,
-          onCardDeselect: node.selected
+          onCardDeselect: !disableCardSelection && node.selected
             ? () => {
                 handleCardDeselect(generationIndex, originalCol);
               }
@@ -633,6 +636,7 @@ const MemoizedGeneratorRowView = memo(
   // unchanged ancestor rows do not need to rerender before the first paint.
   <T,>(prevProps: GeneratorRowViewProps<T>, nextProps: GeneratorRowViewProps<T>) =>
     prevProps.cardButtonClassName === nextProps.cardButtonClassName &&
+    prevProps.disableCardSelection === nextProps.disableCardSelection &&
     prevProps.generationIndex === nextProps.generationIndex &&
     prevProps.handleBubbleClickRef === nextProps.handleBubbleClickRef &&
     prevProps.handleCardDeselect === nextProps.handleCardDeselect &&
@@ -2159,6 +2163,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
             handleCardDeselect={handleCardDeselect}
             handleCardSelect={handleCardSelect}
             hideBubble={rowPresentation.hideBubble === true}
+            disableCardSelection={rowPresentation.disableCardSelection === true}
             immediateSelectedOriginalCol={
               immediateSelection?.row === generationIndex &&
               !resolvedTree[immediateSelection.row]?.[immediateSelection.col]?.selected

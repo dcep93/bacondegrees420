@@ -50,6 +50,7 @@ import {
   getParentMovieRankForPerson,
   getParentPersonRankForMovie,
 } from "../generators/cinenerdle2/view_model";
+import PuzzleEntityCard from "./puzzle_entity_card";
 import { joinClassNames } from "./ui_utils";
 
 type ConnectionCardEntity = Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }>;
@@ -398,9 +399,11 @@ export default function ConnectionEntityCard({
   onCardClick,
   onNameClick,
   previousEntity = null,
+  isPuzzleMode = false,
 }: {
   entity: ConnectionEntity;
   dimmed?: boolean;
+  isPuzzleMode?: boolean;
   onCardClick?: () => void;
   onNameClick?: (event: MouseEvent<HTMLButtonElement>) => void;
   previousEntity?: ConnectionEntity | null;
@@ -487,6 +490,10 @@ export default function ConnectionEntityCard({
   const footerTooltip = getCinenerdleFooterTooltipContent(renderableCard, {
     includeActionHint: false,
   });
+
+  if (isPuzzleMode) {
+    return <PuzzleEntityCard name={entity.name} imageUrl={renderableCard.imageUrl} year={entity.year} dimmed={dimmed} />;
+  }
 
   return (
     <CinenerdleEntityCard

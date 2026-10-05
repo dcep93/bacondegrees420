@@ -5,6 +5,7 @@ import {
   type AbstractGeneratorTreeRefreshRequest,
 } from "../../components/abstract_generator";
 import "../../styles/cinenerdle2.css";
+import PuzzleEntityCard from "../../components/puzzle_entity_card";
 import type { GeneratorNode } from "../../types/generator";
 import {
   buildTreeFromHash,
@@ -83,7 +84,7 @@ type Cinenerdle2Props = {
   } | null;
   hashValue: string;
   highlightedConnectedSuggestion?: ConnectedSuggestionMatchTarget | null;
-  isSlideshowMode?: boolean;
+  isPuzzleMode?: boolean;
   bookmarkNavigationRequestVersion?: number;
   navigationVersion: number;
   onYoungestSelectedCardChange?: (
@@ -133,7 +134,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
   connectedSuggestionSelectionRequest = null,
   hashValue,
   highlightedConnectedSuggestion = null,
-  isSlideshowMode = false,
+  isPuzzleMode = false,
   bookmarkNavigationRequestVersion = 0,
   navigationVersion,
   onYoungestSelectedCardChange,
@@ -442,19 +443,21 @@ const Cinenerdle2 = memo(function Cinenerdle2({
     row: GeneratorNode<CinenerdleCard>[],
     generationIndex: number,
   ) => {
-    if (isSlideshowMode) {
+    if (isPuzzleMode) {
       if (generationIndex > 0) {
         return {
           hideBubble: true,
-          className: "generator-row-slideshow-hidden",
+          className: "generator-row-puzzle-hidden",
+          disableCardSelection: true,
         };
       }
 
       return {
         hideBubble: true,
-        className: "generator-row-slideshow-root",
-        trackClassName: "generator-row-track-slideshow-root",
-        cardButtonClassName: "generator-card-button-slideshow-root",
+        className: "generator-row-puzzle-root",
+        disableCardSelection: true,
+        trackClassName: "generator-row-track-puzzle-root",
+        cardButtonClassName: "generator-card-button-puzzle-root",
       };
     }
 
@@ -470,7 +473,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
       trackClassName: "generator-row-track-break",
       cardButtonClassName: "generator-card-button-row-break",
     };
-  }, [isSlideshowMode]);
+  }, [isPuzzleMode]);
   const shouldAutoScrollMountedGeneration = useCallback((info: {
     generationIndex: number;
     tree: GeneratorNode<CinenerdleCard>[][];
@@ -703,7 +706,10 @@ const Cinenerdle2 = memo(function Cinenerdle2({
             onYoungestSelectedCardChange?.(nextYoungestSelectedCard);
           }}
           reduce={controller.reduce}
-          renderCard={controller.renderCard}
+          renderCard={isPuzzleMode ? ({ node, row }) => {
+            if (row > 0 || node.data.kind === "break" || node.data.kind === "dbinfo") return <></>;
+            return <PuzzleEntityCard name={node.data.name} imageUrl={node.data.imageUrl} hideCopy />;
+          } : controller.renderCard}
           runEffect={controller.runEffect}
           shouldAutoScrollMountedGeneration={shouldAutoScrollMountedGeneration}
           treeRefreshRequest={treeRefreshRequest}

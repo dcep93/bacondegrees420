@@ -15,7 +15,7 @@ import {
 } from "./connection_matchup_preview";
 import {
   useAppLocationState,
-  isSlideshowSearchParam,
+  isPuzzleSearchParam,
 } from "./app_location";
 import { useBookmarksState } from "./bookmarks_state";
 import {
@@ -103,7 +103,6 @@ export default function AppX() {
     openBookmarkCardAsRootInNewTab,
     openHashInNewTab,
     resetLocation,
-    syncLocationFromWindow,
     toggleBookmarks,
     navigateToHash,
   } = useAppLocationState();
@@ -152,7 +151,7 @@ export default function AppX() {
     useRef<IndexedDbBootstrapLoadingShellDelayManager | null>(null);
   const isCinenerdleIndexedDbBootstrapLoading = !cinenerdleIndexedDbBootstrapStatus.isCoreReady;
   const isGeneratorView = !isBookmarksView && !isCoverView && !isFishburneRankingView;
-  const isSlideshowMode = isGeneratorView && isSlideshowSearchParam();
+  const isPuzzleMode = isGeneratorView && isPuzzleSearchParam();
   const isSearchablePersistencePending =
     cinenerdleIndexedDbBootstrapStatus.isSearchablePersistencePending;
   const clearDbBadgeText = formatClearDbBadgeText(clearDbFetchCount, clearDbTotalFetchCount);
@@ -220,7 +219,7 @@ export default function AppX() {
   }, [loadBookmarkCardHash]);
 
   const openConnectionEntityInNewTab = useCallback(
-    (entity: ConnectionEntity, options?: { omitSlideshow?: boolean }) => {
+    (entity: ConnectionEntity, options?: { omitPuzzle?: boolean }) => {
       openHashInNewTab(serializeConnectionEntityHash(entity), options);
     },
     [openHashInNewTab],
@@ -283,8 +282,8 @@ export default function AppX() {
     isSearchablePersistencePending,
     onConnectedSuggestionHighlight: handleConnectedSuggestionHighlight,
     onSelectConnectedSuggestionAsYoungest: handleSelectConnectedSuggestionAsYoungest,
-    preserveConnectionSessionHistory: isSlideshowMode,
-    selectConnectedSuggestionsAsYoungest: !isSlideshowMode,
+    preserveConnectionSessionHistory: isPuzzleMode,
+    selectConnectedSuggestionsAsYoungest: !isPuzzleMode,
     youngestSelectedCard,
   });
 
@@ -312,23 +311,6 @@ export default function AppX() {
     },
     [hashValue],
   );
-
-  const handleExitSlideshowMode = useCallback(() => {
-    if (!isSlideshowSearchParam()) {
-      return;
-    }
-
-    const nextUrl = new URL(window.location.href);
-    nextUrl.searchParams.delete("slideshow");
-    window.history.replaceState(
-      null,
-      "",
-      `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`,
-    );
-    syncLocationFromWindow({
-      nextHashOverride: window.location.hash,
-    });
-  }, [syncLocationFromWindow]);
 
   useEffect(() => {
     console.log(JSON.stringify(getShaX()));
@@ -433,6 +415,7 @@ export default function AppX() {
 
   useEffect(() => {
     function handleWindowKeyDown(event: globalThis.KeyboardEvent) {
+      if (isPuzzleMode) return;
       const action = getWindowKeyDownAction({
         event,
         isBookmarksJsonlEditorOpen,
@@ -454,7 +437,7 @@ export default function AppX() {
     return () => {
       window.removeEventListener("keydown", handleWindowKeyDown);
     };
-  }, [handleCloseBookmarksJsonlEditor, isBookmarksJsonlEditorOpen, toggleBookmarks]);
+  }, [handleCloseBookmarksJsonlEditor, isBookmarksJsonlEditorOpen, isPuzzleMode, toggleBookmarks]);
 
   useEffect(() => {
     let cancelled = false;
@@ -603,7 +586,7 @@ export default function AppX() {
           clearDbButtonRef={clearDbButtonRef}
           copyStatus={copyStatus}
           copyStatusPlacement={copyStatusPlacement}
-          hideActions={isSlideshowMode}
+          hideActions={isPuzzleMode}
           isGeneratorView={isGeneratorView}
           isBookmarksView={isBookmarksView}
           isSavingBookmark={isSavingBookmark}
@@ -612,7 +595,7 @@ export default function AppX() {
           onOpenBookmarksJsonlEditor={handleOpenBookmarksJsonlEditor}
           onReset={handleReset}
           onSaveBookmark={handleSaveBookmark}
-          onTitleDebugCopy={import.meta.env.DEV ? handleTitleDebugCopy : undefined}
+          onTitleDebugCopy={!isPuzzleMode && import.meta.env.DEV ? handleTitleDebugCopy : undefined}
           onToggleBookmarks={toggleBookmarks}
           titleRef={titleRef}
           toastStatusRef={toastStatusRef}
@@ -632,6 +615,7 @@ export default function AppX() {
               connectionQuery={connectionQuery}
               connectionSuggestions={connectionSuggestions}
               highestGenerationSelectedLabel={highestGenerationSelectedLabel}
+              isPuzzleMode={isPuzzleMode}
               isConnectionInputDisabled={isConnectionInputDisabled}
               isSearchablePersistencePending={isSearchablePersistencePending}
               onConnectionQueryChange={setConnectionQuery}
@@ -668,9 +652,8 @@ export default function AppX() {
                 appendConnectionPathToTree={appendConnectionPathToTree}
                 connectionSession={connectionSession}
                 connectionSessions={connectionSessions}
-                isSlideshowMode={isSlideshowMode}
+                isPuzzleMode={isPuzzleMode}
                 navigateToConnectionEntity={navigateToConnectionEntity}
-                onExitSlideshowMode={isSlideshowMode ? handleExitSlideshowMode : undefined}
                 openConnectionEntityInNewTab={openConnectionEntityInNewTab}
                 spawnAlternativeConnectionRow={spawnAlternativeConnectionRow}
               />
@@ -680,7 +663,7 @@ export default function AppX() {
                 connectedSuggestionSelectionRequest={connectedSuggestionSelectionRequest}
                 hashValue={hashValue}
                 highlightedConnectedSuggestion={highlightedConnectedSuggestion}
-                isSlideshowMode={isSlideshowMode}
+                isPuzzleMode={isPuzzleMode}
                 navigationVersion={navigationVersion}
                 onYoungestSelectedCardChange={setYoungestSelectedCard}
                 onHashWrite={handleHashWrite}

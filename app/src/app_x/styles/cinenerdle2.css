@@ -140,16 +140,16 @@
   color: #cbd5e1;
 }
 
-.generator-row-slideshow-hidden {
+.generator-row-puzzle-hidden {
   display: none;
 }
 
-.generator-row-slideshow-root {
+.generator-row-puzzle-root {
   min-height: 0;
   justify-content: center;
 }
 
-.generator-row-track-slideshow-root {
+.generator-row-track-puzzle-root {
   flex: 0 1 auto;
   justify-content: center;
   margin-top: 0;
@@ -157,13 +157,13 @@
   padding: 0;
 }
 
-.generator-card-button-slideshow-root {
+.generator-card-button-puzzle-root {
   align-self: center;
   cursor: default;
   pointer-events: none;
 }
 
-.generator-card-button-slideshow-root .cinenerdle-card {
+.generator-card-button-puzzle-root .cinenerdle-card {
   --cinenerdle-card-width: clamp(180px, 24vw, 360px);
   height: auto;
   border: 0;
@@ -172,14 +172,14 @@
   overflow: hidden;
 }
 
-.generator-card-button-slideshow-root .cinenerdle-card-image-shell {
+.generator-card-button-puzzle-root .cinenerdle-card-image-shell {
   aspect-ratio: 2 / 3;
   border-radius: 14px;
 }
 
-.generator-card-button-slideshow-root .cinenerdle-card-copy,
-.generator-card-button-slideshow-root .cinenerdle-card-extra-row,
-.generator-card-button-slideshow-root .cinenerdle-card-unselect-bubble {
+.generator-card-button-puzzle-root .cinenerdle-card-copy,
+.generator-card-button-puzzle-root .cinenerdle-card-extra-row,
+.generator-card-button-puzzle-root .cinenerdle-card-unselect-bubble {
   display: none;
 }
 
