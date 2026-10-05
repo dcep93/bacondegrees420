@@ -231,7 +231,7 @@ function getPuzzleConnectionRowType(submittedEntity: ConnectionEntity, path: Con
     submittedEntity.tmdbId === 603 ||
     (normalizeConnectionName(submittedEntity.name) === "the matrix" && submittedEntity.year === "1999")
   )) {
-    return "gold";
+    return "green";
   }
 
   const finalEntity = path[path.length - 1] ?? null;
@@ -241,7 +241,7 @@ function getPuzzleConnectionRowType(submittedEntity: ConnectionEntity, path: Con
     penultimateEntity &&
     isFastBreakEntity(finalEntity) &&
     isLaurenceFishburneEntity(penultimateEntity)
-    ? "green"
+    ? "gold"
     : "red";
 }
 

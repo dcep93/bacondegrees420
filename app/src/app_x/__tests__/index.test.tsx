@@ -1018,7 +1018,7 @@ describe("ConnectionResults", () => {
     expect(html.match(/bacon-connection-node-clickable/g)).toHaveLength(1);
   });
 
-  it("marks puzzle rows green when Laurence Fishburne is the last node before Fast Break", () => {
+  it("marks puzzle rows gold when Laurence Fishburne is the last node before Fast Break", () => {
     const source = makeConnectionEntity({
       key: "movie:boyz n the hood:1991",
       name: "Boyz n the Hood",
@@ -1065,7 +1065,7 @@ describe("ConnectionResults", () => {
       />,
     );
 
-    expect(html).toContain("bacon-connection-row-puzzle-green");
+    expect(html).toContain("bacon-connection-row-puzzle-gold");
     expect(html).not.toContain("bacon-connection-row-puzzle-red");
   });
 
@@ -1117,7 +1117,7 @@ describe("ConnectionResults", () => {
     );
 
     expect(html).toContain("bacon-connection-row-puzzle-red");
-    expect(html).not.toContain("bacon-connection-row-puzzle-green");
+    expect(html).not.toContain("bacon-connection-row-puzzle-gold");
   });
 
   it("renders multiple connection sessions for puzzle history", () => {
@@ -1187,7 +1187,7 @@ describe("ConnectionResults", () => {
     expect(html).toContain("Heat");
     expect(html).toContain("The Matrix");
     expect(html.match(/bacon-connection-row-puzzle-red/g)).toHaveLength(1);
-    expect(html.match(/bacon-connection-row-puzzle-gold/g)).toHaveLength(1);
+    expect(html.match(/bacon-connection-row-puzzle-green/g)).toHaveLength(1);
   });
 });
 

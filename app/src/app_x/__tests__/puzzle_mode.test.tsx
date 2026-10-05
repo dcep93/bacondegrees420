@@ -34,11 +34,11 @@ function renderResult(submitted: ConnectionEntity, path: ConnectionEntity[], isP
 
 describe("puzzle row colors", () => {
   it.each([
-    ["gold", matrix, [matrix, fishburne, fastBreak]],
-    ["gold", matrix, [matrix, otherPerson, fastBreak]],
-    ["gold", { ...matrix, name: "Localized title", year: "" }, [matrix, otherPerson, fastBreak]],
-    ["gold", { ...matrix, name: "  THE MATRIX  ", tmdbId: null }, [matrix, otherPerson, fastBreak]],
-    ["green", otherFilm, [otherFilm, fishburne, fastBreak]],
+    ["green", matrix, [matrix, fishburne, fastBreak]],
+    ["green", matrix, [matrix, otherPerson, fastBreak]],
+    ["green", { ...matrix, name: "Localized title", year: "" }, [matrix, otherPerson, fastBreak]],
+    ["green", { ...matrix, name: "  THE MATRIX  ", tmdbId: null }, [matrix, otherPerson, fastBreak]],
+    ["gold", otherFilm, [otherFilm, fishburne, fastBreak]],
     ["red", otherFilm, [otherFilm, fishburne, matrix, otherPerson, fastBreak]],
     ["red", otherFilm, [otherFilm, fishburne, matrix]],
     ["red", { ...matrix, name: "The Matrix Reloaded", year: "2003", tmdbId: 604 }, [matrix, otherPerson, fastBreak]],
@@ -47,12 +47,12 @@ describe("puzzle row colors", () => {
   ] as const)("uses %s for submitted identity and actual final adjacency", (color, submitted, path) => {
     const html = renderResult(submitted, [...path]);
     expect(html).toContain(`bacon-connection-row-puzzle-${color}`);
-    for (const otherColor of ["gold", "green", "red"].filter((value) => value !== color)) {
+    for (const otherColor of ["green", "gold", "red"].filter((value) => value !== color)) {
       expect(html).not.toContain(`bacon-connection-row-puzzle-${otherColor}`);
     }
   });
 
-  it.each(["searching", "not_found", "timeout"] as const)("keeps Matrix guesses gold when %s", (status) => {
+  it.each(["searching", "not_found", "timeout"] as const)("keeps Matrix guesses green when %s", (status) => {
     const html = renderToStaticMarkup(<ConnectionResults
       appendConnectionPathToTree={vi.fn()} navigateToConnectionEntity={vi.fn()}
       openConnectionEntityInNewTab={vi.fn()} spawnAlternativeConnectionRow={vi.fn()} isPuzzleMode
@@ -61,13 +61,13 @@ describe("puzzle row colors", () => {
         childDisallowedNodeKeys: [], childDisallowedEdgeKeys: [], status, path: [],
       }] }}
     />);
-    expect(html.match(/bacon-connection-row-puzzle-gold/g)).toHaveLength(2);
+    expect(html.match(/bacon-connection-row-puzzle-green/g)).toHaveLength(2);
     expect(html).not.toContain("bacon-connection-row-puzzle-red");
   });
 
-  it("does not make an ordinary guess gold when The Matrix occurs inside its route", () => {
+  it("does not make an ordinary guess green when The Matrix occurs inside its route", () => {
     expect(renderResult(otherFilm, [otherFilm, otherPerson, matrix, fishburne, fastBreak]))
-      .toContain("bacon-connection-row-puzzle-green");
+      .toContain("bacon-connection-row-puzzle-gold");
   });
 });
 
