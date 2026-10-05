@@ -77,8 +77,10 @@ describe("puzzle interaction boundaries", () => {
     expect(html.match(/<button\b/g)).toHaveLength(2);
     expect(html.match(/aria-label="Exclude connection between/g)).toHaveLength(2);
     expect(html.match(/aria-pressed="false"/g)).toHaveLength(2);
-    expect(html).not.toMatch(/href=|tabindex=|role="button"|bacon-connection-node-clickable/);
-    expect(html).not.toMatch(/cinenerdle-card-extra|cinenerdle-card-footer|cinenerdle-card-detail/);
+    expect(html).not.toMatch(/<a\b|tabindex=|role="button"|bacon-connection-node-clickable/);
+    expect(html).not.toContain("cinenerdle-card-extra");
+    expect(html).toContain("cinenerdle-card-footer");
+    expect(html).toContain("Popularity");
   });
 
   it("keeps normal result cards, node exclusion, and metadata controls interactive", () => {
@@ -96,13 +98,26 @@ describe("puzzle interaction boundaries", () => {
       isPuzzleMode onCardClick={vi.fn()} onNameClick={vi.fn()}
     />);
     expect(html).toContain("<img");
-    expect(html).not.toMatch(/<button|<a\b|href=|tabindex=|role="button"/);
+    expect(html).not.toMatch(/<button|<a\b|tabindex=|role="button"/);
+  });
+
+  it("shows connection roles and popularity without making their metadata interactive", () => {
+    const html = renderToStaticMarkup(<ConnectionEntityCard
+      entity={{ ...fishburne, popularity: 42,
+        associationCreditLines: [{ subtitle: "Actor", subtitleDetail: "Morpheus" }] }}
+      previousEntity={matrix} isPuzzleMode
+    />);
+    expect(html).toContain("Actor");
+    expect(html).toContain("Morpheus");
+    expect(html).toContain("Popularity 42");
+    expect(html).toContain("cinenerdle-card-footer");
+    expect(html).not.toMatch(/<button|<a\b|tabindex=|role="button"/);
   });
 
   it("renders the root poster without controls or hidden metadata", () => {
     const html = renderToStaticMarkup(<PuzzleEntityCard name="Fast Break" imageUrl="/poster.jpg" hideCopy />);
     expect(html).toContain("<img");
-    expect(html).not.toMatch(/<button|<a\b|href=|tabindex=|role="button"|cinenerdle-card-copy/);
+    expect(html).not.toMatch(/<button|<a\b|tabindex=|role="button"|cinenerdle-card-copy/);
   });
 
   it("keeps suggestions available while hiding connection badges and connected styling", () => {

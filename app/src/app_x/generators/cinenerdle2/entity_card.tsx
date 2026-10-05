@@ -87,6 +87,7 @@ export function CinenerdleEntityCard({
   onRemoveItemAttr,
   onTitleClick,
   titleElement = "p",
+  readOnly = false,
 }: {
   card: RenderableCinenerdleEntityCard;
   className?: string;
@@ -100,6 +101,7 @@ export function CinenerdleEntityCard({
   onRemoveItemAttr?: ((itemAttr: string) => void) | null;
   onTitleClick?: (event: MouseEvent<HTMLElement>) => void;
   titleElement?: "button" | "p";
+  readOnly?: boolean;
 }) {
   function toggleExtraInputVisibility() {
     setIsExtraInputVisible((currentValue) => !currentValue);
@@ -172,16 +174,16 @@ export function CinenerdleEntityCard({
       className={joinClassNames(
         "cinenerdle-card",
         isCinenerdleRootCard && "cinenerdle-card-root",
-        footerTooltip && "cinenerdle-card-has-footer-tooltip",
-        card.onTmdbRowClick && "cinenerdle-card-has-refreshable-tmdb-tooltip",
+        !readOnly && footerTooltip && "cinenerdle-card-has-footer-tooltip",
+        !readOnly && card.onTmdbRowClick && "cinenerdle-card-has-refreshable-tmdb-tooltip",
         card.isSelected && "cinenerdle-card-selected",
         card.isLocked && "cinenerdle-card-locked",
         card.isAncestorSelected && "cinenerdle-card-ancestor-selected",
         className,
       )}
-      onClick={onCardClick}
+      onClick={readOnly ? undefined : onCardClick}
     >
-      {cornerAction ? (
+      {!readOnly && cornerAction ? (
         <button
           aria-label={cornerAction.ariaLabel}
           className="cinenerdle-card-unselect-bubble"
@@ -193,7 +195,7 @@ export function CinenerdleEntityCard({
           {cornerAction.label}
         </button>
       ) : null}
-      {onImageClick ? (
+      {!readOnly && onImageClick ? (
         <button
           aria-label={`Open ${card.name}`}
           className="cinenerdle-card-image-shell cinenerdle-card-image-button"
@@ -212,9 +214,9 @@ export function CinenerdleEntityCard({
       {isCinenerdleRootCard ? null : (
         <div className="cinenerdle-card-copy">
           <CardTitle
-            as={onTitleClick && titleElement === "button" ? "button" : "p"}
+            as={!readOnly && onTitleClick && titleElement === "button" ? "button" : "p"}
             className="cinenerdle-card-title"
-            onClick={onTitleClick
+            onClick={!readOnly && onTitleClick
               ? (event) => {
                 handleIsolatedClick(event, onTitleClick);
               }
@@ -233,10 +235,10 @@ export function CinenerdleEntityCard({
               </div>
             ))}
           </div>
-          <FooterChips card={card} footerTooltipOverride={footerTooltip} />
+          <FooterChips card={card} footerTooltipOverride={footerTooltip} readOnly={readOnly} />
         </div>
       )}
-      {!isCinenerdleRootCard ? (
+      {!isCinenerdleRootCard && !readOnly ? (
         <div className="cinenerdle-card-extra-row" ref={extraRowRef}>
           <div
             aria-label={`Toggle attrs for ${card.name}`}

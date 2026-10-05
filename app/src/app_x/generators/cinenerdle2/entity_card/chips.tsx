@@ -181,9 +181,11 @@ function renderConnectionBadge(
 export function FooterChips({
   card,
   footerTooltipOverride = null,
+  readOnly = false,
 }: {
   card: RenderableCinenerdleEntityCard;
   footerTooltipOverride?: CinenerdleFooterTooltip | null;
+  readOnly?: boolean;
 }) {
   const [refreshState, setRefreshState] = useState<{
     cardKey: string | null;
@@ -217,8 +219,8 @@ export function FooterChips({
       },
     });
   };
-  const isRefreshableRow = Boolean(card.onTmdbRowClick);
-  const shouldUseSharedFooterTooltip = isRefreshableRow || Boolean(footerTooltipOverride);
+  const isRefreshableRow = !readOnly && Boolean(card.onTmdbRowClick);
+  const shouldUseSharedFooterTooltip = readOnly || isRefreshableRow || Boolean(footerTooltipOverride);
   const connectionBadge = card.hasCachedTmdbSource
     ? renderConnectionBadge(card, !shouldUseSharedFooterTooltip)
     : null;
@@ -261,7 +263,7 @@ export function FooterChips({
       )}
     </div>
   );
-  const footerTooltip = isRefreshableRow
+  const footerTooltip = readOnly ? null : isRefreshableRow
     ? getCinenerdleFooterTooltipContent(card, { isRefreshing })
     : footerTooltipOverride;
   const footerContent = (

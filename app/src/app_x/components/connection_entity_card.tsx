@@ -50,7 +50,6 @@ import {
   getParentMovieRankForPerson,
   getParentPersonRankForMovie,
 } from "../generators/cinenerdle2/view_model";
-import PuzzleEntityCard from "./puzzle_entity_card";
 import { joinClassNames } from "./ui_utils";
 
 type ConnectionCardEntity = Extract<CinenerdleCard, { kind: "cinenerdle" | "movie" | "person" }>;
@@ -492,7 +491,11 @@ export default function ConnectionEntityCard({
   });
 
   if (isPuzzleMode) {
-    return <PuzzleEntityCard name={entity.name} imageUrl={renderableCard.imageUrl} year={entity.year} dimmed={dimmed} />;
+    return <CinenerdleEntityCard
+      card={renderableCard}
+      className={dimmed ? "bacon-connection-node-dimmed" : undefined}
+      readOnly
+    />;
   }
 
   return (

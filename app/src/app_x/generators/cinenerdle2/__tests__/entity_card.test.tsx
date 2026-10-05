@@ -94,6 +94,33 @@ describe("CinenerdleEntityCard", () => {
     });
   });
 
+  it("keeps rich metadata passive when readOnly even with action callbacks", () => {
+    const onAction = () => {};
+    const html = renderToStaticMarkup(
+      <CinenerdleEntityCard
+        card={makeRenderableMovieCard({
+          creditLines: [{ subtitle: "Actor", subtitleDetail: "Vincent Hanna" }],
+          onTmdbRowClick: onAction,
+        })}
+        readOnly
+        onCardClick={onAction}
+        onImageClick={onAction}
+        onTitleClick={onAction}
+        titleElement="button"
+        cornerAction={{ ariaLabel: "Remove Heat", label: "×", onClick: onAction }}
+      />,
+    );
+
+    expect(html).toContain("Vincent Hanna");
+    expect(html).toContain("Popularity");
+    expect(html).toContain("Votes");
+    expect(html).toContain("Rating");
+    expect(html).toContain("#3 / 12");
+    expect(html).not.toMatch(/<button|<input|<a\b|tabindex=|role="button"/);
+    expect(html).not.toContain("refreshable");
+    expect(html).not.toContain("Toggle attrs");
+  });
+
   it("does not render the TMDb footer icon strip outside the connection badge", () => {
     const html = renderToStaticMarkup(
       <CinenerdleEntityCard card={makeRenderableMovieCard()} />,
