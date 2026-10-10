@@ -1,5 +1,171 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
+for (const scenario of [
+  { mode: "held", width: 1280, height: 500 },
+  { mode: "held", width: 390, height: 640 },
+  { mode: "fast", width: 1280, height: 500 },
+  { mode: "empty", width: 1280, height: 500 },
+  { mode: "failure", width: 1280, height: 500 },
+  { mode: "superseded", width: 1280, height: 500 },
+  { mode: "repeated", width: 1280, height: 500 },
+]) {
+  test(`child row reservation: ${scenario.mode} response at width ${scenario.width}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: scenario.width, height: scenario.height });
+    await primeCinenerdlePage(page);
+    let releaseCredits!: () => void;
+    const creditsGate = new Promise<void>((resolve) => { releaseCredits = resolve; });
+    const people = [
+      { tmdbId: 1009, name: "Reservation Person", popularity: 40, fromTmdb: null, movieConnectionKeys: [9001] },
+      { tmdbId: 1010, name: "Newer Person", popularity: 30, fromTmdb: null, movieConnectionKeys: [9001] },
+    ];
+    await page.route("**/dump.json", (route) => route.fulfill(createJsonResponse({
+      format: "cinenerdle-indexed-db-snapshot", version: 13, people,
+      films: [{
+        tmdbId: 9001, title: "Reservation Movie", year: "2001", popularity: 90,
+        fromTmdb: { fetchTimestamp: "2026-10-10T12:00:00Z", genres: [], runtime: null },
+        personConnectionKeys: [1009, 1010], people: [],
+      }],
+    })));
+    let selectedRequests = 0;
+    await page.route("https://api.themoviedb.org/**", async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path === "/3/movie/9001/credits") {
+        await route.fulfill(createJsonResponse({ cast: people.map((person) => ({
+          id: person.tmdbId, name: person.name, popularity: person.popularity, character: "A role",
+        })), crew: [] }));
+      } else if (path === "/3/movie/9001") {
+        await route.fulfill(createJsonResponse({ id: 9001, title: "Reservation Movie", release_date: "2001-01-01", popularity: 90 }));
+      } else if (path === "/3/movie/2301") {
+        await route.fulfill(createJsonResponse({ id: 2301, title: "Arrived Movie", release_date: "2013-03-22", popularity: 75 }));
+      } else if (path === "/3/movie/2301/credits") {
+        await route.fulfill(createJsonResponse({ cast: [{ id: 1009, name: "Reservation Person", character: "A role" }], crew: [] }));
+      } else if (path === "/3/person/1009" || path === "/3/person/1010") {
+        const person = path.endsWith("1009") ? people[0] : people[1];
+        await route.fulfill(createJsonResponse({ id: person.tmdbId, name: person.name, popularity: person.popularity }));
+      } else if (path === "/3/person/1009/movie_credits" || path === "/3/person/1010/movie_credits") {
+        const isNewer = path.includes("1010");
+        selectedRequests += 1;
+        if (!isNewer) await creditsGate;
+        if (scenario.mode === "failure") {
+          await route.fulfill({ status: 500, contentType: "application/json", body: "{}" });
+        } else {
+          await route.fulfill(createJsonResponse({
+            cast: scenario.mode === "empty" ? [] : [{
+              id: isNewer ? 2302 : 2301, title: isNewer ? "Newer Movie" : "Arrived Movie",
+              release_date: "2013-03-22", popularity: 75, character: "A role",
+              vote_average: 7.5, vote_count: 1200,
+            }], crew: [],
+          }));
+        }
+      } else {
+        throw new Error(`Unexpected TMDb request: ${path}`);
+      }
+    });
+    await page.goto("/#film|Reservation+Movie+(2001)");
+    const person = getGenerationCardByTitle(page, 1, "Reservation Person");
+    await expect(person).toBeVisible();
+    if (scenario.width === 390) {
+      await page.locator(".bacon-app-shell").evaluate((element) => {
+        (element as HTMLElement).style.setProperty("--cinenerdle-card-width", "220px");
+      });
+    }
+    await page.waitForTimeout(600);
+    await page.evaluate(() => {
+      const requests: number[] = [];
+      Object.defineProperty(window, "__verticalRequests", { value: requests, configurable: true });
+      const original = window.scrollTo.bind(window);
+      window.scrollTo = ((options: ScrollToOptions) => {
+        requests.push(options.top ?? window.scrollY);
+        original(options);
+      }) as typeof window.scrollTo;
+    });
+    const track = getGenerationRow(page, 2).locator(".generator-row-track");
+    const readGeometry = () => track.evaluate((element) => ({
+      height: element.getBoundingClientRect().height,
+      top: element.getBoundingClientRect().top,
+      pageHeight: document.documentElement.scrollHeight,
+      scrollY,
+      calls: (window as unknown as { __verticalRequests: number[] }).__verticalRequests.length,
+    }));
+    const readDiagnostics = () => page.evaluate(async () => {
+      const modulePath = "/src/app_x/generators/cinenerdle2/debug_log.ts";
+      const log = await import(modulePath);
+      return log.getCinenerdleDebugEntries() as Array<{ event: string; details: { selectionId?: number; reason?: string; targetScrollTop?: number } }>;
+    });
+    try {
+      if (scenario.mode === "fast") releaseCredits();
+      const immediate = await person.evaluate((element) => {
+        (element as HTMLElement).click();
+        const bubble = [...document.querySelectorAll(".generator-row-bubble")].find((node) => node.textContent === "GEN 2");
+        return {
+          height: bubble?.closest(".generator-row")?.querySelector(".generator-row-track")?.getBoundingClientRect().height ?? 0,
+          pageHeight: document.documentElement.scrollHeight,
+        };
+      });
+      expect(immediate.height).toBeGreaterThan(132);
+      if (scenario.mode !== "fast") {
+        await expect(track.locator(".cinenerdle-card")).toHaveCount(0);
+      }
+      await expect.poll(() => track.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return rect.top >= 0 && rect.bottom <= innerHeight;
+      })).toBe(true);
+      await page.waitForTimeout(350);
+      let before = await readGeometry();
+      expect(before.height).toBe(immediate.height);
+      expect(before.pageHeight).toBe(immediate.pageHeight);
+      expect(before.calls).toBe(1);
+      if (scenario.mode === "superseded") {
+        await getGenerationCardByTitle(page, 1, "Newer Person").evaluate((element) => (element as HTMLElement).click());
+        await expect(getGenerationCardByTitle(page, 2, "Newer Movie")).toBeVisible();
+        await page.waitForTimeout(350);
+        before = await readGeometry();
+      }
+      if (scenario.mode === "repeated") {
+        await person.evaluate((element) => (element as HTMLElement).click());
+        await page.waitForTimeout(100);
+        before = await readGeometry();
+      }
+      const commitsBefore = (await readDiagnostics()).filter((entry) => entry.event === "diagnostic:selection-tree-committed").length;
+      releaseCredits();
+      if (scenario.mode === "empty" || scenario.mode === "failure") {
+        await expect.poll(async () => (await readDiagnostics()).filter((entry) => entry.event === "diagnostic:selection-tree-committed").length).toBeGreaterThan(commitsBefore);
+      } else {
+        await expect(getGenerationCardByTitle(page, 2, scenario.mode === "superseded" ? "Newer Movie" : "Arrived Movie")).toBeVisible();
+      }
+      await page.waitForTimeout(350);
+      expect(await readGeometry()).toEqual(before);
+      if (scenario.mode === "superseded") {
+        await expect(getGenerationCardByTitle(page, 2, "Arrived Movie")).toHaveCount(0);
+      }
+      const diagnostics = await readDiagnostics();
+      expect(diagnostics.map((entry) => entry.event)).toContain("diagnostic:selection-reserved");
+      const scrollEntries = diagnostics.filter((entry) => entry.event === "diagnostic:vertical-scroll");
+      expect(scrollEntries).toHaveLength(scenario.mode === "superseded" || scenario.mode === "repeated" ? 2 : 1);
+      expect(scrollEntries.every((entry) => entry.details.reason === "selection-reservation")).toBe(true);
+
+      // Card content, including the attrs line, must fit the reserved box.
+      expect(await track.locator(".cinenerdle-card").evaluateAll((cards) => cards.every((card) => {
+        const bounds = card.getBoundingClientRect();
+        return [...card.querySelectorAll(".cinenerdle-card-title, .cinenerdle-card-credit-line, .cinenerdle-card-footer, .cinenerdle-card-extra-row")]
+          .every((part) => part.getBoundingClientRect().bottom <= bounds.bottom + 1);
+      }))).toBe(true);
+      await page.screenshot({ path: testInfo.outputPath("filled-row.png") });
+
+      if (scenario.mode === "held") {
+        const fetchesBefore = selectedRequests;
+        await person.locator(".cinenerdle-card-unselect-bubble").evaluate((element) => (element as HTMLElement).click());
+        await person.evaluate((element) => (element as HTMLElement).click());
+        await expect(getGenerationCardByTitle(page, 2, "Arrived Movie")).toBeVisible();
+        expect((await readGeometry()).height).toBe(immediate.height);
+        expect(selectedRequests).toBe(fetchesBefore);
+      }
+    } finally {
+      releaseCredits();
+    }
+  });
+}
+
 const BIG_LEBOWSKI_HASH = "/#film|The+Big+Lebowski+(1998)";
 const BIG_LEBOWSKI_SEARCH_URL =
   "https://api.themoviedb.org/3/search/movie?query=The Big Lebowski";

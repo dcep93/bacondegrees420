@@ -19,6 +19,14 @@
     border-color 120ms ease;
 }
 
+/* Loading and populated generations share one box. The image scales with the
+   card width; the remaining space holds title, two credit lines, both footer
+   lines, attrs, borders and padding. Selection borders fit inside this box. */
+.generator-row-track-entity {
+  box-sizing: content-box;
+  height: calc((var(--cinenerdle-card-width, 184px) - 2px) / 1.6 + 116px);
+}
+
 .cinenerdle-initial-tree-shell {
   width: 100%;
   max-width: 100%;

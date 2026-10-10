@@ -292,7 +292,10 @@ export function reduceCinenerdleLifecycleEvent<TMeta = undefined>(
     const selectedRow = tree?.[event.row];
     const selectedNode = selectedRow?.[event.col];
 
-    if (tree && selectedRow && selectedNode?.selected) {
+    if (
+      tree && selectedRow && selectedNode?.selected && !selectedNode.disabled &&
+      (tree[event.row + 1]?.length ?? 0) > 0
+    ) {
       return {
         state,
         effects: [{
@@ -307,7 +310,24 @@ export function reduceCinenerdleLifecycleEvent<TMeta = undefined>(
     }
   }
 
-  return reduceGeneratorLifecycleEvent(state, event);
+  const transition = reduceGeneratorLifecycleEvent(state, event);
+  if (event.type !== "select" || transition.effects.length === 0 || !transition.state.tree) {
+    return transition;
+  }
+  const card = transition.state.tree[event.row]?.[event.col]?.data;
+  if (card?.kind !== "cinenerdle" && card?.kind !== "movie" && card?.kind !== "person") {
+    return transition;
+  }
+
+  // Reserve the actual next generation in the click's synchronous commit, before
+  // any cache read. Replace old descendants in that same commit. Reselecting an
+  // empty reservation must rejoin the load: the earlier selection is superseded.
+  const tree = [...transition.state.tree.slice(0, event.row + 1), []];
+  return {
+    state: { ...transition.state, tree },
+    effects: transition.effects.map((effect) =>
+      effect.type === "load-selected-card" ? { ...effect, tree } : effect),
+  };
 }
 
 function sortCardsByPopularity(cards: CinenerdleCard[]) {
@@ -1689,6 +1709,7 @@ export function useCinenerdleController({
           getState,
           lifecycleId,
           selectionId,
+          childGenerationAlreadyRevealed = false,
           scrollGenerationIntoVerticalView,
           scrollGenerationLikeBubble,
         },
@@ -1798,9 +1819,11 @@ export function useCinenerdleController({
             void measureAsync(
               "controller.afterCardReselected",
               async () => {
-                await scrollGenerationIntoVerticalView(childGenerationIndex, {
-                  alignRowHorizontally: false,
-                });
+                if (!childGenerationAlreadyRevealed) {
+                  await scrollGenerationIntoVerticalView(childGenerationIndex, {
+                    alignRowHorizontally: false,
+                  });
+                }
 
                 if (selectedCard.kind === "movie" || selectedCard.kind === "person") {
                   scheduleConnectionPrefetch(selectedCard);
@@ -1838,7 +1861,7 @@ export function useCinenerdleController({
           void measureAsync(
             "controller.afterCardSelected",
             async () => {
-              let didRevealChildGeneration = false;
+              let didRevealChildGeneration = childGenerationAlreadyRevealed;
 
               async function revealChildGenerationVertically(
                 childRow: GeneratorNode<CinenerdleCard>[] | null,
@@ -1922,11 +1945,14 @@ export function useCinenerdleController({
                 preparedTree: GeneratorTree<CinenerdleCard>,
                 isPlaceholder = false,
               ) {
+                const committedTree = preparedTree.length > childGenerationIndex
+                  ? preparedTree
+                  : [...preparedTree, []];
                 commitSelectionUpdate({
                   meta: { itemAttrsSnapshot },
-                  tree: preparedTree,
+                  tree: committedTree,
                 });
-                setTmdbLogGeneration(Math.max(0, preparedTree.length - 1));
+                setTmdbLogGeneration(Math.max(0, committedTree.length - 1));
                 if (!isPlaceholder) {
                   markSelectionReady();
                 }
@@ -2044,7 +2070,7 @@ export function useCinenerdleController({
                 meta: {
                   itemAttrsSnapshot,
                 },
-                tree: selectedPathTree,
+                tree: [...selectedPathTree, []],
               });
             })
             .finally(markSelectionReady);

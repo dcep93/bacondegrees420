@@ -75,6 +75,7 @@ export type GeneratorEffectContext<T, TMeta = undefined> = {
   getState: () => GeneratorState<T, TMeta>;
   lifecycleId: number;
   selectionId: number;
+  childGenerationAlreadyRevealed?: boolean;
   scrollGenerationIntoVerticalView: (
     generationIndex: number,
     options?: {

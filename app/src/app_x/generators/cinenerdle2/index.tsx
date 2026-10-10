@@ -424,14 +424,25 @@ const Cinenerdle2 = memo(function Cinenerdle2({
 
           const itemAttrsSnapshot = state.meta.itemAttrsSnapshot ?? itemAttrsSnapshotRef.current;
           itemAttrsSnapshotRef.current = itemAttrsSnapshot;
+          const nextTree = await buildTreeFromHash(readHash(), {
+            bypassInFlightCache: true,
+            itemAttrsSnapshot,
+          });
+          const previousTree = state.tree ?? [];
+          // A background record refresh must not collapse a reserved empty
+          // child generation while rebuilding the same selected path.
+          const preserveReservation =
+            previousTree.length > 1 &&
+            previousTree.at(-1)?.length === 0 &&
+            nextTree.length === previousTree.length - 1 &&
+            nextTree.every((row, index) =>
+              row.find((node) => node.selected)?.data.key ===
+              previousTree[index]?.find((node) => node.selected)?.data.key);
           return {
             meta: {
               itemAttrsSnapshot,
             },
-            tree: await buildTreeFromHash(readHash(), {
-              bypassInFlightCache: true,
-              itemAttrsSnapshot,
-            }),
+            tree: preserveReservation ? [...nextTree, []] : nextTree,
           };
         } finally {
           setActiveTreeRefreshRequest(pendingTreeRefreshRequestsRef.current.shift() ?? null);
@@ -464,7 +475,9 @@ const Cinenerdle2 = memo(function Cinenerdle2({
     const isBreakRow = row.length === 1 && row[0]?.data.kind === "break";
 
     if (!isBreakRow) {
-      return {};
+      return row.some((node) => node.data.kind === "cinenerdle") ? {} : {
+        trackClassName: "generator-row-track-entity",
+      };
     }
 
     return {
@@ -627,6 +640,7 @@ const Cinenerdle2 = memo(function Cinenerdle2({
         ref={initialTreeShellRef}
       >
         <AbstractGenerator
+          revealChildOnSelect={!isPuzzleMode}
           debugLog={import.meta.env.DEV ? logFocusedGeneratorEvent : null}
           createInitialState={controller.createInitialState}
           generatorHandleRef={generatorHandleRef}

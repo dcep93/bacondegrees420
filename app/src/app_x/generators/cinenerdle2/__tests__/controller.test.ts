@@ -261,6 +261,40 @@ beforeEach(() => {
 });
 
 describe("reduceCinenerdleLifecycleEvent", () => {
+  it("reserves the child row and removes old descendants in the selection transition", () => {
+    const root = [{ data: makeCinenerdleRootCard(), selected: true }];
+    const tree = [
+      root,
+      [{ data: makeMovieCard(), selected: false }],
+      [{ data: makePersonCard(), selected: true }],
+      [{ data: makeMovieCard(), selected: true }],
+    ];
+    const transition = reduceCinenerdleLifecycleEvent(createGeneratorState<CinenerdleCard>(undefined, tree), {
+      type: "select", row: 1, col: 0,
+    });
+    expect(transition.state.tree).toEqual([root, [{ ...tree[1][0], selected: true }], []]);
+    expect(transition.state.tree?.[0]).toBe(root);
+    expect(transition.effects).toEqual([expect.objectContaining({
+      type: "load-selected-card", row: 1, col: 0, tree: transition.state.tree,
+    })]);
+  });
+
+  it.each([false, true])("does not reserve a row for a disabled card (selected: %s)", (selected) => {
+    const state = createGeneratorState(undefined, [[{ data: makeMovieCard(), selected, disabled: true }]]);
+    const transition = reduceCinenerdleLifecycleEvent(state, { type: "select", row: 0, col: 0 });
+    expect(transition.state).toBe(state);
+    expect(transition.effects).toEqual([]);
+  });
+
+  it("continues loading when an already selected card still has an empty reservation", () => {
+    const state = createGeneratorState(undefined, [[{ data: makePersonCard(), selected: true }], []]);
+    const transition = reduceCinenerdleLifecycleEvent(state, { type: "select", row: 0, col: 0 });
+    expect(transition.state.tree).toEqual(state.tree);
+    expect(transition.effects).toEqual([expect.objectContaining({
+      type: "load-selected-card", isReselection: false,
+    })]);
+  });
+
   it("preserves the existing subtree when selecting an already selected card", () => {
     const tree: NonNullable<ReturnType<typeof createGeneratorState<CinenerdleCard, undefined>>["tree"]> = [
       [{ data: makeCinenerdleRootCard(), selected: true }],
@@ -1589,7 +1623,7 @@ describe("useCinenerdleController", () => {
     expect(childRow?.map((node) => node.data.name)).toEqual(["Finding Nemo"]);
   });
 
-  it("builds the next row and skips force hydration for directly hydrated cards", async () => {
+  it.each([false, true])("builds cached children (already revealed: %s)", async (childGenerationAlreadyRevealed) => {
     const heatRecord = makeFilmRecord({
       id: 321,
       tmdbId: 321,
@@ -1647,6 +1681,7 @@ describe("useCinenerdleController", () => {
         getState: () => createControllerState(),
         lifecycleId: 1,
         selectionId: 1,
+        childGenerationAlreadyRevealed,
         scrollGenerationIntoVerticalView,
         scrollGenerationLikeBubble,
       },
@@ -1667,9 +1702,13 @@ describe("useCinenerdleController", () => {
     expect(writeHash).toHaveBeenCalledWith("#cinenerdle|Heat+(1995)", "selection");
     expect(scrollGenerationLikeBubble).toHaveBeenCalledTimes(1);
     expect(scrollGenerationLikeBubble).toHaveBeenCalledWith(2);
-    expect(scrollGenerationIntoVerticalView).toHaveBeenCalledWith(2, {
-      alignRowHorizontally: false,
-    });
+    if (childGenerationAlreadyRevealed) {
+      expect(scrollGenerationIntoVerticalView).not.toHaveBeenCalled();
+    } else {
+      expect(scrollGenerationIntoVerticalView).toHaveBeenCalledWith(2, {
+        alignRowHorizontally: false,
+      });
+    }
     expect(applyUpdate).toHaveBeenCalledWith(expect.objectContaining({
       tree: expect.arrayContaining([
         expect.arrayContaining([

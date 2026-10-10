@@ -66,6 +66,7 @@ export type AbstractGeneratorHandle = {
 export type AbstractGeneratorProps<T, TMeta = undefined, TEffect = never> =
   GeneratorController<T, TMeta, TEffect> & {
     debugLog?: ((event: string, details?: unknown) => void) | null;
+    revealChildOnSelect?: boolean;
     generatorHandleRef?: MutableRefObject<AbstractGeneratorHandle | null>;
     getRowPresentation?: (
       row: GeneratorNode<T>[],
@@ -728,6 +729,7 @@ function getElementVisibleCenterWithinTrack(
 function scrollElementIntoVerticalView(
   element: HTMLDivElement,
   behavior: ScrollBehavior,
+  onRequest?: (details: Record<string, unknown>) => void,
 ) {
   if (typeof window === "undefined" || typeof document === "undefined") {
     return;
@@ -740,11 +742,22 @@ function scrollElementIntoVerticalView(
     document.documentElement?.scrollTop ??
     document.body?.scrollTop ??
     0;
+  const rect = element.getBoundingClientRect();
   const nextScrollTop = getFullyVisibleViewportScrollTop(
-    element.getBoundingClientRect(),
+    rect,
     viewportHeight,
     currentScrollTop,
   );
+
+  onRequest?.({
+    currentScrollTop,
+    targetScrollTop: nextScrollTop,
+    viewportHeight,
+    rowTop: rect.top,
+    rowHeight: rect.height,
+    pageHeight: document.documentElement.scrollHeight,
+    willScroll: nextScrollTop !== null && Math.abs(nextScrollTop - currentScrollTop) >= 1,
+  });
 
   if (nextScrollTop === null || Math.abs(nextScrollTop - currentScrollTop) < 1) {
     return;
@@ -848,6 +861,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
   onTreeChange,
   reduce,
   renderCard,
+  revealChildOnSelect = false,
   runEffect,
   shouldAutoScrollMountedGeneration,
   treeRefreshRequest = null,
@@ -1388,7 +1402,11 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     handleBubbleClickRef.current = handleBubbleClick;
   }, [handleBubbleClick]);
 
-  const scrollGenerationLikeBubble = useCallback(async (generationIndex: number) => {
+  const scrollGenerationLikeBubble = useCallback(async (
+    generationIndex: number,
+    isCurrent?: () => boolean,
+  ) => {
+    if (isCurrent?.() === false) return;
     const getWaitResult = () => waitForGenerationToRender(generationIndex, {
       getCardElement: (rowIndex, cardIndex, data) =>
         cardRefs.current[`${rowIndex}:${getDataKey(data, cardIndex)}`],
@@ -1418,10 +1436,10 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       );
     }
 
-    if (!mountedRef.current) {
+    if (!mountedRef.current || isCurrent?.() === false) {
       debugLog?.("generator:scroll-like-bubble-aborted", {
         generationIndex,
-        reason: "unmounted",
+        reason: !mountedRef.current ? "unmounted" : "superseded",
       });
       return;
     }
@@ -1451,7 +1469,9 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     options?: {
       alignRowHorizontally?: boolean;
     },
+    isCurrent?: () => boolean,
   ) => {
+    if (isCurrent?.() === false) return;
     const alignRowHorizontally = options?.alignRowHorizontally ?? true;
     const waitResult = await waitForGenerationToRender(generationIndex, {
       requireTargetCard: alignRowHorizontally,
@@ -1468,10 +1488,10 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       waitResult,
     );
 
-    if (!mountedRef.current) {
+    if (!mountedRef.current || isCurrent?.() === false) {
       debugLog?.("generator:scroll-vertical-aborted", {
         generationIndex,
-        reason: "unmounted",
+        reason: !mountedRef.current ? "unmounted" : "superseded",
       });
       return;
     }
@@ -1507,14 +1527,25 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       alignRowHorizontally,
       generationIndex,
     });
-    scrollElementIntoVerticalView(rowTrack, "smooth");
+    scrollElementIntoVerticalView(rowTrack, "smooth", debugLog ? (details) => {
+      debugLog("diagnostic:vertical-scroll", {
+        lifecycleId: activeLifecycleRef.current,
+        selectionId: activeSelectionRef.current,
+        generationIndex,
+        reason: "generation-reveal",
+        ...details,
+      });
+    } : undefined);
   }, [debugLog]);
 
   const runEffects = useCallback(async (
     effects: TEffect[],
     lifecycleId: number,
     selectionId: number,
+    childGenerationAlreadyRevealed = false,
   ) => {
+    const isCurrent = () => mountedRef.current &&
+      activeLifecycleRef.current === lifecycleId && activeSelectionRef.current === selectionId;
     const applyUpdate = createGuardedApplyUpdate(lifecycleId, selectionId);
     const applyUrgentUpdate = createGuardedApplyUpdate(lifecycleId, selectionId, {
       urgent: true,
@@ -1536,8 +1567,11 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
           getState: () => stateRef.current,
           lifecycleId,
           selectionId,
-          scrollGenerationIntoVerticalView,
-          scrollGenerationLikeBubble,
+          childGenerationAlreadyRevealed,
+          scrollGenerationIntoVerticalView: (generationIndex, options) =>
+            scrollGenerationIntoVerticalView(generationIndex, options, isCurrent),
+          scrollGenerationLikeBubble: (generationIndex) =>
+            scrollGenerationLikeBubble(generationIndex, isCurrent),
         });
       }
     } finally {
@@ -1836,6 +1870,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     }
 
     const nextSelectionId = activeSelectionRef.current + 1;
+    const selectionLifecycleId = activeLifecycleRef.current;
     activeSelectionRef.current = nextSelectionId;
     // Block background rebuilds before any click-triggered render or deferred work.
     pendingSelectionEffectsRef.current = {
@@ -1913,13 +1948,30 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       }
     }
 
+    const immediateTransition = revealChildOnSelect ? reduce(stateRef.current, {
+      type: "select",
+      row,
+      col,
+    }) : null;
     flushSync(() => {
+      if (immediateTransition) {
+        stateRef.current = immediateTransition.state;
+        setState(immediateTransition.state);
+      }
       setImmediateSelection({
         col,
         row,
         selectionId: nextSelectionId,
       });
     });
+    if (debugLog && immediateTransition) {
+      debugLog("diagnostic:selection-reserved", {
+        lifecycleId: activeLifecycleRef.current,
+        selectionId: nextSelectionId,
+        elapsedMs: Math.round(getGeneratorPerfNow() - clickStartedAt),
+        layout: readDiagnosticLayout(row),
+      });
+    }
     if (debugLog) {
       debugLog("diagnostic:selection-immediate", {
         lifecycleId: activeLifecycleRef.current,
@@ -1942,6 +1994,7 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
     schedulePostSelectionWork(() => {
       if (
         !mountedRef.current ||
+        activeLifecycleRef.current !== selectionLifecycleId ||
         activeSelectionRef.current !== nextSelectionId
       ) {
         return;
@@ -1957,16 +2010,28 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
       if (currentCardElement) {
         scrollCardElementIntoViewInTree(currentTree, row, currentCardElement, {
           behavior: "smooth",
-          includeVerticalScroll: true,
+          includeVerticalScroll: !revealChildOnSelect,
         });
       } else {
         scrollToCardIndexInTree(currentTree, row, col, {
           behavior: "smooth",
         });
         const rowTrack = rowRefs.current[row];
-        if (rowTrack) {
+        if (rowTrack && !revealChildOnSelect) {
           scrollElementIntoVerticalView(rowTrack, "smooth");
         }
+      }
+      const reservedRow = revealChildOnSelect ? rowRefs.current[row + 1] : null;
+      if (reservedRow) {
+        scrollElementIntoVerticalView(reservedRow, "smooth", debugLog ? (details) => {
+          debugLog("diagnostic:vertical-scroll", {
+            lifecycleId: activeLifecycleRef.current,
+            selectionId: nextSelectionId,
+            generationIndex: row + 1,
+            reason: "selection-reservation",
+            ...details,
+          });
+        } : undefined);
       }
       if (isPerfLoggingEnabled()) {
         logPerfSinceMark("abstractGenerator.selectCard.scrollIssued", selectionMarkName, {
@@ -1976,16 +2041,18 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
         });
       }
 
-      const transition = reduce(stateRef.current, {
+      const transition = immediateTransition ?? reduce(stateRef.current, {
         type: "select",
         row,
         col,
       });
 
-      stateRef.current = transition.state;
-      flushSync(() => {
-        setState(transition.state);
-      });
+      if (!immediateTransition) {
+        stateRef.current = transition.state;
+        flushSync(() => {
+          setState(transition.state);
+        });
+      }
 
       void (async () => {
         if (
@@ -2015,10 +2082,11 @@ export function AbstractGenerator<T, TMeta = undefined, TEffect = never>({
           transition.effects,
           activeLifecycleRef.current,
           nextSelectionId,
+          Boolean(reservedRow),
         );
       })();
     });
-  }, [debugLog, readDiagnosticLayout, reduce, runEffects, scrollCardElementIntoViewInTree, scrollToCardIndexInTree]);
+  }, [debugLog, readDiagnosticLayout, reduce, revealChildOnSelect, runEffects, scrollCardElementIntoViewInTree, scrollToCardIndexInTree]);
 
   const handleCardDeselect = useCallback((row: number, col: number) => {
     const currentTree = stateRef.current.tree ?? [];
