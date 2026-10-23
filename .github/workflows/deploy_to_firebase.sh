@@ -21,7 +21,9 @@ cd app
 
 export GOOGLE_APPLICATION_CREDENTIALS="gac.json"
 echo "$SA_KEY" >"$GOOGLE_APPLICATION_CREDENTIALS"
-npm install -g firebase-tools
+# 15.34.1 adds a Service Usage permission check that breaks Hosting-only deployers.
+# https://github.com/firebase/firebase-tools/issues/11335
+npm install -g firebase-tools@15.34.0
 gcloud auth activate-service-account --key-file="$GOOGLE_APPLICATION_CREDENTIALS"
 project_id="$(cat $GOOGLE_APPLICATION_CREDENTIALS | jq -r .project_id)"
 
