@@ -812,6 +812,57 @@ describe("tmdb forced refresh helpers", () => {
     expect(indexedDbMock.batchCinenerdleRecordsUpdatedEvents).toHaveBeenCalledTimes(1);
   });
 
+  it("refreshes Hard Candy's changed release year and saves its fetched credits", async () => {
+    const cachedMovieRecord = makeFilmRecord({
+      id: 2652,
+      tmdbId: 2652,
+      title: "Hard Candy",
+      year: "2005",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 2652,
+        title: "Hard Candy",
+        release_date: "2005-01-14",
+      }),
+      fetchTimestamp: "2026-04-14T08:38:55.433Z",
+    });
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-23T00:00:00.000Z"));
+    const fetchMock = vi.fn(async (input: string) => {
+      const url = String(input);
+      if (url.includes("/movie/2652/credits?")) {
+        return createJsonResponse({
+          cast: [{ id: 27578, name: "Elliot Page", character: "Hayley Stark", order: 0 }],
+          crew: [],
+        });
+      }
+      if (url.includes("/movie/2652?")) {
+        return createJsonResponse(makeTmdbMovieSearchResult({
+          id: 2652,
+          title: "Hard Candy",
+          release_date: "2006-04-14",
+        }));
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    indexedDbMock.getFilmRecordById.mockResolvedValue(cachedMovieRecord);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(cachedMovieRecord);
+    vi.stubGlobal("fetch", fetchMock);
+
+    await prepareSelectedMovie("Hard Candy", "2005", 2652, { forceRefresh: true });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(indexedDbMock.saveFilmRecord).toHaveBeenCalledWith(expect.objectContaining({
+      id: 2652,
+      year: "2006",
+      lookupKey: "hard candy (2006)",
+      titleYear: "hard candy (2006)",
+      personConnectionKeys: [27578],
+      rawTmdbMovieCreditsResponse: expect.objectContaining({
+        cast: [expect.objectContaining({ id: 27578, character: "Hayley Stark" })],
+      }),
+    }));
+  });
+
   it("starts movie details and credits in parallel and saves only after both payloads resolve", async () => {
     const cachedMovieRecord = makeFilmRecord({
       id: 321,

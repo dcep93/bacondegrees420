@@ -406,7 +406,57 @@ describe("buildFilmRecord", () => {
     }));
   });
 
-  it("alerts when the same tmdb film id disagrees on normalized title or year", () => {
+  it.each([
+    ["2006-04-14", "2026-10-23T00:00:00.000Z", "2006"],
+    ["2006-04-14", "2026-04-13T00:00:00.000Z", "2005"],
+    [undefined, "2026-10-23T00:00:00.000Z", "2005"],
+  ])("merges a matching film's release date %s fetched at %s as year %s", (releaseDate, fetchTimestamp, expectedYear) => {
+    const alertMock = vi.fn();
+    vi.stubGlobal("window", { alert: alertMock });
+    const existingFilmRecord = makeFilmRecord({
+      id: 2652,
+      tmdbId: 2652,
+      title: "Hard Candy",
+      year: "2005",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 2652,
+        title: "Hard Candy",
+        release_date: "2005-01-14",
+      }),
+      fetchTimestamp: "2026-04-14T08:38:55.433Z",
+    });
+
+    const filmRecord = buildFilmRecord(existingFilmRecord, makeTmdbMovieSearchResult({
+      id: 2652,
+      title: "Hard Candy",
+      release_date: releaseDate,
+    }), fetchTimestamp);
+
+    expect(filmRecord.year).toBe(expectedYear);
+    expect(filmRecord.lookupKey).toBe(`hard candy (${expectedYear})`);
+    expect(filmRecord.titleYear).toBe(`hard candy (${expectedYear})`);
+    expect(filmRecord.rawTmdbMovie?.release_date?.slice(0, 4)).toBe(expectedYear);
+    expect(alertMock).not.toHaveBeenCalled();
+  });
+
+  it("preserves the cached year when neither movie payload has a release date", () => {
+    const filmRecord = buildFilmRecord(makeFilmRecord({
+      id: 2652,
+      tmdbId: 2652,
+      title: "Hard Candy",
+      year: "2005",
+      rawTmdbMovie: undefined,
+    }), makeTmdbMovieSearchResult({
+      id: 2652,
+      title: "Hard Candy",
+      release_date: undefined,
+    }));
+
+    expect(filmRecord.year).toBe("2005");
+    expect(filmRecord.lookupKey).toBe("hard candy (2005)");
+  });
+
+  it.each(["1995", "2004"])("alerts when the same tmdb film id disagrees on normalized title with year %s", (year) => {
     const alertMock = vi.fn();
     vi.stubGlobal("window", { alert: alertMock });
 
@@ -421,11 +471,11 @@ describe("buildFilmRecord", () => {
         makeTmdbMovieSearchResult({
           id: 999,
           title: "Collateral",
-          release_date: "2004-08-06",
+          release_date: `${year}-08-06`,
         }),
       ),
     ).toThrow(
-      'Cannot merge film records for TMDb film 999: title/year mismatch. Existing title="Heat", year="1995". Next title="Collateral", year="2004".',
+      `Cannot merge film records for TMDb film 999: title mismatch. Existing title="Heat", year="1995". Next title="Collateral", year="${year}".`,
     );
     expect(alertMock).toHaveBeenCalledTimes(1);
     expect(getCinenerdleDebugEntries()).toEqual([]);

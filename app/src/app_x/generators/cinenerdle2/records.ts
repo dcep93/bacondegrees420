@@ -38,18 +38,14 @@ function assertFilmRecordMatchesTmdbFilm(
 
   const nextTitle = tmdbFilm.title ?? tmdbFilm.original_title ?? "";
   const nextYear = tmdbFilm.release_date?.slice(0, 4) ?? "";
-  const existingYear = existingFilmRecord.year ?? "";
-  if (
-    normalizeTitle(existingFilmRecord.title) === normalizeTitle(nextTitle) &&
-    (existingYear === nextYear || !existingYear || !nextYear)
-  ) {
+  if (normalizeTitle(existingFilmRecord.title) === normalizeTitle(nextTitle)) {
     return;
   }
 
   resetCinenerdleValidationAlertState();
   throwCinenerdleValidationError(
     [
-      `Cannot merge film records for TMDb film ${nextTmdbId}: title/year mismatch.`,
+      `Cannot merge film records for TMDb film ${nextTmdbId}: title mismatch.`,
       `Existing title=${formatCinenerdleValidationValue(existingFilmRecord.title)}, year=${formatCinenerdleValidationValue(existingFilmRecord.year ?? "")}.`,
       `Next title=${formatCinenerdleValidationValue(nextTitle)}, year=${formatCinenerdleValidationValue(nextYear)}.`,
     ].join(" "),
@@ -498,8 +494,10 @@ export function buildFilmRecord(
 
   const title =
     existingFilmRecord?.title ?? tmdbFilm.title ?? tmdbFilm.original_title ?? "";
+  // Release dates can change for the same movie; use the timestamp-aware merge
+  // so the displayed year and derived lookup keys agree with its metadata.
   const year =
-    existingFilmRecord?.year?.trim() || (tmdbFilm.release_date?.slice(0, 4) ?? "");
+    mergedTmdbMovie.release_date?.slice(0, 4) || existingFilmRecord?.year?.trim() || "";
 
   return withDerivedFilmFields({
     ...existingFilmRecord,
