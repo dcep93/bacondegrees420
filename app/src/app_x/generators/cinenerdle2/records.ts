@@ -16,48 +16,6 @@ import {
   normalizeName,
   normalizeTitle,
 } from "./utils";
-import {
-  formatCinenerdleValidationValue,
-  resetCinenerdleValidationAlertState,
-  throwCinenerdleValidationError,
-} from "./validation";
-
-function assertFilmRecordMatchesTmdbFilm(
-  existingFilmRecord: FilmRecord | null,
-  tmdbFilm: TmdbMovieSearchResult,
-): void {
-  if (!existingFilmRecord) {
-    return;
-  }
-
-  const existingTmdbId = getValidTmdbEntityId(existingFilmRecord.tmdbId ?? existingFilmRecord.id);
-  const nextTmdbId = getValidTmdbEntityId(tmdbFilm.id);
-  if (existingTmdbId === null || nextTmdbId === null || existingTmdbId !== nextTmdbId) {
-    return;
-  }
-
-  const nextTitle = tmdbFilm.title ?? tmdbFilm.original_title ?? "";
-  const nextYear = tmdbFilm.release_date?.slice(0, 4) ?? "";
-  if (normalizeTitle(existingFilmRecord.title) === normalizeTitle(nextTitle)) {
-    return;
-  }
-
-  resetCinenerdleValidationAlertState();
-  throwCinenerdleValidationError(
-    [
-      `Cannot merge film records for TMDb film ${nextTmdbId}: title mismatch.`,
-      `Existing title=${formatCinenerdleValidationValue(existingFilmRecord.title)}, year=${formatCinenerdleValidationValue(existingFilmRecord.year ?? "")}.`,
-      `Next title=${formatCinenerdleValidationValue(nextTitle)}, year=${formatCinenerdleValidationValue(nextYear)}.`,
-    ].join(" "),
-    {
-      reason: "conflicting-film-data",
-      tmdbId: nextTmdbId,
-      existingFilmRecord,
-      nextTmdbFilm: tmdbFilm,
-    },
-  );
-}
-
 function normalizeFetchTimestamp(fetchTimestamp: string | null | undefined): string | undefined {
   const normalizedFetchTimestamp = fetchTimestamp?.trim();
   return normalizedFetchTimestamp ? normalizedFetchTimestamp : undefined;
@@ -483,8 +441,6 @@ export function buildFilmRecord(
   tmdbFilm: TmdbMovieSearchResult,
   fetchTimestamp = new Date().toISOString(),
 ): FilmRecord {
-  assertFilmRecordMatchesTmdbFilm(existingFilmRecord, tmdbFilm);
-
   const mergedTmdbMovie = mergeFetchedTmdbMovie(
     existingFilmRecord?.rawTmdbMovie,
     tmdbFilm,
@@ -492,10 +448,10 @@ export function buildFilmRecord(
     fetchTimestamp,
   );
 
+  // Titles and release dates can change for the same TMDb movie. Use the
+  // timestamp-aware metadata merge for display fields and derived lookup keys.
   const title =
-    existingFilmRecord?.title ?? tmdbFilm.title ?? tmdbFilm.original_title ?? "";
-  // Release dates can change for the same movie; use the timestamp-aware merge
-  // so the displayed year and derived lookup keys agree with its metadata.
+    mergedTmdbMovie.title || mergedTmdbMovie.original_title || existingFilmRecord?.title || "";
   const year =
     mergedTmdbMovie.release_date?.slice(0, 4) || existingFilmRecord?.year?.trim() || "";
 

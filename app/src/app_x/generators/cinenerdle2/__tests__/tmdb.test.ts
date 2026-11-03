@@ -863,6 +863,58 @@ describe("tmdb forced refresh helpers", () => {
     }));
   });
 
+  it("refreshes a renamed Exorcist film and saves its fetched credits", async () => {
+    const cachedMovieRecord = makeFilmRecord({
+      id: 1297467,
+      tmdbId: 1297467,
+      title: "Untitled The Exorcist Film",
+      year: "2027",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 1297467,
+        title: "Untitled The Exorcist Film",
+        release_date: "2027-03-12",
+      }),
+      fetchTimestamp: "2026-04-14T08:38:55.433Z",
+    });
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-03T00:00:00.000Z"));
+    const fetchMock = vi.fn(async (input: string) => {
+      const url = String(input);
+      if (url.includes("/movie/1297467/credits?")) {
+        return createJsonResponse({
+          cast: [{ id: 1245, name: "Test Performer", character: "Test role", order: 0 }],
+          crew: [],
+        });
+      }
+      if (url.includes("/movie/1297467?")) {
+        return createJsonResponse(makeTmdbMovieSearchResult({
+          id: 1297467,
+          title: "The Exorcist: Martyrs",
+          release_date: "2027-03-12",
+        }));
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    indexedDbMock.getFilmRecordById.mockResolvedValue(cachedMovieRecord);
+    indexedDbMock.getFilmRecordByTitleAndYear.mockResolvedValue(cachedMovieRecord);
+    vi.stubGlobal("fetch", fetchMock);
+
+    await prepareSelectedMovie("Untitled The Exorcist Film", "2027", 1297467, { forceRefresh: true });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(indexedDbMock.saveFilmRecord).toHaveBeenCalledWith(expect.objectContaining({
+      id: 1297467,
+      year: "2027",
+      title: "The Exorcist: Martyrs",
+      lookupKey: "the exorcist: martyrs (2027)",
+      titleYear: "the exorcist: martyrs (2027)",
+      personConnectionKeys: [1245],
+      rawTmdbMovieCreditsResponse: expect.objectContaining({
+        cast: [expect.objectContaining({ id: 1245, character: "Test role" })],
+      }),
+    }));
+  });
+
   it("starts movie details and credits in parallel and saves only after both payloads resolve", async () => {
     const cachedMovieRecord = makeFilmRecord({
       id: 321,

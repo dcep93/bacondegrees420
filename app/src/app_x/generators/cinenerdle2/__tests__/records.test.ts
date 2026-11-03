@@ -456,29 +456,41 @@ describe("buildFilmRecord", () => {
     expect(filmRecord.lookupKey).toBe("hard candy (2005)");
   });
 
-  it.each(["1995", "2004"])("alerts when the same tmdb film id disagrees on normalized title with year %s", (year) => {
+  it.each([
+    ["The Exorcist: Martyrs", "2026-11-03T00:00:00.000Z", "The Exorcist: Martyrs"],
+    ["The Exorcist: Martyrs", "2026-04-01T00:00:00.000Z", "Untitled The Exorcist Film"],
+    [undefined, "2026-11-03T00:00:00.000Z", "Untitled The Exorcist Film"],
+    ["", "2026-11-03T00:00:00.000Z", "Untitled The Exorcist Film"],
+  ])("merges title %s fetched at %s as %s for the same film", (title, fetchTimestamp, expectedTitle) => {
     const alertMock = vi.fn();
     vi.stubGlobal("window", { alert: alertMock });
+    const existingFilmRecord = makeFilmRecord({
+      id: 1297467,
+      tmdbId: 1297467,
+      title: "Untitled The Exorcist Film",
+      year: "2027",
+      rawTmdbMovie: makeTmdbMovieSearchResult({
+        id: 1297467,
+        title: "Untitled The Exorcist Film",
+        release_date: "2027-03-12",
+      }),
+      fetchTimestamp: "2026-04-17T00:00:00.000Z",
+      personConnectionKeys: [1245, 2882, 5723, 17832],
+    });
+    const filmRecord = buildFilmRecord(existingFilmRecord, makeTmdbMovieSearchResult({
+      id: 1297467,
+      title,
+      release_date: "2027-03-12",
+    }), fetchTimestamp);
 
-    expect(() =>
-      buildFilmRecord(
-        makeFilmRecord({
-          id: 999,
-          tmdbId: 999,
-          title: "Heat",
-          year: "1995",
-        }),
-        makeTmdbMovieSearchResult({
-          id: 999,
-          title: "Collateral",
-          release_date: `${year}-08-06`,
-        }),
-      ),
-    ).toThrow(
-      `Cannot merge film records for TMDb film 999: title mismatch. Existing title="Heat", year="1995". Next title="Collateral", year="${year}".`,
-    );
-    expect(alertMock).toHaveBeenCalledTimes(1);
-    expect(getCinenerdleDebugEntries()).toEqual([]);
+    expect(filmRecord.id).toBe(1297467);
+    expect(filmRecord.title).toBe(expectedTitle);
+    expect(filmRecord.titleLower).toBe(expectedTitle.toLowerCase());
+    expect(filmRecord.lookupKey).toBe(`${expectedTitle.toLowerCase()} (2027)`);
+    expect(filmRecord.titleYear).toBe(`${expectedTitle.toLowerCase()} (2027)`);
+    expect(filmRecord.rawTmdbMovie?.title).toBe(expectedTitle);
+    expect(filmRecord.personConnectionKeys).toEqual(existingFilmRecord.personConnectionKeys);
+    expect(alertMock).not.toHaveBeenCalled();
   });
 
   it("fills in a missing year when a later tmdb fetch provides it", () => {
