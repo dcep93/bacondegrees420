@@ -571,8 +571,10 @@ export function useConnectionSearchState({
   ]);
 
   useEffect(() => {
+    // Hydrating the initial tree updates youngestSelectedCard without a user
+    // changing the selection. Preserve typing until the selected path changes.
     clearConnectionInputState();
-  }, [clearConnectionInputState, youngestSelectedCardKey]);
+  }, [clearConnectionInputState, hashValue]);
 
   useEffect(() => {
     const selectedSuggestion =
