@@ -1,4 +1,4 @@
-let hasShownCinenerdleValidationAlert = false;
+const alertedCinenerdleValidationMessages = new Set<string>();
 
 export function formatCinenerdleValidationValue(value: unknown): string {
   if (value === undefined) {
@@ -28,24 +28,18 @@ export function formatCinenerdleValidationValue(value: unknown): string {
   }
 }
 
-export function resetCinenerdleValidationAlertState(): void {
-  hasShownCinenerdleValidationAlert = false;
-}
-
-export function recordCinenerdleValidationDetails(details: unknown): void {
-  void details;
-}
-
 export function throwCinenerdleValidationError(
   message: string,
   details?: unknown,
 ): never {
   if (details !== undefined) {
-    recordCinenerdleValidationDetails(details);
+    console.error(message, details);
+  } else {
+    console.error(message);
   }
 
-  if (typeof window !== "undefined" && !hasShownCinenerdleValidationAlert) {
-    hasShownCinenerdleValidationAlert = true;
+  if (typeof window !== "undefined" && !alertedCinenerdleValidationMessages.has(message)) {
+    alertedCinenerdleValidationMessages.add(message);
     window.alert(message);
   }
 
